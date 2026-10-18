@@ -1,6 +1,6 @@
 # dependabot-gitlab, standalone mode: the daily pipeline schedule runs it, so
 # schedule below only satisfies the schema. Security updates only. Crates are
-# handled by the cargo_audit job, since GitHub's advisory database lags RustSec.
+# handled by the test_cargo_audit job, since GitHub's advisory database lags RustSec.
 version: 2
 updates:
   - package-ecosystem: npm

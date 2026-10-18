@@ -53,20 +53,25 @@ workflow:
 
 # Release flow and RELEASE_READ_TOKEN: see RELEASING.md, step 4.
 #
-# test:            development checks: lint, the gated suite, MSRV, licensing. Every push and MR.
-# prerelease:      the shipped source tarballs, tested and packaged the way distros build them.
-#                  One manual click on branches and MRs, automatic in a release rehearsal. On a
-#                  tag, only the check that this commit's rehearsal passed.
-# build:           release artifacts and packages. A tag fetches the rehearsal's builds.
-# smoke_packages:  install each package and run it once.
-# upload_packages: publish packages: beta builds for branches, releases for tags.
-# release:         the GitLab release.
+# test:       development checks: lint, the gated suite, MSRV, licensing. Every push and MR.
+# prerelease: the shipped source tarballs, tested and packaged the way distros build them.
+#             One manual click on prerelease_start in branches and MRs, automatic in a release
+#             rehearsal. On a tag, only the check that this commit's rehearsal passed.
+# build:      release artifacts and packages. A tag fetches the rehearsal's builds.
+# smoke:      install each package and run it once.
+# upload:     publish packages: beta builds for branches, releases for tags.
+# release:    the GitLab release, or in a rehearsal the check that every job passed.
+#
+# Job names: <stage>[_beta]_<target>[_<release>][_<arch>], such as upload_beta_debian_old_aarch64.
+# Distro targets (debian, ubuntu, fedora) name the release as old (the oldest supported) or
+# latest, so moving to a newer release renames nothing. The arch is x86_64 or aarch64, left out
+# for jobs that are arch independent or multi-arch.
 stages:
   - test
   - prerelease
   - build
-  - smoke_packages
-  - upload_packages
+  - smoke
+  - upload
   - release
 
 image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
@@ -179,7 +184,7 @@ secret_detection:
 ############################################## Copyright / licensing (REUSE)
 # Every file must declare copyright and license. Source files carry SPDX headers;
 # everything else is covered by REUSE.toml. Fix a failure with `make copyright-fix`.
-copyright:
+test_copyright:
   stage: test
   image: python:3-slim
   tags:
@@ -284,9 +289,9 @@ test_msrv:
 
 ####################################### Newest Rust toolchain
 # Arch and AUR users build with the newest stable Rust as soon as it ships, so its new warnings
-# reach them first. Daily, so a Rust release shows up within a day; the rolling prerelease jobs
+# reach them first. Daily, so a Rust release shows up within a day; the latest prerelease jobs
 # run the same check, so a release rehearsal fails on it too.
-latest_toolchain:
+test_rust_latest:
   stage: test
   image: rust:latest
   <<: [*cache_template]
@@ -305,7 +310,7 @@ latest_toolchain:
 # Daily schedule only, so a contributor's MR never has to fix unrelated crates. RustSec
 # findings fail the job and open a lockfile-only fix MR, since dependabot's GitHub advisory
 # source can lag RustSec by weeks.
-cargo_audit:
+test_cargo_audit:
   stage: test
   needs: []
   cache:
@@ -320,9 +325,9 @@ cargo_audit:
   script:
     - .gitlab/scripts/cargo-audit.sh
 
-# Daily schedule only, like cargo_audit. OSV findings, dev dependencies included, fail the job.
+# Daily schedule only, like test_cargo_audit. OSV findings, dev dependencies included, fail the job.
 # Fix MRs come from dependabot.
-npm_audit:
+test_npm_audit:
   stage: test
   image:
     name: ghcr.io/google/osv-scanner:v2.6.0
@@ -337,7 +342,7 @@ npm_audit:
 # dependabot-gitlab's npm job (config in .gitlab/dependabot.yml). The component gates it on a
 # PACKAGE_MANAGER_SET schedule variable; replacing its rules lets the one daily schedule run it.
 # Allowed to fail: an advisory with no fixed release fails the run, and nothing in dependabot.yml
-# can skip it. npm_audit is the gate, with its expiring ignores in osv-scanner.toml.
+# can skip it. test_npm_audit is the gate, with its expiring ignores in osv-scanner.toml.
 npm:
   variables:
     DIRECTORY: /coolercontrol-ui
@@ -350,7 +355,7 @@ npm:
 ############################################################################################
 
 ####################################### source tarball
-build_source_assets:
+prerelease_source:
   stage: prerelease
   # no caching here due to vendoring and for a clean solid build
   <<: [*main_image_template]
@@ -360,7 +365,7 @@ build_source_assets:
     # A tag uploads its source only once its rehearsal is verified.
     - if: $CI_COMMIT_TAG
       needs:
-        - verify_prerelease
+        - prerelease_verify
     - if: $CI_PIPELINE_SOURCE
   needs: []
   before_script:
@@ -395,10 +400,10 @@ build_source_assets:
       - coolercontrold-vendor-*.tar.gz
     expire_in: 14 days
 
-# Branch and MR pipelines add the prerelease jobs behind one manual click on `prerelease`, skipping
-# the duplicate branch pipeline of an open MR. A manual run only checks: it builds, stages and
-# publishes nothing. A release rehearsal runs them automatically. Tags skip them: the rehearsal
-# already ran them on the same commit, which verify_prerelease checks.
+# Branch and MR pipelines add the prerelease jobs behind one manual click on prerelease_start,
+# skipping the duplicate branch pipeline of an open MR. A manual run only checks: it builds,
+# stages and publishes nothing. A release rehearsal runs them automatically. Tags skip them: the
+# rehearsal already ran them on the same commit, which prerelease_verify checks.
 .prerelease_rules_common:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
@@ -412,7 +417,7 @@ build_source_assets:
     - !reference [.prerelease_rules_common, rules]
     - if: $CI_PIPELINE_SOURCE
 
-prerelease:
+prerelease_start:
   stage: prerelease
   image: alpine:3
   tags:
@@ -428,7 +433,7 @@ prerelease:
 
 # The first job of a tag pipeline: nothing is built or published unless the release rehearsal of
 # this exact commit passed in a pipeline of the default branch.
-verify_prerelease:
+prerelease_verify:
   stage: prerelease
   image: python:3-slim
   tags:
@@ -445,26 +450,26 @@ verify_prerelease:
 # The source tarball and vendored crates, built offline in release mode: the default suite as
 # distros run it, then the gated tests. The oldest supported userland (the jammy image the release
 # packages are built in, with its pinned Rust) and the newest (ubuntu:rolling with the newest
-# stable Rust, as Arch and the AUR build), on native amd64 and arm64. The newest also fails on any
-# compiler warning, which its users would see.
+# stable Rust, as Arch and the AUR build), on native x86_64 and aarch64. The newest also fails on
+# any compiler warning, which its users would see.
 .prerelease_test:
   extends: .prerelease_rules
   stage: prerelease
   needs:
-    - prerelease
-    - build_source_assets
+    - prerelease_start
+    - prerelease_source
   timeout: 1h
   script:
     - !reference [.safe_registry_url, script]
     - .gitlab/scripts/prerelease-test.sh "coolercontrol-${SAFE_REF}.tar.gz" coolercontrold-vendor.tar.gz
 
-prerelease_amd64_ubuntu_22.04:
+prerelease_ubuntu_old_x86_64:
   extends: .prerelease_test
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   tags:
     - saas-linux-xlarge-amd64
 
-prerelease_amd64_ubuntu_rolling:
+prerelease_ubuntu_latest_x86_64:
   extends: .prerelease_test
   image: ubuntu:rolling
   tags:
@@ -473,14 +478,14 @@ prerelease_amd64_ubuntu_rolling:
     RUST_VERSION: stable
     PRERELEASE_DENY_WARNINGS: '1'
 
-prerelease_arm64_ubuntu_22.04:
+prerelease_ubuntu_old_aarch64:
   extends: .prerelease_test
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   tags:
     - saas-linux-large-arm64
 
 # glibc 2.43 made THP heaps the aarch64 malloc default, which broke a test only on OBS.
-prerelease_arm64_ubuntu_rolling:
+prerelease_ubuntu_latest_aarch64:
   extends: .prerelease_test
   image: ubuntu:rolling
   tags:
@@ -499,8 +504,8 @@ prerelease_arm64_ubuntu_rolling:
   stage: prerelease
   image: fedora:latest
   needs:
-    - prerelease
-    - build_source_assets
+    - prerelease_start
+    - prerelease_source
   timeout: 2h
   script:
     - |
@@ -516,12 +521,12 @@ prerelease_arm64_ubuntu_rolling:
       - rpm-results/
     expire_in: 5 days
 
-prerelease_rpm_x86_64:
+prerelease_fedora_latest_x86_64:
   extends: .prerelease_rpm
   tags:
     - saas-linux-xlarge-amd64
 
-prerelease_rpm_aarch64:
+prerelease_fedora_latest_aarch64:
   extends: .prerelease_rpm
   tags:
     - saas-linux-large-arm64
@@ -529,13 +534,13 @@ prerelease_rpm_aarch64:
 ############################################################################################
 # compile all release artifacts
 # A tag's package builds run on_success, not always: a tag builds nothing the gate in
-# compile_artifacts has not passed.
+# build_start has not passed.
 ############################################################################################
 
 # manual and automatic trigger for all artifacts & packages. Every build hangs off this job. A
 # release rehearsal builds everything, in parallel with its checks. A tag builds nothing until
-# verify_prerelease has found this commit's passed rehearsal, and then fetches its builds.
-compile_artifacts:
+# prerelease_verify has found this commit's passed rehearsal, and then fetches its builds.
+build_start:
   stage: build
   <<: [*main_image_template]
   rules:
@@ -543,7 +548,7 @@ compile_artifacts:
       when: never
     - if: $CI_COMMIT_TAG
       needs:
-        - verify_prerelease
+        - prerelease_verify
     - if: $RELEASE_REHEARSAL == "true"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: on_success
@@ -565,14 +570,14 @@ compile_artifacts:
       fi
 
 ####################################### AppImages (Ubuntu 22.04)
-build_appimages:
+build_appimage_x86_64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/appimage:${IMAGE_VERSION}
   <<: [*cache_template, *rust_release_cache_amd64, *main_image_template]
   stage: build
   tags:
     - saas-linux-xlarge-amd64
   needs:
-    - compile_artifacts
+    - build_start
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -602,14 +607,14 @@ build_appimages:
     expire_in: 5 days
 
 ####################################### aarch64 build assets (Ubuntu 22.04)
-build_arm64:
+build_binary_aarch64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   <<: [*cache_template, *rust_release_cache_arm64, *main_image_template]
   stage: build
   tags:
     - saas-linux-large-arm64
   needs:
-    - compile_artifacts
+    - build_start
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -633,14 +638,14 @@ build_arm64:
     expire_in: 5 days
 
 ####################################### Debian >=BookWorm Base Package
-build_deb_bookworm_amd64:
+build_debian_old_x86_64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
   <<: [*cache_template, *rust_release_cache_amd64, *main_image_template]
   stage: build
   tags:
     - saas-linux-xlarge-amd64
   needs:
-    - compile_artifacts
+    - build_start
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -691,16 +696,16 @@ build_deb_bookworm_amd64:
       - coolercontrol*.deb
     expire_in: 5 days
 
-build_deb_bookworm_arm64:
+build_debian_old_aarch64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
   <<: [*cache_template, *rust_release_cache_arm64, *main_image_template]
   stage: build
   tags:
     - saas-linux-large-arm64
   needs:
-    - compile_artifacts
+    - build_start
     # For some reason (emulation?), if the amd64 build is running at the same time, there are problems
-    - build_deb_bookworm_amd64
+    - build_debian_old_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -753,14 +758,14 @@ build_deb_bookworm_arm64:
     expire_in: 5 days
 
 ####################################### Ubuntu: >= 22.04 (jammy) Base Package
-build_ubuntu:
+build_ubuntu_old_x86_64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   <<: [*cache_template, *rust_release_cache_amd64, *main_image_template]
   stage: build
   tags:
     - saas-linux-xlarge-amd64
   needs:
-    - compile_artifacts
+    - build_start
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -815,18 +820,18 @@ build_ubuntu:
 # These used to be built by hand and uploaded to Cloudsmith after the fact (RELEASING.md). Both
 # package trees serve amd64 and arm64, so they are built here instead.
 #
-# Same multi-arch image as build_ubuntu, so both architectures of a release are built with the
-# same toolchain.
-build_ubuntu_arm64:
+# Same multi-arch image as build_ubuntu_old_x86_64, so both architectures of a release are built
+# with the same toolchain.
+build_ubuntu_old_aarch64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   <<: [*cache_template, *rust_release_cache_arm64, *main_image_template]
   stage: build
   tags:
     - saas-linux-large-arm64
   needs:
-    - compile_artifacts
-    # Same reason as build_deb_bookworm_arm64: running both architectures at once causes trouble.
-    - build_ubuntu
+    - build_start
+    # Same reason as build_debian_old_aarch64: running both architectures at once causes trouble.
+    - build_ubuntu_old_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -861,14 +866,14 @@ build_ubuntu_arm64:
 
 ############################################################################################
 # Docker
-# push_dh-debian and push_dh-alpine use the Docker Hub cloud builder (limited build minutes),
-# whose two builds fail when they run at the same time, hence the shared resource_group. The
-# other push jobs are beta builds, which a release rehearsal skips: it publishes nothing.
+# build_docker_debian and build_docker_alpine use the Docker Hub cloud builder (limited build
+# minutes), whose two builds fail when they run at the same time, hence the shared
+# resource_group. A release rehearsal skips the build_beta_docker jobs: it publishes nothing.
 ############################################################################################
 
 ####################################### debian Docker Images
 
-push_dh-debian:
+build_docker_debian:
   image: docker:dind
   <<: [*main_image_template]
   stage: build
@@ -876,7 +881,7 @@ push_dh-debian:
     - docker:dind
   resource_group: dockerhub
   needs:
-    - compile_artifacts
+    - build_start
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -889,7 +894,7 @@ push_dh-debian:
       - dockerhub-debian.digest
     expire_in: 5 days
 
-push_dh-debian_amd64:
+build_beta_docker_debian_x86_64:
   image: docker:dind
   <<: [*main_image_template]
   stage: build
@@ -900,7 +905,7 @@ push_dh-debian_amd64:
   variables:
     DOCKER_DRIVER: overlay2
   needs:
-    - compile_artifacts
+    - build_start
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -945,7 +950,7 @@ push_dh-debian_amd64:
     #- if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
     - echo "Successful. amd64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
 
-#push_dh-debian_arm64:
+#build_beta_docker_debian_aarch64:
 #  image: docker:dind
 #  <<: [*main_image_template]
 #  stage: build
@@ -956,7 +961,7 @@ push_dh-debian_amd64:
 #  variables:
 #    DOCKER_DRIVER: overlay2
 #  needs:
-#    - compile_artifacts
+#    - build_start
 #  rules:
 #    - if: $CI_PIPELINE_SOURCE
 #  script:
@@ -998,7 +1003,7 @@ push_dh-debian_amd64:
 
 ####################################### alpine Docker Images
 
-push_dh-alpine:
+build_docker_alpine:
   image: docker:dind
   <<: [*main_image_template]
   stage: build
@@ -1006,7 +1011,7 @@ push_dh-alpine:
     - docker:dind
   resource_group: dockerhub
   needs:
-    - compile_artifacts
+    - build_start
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1019,7 +1024,7 @@ push_dh-alpine:
       - dockerhub-alpine.digest
     expire_in: 5 days
 
-#push_dh-alpine_amd64:
+#build_beta_docker_alpine_x86_64:
 #  image: docker:dind
 #  <<: [*main_image_template]
 #  stage: build
@@ -1030,7 +1035,7 @@ push_dh-alpine:
 #  variables:
 #    DOCKER_DRIVER: overlay2
 #  needs:
-#    - compile_artifacts
+#    - build_start
 #  rules:
 #    - if: $CI_PIPELINE_SOURCE
 #  script:
@@ -1070,7 +1075,7 @@ push_dh-alpine:
 #    #- if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
 #    - echo "Successful. amd64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
 
-push_dh-alpine_arm64:
+build_beta_docker_alpine_aarch64:
   image: docker:dind
   <<: [*main_image_template]
   stage: build
@@ -1081,7 +1086,7 @@ push_dh-alpine_arm64:
   variables:
     DOCKER_DRIVER: overlay2
   needs:
-    - compile_artifacts
+    - build_start
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1135,13 +1140,13 @@ push_dh-alpine_arm64:
 # dh_auto_test.
 ############################################################################################
 
-smoke_appimages:
-  stage: smoke_packages
+smoke_appimage_x86_64:
+  stage: smoke
   image: ubuntu:jammy
   dependencies:
-    - build_appimages
+    - build_appimage_x86_64
   needs:
-    - build_appimages
+    - build_appimage_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1152,15 +1157,15 @@ smoke_appimages:
     - ./CoolerControlD-x86_64.AppImage --version
     #- ./CoolerControl-x86_64.AppImage --version
 
-smoke_arm64:
-  stage: smoke_packages
+smoke_binary_aarch64:
+  stage: smoke
   image: ubuntu:jammy
   tags:
     - saas-linux-small-arm64
   dependencies:
-    - build_arm64
+    - build_binary_aarch64
   needs:
-    - build_arm64
+    - build_binary_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1169,15 +1174,15 @@ smoke_arm64:
     - ls -lah ./
     - ./assets-built/coolercontrold --version
 
-smoke_deb_bookworm_amd64:
-  stage: smoke_packages
+smoke_debian_old_x86_64:
+  stage: smoke
   tags:
     - saas-linux-small-amd64
   image: debian:bookworm
   dependencies:
-    - build_deb_bookworm_amd64
+    - build_debian_old_x86_64
   needs:
-    - build_deb_bookworm_amd64
+    - build_debian_old_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1189,15 +1194,15 @@ smoke_deb_bookworm_amd64:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
-smoke_deb_bookworm_arm64:
-  stage: smoke_packages
+smoke_debian_old_aarch64:
+  stage: smoke
   tags:
     - saas-linux-small-arm64
   image: debian:bookworm
   dependencies:
-    - build_deb_bookworm_arm64
+    - build_debian_old_aarch64
   needs:
-    - build_deb_bookworm_arm64
+    - build_debian_old_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1209,15 +1214,15 @@ smoke_deb_bookworm_arm64:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
-smoke_ubuntu_22.04:
-  stage: smoke_packages
+smoke_ubuntu_old_x86_64:
+  stage: smoke
   tags:
     - saas-linux-small-amd64
   image: ubuntu:jammy
   dependencies:
-    - build_ubuntu
+    - build_ubuntu_old_x86_64
   needs:
-    - build_ubuntu
+    - build_ubuntu_old_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1229,15 +1234,15 @@ smoke_ubuntu_22.04:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
-smoke_ubuntu_arm64:
-  stage: smoke_packages
+smoke_ubuntu_old_aarch64:
+  stage: smoke
   tags:
     - saas-linux-small-arm64
   image: ubuntu:jammy
   dependencies:
-    - build_ubuntu_arm64
+    - build_ubuntu_old_aarch64
   needs:
-    - build_ubuntu_arm64
+    - build_ubuntu_old_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1249,15 +1254,15 @@ smoke_ubuntu_arm64:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
-smoke_ubuntu_latest:
-  stage: smoke_packages
+smoke_ubuntu_latest_x86_64:
+  stage: smoke
   tags:
     - saas-linux-small-amd64
   image: ubuntu:rolling
   dependencies:
-    - build_ubuntu
+    - build_ubuntu_old_x86_64
   needs:
-    - build_ubuntu
+    - build_ubuntu_old_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1268,75 +1273,6 @@ smoke_ubuntu_latest:
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
-
-# The end of a release rehearsal. It runs only once every check, build and smoke test has
-# passed, and verify_prerelease looks for it, so its success is what lets the tag publish. Each
-# job is needed directly: a job skipped because its own needs failed would otherwise count as
-# passed.
-prerelease_passed:
-  stage: smoke_packages
-  image: alpine:3
-  tags:
-    - saas-linux-small-amd64
-  rules:
-    - if: $RELEASE_REHEARSAL == "true"
-  needs:
-    - job: test_all
-      artifacts: false
-    - job: test_msrv
-      artifacts: false
-    - job: copyright
-      artifacts: false
-    - job: prerelease
-      artifacts: false
-    - job: build_source_assets
-      artifacts: false
-    - job: prerelease_amd64_ubuntu_22.04
-      artifacts: false
-    - job: prerelease_amd64_ubuntu_rolling
-      artifacts: false
-    - job: prerelease_arm64_ubuntu_22.04
-      artifacts: false
-    - job: prerelease_arm64_ubuntu_rolling
-      artifacts: false
-    - job: prerelease_rpm_x86_64
-      artifacts: false
-    - job: prerelease_rpm_aarch64
-      artifacts: false
-    - job: compile_artifacts
-      artifacts: false
-    - job: build_appimages
-      artifacts: false
-    - job: build_arm64
-      artifacts: false
-    - job: build_deb_bookworm_amd64
-      artifacts: false
-    - job: build_deb_bookworm_arm64
-      artifacts: false
-    - job: build_ubuntu
-      artifacts: false
-    - job: build_ubuntu_arm64
-      artifacts: false
-    - job: push_dh-debian
-      artifacts: false
-    - job: push_dh-alpine
-      artifacts: false
-    - job: smoke_appimages
-      artifacts: false
-    - job: smoke_arm64
-      artifacts: false
-    - job: smoke_deb_bookworm_amd64
-      artifacts: false
-    - job: smoke_deb_bookworm_arm64
-      artifacts: false
-    - job: smoke_ubuntu_22.04
-      artifacts: false
-    - job: smoke_ubuntu_arm64
-      artifacts: false
-    - job: smoke_ubuntu_latest
-      artifacts: false
-  script:
-    - echo "Release rehearsal of ${CI_COMMIT_SHA} passed."
 
 ############################################################################################
 # Upload Packages
@@ -1344,14 +1280,14 @@ prerelease_passed:
 # the tag instead.
 ############################################################################################
 
-upload_package_appimage:
-  stage: upload_packages
+upload_appimage_x86_64:
+  stage: upload
   image: curlimages/curl:latest
   dependencies:
-    - build_appimages
+    - build_appimage_x86_64
   needs:
-    - build_appimages
-    - smoke_appimages
+    - build_appimage_x86_64
+    - smoke_appimage_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1363,14 +1299,14 @@ upload_package_appimage:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
-upload_package_appimage_beta:
-  stage: upload_packages
+upload_beta_appimage_x86_64:
+  stage: upload
   image: curlimages/curl:latest
   dependencies:
-    - build_appimages
+    - build_appimage_x86_64
   needs:
-    - build_appimages
-    - smoke_appimages
+    - build_appimage_x86_64
+    - smoke_appimage_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1385,14 +1321,14 @@ upload_package_appimage_beta:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
-upload_artifacts_arm64:
-  stage: upload_packages
+upload_binary_aarch64:
+  stage: upload
   image: curlimages/curl:latest
   dependencies:
-    - build_arm64
+    - build_binary_aarch64
   needs:
-    - build_arm64
-    - smoke_arm64
+    - build_binary_aarch64
+    - smoke_binary_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1402,14 +1338,14 @@ upload_artifacts_arm64:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64_${CI_COMMIT_TAG}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tar.gz"
 
-upload_artifacts_arm64_beta:
-  stage: upload_packages
+upload_beta_binary_aarch64:
+  stage: upload
   image: curlimages/curl:latest
   dependencies:
-    - build_arm64
+    - build_binary_aarch64
   needs:
-    - build_arm64
-    - smoke_arm64
+    - build_binary_aarch64
+    - smoke_binary_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1422,14 +1358,14 @@ upload_artifacts_arm64_beta:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tar.gz"
 
-upload_package_deb_bookworm_amd64:
-  stage: upload_packages
+upload_debian_old_x86_64:
+  stage: upload
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
   dependencies:
-    - build_deb_bookworm_amd64
+    - build_debian_old_x86_64
   needs:
-    - build_deb_bookworm_amd64
-    - smoke_deb_bookworm_amd64
+    - build_debian_old_x86_64
+    - smoke_debian_old_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1441,17 +1377,17 @@ upload_package_deb_bookworm_amd64:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_D} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
 
-upload_package_deb_bookworm_beta_amd64:
-  stage: upload_packages
+upload_beta_debian_old_x86_64:
+  stage: upload
   image: curlimages/curl:latest
   variables:
     ARTIFACT_NAME_DEB_BOOKWORM_BETA_D: coolercontrold_beta_amd64_bookworm.deb
     ARTIFACT_NAME_DEB_BOOKWORM_BETA: coolercontrol_beta_amd64_bookworm.deb
   dependencies:
-    - build_deb_bookworm_amd64
+    - build_debian_old_x86_64
   needs:
-    - build_deb_bookworm_amd64
-    - smoke_deb_bookworm_amd64
+    - build_debian_old_x86_64
+    - smoke_debian_old_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1466,17 +1402,17 @@ upload_package_deb_bookworm_beta_amd64:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA}"
 
-upload_package_deb_bookworm_arm64:
-  stage: upload_packages
+upload_debian_old_aarch64:
+  stage: upload
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
   variables:
     ARTIFACT_NAME_DEB: 'coolercontrol_${CI_COMMIT_TAG}_arm64.deb'
     ARTIFACT_NAME_DEB_D: 'coolercontrold_${CI_COMMIT_TAG}_arm64.deb'
   dependencies:
-    - build_deb_bookworm_arm64
+    - build_debian_old_aarch64
   needs:
-    - build_deb_bookworm_arm64
-    - smoke_deb_bookworm_arm64
+    - build_debian_old_aarch64
+    - smoke_debian_old_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1488,17 +1424,17 @@ upload_package_deb_bookworm_arm64:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_D_ARM64} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D_ARM64}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_ARM64} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_ARM64}"
 
-upload_package_deb_bookworm_beta_arm64:
-  stage: upload_packages
+upload_beta_debian_old_aarch64:
+  stage: upload
   image: curlimages/curl:latest
   variables:
     ARTIFACT_NAME_DEB_BOOKWORM_BETA_D: coolercontrold_beta_arm64_bookworm.deb
     ARTIFACT_NAME_DEB_BOOKWORM_BETA: coolercontrol_beta_arm64_bookworm.deb
   dependencies:
-    - build_deb_bookworm_arm64
+    - build_debian_old_aarch64
   needs:
-    - build_deb_bookworm_arm64
-    - smoke_deb_bookworm_arm64
+    - build_debian_old_aarch64
+    - smoke_debian_old_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1513,15 +1449,15 @@ upload_package_deb_bookworm_beta_arm64:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA}"
 
-upload_package_ubuntu:
-  stage: upload_packages
+upload_ubuntu_old_x86_64:
+  stage: upload
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
   dependencies:
-    - build_ubuntu
+    - build_ubuntu_old_x86_64
   needs:
-    - build_ubuntu
-    - smoke_ubuntu_22.04
-    - smoke_ubuntu_latest
+    - build_ubuntu_old_x86_64
+    - smoke_ubuntu_old_x86_64
+    - smoke_ubuntu_latest_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1533,17 +1469,17 @@ upload_package_ubuntu:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_D} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}"
 
-upload_package_ubuntu_arm64:
-  stage: upload_packages
+upload_ubuntu_old_aarch64:
+  stage: upload
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
   variables:
     ARTIFACT_NAME_DEB: 'coolercontrol_${CI_COMMIT_TAG}_arm64.deb'
     ARTIFACT_NAME_DEB_D: 'coolercontrold_${CI_COMMIT_TAG}_arm64.deb'
   dependencies:
-    - build_ubuntu_arm64
+    - build_ubuntu_old_aarch64
   needs:
-    - build_ubuntu_arm64
-    - smoke_ubuntu_arm64
+    - build_ubuntu_old_aarch64
+    - smoke_ubuntu_old_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1555,18 +1491,18 @@ upload_package_ubuntu_arm64:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_D_ARM64} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_D_ARM64}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_ARM64} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_ARM64}"
 
-upload_package_ubuntu_beta:
-  stage: upload_packages
+upload_beta_ubuntu_old_x86_64:
+  stage: upload
   image: curlimages/curl:latest
   variables:
     ARTIFACT_NAME_UBUNTU_BETA_D: coolercontrold_beta_amd64_ubuntu.deb
     ARTIFACT_NAME_UBUNTU_BETA: coolercontrol_beta_amd64_ubuntu.deb
   dependencies:
-    - build_ubuntu
+    - build_ubuntu_old_x86_64
   needs:
-    - build_ubuntu
-    - smoke_ubuntu_22.04
-    - smoke_ubuntu_latest
+    - build_ubuntu_old_x86_64
+    - smoke_ubuntu_old_x86_64
+    - smoke_ubuntu_latest_x86_64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1581,15 +1517,12 @@ upload_package_ubuntu_beta:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_BETA_D} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_BETA_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_BETA} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_BETA}"
 
-############################################################################################
-# Create Release
-############################################################################################
 ####################################### apt.coolercontrol.org (Cloudflare R2)
 # Two jobs rather than one because the bookworm and jammy builds share deb file names and would
 # collide in a single workspace. They also target different trees. The publish lock in
 # apt-repo-publish serializes them, so running them in parallel is safe.
-upload_package_r2_debian:
-  stage: upload_packages
+upload_apt_debian_old:
+  stage: upload
   image: registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:${APT_PUBLISH_IMAGE_VERSION}
   variables:
     # setup.sh and the keys belong to this project, so publish them from the tagged commit
@@ -1597,13 +1530,13 @@ upload_package_r2_debian:
     # twin pass --refresh-root; the sibling package repositories publish packages only.
     APT_REPO_SHARE: $CI_PROJECT_DIR/packaging/apt-repo
   dependencies:
-    - build_deb_bookworm_amd64
-    - build_deb_bookworm_arm64
+    - build_debian_old_x86_64
+    - build_debian_old_aarch64
   needs:
-    - build_deb_bookworm_amd64
-    - smoke_deb_bookworm_amd64
-    - build_deb_bookworm_arm64
-    - smoke_deb_bookworm_arm64
+    - build_debian_old_x86_64
+    - smoke_debian_old_x86_64
+    - build_debian_old_aarch64
+    - smoke_debian_old_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1612,20 +1545,20 @@ upload_package_r2_debian:
     - ls -lah ./*.deb
     - apt-repo-publish --repo debian --refresh-root ./*.deb
 
-upload_package_r2_ubuntu:
-  stage: upload_packages
+upload_apt_ubuntu_old:
+  stage: upload
   image: registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:${APT_PUBLISH_IMAGE_VERSION}
   variables:
     APT_REPO_SHARE: $CI_PROJECT_DIR/packaging/apt-repo
   dependencies:
-    - build_ubuntu
-    - build_ubuntu_arm64
+    - build_ubuntu_old_x86_64
+    - build_ubuntu_old_aarch64
   needs:
-    - build_ubuntu
-    - smoke_ubuntu_22.04
-    - smoke_ubuntu_latest
-    - build_ubuntu_arm64
-    - smoke_ubuntu_arm64
+    - build_ubuntu_old_x86_64
+    - smoke_ubuntu_old_x86_64
+    - smoke_ubuntu_latest_x86_64
+    - build_ubuntu_old_aarch64
+    - smoke_ubuntu_old_aarch64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1634,27 +1567,100 @@ upload_package_r2_ubuntu:
     - ls -lah ./*.deb
     - apt-repo-publish --repo ubuntu --refresh-root ./*.deb
 
-create_release:
+############################################################################################
+# Create Release
+############################################################################################
+
+# The end of a release rehearsal. It runs only once every check, build and smoke test has
+# passed, and prerelease_verify looks for it, so its success is what lets the tag publish. Each
+# job is needed directly: a job skipped because its own needs failed would otherwise count as
+# passed.
+release_rehearsed:
+  stage: release
+  image: alpine:3
+  tags:
+    - saas-linux-small-amd64
+  rules:
+    - if: $RELEASE_REHEARSAL == "true"
+  needs:
+    - job: test_all
+      artifacts: false
+    - job: test_msrv
+      artifacts: false
+    - job: test_copyright
+      artifacts: false
+    - job: prerelease_start
+      artifacts: false
+    - job: prerelease_source
+      artifacts: false
+    - job: prerelease_ubuntu_old_x86_64
+      artifacts: false
+    - job: prerelease_ubuntu_latest_x86_64
+      artifacts: false
+    - job: prerelease_ubuntu_old_aarch64
+      artifacts: false
+    - job: prerelease_ubuntu_latest_aarch64
+      artifacts: false
+    - job: prerelease_fedora_latest_x86_64
+      artifacts: false
+    - job: prerelease_fedora_latest_aarch64
+      artifacts: false
+    - job: build_start
+      artifacts: false
+    - job: build_appimage_x86_64
+      artifacts: false
+    - job: build_binary_aarch64
+      artifacts: false
+    - job: build_debian_old_x86_64
+      artifacts: false
+    - job: build_debian_old_aarch64
+      artifacts: false
+    - job: build_ubuntu_old_x86_64
+      artifacts: false
+    - job: build_ubuntu_old_aarch64
+      artifacts: false
+    - job: build_docker_debian
+      artifacts: false
+    - job: build_docker_alpine
+      artifacts: false
+    - job: smoke_appimage_x86_64
+      artifacts: false
+    - job: smoke_binary_aarch64
+      artifacts: false
+    - job: smoke_debian_old_x86_64
+      artifacts: false
+    - job: smoke_debian_old_aarch64
+      artifacts: false
+    - job: smoke_ubuntu_old_x86_64
+      artifacts: false
+    - job: smoke_ubuntu_old_aarch64
+      artifacts: false
+    - job: smoke_ubuntu_latest_x86_64
+      artifacts: false
+  script:
+    - echo "Release rehearsal of ${CI_COMMIT_SHA} passed."
+
+release_create:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   needs:
-    - upload_package_appimage
-    - upload_artifacts_arm64
-    - upload_package_deb_bookworm_amd64
-    - upload_package_deb_bookworm_arm64
-    - upload_package_ubuntu
-    - upload_package_ubuntu_arm64
+    - upload_appimage_x86_64
+    - upload_binary_aarch64
+    - upload_debian_old_x86_64
+    - upload_debian_old_aarch64
+    - upload_ubuntu_old_x86_64
+    - upload_ubuntu_old_aarch64
     # A release that is missing from apt.coolercontrol.org would strand transitioned users, so
     # the release waits on both trees having been published.
-    - upload_package_r2_debian
-    - upload_package_r2_ubuntu
-    - push_dh-debian
-    #- push_dh-debian_amd64
-    #- push_dh-debian_arm64
-    - push_dh-alpine
-    #- push_dh-alpine_amd64
-    #- push_dh-alpine_arm64
-    - build_source_assets
+    - upload_apt_debian_old
+    - upload_apt_ubuntu_old
+    - build_docker_debian
+    #- build_beta_docker_debian_x86_64
+    #- build_beta_docker_debian_aarch64
+    - build_docker_alpine
+    #- build_beta_docker_alpine_x86_64
+    #- build_beta_docker_alpine_aarch64
+    - prerelease_source
   before_script:
     - echo 'Starting release job'
   rules:

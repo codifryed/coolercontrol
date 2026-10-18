@@ -26,13 +26,13 @@ one.
       5. check the diff that the changes are correct
       6. `make push-release`. It pushes the Release commit alone, waits for that commit's release
          rehearsal to pass, then pushes the tag. The rehearsal runs every check and build without
-         publishing: the test suite on old and new distros for amd64 and arm64 (the newest with the
-         newest stable Rust, warnings denied), the Fedora RPM specs in mock, and every package and
-         Docker image, which its jobs keep for the tag. A rehearsal is a push or web pipeline of a
-         `Release X.Y.Z` commit on the default branch whose `prerelease_passed` job, which needs
+         publishing: the test suite on old and new distros for x86_64 and aarch64 (the newest with
+         the newest stable Rust, warnings denied), the Fedora RPM specs in mock, and every package
+         and Docker image, which its jobs keep for the tag. A rehearsal is a push or web pipeline of
+         a `Release X.Y.Z` commit on the default branch whose `release_rehearsed` job, which needs
          every other job, passed. Only the protected default branch can produce one, and only a job
          can write its own artifacts, so what the rehearsal's jobs hold is exactly what was tested.
-         The tag pipeline first verifies that rehearsal through the API (`verify_prerelease`), then
+         The tag pipeline first verifies that rehearsal through the API (`prerelease_verify`), then
          fetches its jobs' builds instead of rebuilding and publishes them; Docker images are staged
          under a commit-keyed tag and given their release tags by digest. A tag never reaches
          downstream packagers before its commit has passed. `make prerelease-local` runs the tests

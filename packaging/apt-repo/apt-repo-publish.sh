@@ -97,7 +97,7 @@ require_env() {
 }
 
 # aptly shells out to gpg. Import into a throwaway home and warm the agent so no pinentry prompt
-# is ever needed. Same pattern as build_appimages in .gitlab-ci.yml.
+# is ever needed. Same pattern as build_appimage_x86_64 in .gitlab-ci.yml.
 setup_gpg() {
     gnupg_home=$(mktemp -d)
     chmod 700 "${gnupg_home}"

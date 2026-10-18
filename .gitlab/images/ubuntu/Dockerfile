@@ -3,9 +3,9 @@ FROM ubuntu:jammy
 LABEL maintainer=codifryed
 # Image to build Ubuntu packages and the aarch64 build assets, both architectures.
 #
-# Built multi-arch (see docker-arm64 in make/docker.mk) and used by build_ubuntu,
-# build_ubuntu_arm64 and build_arm64. One image rather than a separate aarch64 one, so a
-# toolchain change cannot reach one architecture and miss the other.
+# Built multi-arch (see docker-arm64 in make/docker.mk) and used by build_ubuntu_old_x86_64,
+# build_ubuntu_old_aarch64 and build_binary_aarch64. One image rather than a separate aarch64
+# one, so a toolchain change cannot reach one architecture and miss the other.
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding

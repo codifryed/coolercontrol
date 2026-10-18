@@ -33,7 +33,8 @@ do not fetch the extra index. Entries written by 5.0.0 and 5.0.1 have no such fi
 The `/ubuntu` tree carries no `arm64` build of `coolercontrol` or `coolercontrold` yet. Those were
 never built: CI produces jammy amd64 only, and the arm64 debs on the Debian side are bookworm
 builds. Its `binary-arm64` index is therefore valid but empty of the two main packages, and an arm64
-Ubuntu host sees only the architecture independent ones. The `build_ubuntu_arm64` job fills this in.
+Ubuntu host sees only the architecture independent ones. The `build_ubuntu_old_aarch64` job fills
+this in.
 
 **The published pool is the only state.** Every publish pulls it, rebuilds the index from it plus
 the new packages, and pushes the result. There is no database in the bucket to keep in sync, lose or

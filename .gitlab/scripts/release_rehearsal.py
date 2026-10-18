@@ -24,7 +24,7 @@ import zipfile
 API = os.environ.get("CI_API_V4_URL", "https://gitlab.com/api/v4")
 PROJECT_ID = os.environ.get("CI_PROJECT_ID", "30707566")
 DEFAULT_BRANCH = os.environ.get("CI_DEFAULT_BRANCH", "main")
-MARKER_JOB = "prerelease_passed"
+MARKER_JOB = "release_rehearsed"
 REHEARSAL_SOURCES = {"push", "web"}
 FINISHED_UNPASSED = {"failed", "canceled", "skipped"}
 WAIT_TIMEOUT_SECS = 3 * 60 * 60
