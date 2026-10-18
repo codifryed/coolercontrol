@@ -1,5 +1,8 @@
 %bcond check 1
 %global project coolercontrol
+# Fedora's default of one codegen unit compiles the daemon crate on a single core. 6 matches the
+# Cargo release profile.
+%global rustflags_codegen_units 6
 
 Name:           %{project}d
 Version:        5.1.0
