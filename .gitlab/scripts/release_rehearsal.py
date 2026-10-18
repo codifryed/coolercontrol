@@ -83,7 +83,11 @@ def passed_jobs(pipeline: dict) -> dict[str, dict]:
 
 
 def passed_rehearsal(sha: str) -> tuple[dict, dict[str, dict]] | None:
-    for pipeline in rehearsal_pipelines(sha):
+    return passed_in(rehearsal_pipelines(sha))
+
+
+def passed_in(pipelines: list[dict]) -> tuple[dict, dict[str, dict]] | None:
+    for pipeline in pipelines:
         if pipeline["status"] != "success":
             continue
         jobs = passed_jobs(pipeline)
@@ -135,9 +139,9 @@ def wait(sha: str) -> None:
     deadline = time.monotonic() + WAIT_TIMEOUT_SECS
     while time.monotonic() < deadline:
         try:
-            if passed_rehearsal(sha) is not None:
-                return
             pipelines = rehearsal_pipelines(sha)
+            if passed_in(pipelines) is not None:
+                return
         except urllib.error.HTTPError as error:
             if error.code < 500:
                 sys.exit(f"The API refused the request ({error}); check the token.")
@@ -149,6 +153,10 @@ def wait(sha: str) -> None:
         if pipelines and pipelines[0]["status"] in FINISHED_UNPASSED:
             sys.exit(
                 f"The rehearsal {pipelines[0]['status']}: {pipelines[0]['web_url']}"
+            )
+        if pipelines and pipelines[0]["status"] == "success":
+            sys.exit(
+                f"The pipeline passed but was not a rehearsal: {pipelines[0]['web_url']}"
             )
         time.sleep(WAIT_POLL_SECS)
     sys.exit(f"No passed rehearsal for {sha} after {WAIT_TIMEOUT_SECS // 3600} h.")
