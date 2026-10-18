@@ -15,9 +15,9 @@ repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
 
 [features]
-# Gates tests excluded from the normal suite: ones unreliable outside a controlled environment
-# (wall-clock latency assertions, performance-sensitive, real hardware). Off by default; CI enables
-# them with `--features gated-tests`. See RUST_STYLE.md "Gated Tests".
+# Gates tests that depend on their build environment (host, sandbox, toolchain). Off by default, so
+# distro builds skip them; CI enables them with `--features gated-tests`. See RUST_STYLE.md
+# "Gated Tests".
 gated-tests = []
 
 [dependencies]

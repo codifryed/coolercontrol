@@ -809,7 +809,7 @@ struct ScreenRequest {
     value: Option<String>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod tests {
     use super::*;
 

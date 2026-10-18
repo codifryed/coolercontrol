@@ -734,6 +734,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn writing_the_failsafe_status_allocates_nothing_once_warm() {
         // A device held in failsafe writes its substitutes every tick, so after the first
         // tick named them it must not allocate.

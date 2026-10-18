@@ -2805,6 +2805,7 @@ mod preload_tests {
 
     #[test]
     #[allow(clippy::float_cmp)] // exact equality on known test constants is intentional
+    #[cfg(feature = "gated-tests")]
     fn a_warm_update_stores_the_preloaded_status_without_allocating() {
         // Goal: the update pass writes the preloaded values into the history in place,
         // stamped with the tick's timestamp. Method: one tick warms the stats, then count
@@ -2867,6 +2868,7 @@ mod preload_tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_staleness_tick_without_a_transition_allocates_nothing() {
         // Goal: the per-tick staleness pass builds the device's log name only when it has
         // something to log. Method: a fresh device ticks once with nothing going stale.
@@ -3048,6 +3050,7 @@ mod preload_tests {
     /// past both thresholds, then assert all four properties.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn a_wedged_device_does_not_stop_a_healthy_one() {
         cc_fs::test_runtime(async {
             let ctx = setup();
@@ -4075,6 +4078,7 @@ mod command_delay_handoff_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn delay_holder_gates_permit_for_delay_duration() {
         // Core invariant: after handoff, the permit is held by
         // the detached task for approximately delay_millis and
@@ -4232,6 +4236,7 @@ mod coalescer_tests {
     /// so it actually drives forward (enqueues into pending and
     /// awaits rx) before the test inspects state. Without this, an
     /// async fn returns a lazy future that does nothing until polled.
+    #[cfg(feature = "gated-tests")]
     fn enqueue_write(
         repo: &Rc<HwmonRepo>,
         uid: &UID,
@@ -4248,6 +4253,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn coalescer_collapses_burst_to_single_write() {
         // Goal: a burst of writes to the same channel resolves with
         // the latest target as the final pwm value, and every
@@ -4302,6 +4308,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn coalescer_pending_supersedes_waiting_per_channel() {
         // Goal: once the writer is blocked on acquire (in-flight
         // first write), additional writes to the same channel keep
@@ -4372,6 +4379,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn coalescer_only_surviving_waiter_sees_write_error() {
         // Goal: when the hardware write fails, only the final
         // surviving waiter sees the error. Older callers were
@@ -4475,6 +4483,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn coalescer_honors_command_delay() {
         // Goal: the writer task sleeps for delay_millis between
         // hardware writes. Sequential writes to two channels under a
@@ -4520,6 +4529,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn coalescer_drain_during_inflight_creates_next_pending() {
         // Goal: a write arriving while the writer is mid-iteration
         // (during the command delay) lands in the freshly-empty
@@ -4627,6 +4637,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn coalescer_pending_capped_at_one_waiter_under_flood() {
         // Goal: a flood of writes to one channel cannot grow the
         // pending entry past a single waiter. Each new write
@@ -4694,6 +4705,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn writer_swaps_in_freshest_target_before_writing() {
         // Goal: a value pulled into the writer's local buffer is
         // replaced by a newer mailbox entry for the same channel
@@ -4842,6 +4854,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn coalescer_cancellation_drops_pending_writes() {
         // Goal: shutdown must promptly resolve every queued waiter so
         // callers do not hang past daemon exit. Resolution is Ok(())
@@ -5175,6 +5188,7 @@ mod slow_device_tests {
     /// due. Cached and real duties are deliberately distinguishable.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn batched_fan_read_honours_each_channels_verify_deadline() {
         cc_fs::test_runtime(async {
             let tmp = tempfile::tempdir().unwrap();
@@ -5245,6 +5259,7 @@ mod slow_device_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn slow_device_preload_uses_cached_duty_until_verify_due() {
         // Goal: on a slow device, preload uses the cached duty
         // (no PWM read) while next_verify_at is in the future,
@@ -5922,7 +5937,7 @@ mod slow_device_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod prepare_for_sleep_tests {
     use super::*;
     use crate::cc_fs;
@@ -6215,6 +6230,7 @@ mod shutdown_tests {
     }
 
     /// A fake `applesmc` device another tool holds in manual, as the daemon would find it.
+    #[cfg(feature = "gated-tests")]
     async fn insert_applesmc_device(
         repo: &mut HwmonRepo,
         type_index: TypeIndex,
@@ -6262,6 +6278,7 @@ mod shutdown_tests {
     /// manual, only one taken through the repository.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn shutdown_returns_only_the_apple_fans_the_daemon_took() {
         cc_fs::test_runtime(async {
             let tmp = tempfile::tempdir().unwrap();
@@ -6361,6 +6378,7 @@ mod shutdown_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn shutdown_continues_after_permit_timeout_on_earlier_device() {
         // Verifies M2: when device A's permit is held by another
         // task, shutdown's acquire times out, logs the failure, and
@@ -6431,6 +6449,7 @@ mod shutdown_tests {
     /// the wedged device's budget, names it in the error, and still resets the healthy one.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn shutdown_bounds_a_wedged_device_and_still_resets_the_others() {
         cc_fs::test_runtime(async {
             let tmp = tempfile::tempdir().unwrap();
@@ -6543,6 +6562,7 @@ mod shutdown_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn shutdown_returns_ok_on_happy_path() {
         // Regression: shutdown returns Ok and resets the channel
         // when no permit is contended and the writes succeed.
@@ -6687,7 +6707,7 @@ mod synthesize_initial_statuses_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod init_timeout_tests {
     use super::*;
     use crate::cc_fs;
@@ -6866,7 +6886,6 @@ mod init_timeout_tests {
 
     #[test]
     #[serial]
-    #[cfg(feature = "gated-tests")]
     fn map_into_model_skips_device_on_hanging_temp_read() {
         // A wedged sysfs file at init must not stall startup. FIFO at
         // the temp path blocks open(2) until a writer connects, so
@@ -7242,7 +7261,7 @@ mod sensors_conf_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod verdict_publish_tests {
     use super::*;
     use crate::diagnostics::support::{ChannelVerdict, HardwareSupportController};

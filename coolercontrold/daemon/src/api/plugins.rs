@@ -471,13 +471,19 @@ impl From<ServiceStatus> for PluginStatusDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "gated-tests")]
     use crate::api::actor::PluginHandle;
+    #[cfg(feature = "gated-tests")]
     use crate::api::frame_policy::FramePolicy;
+    #[cfg(feature = "gated-tests")]
     use crate::repositories::service_plugin::plugin_controller::PluginController;
+    #[cfg(feature = "gated-tests")]
     use crate::repositories::service_plugin::service_manifest::{
         ConnectionType, ServiceManifest, ServiceType,
     };
+    #[cfg(feature = "gated-tests")]
     use std::rc::Rc;
+    #[cfg(feature = "gated-tests")]
     use tokio_util::sync::CancellationToken;
 
     /// Goal: a failed start has to say why, since the message is all the UI can show.
@@ -690,6 +696,7 @@ mod tests {
     /// What the real handler answers each of a plugin's UI `files` with. Runs on the
     /// sidecar, as the servers do, since the file service needs its reactor. Nothing is
     /// asserted there: a panic would take the shared test sidecar down with it.
+    #[cfg(feature = "gated-tests")]
     async fn ui_file_responses(
         state: AppState,
         files: &'static [&'static str],
@@ -716,9 +723,11 @@ mod tests {
         responses
     }
 
+    #[cfg(feature = "gated-tests")]
     const PLUGIN_ID: &str = "test-plugin";
 
     /// A plugin with a UI under `plugin_dir`, known to a controller that manages no services.
+    #[cfg(feature = "gated-tests")]
     fn controller_with_ui(plugin_dir: &std::path::Path) -> PluginController {
         let ui_dir = plugin_dir.join("ui");
         std::fs::create_dir(&ui_dir).unwrap();
@@ -751,6 +760,7 @@ mod tests {
     /// one the policy is the baseline, byte for byte.
     #[test]
     #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
     fn plugin_pages_admit_the_configured_frame_ancestors() {
         const ANCESTOR: &str = "https://cockpit.example.com:9090";
         const FILES: [&str; 1] = ["index.html"];
@@ -796,6 +806,7 @@ mod tests {
     /// policy differs between the two. Every file carries the page's policy.
     #[test]
     #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
     fn every_plugin_ui_file_carries_the_page_policy() {
         const ANCESTOR: &str = "https://cockpit.example.com:9090";
         const FILES: [&str; 3] = ["index.html", "app.js", "icon.svg"];

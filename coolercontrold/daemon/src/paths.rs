@@ -521,6 +521,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn derived_paths_have_expected_file_names() {
         assert_eq!(config_file().file_name().unwrap(), "config.toml");
         assert_eq!(ui_config_file().file_name().unwrap(), "config-ui.json");
@@ -542,6 +543,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn plugins_dir_starts_with_data_dir_by_default() {
         if std::env::var(ENV_PLUGINS_DIR).is_err() {
             assert!(plugins_dir().starts_with(data_dir()));

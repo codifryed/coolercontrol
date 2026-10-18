@@ -1138,6 +1138,7 @@ mod tests {
     /// channel with no pwm never changes and belongs with the capabilities.
     /// Method: record one of each and check which section each lands in.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn verdict_sections_split_permanent_from_current() {
         let controller = crate::rt::test_runtime(async {
             crate::diagnostics::support::HardwareSupportController::init(None, true).await

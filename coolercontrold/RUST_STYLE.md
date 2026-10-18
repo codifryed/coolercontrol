@@ -28,20 +28,27 @@ or `coolercontrol/` (Qt C++).
 
 ### Gated Tests
 
-Some tests are unreliable outside a controlled environment: they assert wall-clock latency, depend
-on machine performance, or otherwise vary with the build host. These are excluded from the normal
-suite so a busy or slow machine never produces a false failure, and run only in CI where the build
-machines are consistent.
+Distro and OBS package builds run the suite in sandboxes we do not control. A test that fails there
+forces a release with no daemon change. So every test whose outcome can depend on its build
+environment is gated: left out of the default suite, and run only in our CI, where we control the
+machines.
 
-- Gate such a test with `#[cfg(feature = "gated-tests")]` (the `gated-tests` feature in
-  `daemon/Cargo.toml`, off by default). Keep `#[test]` / `#[serial]` as usual.
-- `cargo test`, local `make test`, and distro/OBS builds skip them. CI runs them via
-  `--features gated-tests`, wired into the `ci-test` target.
-- Reserve this for tests that _can_ pass in CI but flake elsewhere. A test that needs root or real
-  hardware and cannot run in CI at all stays `#[ignore]`d instead.
-- Prefer a robust assertion over gating where possible. A lower-bound timing check
-  (`elapsed >= delay`) does not flake on slow hosts, so it can stay in the normal suite; only an
-  upper-bound latency assertion needs gating.
+- Gate it with `#[cfg(feature = "gated-tests")]` (each crate's `gated-tests` feature, off by
+  default), on the test or its module. Keep `#[test]` / `#[serial]` as usual.
+- `cargo test`, `make test`, and distro/OBS builds skip them. CI runs them via
+  `--features gated-tests`, wired into the `ci-test` target, and so does `make pr-check`.
+- The liqctld Python tests run against the host's liquidctl, so only `ci-test` and `pr-check` run
+  them.
+- Ask "does it touch the host?", not "does it fail anywhere I tried?". Gate a test that uses real
+  sockets (loopback included), root or user identity, rlimits, the CPU count or page size, real
+  `/proc`, `/sys` or `/dev`, external programs, wall-clock upper bounds or real-time windows, the
+  real date or timezone, host environment variables, allocator or libc behavior, or allocation
+  counts.
+- Gate, do not self-skip. A skip still runs in the build, and its check can break too.
+- A test that needs root or real hardware and cannot run in CI at all stays `#[ignore]`d instead.
+- A lower-bound check on the monotonic clock (`Instant`, `elapsed >= delay`) does not depend on the
+  host and stays in the default suite. The wall clock (`Local::now`, `SystemTime`) can step, so a
+  window or bound against it is gated.
 
 ### Log Output in Tests
 

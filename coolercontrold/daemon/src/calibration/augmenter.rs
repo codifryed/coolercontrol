@@ -443,6 +443,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn augment_reuses_its_key_across_devices_without_allocating() {
         // Goal: the reused lookup key names the current device and channel on
         // every lookup, and a warm call allocates nothing. One augmenter serves

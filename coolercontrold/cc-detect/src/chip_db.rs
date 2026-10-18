@@ -443,6 +443,7 @@ features = ["temp"]
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn test_override_missing_file() {
         let mut db = ChipDatabase::load_compiled();
         let count_before: usize = db.families.iter().map(|f| f.chips.len()).sum();

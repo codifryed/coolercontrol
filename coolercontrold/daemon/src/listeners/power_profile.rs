@@ -1420,6 +1420,7 @@ mod tests {
     /// Methodology: probe a name that cannot exist. Needs a system bus, not a power profile
     /// daemon; without a bus there is nothing to probe.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn an_absent_bus_name_is_not_served() {
         const ABSENT_BUS_NAME: &str = "org.coolercontrol.NoSuchPowerProfileDaemon";
         const ABSENT_OBJECT_PATH: &str = "/org/coolercontrol/NoSuchPowerProfileDaemon";

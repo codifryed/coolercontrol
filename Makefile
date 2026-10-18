@@ -233,7 +233,9 @@ pr-check: validate-metadata
 	@$(MAKE) -C $(ui_dir) check
 	@$(MAKE) -C $(daemon_dir) clippy
 	@$(MAKE) -C $(daemon_dir) clippy-tests
-	@$(MAKE) -C $(daemon_dir) test
+	@$(MAKE) -C $(daemon_dir) clippy-tests FEATURES="--features gated-tests"
+	@$(MAKE) -C $(daemon_dir) test-liqctld
+	@$(MAKE) -C $(daemon_dir) test FEATURES="--features gated-tests"
 	@$(MAKE) -C $(qt_dir) build
 
 # installs the release coolercontrold daemon and desktop app binaries: (need CC pre-installed)

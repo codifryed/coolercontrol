@@ -513,6 +513,7 @@ mod tests {
     // else in this suite would notice. Method: drive the real fallback service, which is
     // the only place `include_dir` metadata reaches, and require the header.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn test_unhashed_assets_carry_a_validator() {
         // A daemon-only build embeds an empty dir (build.rs warns rather than fails in
         // debug, and CI's ci-test runs cargo build without sync-app), so there is

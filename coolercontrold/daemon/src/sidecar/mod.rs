@@ -21,6 +21,7 @@
 use anyhow::{anyhow, Result};
 use log::warn;
 use std::future::Future;
+use std::ops::Not;
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -142,19 +143,11 @@ impl Sidecar {
         self.handle.clone()
     }
 
-    /// Join the sidecar thread after its lifecycle token has been cancelled. Bounded: `std` has no
-    /// join-with-timeout, so we join on a helper thread and wait with a deadline. If the sidecar
-    /// does not finish in time (a wedged hosted task), force the process down so a hung shutdown
-    /// never blocks past systemd's `TimeoutStopSec`.
+    /// Join the sidecar thread after its lifecycle token has been cancelled. If the sidecar does
+    /// not finish in time (a wedged hosted task), force the process down so a hung shutdown never
+    /// blocks past systemd's `TimeoutStopSec`.
     pub fn join(self) {
-        // Closing the task channel lets the run loop finish once its hosted tasks complete.
-        drop(self.handle);
-        let (done_tx, done_rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = self.thread.join();
-            let _ = done_tx.send(());
-        });
-        if done_rx.recv_timeout(SHUTDOWN_GRACE).is_err() {
+        if self.join_within(SHUTDOWN_GRACE).not() {
             warn!("Sidecar did not shut down within {SHUTDOWN_GRACE:?}; forcing process exit");
             // A wedged hosted task means the async runtime can no longer drive the liqctld
             // supervisor's kill path, and `process::exit` runs no destructors (so the child's
@@ -163,6 +156,21 @@ impl Sidecar {
             crate::repositories::liquidctl::liqctld_service::force_kill_liqctld();
             std::process::exit(0);
         }
+    }
+
+    /// Joins the sidecar thread, waiting at most `grace`, and returns whether it finished. `std`
+    /// has no join-with-timeout, so the join runs on a helper thread that is left behind on a
+    /// timeout. Kept apart from `join` so tests see a timeout instead of the process exiting.
+    fn join_within(self, grace: Duration) -> bool {
+        assert!(grace.is_zero().not());
+        // Closing the task channel lets the run loop finish once its hosted tasks complete.
+        drop(self.handle);
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = self.thread.join();
+            let _ = done_tx.send(());
+        });
+        done_rx.recv_timeout(grace).is_ok()
     }
 }
 
@@ -199,7 +207,7 @@ fn run(mut task_rx: mpsc::UnboundedReceiver<TaskBuilder>, cancel_token: Cancella
     runtime.shutdown_timeout(SHUTDOWN_GRACE);
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod tests {
     use super::*;
     use std::cell::RefCell;
@@ -225,7 +233,10 @@ mod tests {
         let value = rx.blocking_recv().expect("actor sends a value");
         assert_eq!(value, 42);
         cancel.cancel();
-        sidecar.join();
+        assert!(
+            sidecar.join_within(SHUTDOWN_GRACE),
+            "the sidecar did not finish"
+        );
     }
 
     // Goal: `run` dispatches a one-shot task to the sidecar and returns its result back to the
@@ -243,7 +254,10 @@ mod tests {
         });
         assert_eq!(result, 42);
         cancel.cancel();
-        sidecar.join();
+        assert!(
+            sidecar.join_within(SHUTDOWN_GRACE),
+            "the sidecar did not finish"
+        );
     }
 
     // Goal: dropping the `Sidecar` (no cancel) still lets a submitted actor finish, then the thread
@@ -258,6 +272,25 @@ mod tests {
         });
         rx.blocking_recv().expect("actor ran");
         // No cancel: join drops the task sender, the recv loop ends, and the thread joins.
-        sidecar.join();
+        assert!(
+            sidecar.join_within(SHUTDOWN_GRACE),
+            "the sidecar did not finish"
+        );
+    }
+
+    // Goal: a sidecar wedged on a hosted task is reported as not finished, and the caller keeps
+    // running, so a slow test fails instead of exiting the test process with success. Method:
+    // host a task that never completes, then join with a short grace.
+    #[test]
+    fn a_wedged_sidecar_is_reported_without_exiting() {
+        let sidecar = Sidecar::start(CancellationToken::new());
+        let (started_tx, started_rx) = oneshot::channel::<()>();
+        sidecar.handle().spawn(move || async move {
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        started_rx.blocking_recv().expect("the wedged task started");
+        // The sidecar thread stays wedged for the rest of the test process.
+        assert!(sidecar.join_within(Duration::from_millis(50)).not());
     }
 }

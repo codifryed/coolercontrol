@@ -257,13 +257,17 @@ async fn process_log_output(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "gated-tests")]
     use crate::cc_fs::sidecar_fs;
     use serial_test::serial;
+    #[cfg(feature = "gated-tests")]
     use std::os::unix::process::CommandExt;
+    #[cfg(feature = "gated-tests")]
     use std::process::Command as StdCommand;
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_verify_env() {
         // verify_env spawns a Python process via tokio::process, so it needs a Tokio runtime
         // regardless of the active main-thread backend.
@@ -291,6 +295,7 @@ mod tests {
     // and the slot was cleared.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn force_kill_terminates_recorded_process_group_and_clears_pid() {
         let mut child = StdCommand::new("sleep")
             .arg("60")

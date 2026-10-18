@@ -1275,17 +1275,20 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn cpu_stress_runs_briefly() {
         // Just verify it doesn't panic with a 1-second run
         run_cpu_stress(Some(1), 1).unwrap();
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn online_cpu_count_returns_at_least_one() {
         assert!(online_cpu_count() >= 1);
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn reset_cpu_affinity_succeeds() {
         reset_cpu_affinity().unwrap();
     }
@@ -1333,11 +1336,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn ram_stress_runs_briefly() {
         run_ram_stress(4 * 1024 * 1024, 1).unwrap();
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn available_memory_returns_positive() {
         assert!(available_memory_bytes().unwrap() > 0);
     }
@@ -1361,6 +1366,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn drive_stress_rejects_non_block_device() {
         let result = run_drive_stress("/dev/null", 1, 1);
         assert!(result.is_err());
@@ -1371,6 +1377,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn drive_stress_rejects_nonexistent_device() {
         let result = run_drive_stress("/dev/nonexistent_drive_xyz", 1, 1);
         assert!(result.is_err());
@@ -1562,6 +1569,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn gpu_stress_runs_without_an_async_runtime() {
         // The daemon's default compio backend provides no ambient Tokio
         // runtime, and an earlier version panicked there because it called
@@ -1580,6 +1588,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn unique_gpu_adapters_returns_one_adapter_per_card() {
         // Callers rely on a non-empty result, so absence of adapters must
         // surface as an error instead. Duplicates of a single card must be

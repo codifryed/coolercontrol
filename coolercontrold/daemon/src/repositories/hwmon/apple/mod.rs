@@ -471,6 +471,7 @@ mod tests {
     /// Goal: only Apple drivers get an Apple handler. Method: the Apple names and an ordinary
     /// motherboard chip, with a directory that cannot be read.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn only_apple_drivers_are_detected() {
         let nowhere = Path::new("/nonexistent");
         assert_eq!(detect("applesmc", nowhere), Some(AppleDriver::IntelLegacy));

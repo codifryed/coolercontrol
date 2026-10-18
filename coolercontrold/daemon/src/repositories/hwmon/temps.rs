@@ -427,7 +427,9 @@ fn get_temp_channel_name(channel_number: u8) -> String {
 mod tests {
     use super::*;
     use serial_test::serial;
-    use std::path::{Path, PathBuf};
+    #[cfg(feature = "gated-tests")]
+    use std::path::Path;
+    use std::path::PathBuf;
 
     struct HwmonFileContext {
         /// Owns the fixture directory, which is removed when the context drops.
@@ -446,6 +448,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn find_temp_dir_not_exist() {
         cc_fs::test_runtime(async {
             // given:

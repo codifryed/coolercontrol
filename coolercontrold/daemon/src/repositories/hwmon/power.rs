@@ -254,7 +254,9 @@ async fn get_power_channel_label(base_path: &Path, channel_number: u8) -> Option
 mod tests {
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use serial_test::serial;
-    use std::path::{Path, PathBuf};
+    #[cfg(feature = "gated-tests")]
+    use std::path::Path;
+    use std::path::PathBuf;
 
     use super::*;
 
@@ -275,6 +277,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn init_no_power() {
         cc_fs::test_runtime(async {
             // given:

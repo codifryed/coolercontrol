@@ -501,6 +501,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn collector_with_nonexistent_path_returns_error() {
         // Goal: verify a missing file returns an Err, not a panic.
         let result = CpuPercentCollector::with_path(Path::new("/tmp/does_not_exist_proc_stat"));
@@ -540,6 +541,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_poll_allocates_nothing() {
         // Goal: the read, the parse, the percentages and the swap all reuse buffers sized at
         // init. Method: count the allocations of two polls, the first one's open included.

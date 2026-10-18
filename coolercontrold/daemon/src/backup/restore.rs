@@ -350,6 +350,7 @@ mod tests {
     /// rather than hanging. Method: assert the bypass, and the non-TTY refusal only
     /// when the test's stdin is actually not a terminal.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn confirm_yes_bypasses_and_non_tty_refuses() {
         let tmp = tempfile::tempdir().unwrap();
         assert!(confirm(tmp.path(), true).unwrap());

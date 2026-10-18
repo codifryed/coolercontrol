@@ -264,6 +264,49 @@ test_msrv:
     # .gitignore, so include_dir! still resolves the directory.
     - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml -p coolercontrold
 
+####################################### aarch64 tests on a current distro
+# test_all runs on amd64, and the arm64 package builds run their tests on older releases, so a
+# newer aarch64 userland went untested until a distro built us: glibc 2.43's malloc THP default
+# broke a test only on OBS. Manual for merge requests, automatic for releases, and nothing needs
+# it. A debug build needs no UI. Gated tests run too, as in test_all.
+test_arm64_latest:
+  stage: test
+  image: ubuntu:rolling
+  tags:
+    - saas-linux-large-arm64
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+  needs: []
+  timeout: 45m
+  cache:
+    - key:
+        files:
+          - coolercontrold/Cargo.lock
+      paths:
+        - .cargo
+      policy: pull
+  variables:
+    RUSTUP_HOME: /usr/local/rustup
+    # Kept in step with RUST_VERSION in the .gitlab/images build images.
+    RUST_VERSION: 1.96.0
+  before_script:
+    - apt-get update
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
+      build-essential ca-certificates curl libdrm-dev pkg-config
+    # The toolchain stays out of CARGO_HOME, which holds the registry cache the amd64 jobs share.
+    - curl -sSf https://sh.rustup.rs | CARGO_HOME=/usr/local/cargo sh -s -- -y --no-modify-path
+      --profile minimal --default-toolchain "$RUST_VERSION"
+    - export PATH="/usr/local/cargo/bin:$PATH"
+    - ldd --version | head -n 1
+    - cargo --version
+  script:
+    - cargo test --locked --manifest-path coolercontrold/Cargo.toml --features gated-tests
+
 ####################################### Dependency audit
 # Daily schedule only, so a contributor's MR never has to fix unrelated crates. RustSec
 # findings fail the job and open a lockfile-only fix MR, since dependabot's GitHub advisory

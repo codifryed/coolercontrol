@@ -1780,6 +1780,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_warmup_to_active_after_duration() {
         // Goal: verify WarmUp becomes Active once the warmup duration elapsed.
         let past = Local::now() - Duration::seconds(2);
@@ -1788,6 +1789,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_warmup_stays_warmup_before_duration() {
         // Goal: verify WarmUp does NOT become Active before the duration elapses.
         let now = Local::now();
@@ -1827,6 +1829,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_cooldown_clears_after_duration() {
         // Goal: verify Cooldown becomes Inactive once the value stayed
         // in range for the full cooldown duration.
@@ -1836,6 +1839,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_cooldown_holds_before_duration() {
         // Goal: verify Cooldown does NOT clear before the duration elapses.
         let now = Local::now();
@@ -1869,6 +1873,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_zero_warmup_two_tick_activation() {
         // Goal: verify warmup_duration=0 still takes two consecutive
         // out-of-range ticks: Inactive -> WarmUp -> Active.
@@ -1941,6 +1946,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn is_silenced_only_while_timestamp_in_future() {
         // Goal: verify the silence window: future timestamp silences,
         // past timestamp and None do not.
@@ -2169,6 +2175,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn build_transition_event_silenced_suppresses_notification_and_shutdown() {
         // Goal: verify a silenced fire is logged (flagged silenced) but sends
         // no desktop notification and does not schedule a shutdown.
@@ -2471,6 +2478,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn cancel_shutdown_if_unwanted_cancels_on_disable_and_on_silence() {
         // Goal: the two originally-handled quieting actions still cancel, so
         // broadening the condition did not drop the behaviour it replaced.
@@ -2800,6 +2808,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn build_quiet_event_none_while_silenced() {
         // Goal: verify no catch-up or repeat happens while still silenced.
         let mut alert = make_alert("a", 20.0, 80.0, AlertState::Active);
@@ -2824,6 +2833,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn build_quiet_event_repeat_after_interval() {
         // Goal: verify the repeat notification fires once the interval elapsed
         // and is desktop-only (no log entry), then re-arms the timer.
@@ -2845,6 +2855,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn build_quiet_event_no_repeat_before_interval_or_without_desktop() {
         // Goal: verify repeat obeys the interval and requires desktop_notify.
         let mut alert = make_alert("a", 20.0, 80.0, AlertState::Active);
@@ -3283,6 +3294,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn suppression_leaves_temp_sources_live() {
         // Goal: verify Temp sources are exempt from calibration suppression even
         // when a sweep is registered under the same channel name; the temp alert
@@ -3313,6 +3325,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn suppression_only_hits_the_swept_channel() {
         // Goal: verify that with two RPM sources and only one under calibration,
         // the other still fires and the event names only the live channel. This
@@ -3346,6 +3359,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn sweep_start_cancels_pending_shutdown_silently() {
         // Goal: verify a calibration starting on the channel of an already-Active
         // shutdown alert resets the source, cancels the pending shutdown via a
@@ -3423,6 +3437,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn gate_ignores_quiet_and_irrelevant_alerts() {
         // Goal: verify disabled, silenced, not-yet-Active, and Temp-source
         // alerts do not block calibration.
@@ -3479,6 +3494,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn post_sweep_rearm_goes_through_warmup() {
         // Goal: verify that after the sweep ends, a still-failing source re-arms
         // through the normal WarmUp path and fires fresh, with a new shutdown.

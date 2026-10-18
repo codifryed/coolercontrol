@@ -32,7 +32,8 @@ use repositories::repository::Repository;
 use tokio_util::sync::CancellationToken;
 
 mod alerts;
-#[cfg(test)]
+// Gated: allocation counts depend on the toolchain and optimizer.
+#[cfg(all(test, feature = "gated-tests"))]
 mod alloc_count;
 mod api;
 mod auth;

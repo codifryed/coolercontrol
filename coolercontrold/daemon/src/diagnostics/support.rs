@@ -823,6 +823,7 @@ mod tests {
     /// detection at all, hand in results naming a driver nothing can be bound
     /// to, and read the findings back.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn refreshed_detection_recomputes_the_findings() {
         crate::cc_fs::test_runtime(async {
             let controller = HardwareSupportController::init(None, true).await;
@@ -861,6 +862,7 @@ mod tests {
     /// observed, and a re-scan cannot talk the controller out of it. Runs on
     /// every host, so the non-x86 branch stays covered on x86 CI too.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn unsupported_architecture_yields_only_the_unsupported_finding() {
         crate::cc_fs::test_runtime(async {
             let controller = HardwareSupportController::init(None, false).await;
@@ -901,6 +903,7 @@ mod tests {
     /// device carrying all three cases, read back through the same partition
     /// the health snapshot is built from.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn recorded_driver_channels_become_verdicts() {
         crate::cc_fs::test_runtime(async {
             let controller = HardwareSupportController::init(None, true).await;

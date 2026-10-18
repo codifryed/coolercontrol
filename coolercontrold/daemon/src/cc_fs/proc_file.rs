@@ -190,6 +190,7 @@ mod tests {
     /// Goal: once sized, reads allocate nothing, the first one's open included. Method: reserve
     /// for the file, then count the allocations of two reads.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_reserved_read_allocates_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("cpuinfo");
