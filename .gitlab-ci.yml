@@ -277,8 +277,10 @@ test_msrv:
     - rustup run "$MSRV" rustc --version
   script:
     # compio is what sets the floor. No UI build is needed: resources/app ships a tracked
-    # .gitignore, so include_dir! still resolves the directory.
-    - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml -p coolercontrold
+    # .gitignore, so include_dir! still resolves the directory. Every target: distros also compile
+    # the tests, for %check and dh_auto_test.
+    - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml --workspace
+      --all-targets
 
 ####################################### Newest Rust toolchain
 # Arch and AUR users build with the newest stable Rust as soon as it ships, so its new warnings
