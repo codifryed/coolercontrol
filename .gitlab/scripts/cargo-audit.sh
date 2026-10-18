@@ -85,7 +85,7 @@ description=$(
     if ((remaining)); then
         printf '\nSome findings remain after this bump and need a Cargo.toml change. See the job log.\n'
     fi
-    printf '\nOpened by the scheduled cargo_audit job.\n'
+    printf '\nOpened by the scheduled test_cargo_audit job.\n'
 )
 
 mr=$(api "${API}/merge_requests?state=opened&source_branch=${BRANCH//\//%2F}&target_branch=${TARGET}" | jq -r '.[0].iid // empty')

@@ -44,7 +44,7 @@ lint:
     # Fetches a rego checks bundle at scan time and then fails to load it in CI
     # (a different check file is missing on each run; a cache clear did not help).
     - trivy
-    # Only scans changed lockfiles. The cargo_audit and npm_audit CI jobs cover it.
+    # Only scans changed lockfiles. The test_cargo_audit and test_npm_audit CI jobs cover it.
     - osv-scanner
   files:
     - name: vue
