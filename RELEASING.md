@@ -4,9 +4,6 @@ This is the basic template for how releases are done. Many of the standard tasks
 our Makefile and some scripts. Each step must be completed successfully before moving on to the next
 one.
 
-Note: Steps 2 and 3 have been replaced by an improved `make bump` script, which handles these steps
-automatically. They are included here for reference:
-
 1. Update Changelog
    1. We use [this changelog format](https://keepachangelog.com/en/1.0.0/)
    2. Add a new version
@@ -14,21 +11,7 @@ automatically. They are included here for reference:
       Updates
    4. Format changelog appropriately
 
-2. Update App Metadata (replaced with script)
-   1. Update `metadata/org.coolercontrol.CoolerControl.metainfo.xml`
-      1. with new Release version and date
-      2. plus any changes to screenshots and/or description
-
-3. Update Packaging Settings (replaced with `make bump` target)
-   1. Update `packaging/fedora/coolercontrol.spec`,`packaging/fedora/coolercontrold.spec`
-      1. Version near the top
-      2. Changelog at the bottom
-   2. Update `packaging/fedora/coolercontrol-rc1.spec`,`packaging/fedora/coolercontrold-rc1.spec`
-      1. Use the 'next' patch version.
-   3. Update `packaging/debian/changelog`
-      1. Add a whole new section at the beginning with top version and changelog entry
-
-4. Create Release Tag and Commit and Build Release Artifacts
+2. Create Release Tag and Commit and Build Release Artifacts
    1. Verify Milestone exists for the to-be-released version in GitLab
    2. All commits and tags are to be signed. Make sure your PGP keys are setup.
    3. Check `DEPRECATIONS.md`: remove any shim whose Remove version is at or below the version being
@@ -73,14 +56,14 @@ automatically. They are included here for reference:
    7. Copr: Adjust git tag version for each package and trigger new builds.
    8. Merge any website changes to be made.
 
-5. Update OpenAPI specification
+3. Update OpenAPI specification
    1. Nothing to do: `make bump` regenerates `openapi/openapi.json` (the spec stamps the daemon
       version) and `make release` commits it. A daemon test fails when the file is stale.
    2. To regenerate it by hand at any time, run `make openapi`. It needs no running daemon and no
       root, since the spec is generated from the daemon's route table.
    3. Update Website with new `openapi.spec` file.
 
-6. NixOS Release
+4. NixOS Release
    1. You need Nix package manager setup on your system.
    2. Update the fork of the repo: https://github.com/NixOS/nixpkgs
    3. `cd nixpkgs`
@@ -103,11 +86,30 @@ automatically. They are included here for reference:
        `sudo nix-store --verify --check-contents --repair` or to clear out garbage:
        `nix-collect-garbage -d`
 
-7. Post Release
+5. Post Release
    1. Run `make bump`
    2. without argument for a quick patch update 1.0.0 -> 1.0.1
    3. After a release we just want to at least bump the source version by a patch number, for
       clarity when testing. We can increase it later for the next release.
    4. Update all depdencies - allows us a good amount of testing before the next release.
+
+## Reference: steps `make bump` now does
+
+These were manual steps before `make bump` and `make release` took them over. They are kept for
+reference only.
+
+1. Update App Metadata
+   1. Update `metadata/org.coolercontrol.CoolerControl.metainfo.xml`
+      1. with new Release version and date
+      2. plus any changes to screenshots and/or description
+
+2. Update Packaging Settings
+   1. Update `packaging/fedora/coolercontrol.spec`,`packaging/fedora/coolercontrold.spec`
+      1. Version near the top
+      2. Changelog at the bottom
+   2. Update `packaging/fedora/coolercontrol-rc1.spec`,`packaging/fedora/coolercontrold-rc1.spec`
+      1. Use the 'next' patch version.
+   3. Update `packaging/debian/changelog`
+      1. Add a whole new section at the beginning with top version and changelog entry
 
 <!--Test-->
