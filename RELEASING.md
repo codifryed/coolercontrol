@@ -57,11 +57,14 @@ one.
    8. Merge any website changes to be made.
 
 3. Update OpenAPI specification
-   1. Nothing to do: `make bump` regenerates `openapi/openapi.json` (the spec stamps the daemon
-      version) and `make release` commits it. A daemon test fails when the file is stale.
+   1. Nothing to do in this repo: `make bump` regenerates `openapi/openapi.json` (the spec stamps
+      the daemon version) and `make release` commits it. A daemon test fails when the file is stale.
    2. To regenerate it by hand at any time, run `make openapi`. It needs no running daemon and no
       root, since the spec is generated from the daemon's route table.
-   3. Update Website with new `openapi.spec` file.
+   3. Publish it on the website once the released daemon is installed: in the `coolercontrol-docs`
+      repo, run `npm run sync:openapi`. It writes the installed `coolercontrold`'s spec (or that of
+      the binary `COOLERCONTROLD` points to) to `src/public/openapi/openapi.json`; commit that file
+      there.
 
 4. NixOS Release
    1. You need Nix package manager setup on your system.
