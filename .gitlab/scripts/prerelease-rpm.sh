@@ -6,6 +6,8 @@
 #
 # Builds the rc1 specs in mock from build_source_assets' tarballs, or with PRERELEASE_VERSION set
 # the release specs from them repacked under that version; needs a privileged Fedora container.
+# <ref> may only hold letters, digits, '.', '_', '-' and '/', since it reaches an rpm macro, so a
+# branch named with other characters git allows, such as '+' or '@', cannot be built here.
 
 set -euo pipefail
 
@@ -17,7 +19,7 @@ readonly SOURCES_DIR="$1"
 readonly REF="$2"
 # The ref reaches an rpm macro, where %(...) would run.
 if [[ ! ${REF} =~ ^[A-Za-z0-9._/-]+$ ]]; then
-    echo "unsupported ref: ${REF}" >&2
+    echo "unsupported ref ${REF}: only letters, digits, '.', '_', '-' and '/' are allowed" >&2
     exit 2
 fi
 readonly SAFE_REF="${REF//\//-}"

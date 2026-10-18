@@ -6,7 +6,8 @@
 #
 # Runs the prerelease CI jobs in docker on the committed HEAD, never the working tree;
 # PRERELEASE_ARCHES (default "amd64 arm64") and PRERELEASE_RPM_ARCHES (default "amd64") pick the
-# architectures, arm64 under QEMU.
+# architectures, arm64 under QEMU. The branch name may only hold letters, digits, '.', '_', '-'
+# and '/', as for prerelease-rpm.sh.
 
 set -euo pipefail
 
@@ -28,7 +29,7 @@ fi
 readonly REF
 # The ref reaches shells and rpm macros, so allow only plain branch-name characters.
 if [[ ! ${REF} =~ ^[A-Za-z0-9._/-]+$ ]]; then
-    echo "unsupported branch name: ${REF}" >&2
+    echo "unsupported branch name ${REF}: only letters, digits, '.', '_', '-' and '/' are allowed" >&2
     exit 1
 fi
 readonly SAFE_REF="${REF//\//-}"
