@@ -158,6 +158,7 @@ mod tests {
 
     #[cfg(target_arch = "x86_64")]
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn test_dev_port_error_handling() {
         // Without root permissions, opening /dev/port should fail.
         // This test may pass or fail depending on the test environment.
