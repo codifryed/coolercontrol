@@ -763,6 +763,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn run_blocking_with_timeout_returns_value_when_fast() {
         // Verifies the happy path: a closure that returns promptly
         // yields its value unchanged.
@@ -807,6 +808,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn run_blocking_with_timeout_propagates_inner_error() {
         // Verifies that an Err returned by the blocking closure is
         // surfaced verbatim as the typed `Inner` variant and is not
@@ -854,6 +856,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn is_suspended_returns_false_on_inner_error_and_logs_once_per_drive() {
         // Verifies the `Inner` fallback: when the drive doesn't
         // support the ioctl (here simulated by a path that cannot

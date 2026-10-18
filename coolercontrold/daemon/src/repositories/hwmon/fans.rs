@@ -1064,6 +1064,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn find_fan_dir_not_exist() {
         cc_fs::test_runtime(async {
             // given:

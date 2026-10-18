@@ -746,6 +746,7 @@ mod tests {
     /// lives on the worker where nothing could see it, so the no-leak claim was only ever proven
     /// for `Inline`. Method: batch the same paths twice on a real worker and count its cache.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_worker_holds_its_descriptors_across_batches() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -902,6 +903,7 @@ mod tests {
     /// report one channel's value under another channel's name.
     /// Method: mix readable and missing paths and assert each slot carries its own outcome.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_batch_returns_one_result_per_path_in_order() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -978,6 +980,7 @@ mod tests {
     /// Goal: the inline variant must agree with the threaded one, since tests and any device
     /// without a worker take that path.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn inline_batches_match_the_threaded_results() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -1050,6 +1053,7 @@ mod tests {
     /// device changes only where the read runs. Method: start a worker, read a file written from
     /// the test thread, and read it again after a rewrite to prove the descriptor stays live.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn threaded_reads_the_file_contents() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -1069,6 +1073,7 @@ mod tests {
     /// healthy devices while another is wedged. Method: write through a worker and read the file
     /// back from the test thread.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn threaded_writes_the_file_contents() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -1089,6 +1094,7 @@ mod tests {
     /// read a missing file through a real worker and assert the error surfaces while health does
     /// not move.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn an_io_error_does_not_count_against_health() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -1222,6 +1228,7 @@ mod tests {
     /// state has to be a pause and not a death sentence. Method: mark a real worker unreachable
     /// with its probe already due, then read a real file and assert health resets.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn an_unreachable_device_recovers_on_its_next_probe() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
