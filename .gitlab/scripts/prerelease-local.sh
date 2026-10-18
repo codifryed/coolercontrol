@@ -4,10 +4,10 @@
 
 # Usage: prerelease-local.sh (through `make prerelease-local`)
 #
-# Runs the prerelease CI jobs in docker on the committed HEAD, never the working tree;
-# PRERELEASE_ARCHES (default "amd64 arm64") and PRERELEASE_RPM_ARCHES (default "amd64") pick the
-# architectures, arm64 under QEMU. The branch name may only hold letters, digits, '.', '_', '-'
-# and '/', as for prerelease-rpm.sh.
+# Runs the prerelease CI jobs in docker on the committed HEAD, never the working tree, and reports
+# each under its CI job name. PRERELEASE_ARCHES (default "x86_64 aarch64") and
+# PRERELEASE_RPM_ARCHES (default "x86_64") pick the architectures, aarch64 under QEMU. The branch
+# name may only hold letters, digits, '.', '_', '-' and '/', as for prerelease-rpm.sh.
 
 set -euo pipefail
 
@@ -16,8 +16,8 @@ readonly REPO_ROOT
 readonly OUT="${PRERELEASE_OUT:-${REPO_ROOT}/.prerelease}"
 readonly IMAGE_TAG="${PRERELEASE_IMAGE_TAG:?set PRERELEASE_IMAGE_TAG to the CI image tag}"
 readonly REGISTRY="registry.gitlab.com/coolercontrol/coolercontrol"
-readonly ARCHES="${PRERELEASE_ARCHES:-amd64 arm64}"
-readonly RPM_ARCHES="${PRERELEASE_RPM_ARCHES:-amd64}"
+readonly ARCHES="${PRERELEASE_ARCHES:-x86_64 aarch64}"
+readonly RPM_ARCHES="${PRERELEASE_RPM_ARCHES:-x86_64}"
 uid="$(id -u)"
 gid="$(id -g)"
 readonly UID_GID="${uid}:${gid}"
@@ -61,11 +61,11 @@ docker run --rm -v "${REPO_ROOT}":/git:ro -v "${OUT}/export":/repo:ro -v "${OUT}
 
 # Extra arguments after the image are docker options, such as -e.
 run_test() {
-    local arch="$1" distro="$2" image="$3"
+    local arch="$1" release="$2" image="$3"
     shift 3
     docker run --rm --platform "linux/${arch}" \
         -v "${OUT}/export":/repo:ro -v "${OUT}/sources":/sources:ro \
-        -v "cc-prerelease-${arch}-${distro}":/cache -e CARGO_TARGET_DIR=/cache/target "$@" \
+        -v "cc-prerelease-ubuntu-${release}-${arch}":/cache -e CARGO_TARGET_DIR=/cache/target "$@" \
         "${image}" bash /repo/.gitlab/scripts/prerelease-test.sh \
         "/sources/coolercontrol-${SAFE_REF}.tar.gz" /sources/coolercontrold-vendor.tar.gz
 }
@@ -85,28 +85,28 @@ run_rpm() {
 
 declare -A pids=()
 for arch in ${ARCHES}; do
-    for distro in ubuntu-22.04 ubuntu-rolling; do
+    for release in old latest; do
         env_args=()
-        case "${distro}" in
-        ubuntu-22.04) image="${REGISTRY}/ubuntu:${IMAGE_TAG}" ;;
-        ubuntu-rolling)
+        case "${release}" in
+        old) image="${REGISTRY}/ubuntu:${IMAGE_TAG}" ;;
+        latest)
             image="ubuntu:rolling"
-            # As the CI rolling jobs: the newest stable Rust, warnings denied.
+            # As the CI latest jobs: the newest stable Rust, warnings denied.
             env_args=(-e RUST_VERSION=stable -e PRERELEASE_DENY_WARNINGS=1)
             ;;
         *)
-            echo "no image for ${distro}" >&2
+            echo "no image for ${release}" >&2
             exit 1
             ;;
         esac
-        name="test-${arch}-${distro}"
-        run_test "${arch}" "${distro}" "${image}" "${env_args[@]}" >"${OUT}/logs/${name}.log" 2>&1 &
+        name="prerelease_ubuntu_${release}_${arch}"
+        run_test "${arch}" "${release}" "${image}" "${env_args[@]}" >"${OUT}/logs/${name}.log" 2>&1 &
         pids["${name}"]=$!
     done
 done
 for arch in ${RPM_ARCHES}; do
     mkdir -p "${OUT}/rpm/${arch}"
-    name="rpm-${arch}"
+    name="prerelease_fedora_latest_${arch}"
     run_rpm "${arch}" >"${OUT}/logs/${name}.log" 2>&1 &
     pids["${name}"]=$!
 done

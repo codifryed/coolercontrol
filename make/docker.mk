@@ -69,7 +69,7 @@ docker-ci-run-apt-publish:
 	@docker run --name coolercontrol-ci-apt-publish --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:$(apt_publish_image_tag) bash
 
 # The prerelease CI checks on this machine, in the same images, against the committed HEAD. Faster
-# than CI for amd64; arm64 runs under QEMU. PRERELEASE_ARCHES and PRERELEASE_RPM_ARCHES pick what
+# than CI for x86_64; aarch64 runs under QEMU. PRERELEASE_ARCHES and PRERELEASE_RPM_ARCHES pick what
 # runs, see .gitlab/scripts/prerelease-local.sh.
 prerelease-local:
 	@PRERELEASE_IMAGE_TAG=$(docker_image_tag) .gitlab/scripts/prerelease-local.sh
