@@ -30,7 +30,8 @@ readonly RESULT_DIR="${PRERELEASE_RESULT_DIR:-${PWD}/rpm-results}"
 readonly STAGING_DIR="/tmp/prerelease-rpm-sources"
 readonly VERSION="${PRERELEASE_VERSION-}"
 
-dnf -y install mock rpm-build
+# Weak deps would add podman, buildah and qemu-user-static for every arch, none of which mock uses here.
+dnf -y install --setopt=install_weak_deps=False mock rpm-build
 
 # Only the tarballs the specs name, so mock does not copy a whole checkout into the chroot.
 rm -rf "${STAGING_DIR}"
