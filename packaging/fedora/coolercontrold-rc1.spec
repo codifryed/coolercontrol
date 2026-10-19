@@ -10,7 +10,7 @@
 %global rustflags_debuginfo 1
 
 Name:           %{project}d
-Version:        5.1.1~rc1
+Version:        5.1.2~rc1
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 Obsoletes:      coolercontrol-liqctld <= 2.2.2

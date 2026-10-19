@@ -7,7 +7,7 @@
 %global rustflags_debuginfo 1
 
 Name:           %{project}d
-Version:        5.1.0
+Version:        5.1.1
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 Obsoletes:      coolercontrol-liqctld <= 2.2.2
@@ -78,6 +78,9 @@ install -Dpm 755 target/rpm/%{name} -t %{buildroot}%{_bindir}
 %systemd_postun_with_restart %{name}.service
 
 %changelog
+* Mon Oct 19 2026 Guy Boldon <gb@guyboldon.com> - 5.1.1-1
+- 5.1.1 Release
+
 * Sat Oct 17 2026 Guy Boldon <gb@guyboldon.com> - 5.1.0-1
 - 5.1.0 Release
 

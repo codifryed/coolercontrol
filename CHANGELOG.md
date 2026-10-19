@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [5.1.1] - 2026-10-19
+
+### Changed
+
+- More tests that depend on their build environment, such as the host, sandbox or toolchain, are
+  gated behind the `gated-tests` feature in every daemon crate
+- Adjusted the Fedora spec build codegen units and debuginfo, cutting its Copr build time
+  significantly
+- Releases are rehearsed with every test and package build before their tag is pushed, so packagers
+  that build on a new tag get a release that has already built
+
+### Fixed
+
+- A daemon build test failed on aarch64 with glibc 2.43 and newer
+- The Fedora cargo_install macro installed a second build of the daemon that ignored `Cargo.lock`.
+  It now installs the binary from its build step
+
 ## [5.1.0] - 2026-10-17
 
 ### Added

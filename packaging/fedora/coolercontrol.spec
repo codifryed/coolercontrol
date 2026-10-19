@@ -3,7 +3,7 @@
 %{!?_metainfodir: %define _metainfodir %{_datadir}/metainfo}
 
 Name:           coolercontrol
-Version:        5.1.0
+Version:        5.1.1
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 ExclusiveArch:  x86_64 aarch64
@@ -68,6 +68,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc CHANGELOG.md
 
 %changelog
+* Mon Oct 19 2026 Guy Boldon <gb@guyboldon.com> - 5.1.1-1
+- 5.1.1 Release
+
 * Sat Oct 17 2026 Guy Boldon <gb@guyboldon.com> - 5.1.0-1
 - 5.1.0 Release
 
