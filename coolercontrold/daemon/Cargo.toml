@@ -37,14 +37,10 @@ compio = { version = "=0.19.2", default-features = false, features = [
   "time",
   "signal",
   "fs",
-  "net",
   "process",
   "io-uring",
   "polling",
 ] }
-# cyper-core bridges a compio stream (our UDS to liqctld) into hyper's IO traits via `HyperStream`.
-# Pinned to 0.9: it must resolve to the same compio 0.19 as above, or the stream types will not match.
-cyper-core = { version = "=0.9.0", default-features = false }
 # Must resolve to the same compio-buf as compio 0.19 above, or the buffer traits will not match.
 compio-buf = { version = "=0.8.3", default-features = false }
 log = "0.4"
