@@ -7,6 +7,7 @@ use std::future::Future;
 use std::ops::Not;
 use std::time::{Duration, Instant};
 
+use crate::repositories::liquidctl::liqctld_http::{LIQCTLD_CONNECTION_TRIES, LIQCTLD_SOCKET};
 use crate::rt::{sleep, timeout};
 use anyhow::anyhow;
 use anyhow::bail;
@@ -55,16 +56,13 @@ const LIQCTLD_MAX_POOL_SIZE: usize = 32;
 const LIQCTLD_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
 const LIQCTLD_RESPONSE_TIMEOUT_SECONDS: u64 = 15;
-const LIQCTLD_SOCKET: &str = "/run/coolercontrold-liqctld.sock";
 const LIQCTLD_HOST: &str = "127.0.0.1";
-pub const LIQCTLD_CONNECTION_TRIES: usize = 10;
 const LIQCTLD_HANDSHAKE: &str = "/handshake";
 const LIQCTLD_DEVICES: &str = "/devices";
 const LIQCTLD_LEGACY690: &str = "/devices/{}/legacy690";
 const LIQCTLD_DIRECT_ACCESS: &str = "/devices/{}/direct-access";
 const LIQCTLD_RECONNECT: &str = "/devices/{}/reconnect";
 const LIQCTLD_INITIALIZE: &str = "/devices/{}/initialize";
-const LIQCTLD_STATUS: &str = "/devices/{}/status";
 const LIQCTLD_FIXED_SPEED: &str = "/devices/{}/speed/fixed";
 const LIQCTLD_SPEED_PROFILE: &str = "/devices/{}/speed/profile";
 const LIQCTLD_CONTROL_MODE: &str = "/devices/{}/control-mode";
@@ -347,24 +345,6 @@ impl LiqctldClient {
     pub async fn scan_devices(&self) -> Result<DevicesResponse> {
         let request = Self::request_builder()
             .uri(LIQCTLD_SCAN)
-            .method("GET")
-            .body(String::new())?;
-        self.make_request(&request).await
-    }
-
-    /// Gets the status of a specific device.
-    ///
-    /// Arguments:
-    ///
-    /// * `device_index`: The `device_index` parameter is a reference to an unsigned 8-bit integer
-    ///   (`u8`). It is used to specify the index of the device for which the status is being requested.
-    ///
-    /// Returns:
-    ///
-    /// a `Result` with a `StatusResponse` object.
-    pub async fn get_status(&self, device_index: &u8) -> Result<StatusResponse> {
-        let request = Self::request_builder()
-            .uri(LIQCTLD_STATUS.replace("{}", &device_index.to_string()))
             .method("GET")
             .body(String::new())?;
         self.make_request(&request).await

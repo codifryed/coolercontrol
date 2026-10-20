@@ -1021,6 +1021,7 @@ dependencies = [
  "futures-util",
  "heck",
  "http-body-util",
+ "httparse",
  "hyper",
  "hyper-util",
  "include_dir",

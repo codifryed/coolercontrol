@@ -22,12 +22,13 @@ use crate::diagnostics::support::HardwareSupportController;
 use crate::overrides::OverridesController;
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
+use crate::repositories::hwmon::device_io::reply_timeout_for;
 use crate::repositories::hwmon::devices;
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
-use crate::repositories::liquidctl::liqctld_client::{
-    DeviceResponse, LCStatus, LiqctldClient, LIQCTLD_CONNECTION_TRIES,
-};
+use crate::repositories::liquidctl::liqctld_client::{DeviceResponse, LCStatus, LiqctldClient};
+use crate::repositories::liquidctl::liqctld_http::{Endpoint, LIQCTLD_CONNECTION_TRIES};
+use crate::repositories::liquidctl::liqctld_io::LiqctldIo;
 use crate::repositories::liquidctl::liqctld_service;
 use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
@@ -157,6 +158,8 @@ pub struct LiquidctlRepo {
     config: Rc<Config>,
     overrides: Rc<OverridesController>,
     liqctld_client: LiqctldClient,
+    /// One worker per device, by liqctld id, so status reads do no socket IO on this thread.
+    liqctld_devices: HashMap<TypeIndex, LiqctldIo>,
     /// Set true when the supervisor task is spawned, false when it exits. The sidecar `JoinHandle`
     /// cannot cross back to this thread, so this flag stands in for `JoinHandle::is_finished`.
     liqctld_service_running: Arc<AtomicBool>,
@@ -313,6 +316,7 @@ impl LiquidctlRepo {
             config,
             overrides,
             liqctld_client,
+            liqctld_devices: HashMap::new(),
             liqctld_service_running: running,
             liqctld_service_done: RefCell::new(Some(done_rx)),
             liqctld_stop_token: RefCell::new(stop_token),
@@ -432,6 +436,64 @@ impl LiquidctlRepo {
             .expect("device_permits has an entry for every registered device")
     }
 
+    /// The device's liqctld worker.
+    fn device_io(&self, device_id: TypeIndex) -> Result<&LiqctldIo> {
+        self.liqctld_devices
+            .get(&device_id)
+            .with_context(|| format!("No liqctld worker for liquidctl device #{device_id}"))
+    }
+
+    /// Starts the device's worker and applies what liqctld must know before initializing it.
+    /// Returns false when the device has to be left out.
+    async fn attach_device(
+        &mut self,
+        device: &mut Device,
+        direct_access: bool,
+        poll_rate: f64,
+    ) -> Result<bool> {
+        if let Err(err) = self.start_device_io(device, poll_rate) {
+            error!("{err:#}. This device is unmanaged.");
+            return Ok(false);
+        }
+        self.check_for_legacy_690(device).await?;
+        self.rename_device_io(device);
+        if direct_access {
+            if let Err(err) = self
+                .liqctld_client
+                .put_direct_access(&device.type_index)
+                .await
+            {
+                error!("Error enabling direct access for: {} - {err}", device.name);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Starts the device's liqctld worker. A device without one is left out: talking to it from
+    /// this thread is what the worker exists to avoid.
+    fn start_device_io(&mut self, device: &Device, poll_rate: f64) -> Result<()> {
+        let device_name = self.overrides.log_device_name(&device.uid, &device.name);
+        let io = LiqctldIo::spawn(
+            device.type_index,
+            device_name.clone(),
+            Endpoint::liqctld(LIQCTLD_CONNECTION_TRIES),
+            reply_timeout_for(poll_rate),
+        )
+        .with_context(|| {
+            format!("Could not start a liqctld thread for liquidctl device {device_name}")
+        })?;
+        self.liqctld_devices.insert(device.type_index, io);
+        Ok(())
+    }
+
+    /// Names the worker after the device again, since a legacy690 flip renames it.
+    fn rename_device_io(&mut self, device: &Device) {
+        let device_name = self.overrides.log_device_name(&device.uid, &device.name);
+        if let Some(io) = self.liqctld_devices.get_mut(&device.type_index) {
+            io.rename(device_name);
+        }
+    }
+
     pub async fn get_devices(&mut self) -> Result<()> {
         let devices_response = self.liqctld_client.get_all_devices().await?;
         let mut unique_device_identifiers = get_unique_identifiers(&devices_response.devices);
@@ -516,15 +578,13 @@ impl LiquidctlRepo {
             self.disabled_channels
                 .borrow_mut()
                 .insert(device.uid.clone(), disabled_channels);
-            self.check_for_legacy_690(&mut device).await?;
-            if cc_device_setting.is_some_and(|s| s.extensions.direct_access) {
-                if let Err(err) = self
-                    .liqctld_client
-                    .put_direct_access(&device.type_index)
-                    .await
-                {
-                    error!("Error enabling direct access for: {} - {err}", device.name);
-                }
+            let direct_access = cc_device_setting.is_some_and(|s| s.extensions.direct_access);
+            if self
+                .attach_device(&mut device, direct_access, poll_rate)
+                .await?
+                .not()
+            {
+                continue;
             }
             // One serialization permit per device, so the daemon issues at most one liqctld request
             // per device at a time (see `device_permits`).
@@ -692,7 +752,10 @@ impl LiquidctlRepo {
             .acquire()
             .await
             .expect("device permit never closed");
-        let status_response = self.liqctld_client.get_status(device_id).await;
+        let status_response = match self.device_io(*device_id) {
+            Ok(io) => io.status().await,
+            Err(err) => Err(err),
+        };
         // Hold the permit through the command delay so the next request to this device observes the
         // gap, matching the write paths. Applied on success or failure (a failed read still spaces
         // the device's next command).
@@ -932,6 +995,11 @@ impl LiquidctlRepo {
             ));
         }
         self.start_service().await?;
+        // A device that went unreachable did so against the old service, so each gets a fresh
+        // probe against the new one.
+        for io in self.liqctld_devices.values() {
+            io.allow_probe_now();
+        }
         let fresh_devices = self.liqctld_client.get_all_devices().await?.devices;
         let matched_devices = self.match_devices_after_restart(&fresh_devices);
         let mut still_failed = HashSet::new();
@@ -1428,6 +1496,9 @@ impl LiquidctlRepo {
             }
         }
         self.liqctld_client.shutdown();
+        for io in self.liqctld_devices.values() {
+            io.disconnect();
+        }
     }
 
     #[allow(dead_code)]
@@ -1532,7 +1603,11 @@ impl Repository for LiquidctlRepo {
         let start_initialization = Instant::now();
         let failed_init_devices = self.call_initialize_concurrently().await;
         for device_uid in failed_init_devices {
-            self.devices.remove(&device_uid);
+            if let Some(device_lock) = self.devices.remove(&device_uid) {
+                // Dropping the handle closes the queue, and the worker thread exits.
+                self.liqctld_devices
+                    .remove(&device_lock.borrow().type_index);
+            }
         }
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {

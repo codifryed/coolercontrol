@@ -431,6 +431,12 @@ impl HealthState {
         &self.device_name
     }
 
+    /// Names the device in later logs, for when detection learns its name after the worker
+    /// started.
+    pub fn rename(&mut self, device_name: String) {
+        self.device_name = device_name;
+    }
+
     /// Whether a device that is not answering should be given its next probe yet.
     #[must_use]
     pub fn dispatchable(&self) -> bool {
