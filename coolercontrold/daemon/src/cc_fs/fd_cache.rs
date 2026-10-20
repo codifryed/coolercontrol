@@ -131,8 +131,8 @@ impl SysfsFdCache {
 
     /// The first read of a slot, or the first after an eviction: open, hold, then read.
     ///
-    /// The descriptor is held even if this first read fails, as before: only a later failure
-    /// with a dead-descriptor errno evicts it.
+    /// Held even if this read fails: only a dead-descriptor errno on a later read evicts it, so a
+    /// value-level failure does not reopen every tick.
     fn open_and_read(&self, index: ReadIndex) -> Result<SysfsValue> {
         let mut entries = self.entries.borrow_mut();
         let Some(entry) = entries.get_mut(usize::from(index)) else {
