@@ -252,8 +252,11 @@ impl DeviceIo {
             Self::Inline(fds) => {
                 let mut out = Vec::with_capacity(indices.len());
                 for index in indices {
-                    out.push(fds.read_index(*index).await);
+                    out.push(fds.read_index(*index));
+                    // Each read blocks the runtime thread, so other ready tasks run between them.
+                    rt::yield_now().await;
                 }
+                debug_assert_eq!(out.len(), indices.len());
                 out
             }
             Self::Threaded(worker) => {
@@ -649,7 +652,7 @@ async fn serve(mut rx: mpsc::Receiver<Request>) {
             Request::ReadMany { indices, reply } => {
                 let mut values = Vec::with_capacity(indices.len());
                 for index in &indices {
-                    values.push(fds.read_index(*index).await);
+                    values.push(fds.read_index(*index));
                 }
                 let _ = reply.send(Ok(values));
             }
@@ -1047,6 +1050,29 @@ mod tests {
             assert_eq!(io.health(), DeviceHealth::Healthy);
             assert!(io.is_unreachable().not());
         });
+    }
+
+    /// Goal: the inline path reads on the runtime thread, so it must give other tasks a turn
+    /// between reads rather than hold the thread for a whole batch. Method: poll a three-slot
+    /// batch with a no-op waker and count the polls: one yield per read, then the result.
+    #[test]
+    fn an_inline_batch_yields_after_each_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths: Vec<PathBuf> = (1..=3)
+            .map(|n| dir.path().join(format!("temp{n}_input")))
+            .collect();
+        for path in &paths {
+            std::fs::write(path, "41000\n").unwrap();
+        }
+        let io = DeviceIo::default();
+        let (installed, _) = crate::rt::poll_to_end(io.install_registry(paths));
+        installed.unwrap();
+
+        let (values, polls) = crate::rt::poll_to_end(io.read_many(&[0, 1, 2]));
+
+        assert_eq!(values.len(), 3);
+        assert!(values.iter().all(Result::is_ok));
+        assert_eq!(polls, 4, "three reads must yield three times, then finish");
     }
 
     /// Goal: a real worker thread must return the same bytes the inline path would, so isolating a

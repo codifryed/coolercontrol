@@ -10,17 +10,21 @@
 //! per-tick callers address it by slot. Nothing is hashed and no path crosses a thread boundary
 //! after init. Only per-tick numeric reads belong here: a user-supplied file can be replaced with
 //! a new inode, which a held descriptor would never see.
+//!
+//! Reads are plain blocking `pread`s. A device's table lives on that device's own IO thread,
+//! where a read that blocks in the driver parks nothing else (see `DeviceIo`).
 
 use anyhow::{anyhow, Result};
+use std::fs::File;
+use std::os::unix::fs::FileExt;
 use std::path::Path;
 
 use super::SysfsValue;
 
 use super::{
-    log_reissue, log_reissue_exhausted, reissue_backoff, should_reissue, INTERRUPTED_READ_ATTEMPTS,
+    log_reissue, log_reissue_exhausted, should_reissue, INTERRUPTED_READ_ATTEMPTS,
     SYSFS_VALUE_MAX_BYTES,
 };
-use crate::rt;
 use nix::libc;
 use std::cell::RefCell;
 use std::ops::Not;
@@ -34,13 +38,13 @@ pub type ReadIndex = u16;
 #[derive(Debug)]
 struct Entry {
     path: PathBuf,
-    file: Option<compio::fs::File>,
+    file: Option<File>,
 }
 
 /// Descriptors held open for one device's per-tick attributes, addressed by slot.
 ///
 /// Cloning shares one table (the handle is an `Rc`), so a device's table follows its driver info.
-/// Dropping the last clone closes every descriptor, and compio's close needs no live runtime.
+/// Dropping the last clone closes every descriptor.
 #[derive(Clone, Debug, Default)]
 pub struct SysfsFdCache {
     entries: Rc<RefCell<Vec<Entry>>>,
@@ -60,27 +64,35 @@ impl SysfsFdCache {
 
     /// Reads one registered attribute, reusing its descriptor when there is one.
     ///
+    /// Blocks until the driver answers: call it on the device's IO thread, or yield to the
+    /// runtime after it.
+    ///
     /// # Errors
     ///
     /// When the slot was never registered, or the read fails.
-    pub async fn read_index(&self, index: ReadIndex) -> Result<SysfsValue> {
-        let Some((path, held)) = self.slot(index) else {
-            return Err(anyhow!("sysfs read slot {index} was never registered"));
-        };
-        if let Some(file) = held {
-            return match Self::read_at_start(&path, &file).await {
-                Ok(value) => Ok(value),
-                Err(err) => {
-                    if Self::is_dead_descriptor(&err) {
-                        self.release(index);
-                    }
-                    Err(err)
-                }
+    pub fn read_index(&self, index: ReadIndex) -> Result<SysfsValue> {
+        let held = {
+            let entries = self.entries.borrow();
+            let Some(entry) = entries.get(usize::from(index)) else {
+                return Err(unregistered(index));
             };
+            // The read is synchronous, so the borrow can span it and lend the path for a log
+            // instead of cloning it on every read.
+            entry
+                .file
+                .as_ref()
+                .map(|file| Self::read_at_start(&entry.path, file))
+        };
+        match held {
+            Some(Ok(value)) => Ok(value),
+            Some(Err(err)) => {
+                if Self::is_dead_descriptor(&err) {
+                    self.release(index);
+                }
+                Err(err)
+            }
+            None => self.open_and_read(index),
         }
-        let file = compio::fs::File::open(&path).await?;
-        self.hold(index, &file);
-        Self::read_at_start(&path, &file).await
     }
 
     /// The path a slot was registered with, for logs and for the caller's own assertions.
@@ -117,22 +129,22 @@ impl SysfsFdCache {
         self.len() == 0
     }
 
-    /// Cloning the handle (an `Rc` bump) ends the borrow before any await point.
-    fn slot(&self, index: ReadIndex) -> Option<(PathBuf, Option<compio::fs::File>)> {
-        self.entries
-            .borrow()
-            .get(index as usize)
-            .map(|entry| (entry.path.clone(), entry.file.clone()))
-    }
-
-    fn hold(&self, index: ReadIndex, file: &compio::fs::File) {
-        if let Some(entry) = self.entries.borrow_mut().get_mut(index as usize) {
-            entry.file = Some(file.clone());
-        }
+    /// The first read of a slot, or the first after an eviction: open, hold, then read.
+    ///
+    /// The descriptor is held even if this first read fails, as before: only a later failure
+    /// with a dead-descriptor errno evicts it.
+    fn open_and_read(&self, index: ReadIndex) -> Result<SysfsValue> {
+        let mut entries = self.entries.borrow_mut();
+        let Some(entry) = entries.get_mut(usize::from(index)) else {
+            return Err(unregistered(index));
+        };
+        debug_assert!(entry.file.is_none());
+        let file = entry.file.insert(File::open(&entry.path)?);
+        Self::read_at_start(&entry.path, file)
     }
 
     fn release(&self, index: ReadIndex) {
-        if let Some(entry) = self.entries.borrow_mut().get_mut(index as usize) {
+        if let Some(entry) = self.entries.borrow_mut().get_mut(usize::from(index)) {
             entry.file = None;
         }
     }
@@ -140,17 +152,14 @@ impl SysfsFdCache {
     /// One read at offset 0. kernfs regenerates the whole attribute per read, so a second read
     /// only ever reports 0 bytes; a value that fills the buffer is rejected by
     /// `SysfsValue::parse` as possibly truncated, exactly as on the uncached path.
-    async fn read_at_start(path: &Path, file: &compio::fs::File) -> Result<SysfsValue> {
-        use compio::buf::{IntoInner, IoBuf};
-        use compio::io::AsyncReadAt;
+    fn read_at_start(path: &Path, file: &File) -> Result<SysfsValue> {
         let mut buf = [0u8; SYSFS_VALUE_MAX_BYTES];
         let mut attempts = INTERRUPTED_READ_ATTEMPTS;
         // Bounded by `attempts`, which drops by one per failure and returns the error at zero.
-        // See `INTERRUPTED_READ_ATTEMPTS` for why a read the kernel aborted is ours to re-issue.
+        // An interrupted `pread` read nothing, so it is re-issued at once. The back-off the async
+        // readers take exists to let `io_uring` completions drain, which does not apply here.
         let err = loop {
-            let compio::BufResult(result, slice) = file.read_at(buf.slice(..), 0).await;
-            buf = slice.into_inner();
-            match result {
+            match file.read_at(&mut buf, 0) {
                 Ok(len) => {
                     debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
                     return Ok(SysfsValue::from_read(buf, len));
@@ -165,7 +174,6 @@ impl SysfsFdCache {
                         break err;
                     }
                     log_reissue(path, attempts);
-                    rt::sleep(reissue_backoff(attempts)).await;
                 }
             }
         };
@@ -188,6 +196,10 @@ impl SysfsFdCache {
     }
 }
 
+fn unregistered(index: ReadIndex) -> anyhow::Error {
+    anyhow!("sysfs read slot {index} was never registered")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,17 +211,15 @@ mod tests {
     /// read again through the same cache.
     #[test]
     fn held_descriptor_sees_rewritten_values() {
-        crate::rt::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("temp1_input");
-            let cache = SysfsFdCache::default();
-            cache.install(vec![path.clone()]);
-            for expected in ["45000", "31000", "0", "120000"] {
-                std::fs::write(&path, format!("{expected}\n")).unwrap();
-                let value = cache.read_index(0).await.unwrap();
-                assert_eq!(value.trimmed_str().unwrap(), expected);
-            }
-        });
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("temp1_input");
+        let cache = SysfsFdCache::default();
+        cache.install(vec![path.clone()]);
+        for expected in ["45000", "31000", "0", "120000"] {
+            std::fs::write(&path, format!("{expected}\n")).unwrap();
+            let value = cache.read_index(0).unwrap();
+            assert_eq!(value.trimmed_str().unwrap(), expected);
+        }
     }
 
     /// Goal: repeated reads of one slot must reuse a single descriptor, and separate slots must
@@ -217,22 +227,20 @@ mod tests {
     /// held count after each step.
     #[test]
     fn each_slot_holds_exactly_one_descriptor() {
-        crate::rt::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let first = dir.path().join("temp1_input");
-            let second = dir.path().join("fan1_input");
-            std::fs::write(&first, "45000\n").unwrap();
-            std::fs::write(&second, "1200\n").unwrap();
-            let cache = SysfsFdCache::default();
-            cache.install(vec![first, second]);
-            assert!(cache.is_empty());
-            cache.read_index(0).await.unwrap();
-            assert_eq!(cache.len(), 1);
-            cache.read_index(0).await.unwrap();
-            assert_eq!(cache.len(), 1, "second read of one slot opened again");
-            cache.read_index(1).await.unwrap();
-            assert_eq!(cache.len(), 2);
-        });
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("temp1_input");
+        let second = dir.path().join("fan1_input");
+        std::fs::write(&first, "45000\n").unwrap();
+        std::fs::write(&second, "1200\n").unwrap();
+        let cache = SysfsFdCache::default();
+        cache.install(vec![first, second]);
+        assert!(cache.is_empty());
+        cache.read_index(0).unwrap();
+        assert_eq!(cache.len(), 1);
+        cache.read_index(0).unwrap();
+        assert_eq!(cache.len(), 1, "second read of one slot opened again");
+        cache.read_index(1).unwrap();
+        assert_eq!(cache.len(), 2);
     }
 
     /// Goal: `clear` must release every descriptor, and reads after it must still work by
@@ -240,20 +248,18 @@ mod tests {
     /// the held count.
     #[test]
     fn clear_releases_descriptors_and_reads_still_work() {
-        crate::rt::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("temp1_input");
-            std::fs::write(&path, "45000\n").unwrap();
-            let cache = SysfsFdCache::default();
-            cache.install(vec![path]);
-            cache.read_index(0).await.unwrap();
-            assert_eq!(cache.len(), 1);
-            cache.clear();
-            assert!(cache.is_empty());
-            let value = cache.read_index(0).await.unwrap();
-            assert_eq!(value.trimmed_str().unwrap(), "45000");
-            assert_eq!(cache.len(), 1);
-        });
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("temp1_input");
+        std::fs::write(&path, "45000\n").unwrap();
+        let cache = SysfsFdCache::default();
+        cache.install(vec![path]);
+        cache.read_index(0).unwrap();
+        assert_eq!(cache.len(), 1);
+        cache.clear();
+        assert!(cache.is_empty());
+        let value = cache.read_index(0).unwrap();
+        assert_eq!(value.trimmed_str().unwrap(), "45000");
+        assert_eq!(cache.len(), 1);
     }
 
     /// Goal: eviction must force the next read to reopen, which is how a dead descriptor recovers.
@@ -261,20 +267,18 @@ mod tests {
     /// one descriptor is held.
     #[test]
     fn eviction_forces_a_reopen() {
-        crate::rt::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("temp1_input");
-            std::fs::write(&path, "45000\n").unwrap();
-            let cache = SysfsFdCache::default();
-            cache.install(vec![path.clone()]);
-            cache.read_index(0).await.unwrap();
-            cache.release(0);
-            assert!(cache.is_empty());
-            std::fs::write(&path, "46000\n").unwrap();
-            let value = cache.read_index(0).await.unwrap();
-            assert_eq!(value.trimmed_str().unwrap(), "46000");
-            assert_eq!(cache.len(), 1);
-        });
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("temp1_input");
+        std::fs::write(&path, "45000\n").unwrap();
+        let cache = SysfsFdCache::default();
+        cache.install(vec![path.clone()]);
+        cache.read_index(0).unwrap();
+        cache.release(0);
+        assert!(cache.is_empty());
+        std::fs::write(&path, "46000\n").unwrap();
+        let value = cache.read_index(0).unwrap();
+        assert_eq!(value.trimmed_str().unwrap(), "46000");
+        assert_eq!(cache.len(), 1);
     }
 
     /// Goal: only errnos that mean a dead descriptor may evict. Evicting on a value-level failure
@@ -304,14 +308,49 @@ mod tests {
     /// open per tick and nothing else. Method: read a path that does not exist.
     #[test]
     fn a_missing_path_holds_nothing() {
-        crate::rt::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let cache = SysfsFdCache::default();
-            cache.install(vec![dir.path().join("absent_input")]);
-            let result = cache.read_index(0).await;
-            assert!(result.is_err());
-            assert!(cache.is_empty());
-        });
+        let dir = tempfile::tempdir().unwrap();
+        let cache = SysfsFdCache::default();
+        cache.install(vec![dir.path().join("absent_input")]);
+        let result = cache.read_index(0);
+        assert!(result.is_err());
+        assert!(cache.is_empty());
+    }
+
+    /// Goal: a slot outside the table must fail its own read and touch nothing else, since a
+    /// wrong slot is a programming error the caller has to see. Method: read past the end of a
+    /// one-entry table, then read the real slot.
+    #[test]
+    fn an_unregistered_slot_fails_without_touching_the_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("temp1_input");
+        std::fs::write(&path, "45000\n").unwrap();
+        let cache = SysfsFdCache::default();
+        cache.install(vec![path]);
+
+        let message = cache.read_index(1).unwrap_err().to_string();
+
+        assert!(message.contains("never registered"), "got: {message}");
+        assert!(cache.is_empty());
+        assert_eq!(cache.read_index(0).unwrap().trimmed_str().unwrap(), "45000");
+    }
+
+    /// Goal: a warm read is the per-tick path for every sensor of every device, so it must not
+    /// allocate: no path clone and no boxed operation. Method: read once to open and hold the
+    /// descriptor, then count the allocations of a second read of the same slot.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_read_allocates_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("temp1_input");
+        std::fs::write(&path, "45000\n").unwrap();
+        let cache = SysfsFdCache::default();
+        cache.install(vec![path]);
+        cache.read_index(0).unwrap();
+
+        let (value, allocations) = crate::alloc_count::count_allocations(|| cache.read_index(0));
+
+        assert_eq!(value.unwrap().trimmed_str().unwrap(), "45000");
+        assert_eq!(allocations, 0, "a warm read allocated");
     }
 
     /// Goal: document the limitation that keeps user files off this path. A descriptor follows the
@@ -320,24 +359,19 @@ mod tests {
     /// with a different inode, read again, and assert the stale value.
     #[test]
     fn a_replaced_inode_is_not_seen() {
-        crate::rt::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("user_value");
-            let replacement = dir.path().join("user_value.new");
-            std::fs::write(&path, "45000\n").unwrap();
-            let cache = SysfsFdCache::default();
-            cache.install(vec![path.clone()]);
-            assert_eq!(
-                cache.read_index(0).await.unwrap().trimmed_str().unwrap(),
-                "45000"
-            );
-            std::fs::write(&replacement, "99000\n").unwrap();
-            std::fs::rename(&replacement, &path).unwrap();
-            assert_eq!(
-                cache.read_index(0).await.unwrap().trimmed_str().unwrap(),
-                "45000",
-                "a held descriptor must not be used for files that can be replaced"
-            );
-        });
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("user_value");
+        let replacement = dir.path().join("user_value.new");
+        std::fs::write(&path, "45000\n").unwrap();
+        let cache = SysfsFdCache::default();
+        cache.install(vec![path.clone()]);
+        assert_eq!(cache.read_index(0).unwrap().trimmed_str().unwrap(), "45000");
+        std::fs::write(&replacement, "99000\n").unwrap();
+        std::fs::rename(&replacement, &path).unwrap();
+        assert_eq!(
+            cache.read_index(0).unwrap().trimmed_str().unwrap(),
+            "45000",
+            "a held descriptor must not be used for files that can be replaced"
+        );
     }
 }
