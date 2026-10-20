@@ -88,6 +88,11 @@ impl SysfsFdCache {
             Some(Err(err)) => {
                 if Self::is_dead_descriptor(&err) {
                     self.release(index);
+                    debug_assert!(self
+                        .entries
+                        .borrow()
+                        .get(usize::from(index))
+                        .is_some_and(|entry| entry.file.is_none()));
                 }
                 Err(err)
             }
@@ -140,7 +145,9 @@ impl SysfsFdCache {
         };
         debug_assert!(entry.file.is_none());
         let file = entry.file.insert(File::open(&entry.path)?);
-        Self::read_at_start(&entry.path, file)
+        let result = Self::read_at_start(&entry.path, file);
+        debug_assert!(entry.file.is_some());
+        result
     }
 
     fn release(&self, index: ReadIndex) {
