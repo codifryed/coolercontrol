@@ -157,11 +157,11 @@ impl DeviceIo {
         }
     }
 
-    /// Reads one numeric attribute.
     /// Reads one attribute by path, without caching its descriptor.
     ///
-    /// For detection probes, labels and read-before-write checks: none repeat per tick, so a held
-    /// descriptor buys nothing. The per-tick set goes through `read_many`.
+    /// For detection probes, labels and read-before-write checks, none of which repeat per tick.
+    /// Custom sensor File sources are the per-tick exception: they read user-named files by path.
+    /// The hwmon per-tick set goes through `read_many`.
     pub async fn read_value(&self, path: &Path) -> Result<SysfsValue> {
         match self {
             Self::Inline(_) => cc_fs::read_sysfs_value(path).await,
