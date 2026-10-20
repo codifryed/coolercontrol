@@ -30,7 +30,9 @@ use crate::repositories::failsafe::{
     MISSING_TEMP_FAILSAFE, MISSING_WATTS_FAILSAFE,
 };
 use crate::repositories::hwmon::attributes::{MICROWATTS_MAX, MICROWATTS_PER_WATT};
-use crate::repositories::hwmon::device_io::{reply_timeout_for, DeviceIo};
+use crate::repositories::hwmon::device_io::{
+    reply_timeout_for, DeviceHealth, DeviceIo, UNREACHABLE_PROBE_INTERVAL,
+};
 use crate::repositories::hwmon::fans::pwm_value_to_duty;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
@@ -115,6 +117,8 @@ pub struct CustomSensorsRepo {
     file_sources: RefCell<Rc<[FileSource]>>,
     /// Where File sources are read during preload. Inline until `with_isolated_file_reads`.
     io: DeviceIo,
+    /// Whether `io` was last announced unreachable, so going and coming back log once each.
+    file_io_unreachable: Cell<bool>,
     /// Set while a read pass is in flight, so a file that has not answered skips the next pass
     /// instead of queueing a second read behind the first.
     file_pass_in_flight: Cell<bool>,
@@ -185,6 +189,7 @@ impl CustomSensorsRepo {
             file_read_state: RefCell::new(HashMap::new()),
             file_sources: RefCell::new(Rc::new([])),
             io: DeviceIo::default(),
+            file_io_unreachable: Cell::new(false),
             file_pass_in_flight: Cell::new(false),
             abort_token: CancellationToken::new(),
             sample_windows: RefCell::new(HashMap::new()),
@@ -193,10 +198,12 @@ impl CustomSensorsRepo {
 
     /// Reads File sources on a thread of their own, so a file that blocks in its read (a FIFO,
     /// a hung network mount, a driver attribute) parks that thread instead of the main loop.
-    /// Every File sensor shares the one thread, so a wedged file fails safe all of them.
+    /// Every File sensor shares the one thread, so a wedged file fails safe all of them. The
+    /// thread's stall warnings come from here, where the File sensors can be named.
     #[must_use]
     pub fn with_isolated_file_reads(mut self) -> Self {
-        self.io = DeviceIo::isolated_or_inline("custom-sensors", reply_timeout_for(self.poll_rate));
+        self.io = DeviceIo::isolated_or_inline("custom-sensors", reply_timeout_for(self.poll_rate))
+            .owner_announces_health();
         self
     }
 
@@ -1172,7 +1179,36 @@ impl CustomSensorsRepo {
         }));
         tokio::select! {
             () = self.abort_token.cancelled() => {}
-            _ = pass => {}
+            _ = pass => self.announce_file_io_health(&sources),
+        }
+    }
+
+    /// Logs the File worker going unreachable and answering again, once each, naming the File
+    /// sensors it reads. The worker leaves this to us, as only we know them.
+    fn announce_file_io_health(&self, sources: &[FileSource]) {
+        let timeouts = match self.io.health() {
+            DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } => Some(consecutive_timeouts),
+            DeviceHealth::Healthy | DeviceHealth::Degraded { .. } => None,
+        };
+        let unreachable = timeouts.is_some();
+        if self.file_io_unreachable.replace(unreachable) == unreachable {
+            return;
+        }
+        debug_assert!(sources.is_empty().not());
+        let sensors = sources
+            .iter()
+            .map(|source| self.sensor_log_name(&source.id))
+            .collect::<Vec<_>>()
+            .join(", ");
+        match timeouts {
+            Some(timeouts) => warn!(
+                "Custom Sensor File reads stopped answering after {timeouts} timed out requests. \
+                 Failing safe until a read succeeds: {sensors}. Retrying every {} seconds.",
+                UNREACHABLE_PROBE_INTERVAL.as_secs()
+            ),
+            None => info!("Custom Sensor File reads are answering again: {sensors}"),
         }
     }
 
@@ -1926,7 +1962,7 @@ mod tests {
     use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILSAFE};
     #[cfg(feature = "gated-tests")]
     use crate::repositories::hwmon::device_io::DeviceHealth;
-    use crate::repositories::hwmon::device_io::{DeviceIo, Request};
+    use crate::repositories::hwmon::device_io::{DeviceIo, Request, UNREACHABLE_AFTER_TIMEOUTS};
     use crate::repositories::repository::{DeviceLock, Repository};
     use crate::setting::{
         CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
@@ -5776,6 +5812,44 @@ mod tests {
 
             assert!(poll_once(pass.as_mut()).await.is_ready());
             assert!(repo.file_pass_in_flight.get().not());
+        });
+    }
+
+    // Goal: the File worker going unreachable and answering again must each be announced once,
+    // not on every pass. Method: time a wedged worker out to the threshold one pass at a time,
+    // run a pass it refuses, then let a probe through and answer it.
+    #[test]
+    #[serial]
+    fn the_file_worker_announces_each_transition_once() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut repo, _first_rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            let (io, mut rx) = DeviceIo::wedged_for_test(Duration::from_millis(100));
+            repo.io = io.owner_announces_health();
+
+            for _ in 1..UNREACHABLE_AFTER_TIMEOUTS {
+                repo.read_file_sources().await;
+                assert!(repo.file_io_unreachable.get().not());
+            }
+            repo.read_file_sources().await;
+            assert!(repo.file_io_unreachable.get());
+            repo.read_file_sources().await;
+            assert!(repo.file_io_unreachable.get());
+
+            repo.io.allow_probe_now();
+            let mut probe = pin!(repo.read_file_sources());
+            assert!(poll_once(probe.as_mut()).await.is_pending());
+            // Every read before the probe timed out, so only the probe's reply is waited for.
+            while let Ok(request) = rx.try_recv() {
+                if let Request::Read { reply, .. } = request {
+                    let _ = reply.send(Ok(cc_fs::SysfsValue::from_bytes(b"47000")));
+                }
+            }
+            probe.await;
+
+            assert!(repo.file_io_unreachable.get().not());
+            let fresh = repo.file_read_state.borrow()["file1"].fresh;
+            assert!(fresh.is_some_and(|value| (value - 47.0).abs() < f64::EPSILON));
         });
     }
 
