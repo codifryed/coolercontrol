@@ -190,35 +190,58 @@ pub async fn read_sysfs_value(path: impl AsRef<Path>) -> Result<SysfsValue> {
 }
 
 /// `read_sysfs_value` as blocking calls, for a device's IO thread, which has no runtime.
-///
-/// An interrupted `pread` read nothing, so it is re-issued at once: the async back-off exists to
-/// let `io_uring` completions drain.
 pub fn read_sysfs_value_blocking(path: &Path) -> Result<SysfsValue> {
-    use std::os::unix::fs::FileExt;
     let file = std::fs::File::open(path)?;
     let mut buf = [0u8; SYSFS_VALUE_MAX_BYTES];
     let mut len = 0;
     let mut attempts = INTERRUPTED_READ_ATTEMPTS;
     // Bounded on both axes, as in `read_sysfs_value`.
     while len < SYSFS_VALUE_MAX_BYTES {
-        match file.read_at(&mut buf[len..], len as u64) {
-            Ok(0) => break,
-            Ok(bytes_read) => len += bytes_read,
-            Err(err) => {
-                debug_assert!(attempts > 0);
-                attempts -= 1;
-                if should_reissue(attempts, &err).not() {
-                    if err.kind() == ErrorKind::Interrupted {
-                        log_reissue_exhausted(path);
-                    }
-                    return Err(err.into());
-                }
-                log_reissue(path, attempts);
-            }
+        match pread_reissuing(path, &file, &mut buf[len..], len as u64, &mut attempts)? {
+            0 => break,
+            bytes_read => len += bytes_read,
         }
     }
     debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
     Ok(SysfsValue { buf, len })
+}
+
+/// One blocking `pread`, re-issued while `should_reissue` allows, spending from `attempts`.
+///
+/// An interrupted `pread` read nothing, so it is re-issued at once: the back-off the async readers
+/// take exists to let `io_uring` completions drain, which does not apply here.
+///
+/// # Errors
+///
+/// The read's error, once it is not worth re-issuing or `attempts` is spent.
+pub fn pread_reissuing(
+    path: &Path,
+    file: &std::fs::File,
+    buf: &mut [u8],
+    offset: u64,
+    attempts: &mut u8,
+) -> std::io::Result<usize> {
+    use std::os::unix::fs::FileExt;
+    // Bounded by `attempts`, which drops by one per failure and returns the error at zero.
+    loop {
+        match file.read_at(buf, offset) {
+            Ok(len) => {
+                debug_assert!(len <= buf.len());
+                return Ok(len);
+            }
+            Err(err) => {
+                debug_assert!(*attempts > 0);
+                *attempts -= 1;
+                if should_reissue(*attempts, &err).not() {
+                    if err.kind() == ErrorKind::Interrupted {
+                        log_reissue_exhausted(path);
+                    }
+                    return Err(err);
+                }
+                log_reissue(path, *attempts);
+            }
+        }
+    }
 }
 
 /// Reads the entire contents of a sysfs file into a UTF-8 encoded string.

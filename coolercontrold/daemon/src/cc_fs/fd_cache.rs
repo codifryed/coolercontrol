@@ -16,18 +16,13 @@
 
 use anyhow::{anyhow, Result};
 use std::fs::File;
-use std::os::unix::fs::FileExt;
 use std::path::Path;
 
 use super::SysfsValue;
 
-use super::{
-    log_reissue, log_reissue_exhausted, should_reissue, INTERRUPTED_READ_ATTEMPTS,
-    SYSFS_VALUE_MAX_BYTES,
-};
+use super::{pread_reissuing, INTERRUPTED_READ_ATTEMPTS, SYSFS_VALUE_MAX_BYTES};
 use nix::libc;
 use std::cell::RefCell;
-use std::ops::Not;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -162,29 +157,9 @@ impl SysfsFdCache {
     fn read_at_start(path: &Path, file: &File) -> Result<SysfsValue> {
         let mut buf = [0u8; SYSFS_VALUE_MAX_BYTES];
         let mut attempts = INTERRUPTED_READ_ATTEMPTS;
-        // Bounded by `attempts`, which drops by one per failure and returns the error at zero.
-        // An interrupted `pread` read nothing, so it is re-issued at once. The back-off the async
-        // readers take exists to let `io_uring` completions drain, which does not apply here.
-        let err = loop {
-            match file.read_at(&mut buf, 0) {
-                Ok(len) => {
-                    debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
-                    return Ok(SysfsValue::from_read(buf, len));
-                }
-                Err(err) => {
-                    debug_assert!(attempts > 0);
-                    attempts -= 1;
-                    if should_reissue(attempts, &err).not() {
-                        if err.kind() == std::io::ErrorKind::Interrupted {
-                            log_reissue_exhausted(path);
-                        }
-                        break err;
-                    }
-                    log_reissue(path, attempts);
-                }
-            }
-        };
-        Err(err.into())
+        let len = pread_reissuing(path, file, &mut buf, 0, &mut attempts)?;
+        debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
+        Ok(SysfsValue::from_read(buf, len))
     }
 
     /// Errnos that mean the descriptor itself is dead: the device was unbound or removed, or the
