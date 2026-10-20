@@ -3589,13 +3589,13 @@ mod tests {
         (uid, Rc::new(RefCell::new(device)))
     }
 
-    /// Reads the latest temp the Custom Sensors device is reporting for `cs_id`.
     /// One poll as the main loop runs it: the File read pass, then the snapshot.
     async fn tick(repo: &CustomSensorsRepo) {
         repo.read_file_sources().await;
         repo.update_statuses(Local::now()).await.unwrap();
     }
 
+    /// Reads the latest temp the Custom Sensors device is reporting for `cs_id`.
     fn current_temp_for(repo: &CustomSensorsRepo, cs_id: &str) -> f64 {
         let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
         let status = device.latest_status().unwrap();
