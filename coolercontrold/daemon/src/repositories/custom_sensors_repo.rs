@@ -129,9 +129,9 @@ pub struct CustomSensorsRepo {
 struct FileReadState {
     consecutive_failures: u16,
     last_good_value: Option<f64>,
-    /// The newest read to land since the last snapshot, which takes it. Nothing landed counts
-    /// as a failure, as an unreadable file does.
-    fresh: Option<Result<f64>>,
+    /// The newest read to land since the last snapshot, which takes it. A failed read leaves
+    /// nothing, and nothing counts as a failure.
+    fresh: Option<f64>,
 }
 
 /// One File sensor's source, as the read pass needs it.
@@ -1071,13 +1071,13 @@ impl CustomSensorsRepo {
             .get(id)
             .is_none_or(|state| state.fresh.is_none()));
         let sensor_value = match fresh {
-            Some(Ok(raw)) => {
+            Some(raw) => {
                 let sensor_value = self.emit_real(id, metric, raw);
                 // Held as reported, so a held value equals the one it stands in for.
                 self.record_file_read_success(id, sensor_value.value);
                 sensor_value
             }
-            Some(Err(_)) | None => match self.tolerate_file_read_failure(id) {
+            None => match self.tolerate_file_read_failure(id) {
                 Some(value) => SensorValue {
                     id: id.clone(),
                     metric,
@@ -1194,17 +1194,16 @@ impl CustomSensorsRepo {
         if Rc::ptr_eq(pass_sources, &self.file_sources.borrow()).not() {
             return;
         }
-        if let Ok(value) = &read {
-            debug_assert!(value.is_finite());
-        }
+        let fresh = read.ok();
+        debug_assert!(fresh.is_none_or(f64::is_finite));
         let mut states = self.file_read_state.borrow_mut();
         // Looked up before inserting, so the id is cloned once per sensor rather than per read.
         if let Some(state) = states.get_mut(id) {
-            state.fresh = Some(read);
+            state.fresh = fresh;
             return;
         }
         let state = FileReadState {
-            fresh: Some(read),
+            fresh,
             ..Default::default()
         };
         states.insert(id.clone(), state);
@@ -1938,7 +1937,6 @@ mod tests {
         CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
         SensorSource,
     };
-    use anyhow::anyhow;
     use chrono::Local;
     use serial_test::serial;
     use std::cell::RefCell;
@@ -2509,10 +2507,7 @@ mod tests {
             let cs_name = "test_sensor1".to_string();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
-            let failed = FileReadState {
-                fresh: Some(Err(anyhow!("File not found"))),
-                ..Default::default()
-            };
+            let failed = FileReadState::default();
             repo.file_read_state
                 .borrow_mut()
                 .insert(cs_name.clone(), failed);
@@ -5843,10 +5838,7 @@ mod tests {
 
             let current = Rc::clone(&repo.file_sources.borrow());
             repo.store_file_read(&current, &id, Ok(99.));
-            assert!(matches!(
-                repo.file_read_state.borrow()[&id].fresh,
-                Some(Ok(_))
-            ));
+            assert!(repo.file_read_state.borrow()[&id].fresh.is_some());
         });
     }
 
