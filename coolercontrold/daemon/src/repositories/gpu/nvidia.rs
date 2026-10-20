@@ -36,6 +36,7 @@ use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
     GPU_TEMP_NAME,
 };
+use crate::repositories::gpu::nvapi_io::NvApiIo;
 use crate::repositories::gpu::nvml_io::{self, NvmlIo};
 use crate::repositories::hwmon::device_io;
 use crate::repositories::repository::DeviceLock;
@@ -85,7 +86,8 @@ pub struct GpuNVidia {
     xauthority_path: RefCell<Option<String>>,
     nvidia_smi_disabled_channels: RefCell<HashMap<GpuIndex, Vec<ChannelName>>>,
     nvidia_nvml_load_enabled: Cell<bool>,
-    nvapi: Option<super::nvapi::NvApi>,
+    /// Reads every GPU's hotspot on one thread. None when nvapi is unavailable.
+    nvapi_io: Option<NvApiIo>,
 }
 
 impl GpuNVidia {
@@ -101,7 +103,7 @@ impl GpuNVidia {
             xauthority_path: RefCell::new(None),
             nvidia_smi_disabled_channels: RefCell::new(HashMap::new()),
             nvidia_nvml_load_enabled: Cell::new(false),
-            nvapi: None,
+            nvapi_io: None,
         }
     }
 
@@ -112,9 +114,38 @@ impl GpuNVidia {
         let nvidia_devices = if self.nvml_handles_pending_workers.is_empty() {
             self.init_nvidia_smi_devices(starting_nvidia_index).await?
         } else {
-            self.retrieve_nvml_devices(starting_nvidia_index)?
+            self.start_nvapi().await;
+            let init_hotspots = self.read_init_hotspots().await;
+            self.retrieve_nvml_devices(starting_nvidia_index, &init_hotspots)?
         };
         Ok(nvidia_devices)
+    }
+
+    /// Starts nvapi on its own thread, for the hotspot of each NVML GPU.
+    async fn start_nvapi(&mut self) {
+        debug_assert!(self.nvml_handles_pending_workers.is_empty().not());
+        let register_hotspot_buses = self.collect_register_hotspot_buses();
+        let poll_rate = self.config.get_settings().map_or(1.0, |s| s.poll_rate);
+        let reply_timeout = device_io::reply_timeout_for(poll_rate);
+        self.nvapi_io = NvApiIo::start(register_hotspot_buses, reply_timeout).await;
+    }
+
+    /// Each GPU's hotspot at init, by GPU index. Only a GPU found here gets a hotspot channel.
+    async fn read_init_hotspots(&self) -> HashMap<GpuIndex, f64> {
+        let mut init_hotspots = HashMap::with_capacity(self.nvml_handles_pending_workers.len());
+        let Some(nvapi_io) = self.nvapi_io.as_ref() else {
+            return init_hotspots;
+        };
+        for (gpu_index, nvml_device) in &self.nvml_handles_pending_workers {
+            let Ok(pci_info) = nvml_device.pci_info() else {
+                continue;
+            };
+            if let Some(hotspot_temp) = nvapi_io.hotspot_temp(pci_info.bus).await {
+                init_hotspots.insert(*gpu_index, hotspot_temp);
+            }
+        }
+        debug_assert!(init_hotspots.len() <= self.nvml_handles_pending_workers.len());
+        init_hotspots
     }
 
     pub fn update_all_statuses(&self, timestamp: DateTime<Local>) {
@@ -288,8 +319,6 @@ impl GpuNVidia {
             warn!("No NVML accessible devices found, falling back to CLI tools");
             return NvmlInitResult::Unavailable;
         }
-        let register_hotspot_buses = self.collect_register_hotspot_buses();
-        self.nvapi = super::nvapi::NvApi::try_init(&register_hotspot_buses);
         NvmlInitResult::Active(self.nvml_handles_pending_workers.len() as u8)
     }
 
@@ -367,10 +396,12 @@ impl GpuNVidia {
             .all(|device_uid| self.is_nvml_device_disabled(device_uid))
     }
 
+    /// `init_hotspots` holds the hotspot nvapi read for each GPU that has one.
     #[allow(clippy::too_many_lines)]
     pub fn retrieve_nvml_devices(
         &mut self,
         starting_nvidia_index: u8,
+        init_hotspots: &HashMap<GpuIndex, f64>,
     ) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
         let poll_rate = self.config.get_settings()?.poll_rate;
@@ -428,7 +459,7 @@ impl GpuNVidia {
             }
             let hotspot_temp_name = GPU_TEMP_HOTSPOT_NAME.to_string();
             if disabled_channels.contains(&hotspot_temp_name).not() {
-                if let Some(hotspot_temp) = self.get_hotspot_temp(device_lock) {
+                if let Some(hotspot_temp) = init_hotspots.get(gpu_index).copied() {
                     temp_infos.insert(
                         hotspot_temp_name.clone(),
                         TempInfo {
@@ -753,12 +784,6 @@ impl GpuNVidia {
         f64::from(milli_watts / 1_000)
     }
 
-    fn get_hotspot_temp(&self, nvml_device: &nvml_wrapper::Device) -> Option<f64> {
-        let nvapi = self.nvapi.as_ref()?;
-        let pci_bus = nvml_device.pci_info().ok()?.bus;
-        nvapi.get_hotspot_temp(pci_bus)
-    }
-
     #[allow(clippy::cast_precision_loss)]
     fn get_memory_temp(nvml_device: &nvml_wrapper::Device) -> Option<Temp> {
         let field_values = nvml_device
@@ -861,10 +886,25 @@ impl GpuNVidia {
     ) -> Option<StatusNvidiaDeviceNvml> {
         let plan = self.read_plan(nv_info);
         let readings = self.read_nvml_bounded(nv_info.gpu_index, plan).await?;
+        let hotspot_temp = self.read_hotspot(nv_info).await;
         Some(StatusNvidiaDeviceNvml {
-            temps: self.assemble_temps(nv_info, &readings),
+            temps: Self::assemble_temps(nv_info, &readings, hotspot_temp),
             channels: Self::assemble_channels(&readings),
         })
+    }
+
+    /// This tick's hotspot, read through nvapi once NVML has answered. None when the GPU has no
+    /// hotspot channel or the read failed or timed out, which omits it for this tick.
+    async fn read_hotspot(&self, nv_info: &NvidiaDeviceInfo) -> Option<f64> {
+        let has_hotspot = nv_info
+            .temps
+            .iter()
+            .any(|name| name == GPU_TEMP_HOTSPOT_NAME);
+        if has_hotspot.not() {
+            return None;
+        }
+        let pci_bus = nv_info.pci_bus?;
+        self.nvapi_io.as_ref()?.hotspot_temp(pci_bus).await
     }
 
     /// What this tick's read pass gathers. The per-device parts are shared, not copied.
@@ -880,23 +920,19 @@ impl GpuNVidia {
     }
 
     /// Rebuilds the temp list in the device's own order. Hotspot comes from nvapi rather than
-    /// NVML, so it is filled in here on the main thread; interleaving it by name keeps the order
-    /// the same as when every temp came from one place.
+    /// NVML, so it is read separately; interleaving it by name keeps the order the same as when
+    /// every temp came from one place.
     fn assemble_temps(
-        &self,
-        nv_info: &Rc<NvidiaDeviceInfo>,
+        nv_info: &NvidiaDeviceInfo,
         readings: &NvmlReadings,
+        hotspot_temp: Option<f64>,
     ) -> Vec<TempStatus> {
         let mut temps = Vec::with_capacity(nv_info.temps.len());
         for name in &nv_info.temps {
             let temp = match name.as_str() {
                 GPU_TEMP_NAME => readings.gpu_temp.map(f64::from),
                 GPU_TEMP_MEMORY_NAME => readings.memory_temp,
-                GPU_TEMP_HOTSPOT_NAME => nv_info.pci_bus.and_then(|bus| {
-                    self.nvapi
-                        .as_ref()
-                        .and_then(|api| api.get_hotspot_temp(bus))
-                }),
+                GPU_TEMP_HOTSPOT_NAME => hotspot_temp,
                 other => {
                     error!("Unexpected Nvidia temp name: {other}");
                     None
@@ -1588,7 +1624,7 @@ impl NvidiaDeviceInfo {
                 .filter_map(|name| match name.as_str() {
                     GPU_TEMP_NAME => Some(NvmlTemp::Gpu),
                     GPU_TEMP_MEMORY_NAME => Some(NvmlTemp::Memory),
-                    // Hotspot comes from nvapi and is filled in on the main thread.
+                    // Hotspot comes from nvapi, read on its own thread.
                     _ => None,
                 })
                 .collect(),
@@ -1895,7 +1931,6 @@ mod tests {
     /// requested order rather than the order the worker happened to gather them in.
     #[test]
     fn assembled_temps_follow_the_devices_own_order() {
-        let repo = repo_with_disabled(&[]);
         let nv_info = Rc::new(NvidiaDeviceInfo {
             gpu_index: 0,
             display_id: 0,
@@ -1913,7 +1948,7 @@ mod tests {
             ..Default::default()
         };
 
-        let temps = repo.assemble_temps(&nv_info, &readings);
+        let temps = GpuNVidia::assemble_temps(&nv_info, &readings, None);
 
         assert_eq!(temps.len(), 2);
         assert_eq!(temps[0].name, GPU_TEMP_MEMORY_NAME);
@@ -1922,12 +1957,45 @@ mod tests {
         assert_eq!(temps[1].temp, 61.0);
     }
 
+    /// Goal: the hotspot nvapi read takes its place in the device's order, and a tick whose
+    /// hotspot read failed omits it rather than reporting zero. Method: a device with hotspot
+    /// between gpu and memory, assembled once with a hotspot and once without.
+    #[test]
+    fn the_hotspot_keeps_its_place_or_is_omitted() {
+        let nv_info = NvidiaDeviceInfo {
+            temps: vec![
+                GPU_TEMP_NAME.to_string(),
+                GPU_TEMP_HOTSPOT_NAME.to_string(),
+                GPU_TEMP_MEMORY_NAME.to_string(),
+            ],
+            ..nv_info_for(0)
+        };
+        let readings = NvmlReadings {
+            gpu_temp: Some(61),
+            memory_temp: Some(74.0),
+            ..Default::default()
+        };
+
+        let with_hotspot = GpuNVidia::assemble_temps(&nv_info, &readings, Some(80.0));
+        let without_hotspot = GpuNVidia::assemble_temps(&nv_info, &readings, None);
+
+        let names: Vec<&str> = with_hotspot.iter().map(|temp| temp.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [GPU_TEMP_NAME, GPU_TEMP_HOTSPOT_NAME, GPU_TEMP_MEMORY_NAME]
+        );
+        assert_eq!(with_hotspot[1].temp, 80.0);
+        assert_eq!(without_hotspot.len(), 2);
+        assert!(without_hotspot
+            .iter()
+            .all(|temp| temp.name != GPU_TEMP_HOTSPOT_NAME));
+    }
+
     /// Goal: a temp the device asked for but the driver did not answer must be omitted, not
     /// reported as zero. A fabricated reading would drive a fan curve from a value the hardware
     /// never produced.
     #[test]
     fn an_unanswered_temp_is_omitted_rather_than_zeroed() {
-        let repo = repo_with_disabled(&[]);
         let nv_info = Rc::new(NvidiaDeviceInfo {
             gpu_index: 0,
             display_id: 0,
@@ -1946,7 +2014,7 @@ mod tests {
             ..Default::default()
         };
 
-        let temps = repo.assemble_temps(&nv_info, &readings);
+        let temps = GpuNVidia::assemble_temps(&nv_info, &readings, None);
 
         assert_eq!(temps.len(), 1, "only the answered temp is reported");
         assert_eq!(temps[0].name, GPU_TEMP_NAME);
