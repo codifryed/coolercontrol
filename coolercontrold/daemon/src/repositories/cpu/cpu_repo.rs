@@ -184,7 +184,13 @@ impl CpuRepo {
         let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
         let apple_silicon_model = apple_silicon::board_model().await;
         self.apple_silicon = if apple_silicon_model.is_some() {
-            Some(AppleSilicon::find(apple_silicon::CPUFREQ_POLICY_PATH.as_ref()).await)
+            // Before any cpufreq read, so cluster discovery is isolated too.
+            let poll_rate = self.config.get_settings().map_or(1.0, |s| s.poll_rate);
+            let io = DeviceIo::isolated_or_inline(
+                apple_silicon::DRIVER_NAME,
+                device_io::reply_timeout_for(poll_rate),
+            );
+            Some(AppleSilicon::find(apple_silicon::CPUFREQ_POLICY_PATH.as_ref(), io).await)
         } else {
             None
         };
@@ -793,7 +799,8 @@ impl CpuRepo {
     /// The CPU device of an Apple Silicon machine, which has no CPU hwmon device to build one
     /// from. None on any other machine, and when the user disabled the device.
     async fn init_apple_silicon_cpu_device(&self) -> Option<HwmonDriverInfo> {
-        let cluster_channels = self.apple_silicon.as_ref()?.cluster_channels();
+        let apple_silicon = self.apple_silicon.as_ref()?;
+        let cluster_channels = apple_silicon.cluster_channels();
         let association = CpuAssociation::Socket(apple_silicon::PACKAGE);
         let type_index = association::device_type_index(&self.topology, association)?;
         let cpu_name = self.topology.model_name(association.physical_id())?;
@@ -815,6 +822,7 @@ impl CpuRepo {
             name: apple_silicon::DRIVER_NAME.to_owned(),
             path: PathBuf::from(apple_silicon::CPU_SYSFS_PATH),
             channels,
+            io: apple_silicon.io().clone(),
             ..Default::default()
         })
     }
@@ -1433,7 +1441,8 @@ mod tests {
                         .unwrap();
                 }
             }
-            let apple_silicon = AppleSilicon::find(&base).await;
+            let io = crate::repositories::hwmon::device_io::DeviceIo::default();
+            let apple_silicon = AppleSilicon::find(&base, io).await;
             let mut channels: Vec<HwmonChannelInfo> =
                 ["CPU Freq Avg", "CPU Freq Max", "CPU Freq Min"]
                     .into_iter()

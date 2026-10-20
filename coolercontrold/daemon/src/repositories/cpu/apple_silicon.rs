@@ -6,9 +6,12 @@ use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 
-use crate::cc_fs;
+use log::debug;
+
+use crate::cc_fs::{self, ReadIndex};
 use crate::device::{ChannelStatus, Mhz};
 use crate::repositories::cpu::topology::{CpuFreqs, PhysicalID};
+use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
 
 const DEVICE_TREE_COMPATIBLE_PATH: &str = "/sys/firmware/devicetree/base/compatible";
@@ -30,11 +33,18 @@ pub const PACKAGE: PhysicalID = 0;
 // Frequency channels are numbered in blocks of 64 per package, so the clusters must stay
 // inside the block of the one package.
 const _: () = assert!(FIRST_CLUSTER_CHANNEL_NUMBER as usize + CLUSTER_COUNT_MAX <= 64);
+// Each cluster's clock takes one read slot.
+const _: () = assert!(CLUSTER_COUNT_MAX <= ReadIndex::MAX as usize);
 
 /// What the CPU repository keeps for an Apple Silicon machine, and has for no other.
 pub struct AppleSilicon {
     /// Found once at startup. Empty when cpufreq has no policy to read.
     clusters: Vec<Cluster>,
+    /// Reads cpufreq on a thread of its own: a clock read waits on the policy lock while the
+    /// governor, a hotplug or a power profile change holds it. Shared with the CPU device.
+    io: DeviceIo,
+    /// Each cluster's clock in the read table, in cluster order.
+    freq_slots: Box<[ReadIndex]>,
     /// Each cluster's clock as of the latest poll, for the cluster channels.
     cluster_freqs: RefCell<Vec<ChannelStatus>>,
 }
@@ -76,33 +86,57 @@ pub async fn scaling_driver() -> Option<String> {
         .filter(|name| name.is_empty().not())
 }
 
-async fn read_khz(path: &Path) -> Option<u32> {
-    cc_fs::read_sysfs(path).await.ok()?.trim().parse().ok()
+async fn read_khz(io: &DeviceIo, path: &Path) -> Option<u32> {
+    io.read_value(path).await.ok()?.parse().ok()
 }
 
 impl AppleSilicon {
-    /// Finds every cluster of the machine. A cluster's top frequency and its cores never
-    /// change, so they are read here once and each poll reads only the clock.
-    pub async fn find(cpufreq_path: &Path) -> Self {
-        let clusters = find_clusters_in(cpufreq_path).await;
-        debug_assert!(clusters.len() <= CLUSTER_COUNT_MAX);
+    /// Finds every cluster of the machine through `io`, and hands `io` each cluster's clock as
+    /// its read table. A cluster's top frequency and its cores never change, so they are read
+    /// here once and each poll reads only the clock.
+    pub async fn find(cpufreq_path: &Path, io: DeviceIo) -> Self {
+        let clusters = find_clusters_in(cpufreq_path, &io).await;
+        assert!(clusters.len() <= CLUSTER_COUNT_MAX);
+        let clock_paths = clusters
+            .iter()
+            .map(|cluster| cluster.current_freq_path.clone())
+            .collect();
+        if let Err(err) = io.install_registry(clock_paths).await {
+            // Each read installs it again until one answers.
+            debug!("Could not install the cpufreq read table yet: {err}");
+        }
+        // Cannot truncate: the count is bounded by CLUSTER_COUNT_MAX, asserted to fit above.
+        #[allow(clippy::cast_possible_truncation)]
+        let freq_slots = (0..clusters.len())
+            .map(|index| index as ReadIndex)
+            .collect();
         Self {
             clusters,
+            io,
+            freq_slots,
             cluster_freqs: RefCell::new(Vec::new()),
         }
     }
 
-    /// The package frequencies, with one read per cluster: every core of a cluster runs at the
-    /// cluster's clock. Each cluster's clock is kept until the next poll.
+    /// The package frequencies, with one clock per cluster in one batch: every core of a cluster
+    /// runs at the cluster's clock. Each cluster's clock is kept until the next poll.
     pub async fn read_freqs(&self) -> HashMap<PhysicalID, CpuFreqs> {
+        debug_assert_eq!(self.freq_slots.len(), self.clusters.len());
+        let results = self.io.read_many(&self.freq_slots).await;
+        debug_assert_eq!(results.len(), self.clusters.len());
         let mut readings = Vec::with_capacity(self.clusters.len());
-        for cluster in &self.clusters {
-            if let Some(khz) = read_khz(&cluster.current_freq_path).await {
+        for (cluster, result) in self.clusters.iter().zip(results) {
+            if let Ok(khz) = result.and_then(|value| value.parse::<u32>()) {
                 readings.push((cluster, khz));
             }
         }
         self.cluster_freqs.replace(cluster_statuses(&readings));
         package_freqs(&readings)
+    }
+
+    /// The cpufreq worker, which the CPU device reads through as well.
+    pub fn io(&self) -> &DeviceIo {
+        &self.io
     }
 
     pub fn cluster_channels(&self) -> Vec<HwmonChannelInfo> {
@@ -130,7 +164,8 @@ impl AppleSilicon {
     }
 }
 
-async fn find_clusters_in(cpufreq_path: &Path) -> Vec<Cluster> {
+/// Listing the directory runs no driver code, so only the attribute reads go through `io`.
+async fn find_clusters_in(cpufreq_path: &Path, io: &DeviceIo) -> Vec<Cluster> {
     let Ok(entries) = cc_fs::read_dir(cpufreq_path) else {
         return Vec::new();
     };
@@ -140,13 +175,13 @@ async fn find_clusters_in(cpufreq_path: &Path) -> Vec<Cluster> {
             continue;
         };
         let path = entry.path();
-        let Some(max_khz) = read_khz(&path.join(POLICY_MAX_FREQ_FILE)).await else {
+        let Some(max_khz) = read_khz(io, &path.join(POLICY_MAX_FREQ_FILE)).await else {
             continue;
         };
         policies.push(Policy {
             number,
             max_khz,
-            core_count: read_core_count(&path.join(POLICY_CORES_FILE)).await,
+            core_count: read_core_count(io, &path.join(POLICY_CORES_FILE)).await,
             current_freq_path: path.join(POLICY_CURRENT_FREQ_FILE),
         });
     }
@@ -165,11 +200,14 @@ fn policy_number(name: &str) -> Option<u32> {
 }
 
 /// The cores of a policy, counted from its space-separated list. An unreadable list counts as
-/// one core, so the cluster still weighs in the average.
-async fn read_core_count(path: &Path) -> u32 {
-    let core_count = cc_fs::read_sysfs(path)
-        .await
-        .map_or(0, |cores| cores.split_whitespace().count());
+/// one core, so the cluster still weighs in the average. A value holds 21 two-digit core ids,
+/// several times the cores of any Apple cluster.
+async fn read_core_count(io: &DeviceIo, path: &Path) -> u32 {
+    let core_count = io.read_value(path).await.map_or(0, |cores| {
+        cores
+            .trimmed_str()
+            .map_or(0, |cores| cores.split_whitespace().count())
+    });
     u32::try_from(core_count).unwrap_or(u32::MAX).max(1)
 }
 
@@ -439,7 +477,7 @@ mod tests {
             .await;
             let base = tmp.path().to_path_buf();
 
-            let apple_silicon = AppleSilicon::find(&base).await;
+            let apple_silicon = AppleSilicon::find(&base, DeviceIo::default()).await;
             let freqs = apple_silicon.read_freqs().await;
 
             let core_counts: Vec<u32> = apple_silicon
@@ -471,6 +509,37 @@ mod tests {
         });
     }
 
+    /// Goal: on the device thread, clusters are found and their clocks read through held
+    /// descriptors, one per cluster. Method: a fake cpufreq of two clusters read through a
+    /// threaded `DeviceIo`, then the worker's descriptor count. Gated: it starts a thread.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn cluster_clocks_are_read_on_the_device_thread() {
+        cc_fs::test_runtime(async {
+            let tmp = fake_cpufreq(&[
+                ("policy0", "2064000", "0 1", Some("972000")),
+                ("policy2", "3228000", "2 3 4 5", Some("3036000")),
+            ])
+            .await;
+            let reply_timeout = std::time::Duration::from_secs(5);
+            let io = DeviceIo::threaded("cpufreq-test", reply_timeout).unwrap();
+
+            let apple_silicon = AppleSilicon::find(tmp.path(), io).await;
+            let freqs = apple_silicon.read_freqs().await;
+
+            assert_eq!(
+                freqs.get(&PACKAGE),
+                Some(&CpuFreqs {
+                    min: 972,
+                    max: 3036,
+                    avg: 2348,
+                })
+            );
+            assert_eq!(apple_silicon.io().descriptor_count().await, 2);
+        });
+    }
+
     /// Goal: a machine whose cpufreq has no policy is still an Apple Silicon machine, with no
     /// frequencies and no cluster channels. Method: a cpufreq directory that does not exist.
     #[test]
@@ -479,7 +548,7 @@ mod tests {
     fn a_machine_without_policies_has_no_clusters() {
         cc_fs::test_runtime(async {
             let missing = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
-            let apple_silicon = AppleSilicon::find(&missing).await;
+            let apple_silicon = AppleSilicon::find(&missing, DeviceIo::default()).await;
             let mut statuses = [channel("CPU Freq Max")];
 
             assert!(apple_silicon.clusters.is_empty());
@@ -491,7 +560,8 @@ mod tests {
     }
 
     /// Goal: a cluster channel never carries a clock from an earlier poll. Method: two
-    /// clusters polled twice, with one clock gone before the second poll.
+    /// clusters polled twice, with one clock unreadable at the second poll. The clocks are read
+    /// through held descriptors, so the file is overwritten in place rather than removed.
     #[test]
     #[serial]
     fn a_poll_keeps_no_clock_from_the_poll_before() {
@@ -502,7 +572,7 @@ mod tests {
             ])
             .await;
             let base = tmp.path().to_path_buf();
-            let apple_silicon = AppleSilicon::find(&base).await;
+            let apple_silicon = AppleSilicon::find(&base, DeviceIo::default()).await;
             let names = [
                 "CPU Freq Efficiency Cluster",
                 "CPU Freq Performance Cluster",
@@ -516,7 +586,9 @@ mod tests {
 
             let first = poll().await;
             let performance_clock = base.join("policy2").join(POLICY_CURRENT_FREQ_FILE);
-            cc_fs::remove_file(&performance_clock).await.unwrap();
+            cc_fs::write_string(&performance_clock, "unreadable\n".to_string())
+                .await
+                .unwrap();
             let second = poll().await;
 
             assert_eq!(first, [Some(972), Some(3036)]);
@@ -533,6 +605,8 @@ mod tests {
         let apple_silicon = AppleSilicon {
             cluster_freqs: RefCell::new(cluster_statuses(&[(&efficiency, 972_000)])),
             clusters: vec![efficiency, cluster("CPU Freq Performance Cluster", 8)],
+            io: DeviceIo::default(),
+            freq_slots: Box::new([0, 1]),
         };
         let mut statuses = vec![
             channel("CPU Freq Efficiency Cluster"),
