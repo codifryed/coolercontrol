@@ -14,6 +14,7 @@ use std::string::ToString;
 use std::time::Instant;
 
 use chrono::{DateTime, Local};
+use futures_util::future::join_all;
 use tokio_util::sync::CancellationToken;
 
 use crate::api::CCError;
@@ -1160,20 +1161,18 @@ impl CustomSensorsRepo {
         if sources.is_empty() {
             return;
         }
-        let pass = moro_local::async_scope!(|scope| {
-            for source in sources.iter() {
-                let sources = &sources;
-                scope.spawn(async move {
-                    debug_assert!(self.file_pass_in_flight.get());
-                    let read = self.io.read_value(&source.path).await;
-                    let value = Self::parse_file_value(source.metric, read);
-                    self.store_file_read(sources, &source.id, value);
-                });
-            }
-        });
+        // One shared worker serializes the reads anyway, so a join queues them all at once for
+        // one allocation where a scope costs about nine.
+        let pass_sources = &sources;
+        let pass = join_all(pass_sources.iter().map(|source| async move {
+            debug_assert!(self.file_pass_in_flight.get());
+            let read = self.io.read_value(&source.path).await;
+            let value = Self::parse_file_value(source.metric, read);
+            self.store_file_read(pass_sources, &source.id, value);
+        }));
         tokio::select! {
             () = self.abort_token.cancelled() => {}
-            () = pass => {}
+            _ = pass => {}
         }
     }
 
