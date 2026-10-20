@@ -140,9 +140,7 @@ impl SysfsFdCache {
         };
         debug_assert!(entry.file.is_none());
         let file = entry.file.insert(File::open(&entry.path)?);
-        let result = Self::read_at_start(&entry.path, file);
-        debug_assert!(entry.file.is_some());
-        result
+        Self::read_at_start(&entry.path, file)
     }
 
     fn release(&self, index: ReadIndex) {
@@ -296,6 +294,20 @@ mod tests {
         let result = cache.read_index(0);
         assert!(result.is_err());
         assert!(cache.is_empty());
+    }
+
+    /// Goal: a first read that opens but fails at the value level must keep its descriptor, so a
+    /// suspended GPU or an unconnected sensor slot does not reopen every tick. Method: register a
+    /// directory, which opens but fails every read with EISDIR, and read it twice.
+    #[test]
+    fn a_failed_first_read_holds_the_descriptor() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = SysfsFdCache::default();
+        cache.install(vec![dir.path().to_path_buf()]);
+        assert!(cache.read_index(0).is_err());
+        assert_eq!(cache.len(), 1);
+        assert!(cache.read_index(0).is_err());
+        assert_eq!(cache.len(), 1);
     }
 
     /// Goal: a slot outside the table must fail its own read and touch nothing else, since a
