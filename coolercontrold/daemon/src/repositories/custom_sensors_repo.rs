@@ -4162,6 +4162,29 @@ mod tests {
         });
     }
 
+    // Goal: a stored File sensor whose file is readable reports its value in the first
+    // status after startup, before any tick has read it. Method: store a sensor whose file
+    // exists, then start the repository.
+    #[test]
+    #[serial]
+    fn stored_file_sensor_reports_its_value_on_startup() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
+            cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            test_config
+                .set_custom_sensor(file_sensor("file1", test_file))
+                .unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+
+            repo.initialize_devices().await.unwrap();
+
+            assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().is_empty());
+        });
+    }
+
     // Goal: the window is a run of CONSECUTIVE failures, not a lifetime budget. A flapping
     // writer must not eventually exhaust it. Method: fail almost to the threshold, succeed
     // once, then fail again and assert the held value is still emitted.
