@@ -1087,7 +1087,7 @@ impl CustomSensorsRepo {
                 None => self.emit_failsafe(id, metric, "file unreadable"),
             },
         };
-        debug_assert!(sensor_value.id == *id);
+        debug_assert_eq!(sensor_value.id, *id);
         debug_assert!(sensor_value.value.is_finite());
         sensor_value
     }
