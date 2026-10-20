@@ -45,7 +45,7 @@ use futures_util::TryFutureExt;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::{oneshot, Semaphore};
 use tokio_util::sync::CancellationToken;
@@ -153,6 +153,36 @@ impl RecoveryState {
     }
 }
 
+/// Notices the supervisor restarting liqctld on its own after it exited.
+///
+/// The fresh service connects every device again, but its driver objects have lost the legacy690
+/// flip and direct access that discovery applied. A PSU with direct access, for one, goes back to
+/// reading through its kernel driver.
+#[derive(Debug, Default)]
+struct ServiceRestarts {
+    /// Bumped on the sidecar by the supervisor before each in-place restart.
+    count: Arc<AtomicU32>,
+    /// The count this repository last caught up with.
+    seen: Cell<u32>,
+}
+
+impl ServiceRestarts {
+    /// Whether the supervisor restarted the service since the last claim. Claims it if so.
+    fn claim_unseen(&self) -> bool {
+        let count = self.count.load(Ordering::Acquire);
+        if count == self.seen.get() {
+            return false;
+        }
+        self.seen.set(count);
+        true
+    }
+
+    /// Marks every restart so far as seen. A service the repository starts itself supersedes them.
+    fn mark_seen(&self) {
+        self.seen.set(self.count.load(Ordering::Acquire));
+    }
+}
+
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     overrides: Rc<OverridesController>,
@@ -185,10 +215,12 @@ pub struct LiquidctlRepo {
     initial_descriptors: HashMap<TypeIndex, InitialDescriptor>,
     /// Drives liqctld restarts for devices that failed to re-initialize. See `RecoveryState`.
     recovery: RefCell<RecoveryState>,
-    /// True while liqctld is being restarted. Preloads spawned by a later tick skip their reads
-    /// rather than counting them as failures: the service is deliberately down, and latching
-    /// failsafe for our own restart would be a self-inflicted fan spin-up.
+    /// True while liqctld is being restarted, or caught up with after the supervisor restarted it.
+    /// Preloads spawned by a later tick skip their reads rather than counting them as failures:
+    /// during our own restart the service is deliberately down, and latching failsafe for it would
+    /// be a self-inflicted fan spin-up. A catch-up keeps reads off the driver objects it changes.
     restart_in_progress: Cell<bool>,
+    service_restarts: ServiceRestarts,
 }
 
 /// One device's identity as liqctld first reported it. See `LiquidctlRepo::initial_descriptors`.
@@ -292,7 +324,13 @@ impl LiquidctlRepo {
         }
         let stop_token = CancellationToken::new();
         let running = Arc::new(AtomicBool::new(false));
-        let done_rx = Self::spawn_service_task(&running, run_token.clone(), stop_token.clone());
+        let service_restarts = ServiceRestarts::default();
+        let done_rx = Self::spawn_service_task(
+            &running,
+            run_token.clone(),
+            stop_token.clone(),
+            Arc::clone(&service_restarts.count),
+        );
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
         let liqctld_client =
@@ -328,6 +366,7 @@ impl LiquidctlRepo {
             initial_descriptors: HashMap::new(),
             recovery: RefCell::new(RecoveryState::default()),
             restart_in_progress: Cell::new(false),
+            service_restarts,
         })
     }
 
@@ -371,12 +410,13 @@ impl LiquidctlRepo {
         running: &Arc<AtomicBool>,
         run_token: CancellationToken,
         stop_token: CancellationToken,
+        restarts: Arc<AtomicU32>,
     ) -> oneshot::Receiver<Result<()>> {
         running.store(true, Ordering::Release);
         let running = Arc::clone(running);
         let (done_tx, done_rx) = oneshot::channel();
         crate::sidecar::handle().spawn(move || async move {
-            let result = liqctld_service::run(run_token, stop_token).await;
+            let result = liqctld_service::run(run_token, stop_token, restarts).await;
             running.store(false, Ordering::Release);
             let _ = done_tx.send(result);
         });
@@ -574,10 +614,12 @@ impl LiquidctlRepo {
         );
         let stop_token = CancellationToken::new();
         *self.liqctld_stop_token.borrow_mut() = stop_token.clone();
+        self.service_restarts.mark_seen();
         let done_rx = Self::spawn_service_task(
             &self.liqctld_service_running,
             self.run_token.clone(),
             stop_token,
+            Arc::clone(&self.service_restarts.count),
         );
         *self.liqctld_service_done.borrow_mut() = Some(done_rx);
         // Allow the Python service to start listening on the Unix socket.
@@ -858,20 +900,76 @@ impl LiquidctlRepo {
         Ok(())
     }
 
+    /// Catches up with a restart the supervisor made on its own, if it made one since the last.
+    ///
+    /// The fresh service has connected every device, and the devices kept their own state, so only
+    /// what died with the old process is re-applied: the legacy690 flip and direct access. Nothing
+    /// is initialized, as that resets device modes (a Corsair PSU's fan goes back to hardware
+    /// control) and only the wake path re-applies saved settings after it. A device that cannot be
+    /// caught up with is left to recovery, whose restart re-establishes it from scratch.
+    async fn poll_service_restart(&self) {
+        if self.restart_in_progress.get() || self.service_restarts.claim_unseen().not() {
+            return;
+        }
+        self.restart_in_progress.set(true);
+        let result = self.catch_up_with_service_restart().await;
+        self.restart_in_progress.set(false);
+        let failed_devices = result.unwrap_or_else(|err| {
+            debug!("Catching up with the restarted coolercontrol-liqctld failed: {err}");
+            self.devices
+                .values()
+                .map(|device_lock| device_lock.borrow().type_index)
+                .collect()
+        });
+        if failed_devices.is_empty() {
+            debug!("Liquidctl devices caught up with the restarted coolercontrol-liqctld.");
+            return;
+        }
+        self.recovery.borrow_mut().begin_episode(failed_devices);
+    }
+
+    /// Returns the ids that could not be caught up with.
+    async fn catch_up_with_service_restart(&self) -> Result<HashSet<TypeIndex>> {
+        // The supervisor counts a restart before the new service listens. This first request's
+        // connection retries wait for it.
+        let fresh_devices = self.liqctld_client.get_all_devices().await?.devices;
+        let matched_devices = self.match_devices_after_restart(&fresh_devices);
+        let mut failed_devices = HashSet::new();
+        for device_lock in self.devices.values() {
+            let device_index = device_lock.borrow().type_index;
+            if matched_devices.contains(&device_index).not() {
+                failed_devices.insert(device_index);
+                continue;
+            }
+            // Reads that started before the restart may still be retrying. Let them finish first.
+            let _permit = self
+                .device_permit(device_index)
+                .acquire()
+                .await
+                .expect("device permit never closed");
+            if let Err(err) = self.reapply_driver_choices(device_lock).await {
+                debug!("Device #{device_index} could not be caught up with: {err}");
+                failed_devices.insert(device_index);
+            }
+        }
+        Ok(failed_devices)
+    }
+
     /// Runs one recovery attempt if one is scheduled and due.
     ///
     /// Driven from `preload_statuses`, which the main loop spawns per tick and bounds with its
     /// snapshot timeout, so a restart taking several seconds delays this repository's reads
-    /// without stalling the tick loop.
+    /// without stalling the tick loop. Waits while a restart is being caught up with, so the two
+    /// never work on the service at once.
     async fn poll_recovery(&self) {
-        if self.recovery.borrow().is_attempt_due().not() {
+        if self.restart_in_progress.get() || self.recovery.borrow().is_attempt_due().not() {
             return;
         }
         let attempt = self.recovery.borrow_mut().claim_attempt();
         if attempt == 1 {
             warn!(
-                "A liquidctl device did not come back after reconnecting it. Restarting \
-                coolercontrol-liqctld, which reopens every device from scratch."
+                "A liquidctl device did not come back. Restarting coolercontrol-liqctld, which \
+                reopens every device from scratch."
             );
         } else {
             debug!("Liquidctl device recovery attempt {attempt}.");
@@ -999,10 +1097,21 @@ fn match_fresh_devices(
 impl LiquidctlRepo {
     /// Re-applies what a fresh liqctld does not know about a device, then initializes it.
     ///
-    /// A new service connects each device but knows nothing of the user's legacy690 choice or of
-    /// direct access, both of which are only ever applied during discovery. The settings re-apply
-    /// that follows on the wake path restores duties and lighting on top.
+    /// The settings re-apply that follows on the wake path restores duties and lighting on top.
     async fn reestablish_device(&self, device_lock: &DeviceLock) -> Result<()> {
+        self.reapply_driver_choices(device_lock).await?;
+        let device_index = device_lock.borrow().type_index;
+        self.liqctld_client
+            .initialize_device(&device_index, None)
+            .await?;
+        Ok(())
+    }
+
+    /// Re-applies the user's legacy690 choice and direct access to a device in a fresh liqctld.
+    ///
+    /// A new service connects each device but knows nothing of either, as both are only ever
+    /// applied during discovery.
+    async fn reapply_driver_choices(&self, device_lock: &DeviceLock) -> Result<()> {
         let (device_index, device_uid) = {
             let device = device_lock.borrow();
             (device.type_index, device.uid.clone())
@@ -1024,9 +1133,6 @@ impl LiquidctlRepo {
         if direct_access {
             self.liqctld_client.put_direct_access(&device_index).await?;
         }
-        self.liqctld_client
-            .initialize_device(&device_index, None)
-            .await?;
         Ok(())
     }
 
@@ -1561,6 +1667,7 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn preload_statuses(self: Rc<Self>) {
+        self.poll_service_restart().await;
         self.poll_recovery().await;
         if self.restart_in_progress.get() {
             trace!("Skipping liquidctl status preload while the service is restarting.");
@@ -2114,6 +2221,28 @@ mod tests {
             match_fresh_devices(&initial, &fresh_devices),
             HashSet::from([1])
         );
+    }
+
+    #[test]
+    fn a_service_restart_is_caught_up_with_once() {
+        // Goal: every tick polls, but each supervisor restart is caught up with exactly once.
+        // Method: bump the shared count as the supervisor does, then claim twice.
+        let restarts = ServiceRestarts::default();
+        assert!(restarts.claim_unseen().not());
+        restarts.count.fetch_add(1, Ordering::AcqRel);
+        assert!(restarts.claim_unseen());
+        assert!(restarts.claim_unseen().not());
+    }
+
+    #[test]
+    fn a_service_the_repository_starts_supersedes_earlier_restarts() {
+        // Goal: a restart from before the repository started its own service is not caught up
+        // with afterwards, which would re-apply choices the new service already has. Method: bump
+        // twice, mark seen as `start_service` does, then claim.
+        let restarts = ServiceRestarts::default();
+        restarts.count.fetch_add(2, Ordering::AcqRel);
+        restarts.mark_seen();
+        assert!(restarts.claim_unseen().not());
     }
 
     #[test]
