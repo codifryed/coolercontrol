@@ -192,6 +192,7 @@ impl CustomSensorsRepo {
 
     /// Reads File sources on a thread of their own, so a file that blocks in its read (a FIFO,
     /// a hung network mount, a driver attribute) parks that thread instead of the main loop.
+    /// Every File sensor shares the one thread, so a wedged file fails safe all of them.
     #[must_use]
     pub fn with_isolated_file_reads(mut self) -> Self {
         self.io = DeviceIo::isolated_or_inline("custom-sensors", reply_timeout_for(self.poll_rate));
