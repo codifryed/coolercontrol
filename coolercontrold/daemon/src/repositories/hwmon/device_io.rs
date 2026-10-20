@@ -9,8 +9,8 @@
 //! the failsafe's staleness counting: every protection the daemon has is a timer on the runtime
 //! the stall is holding.
 //!
-//! One thread, one ring and one `SysfsFdCache` per device makes that machinery able to run. It
-//! adds no safety of its own.
+//! One thread and one `SysfsFdCache` per device makes that machinery able to run. It adds no
+//! safety of its own. The thread runs no runtime: it blocks on its queue and in plain syscalls.
 use std::cell::{Cell, RefCell};
 use std::fmt::Display;
 use std::io::{Error, ErrorKind};
@@ -20,7 +20,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use log::{debug, error, warn};
+use log::{debug, warn};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::cc_fs::{self, ReadIndex, SysfsValue};
@@ -59,8 +59,8 @@ const _: () = assert!(QUEUE_DEPTH > 0);
 pub const READ_BATCH_MAX: usize = 512;
 const _: () = assert!(READ_BATCH_MAX > 0);
 
-/// Stack for a worker thread. It runs one `async fn` with a fixed buffer and no recursion, so the
-/// default 8 MiB is wasted address space once there is one per device.
+/// Stack for a worker thread. It runs one blocking loop over fixed buffers with no recursion, so
+/// the default 8 MiB is wasted address space once there is one per device.
 const WORKER_STACK_BYTES: usize = 256 * 1024;
 
 /// How long one operation may take before it counts against the device's health.
@@ -627,49 +627,45 @@ pub enum Request {
     ClearDescriptors,
 }
 
-/// The worker thread body: its own runtime, its own descriptor cache, one request at a time.
-fn run_worker(rx: mpsc::Receiver<Request>) {
-    match rt::worker_runtime(serve(rx)) {
-        Ok(()) => debug!("device IO worker stopped"),
-        // The device loses isolation, not its readings: every dispatch then times out and the
-        // device is marked unreachable, which is the same path a wedged driver takes.
-        Err(err) => error!("Device IO worker could not start its runtime: {err}"),
+/// The worker thread body: its own descriptor cache, one blocking request at a time, until the
+/// last `DeviceIo` handle is dropped and the queue closes.
+fn run_worker(mut rx: mpsc::Receiver<Request>) {
+    let fds = cc_fs::SysfsFdCache::default();
+    while let Some(request) = rx.blocking_recv() {
+        serve_one(&fds, request);
     }
+    debug!("device IO worker stopped");
 }
 
-/// Serve requests until the last `DeviceIo` handle is dropped and the queue closes.
-async fn serve(mut rx: mpsc::Receiver<Request>) {
-    let fds = cc_fs::SysfsFdCache::default();
-    while let Some(request) = rx.recv().await {
-        match request {
-            Request::Read { path, reply } => {
-                // Uncached: one-shots are detection probes, labels and pre-write reads, none of
-                // which repeat per tick. The table is for the per-tick set alone.
-                let result = cc_fs::read_sysfs_value(&path).await;
-                // A dropped receiver means the caller already timed out. Expected, not an error.
-                let _ = reply.send(result);
-            }
-            Request::ReadMany { indices, reply } => {
-                let mut values = Vec::with_capacity(indices.len());
-                for index in &indices {
-                    values.push(fds.read_index(*index));
-                }
-                let _ = reply.send(Ok(values));
-            }
-            Request::Install { paths, reply } => {
-                fds.install(paths);
-                let _ = reply.send(Ok(()));
-            }
-            #[cfg(test)]
-            Request::DescriptorCount { reply } => {
-                let _ = reply.send(Ok(fds.len()));
-            }
-            Request::Write { path, data, reply } => {
-                let result = cc_fs::write(&path, data).await;
-                let _ = reply.send(result);
-            }
-            Request::ClearDescriptors => fds.clear(),
+fn serve_one(fds: &cc_fs::SysfsFdCache, request: Request) {
+    match request {
+        Request::Read { path, reply } => {
+            // Uncached: one-shots are detection probes, labels and pre-write reads, none of
+            // which repeat per tick. The table is for the per-tick set alone.
+            let result = cc_fs::read_sysfs_value_blocking(&path);
+            // A dropped receiver means the caller already timed out. Expected, not an error.
+            let _ = reply.send(result);
         }
+        Request::ReadMany { indices, reply } => {
+            let mut values = Vec::with_capacity(indices.len());
+            for index in &indices {
+                values.push(fds.read_index(*index));
+            }
+            let _ = reply.send(Ok(values));
+        }
+        Request::Install { paths, reply } => {
+            fds.install(paths);
+            let _ = reply.send(Ok(()));
+        }
+        #[cfg(test)]
+        Request::DescriptorCount { reply } => {
+            let _ = reply.send(Ok(fds.len()));
+        }
+        Request::Write { path, data, reply } => {
+            let result = cc_fs::write_blocking(&path, &data);
+            let _ = reply.send(result);
+        }
+        Request::ClearDescriptors => fds.clear(),
     }
 }
 
