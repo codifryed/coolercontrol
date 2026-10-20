@@ -26,9 +26,11 @@ use crate::repositories::hwmon::device_io::reply_timeout_for;
 use crate::repositories::hwmon::devices;
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
-use crate::repositories::liquidctl::liqctld_client::{DeviceResponse, LCStatus, LiqctldClient};
+use crate::repositories::liquidctl::liqctld_client::{
+    ColorRequest, DeviceResponse, LCStatus, StatusResponse,
+};
 use crate::repositories::liquidctl::liqctld_http::{Endpoint, LIQCTLD_CONNECTION_TRIES};
-use crate::repositories::liquidctl::liqctld_io::LiqctldIo;
+use crate::repositories::liquidctl::liqctld_io::{LiqctldControl, LiqctldIo};
 use crate::repositories::liquidctl::liqctld_service;
 use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
@@ -63,6 +65,12 @@ const LIQCTLD_QUIT_TIMEOUT: Duration = Duration::from_secs(2);
 const LIQCTLD_GRACEFUL_EXIT_TIMEOUT: Duration = Duration::from_secs(4);
 /// Time to wait for the supervisor to observe and reap the child after a force-kill.
 const LIQCTLD_REAP_TIMEOUT: Duration = Duration::from_secs(1);
+/// Total initialization attempts, the first plus its retries. Kept low because these retries are
+/// no longer the only recovery: the repository escalates a failure to reconnecting the device, and
+/// then to restarting liqctld, both of which actually reopen it. Retrying a dead handle four more
+/// times at 1s each just delays whichever of those works.
+const LIQCTLD_MAX_INIT_RETRIES: usize = 2;
+const LIQCTLD_INIT_PAUSE_MS: u64 = 1_000;
 
 /// Delay before each restart after the first. The first failure escalates with no wait, so this is
 /// indexed by the number of attempts already made. Past the end, recovery stops until the next
@@ -157,8 +165,9 @@ impl RecoveryState {
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     overrides: Rc<OverridesController>,
-    liqctld_client: LiqctldClient,
-    /// One worker per device, by liqctld id, so status reads do no socket IO on this thread.
+    /// Serves the liqctld calls that belong to no device.
+    liqctld_control: LiqctldControl,
+    /// One worker per device, by liqctld id, so this thread does no socket IO.
     liqctld_devices: HashMap<TypeIndex, LiqctldIo>,
     /// Set true when the supervisor task is spawned, false when it exits. The sidecar `JoinHandle`
     /// cannot cross back to this thread, so this flag stands in for `JoinHandle::is_finished`.
@@ -270,10 +279,9 @@ impl LiquidctlRepo {
         {
             let _: Result<()> = async {
                 // attempt to quickly shut down the liqctld service if it happens to be running.
-                let liqctld_client = LiqctldClient::new(1, run_token.clone()).await?;
-                liqctld_client.post_quit().await?;
-                liqctld_client.shutdown();
-                Ok(())
+                LiqctldControl::spawn(Endpoint::liqctld(1))?
+                    .post_quit()
+                    .await
             }
             .await;
             return Err(InitError::LiqctldDisabled.into());
@@ -298,24 +306,19 @@ impl LiquidctlRepo {
         let done_rx = Self::spawn_service_task(&running, run_token.clone(), stop_token.clone());
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
-        let liqctld_client =
-            match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES, run_token.clone()).await {
-                Ok(client) => client,
-                Err(err) => {
-                    let err_msg = Self::service_exit_message(&running, done_rx, &err).await;
-                    return Err(InitError::Connection { msg: err_msg }.into());
-                }
-            };
-        liqctld_client
-            .handshake()
-            .await
+        let liqctld_control = LiqctldControl::spawn(Endpoint::liqctld(LIQCTLD_CONNECTION_TRIES))
             .map_err(|err| InitError::Connection {
                 msg: err.to_string(),
             })?;
+        // The handshake's connect tries cover liqctld's startup device scan.
+        if let Err(err) = liqctld_control.handshake().await {
+            let err_msg = Self::service_exit_message(&running, done_rx, &err).await;
+            return Err(InitError::Connection { msg: err_msg }.into());
+        }
         Ok(LiquidctlRepo {
             config,
             overrides,
-            liqctld_client,
+            liqctld_control,
             liqctld_devices: HashMap::new(),
             liqctld_service_running: running,
             liqctld_service_done: RefCell::new(Some(done_rx)),
@@ -458,11 +461,7 @@ impl LiquidctlRepo {
         self.check_for_legacy_690(device).await?;
         self.rename_device_io(device);
         if direct_access {
-            if let Err(err) = self
-                .liqctld_client
-                .put_direct_access(&device.type_index)
-                .await
-            {
+            if let Err(err) = self.device_io(device.type_index)?.put_direct_access().await {
                 error!("Error enabling direct access for: {} - {err}", device.name);
             }
         }
@@ -495,7 +494,7 @@ impl LiquidctlRepo {
     }
 
     pub async fn get_devices(&mut self) -> Result<()> {
-        let devices_response = self.liqctld_client.get_all_devices().await?;
+        let devices_response = self.liqctld_control.get_all_devices().await?;
         let mut unique_device_identifiers = get_unique_identifiers(&devices_response.devices);
         let poll_rate = self.config.get_settings()?.poll_rate;
         // Final guard so no two liquidctl devices share a UID and get dropped from the map.
@@ -611,7 +610,7 @@ impl LiquidctlRepo {
     /// modifying any cached state. Used for device change detection.
     /// Filters out devices with empty descriptions as they are not usable.
     pub async fn scan_devices(&self) -> Result<Vec<String>> {
-        let response = self.liqctld_client.scan_devices().await?;
+        let response = self.liqctld_control.scan_devices().await?;
         Ok(response
             .devices
             .into_iter()
@@ -642,7 +641,7 @@ impl LiquidctlRepo {
         *self.liqctld_service_done.borrow_mut() = Some(done_rx);
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
-        self.liqctld_client.handshake().await?;
+        self.liqctld_control.handshake().await?;
         debug_assert!(
             self.is_service_running(),
             "Service must be running after successful start."
@@ -842,10 +841,7 @@ impl LiquidctlRepo {
 
     async fn call_initialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
         let device_index = device_lock.borrow().type_index;
-        let status_response = self
-            .liqctld_client
-            .initialize_device(&device_index, None)
-            .await?;
+        let status_response = self.initialize_device(device_index, None).await?;
         let mut device = device_lock.borrow_mut();
         let status_map = Self::create_status_map(&status_response.status);
         let firmware_version = device_support::get_firmware_ver(&status_map);
@@ -914,10 +910,8 @@ impl LiquidctlRepo {
     }
 
     async fn reconnect_and_initialize(&self, device_index: TypeIndex) -> Result<()> {
-        self.liqctld_client.put_reconnect(&device_index).await?;
-        self.liqctld_client
-            .initialize_device(&device_index, None)
-            .await?;
+        self.device_io(device_index)?.put_reconnect().await?;
+        self.initialize_device(device_index, None).await?;
         Ok(())
     }
 
@@ -1000,7 +994,7 @@ impl LiquidctlRepo {
         for io in self.liqctld_devices.values() {
             io.allow_probe_now();
         }
-        let fresh_devices = self.liqctld_client.get_all_devices().await?.devices;
+        let fresh_devices = self.liqctld_control.get_all_devices().await?.devices;
         let matched_devices = self.match_devices_after_restart(&fresh_devices);
         let mut still_failed = HashSet::new();
         for device_lock in self.devices.values() {
@@ -1081,31 +1075,59 @@ impl LiquidctlRepo {
             .get(&device_uid)
             .copied()
             .unwrap_or(false);
+        let io = self.device_io(device_index)?;
         if is_legacy690 {
             // Our own name and driver type already carry the flip; only liqctld has forgotten it.
-            self.liqctld_client.put_legacy690(&device_index).await?;
+            io.put_legacy690().await?;
         }
         let direct_access = self
             .config
             .get_cc_settings_for_device(&device_uid)?
             .is_some_and(|settings| settings.extensions.direct_access);
         if direct_access {
-            self.liqctld_client.put_direct_access(&device_index).await?;
+            io.put_direct_access().await?;
         }
-        self.liqctld_client
-            .initialize_device(&device_index, None)
-            .await?;
+        self.initialize_device(device_index, None).await?;
         Ok(())
     }
 
     async fn call_reinitialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
         let device_index = device_lock.borrow().type_index;
         // pump_modes will be set after re-initializing
-        let _ = self
-            .liqctld_client
-            .initialize_device(&device_index, None)
-            .await?;
+        let _ = self.initialize_device(device_index, None).await?;
         Ok(())
+    }
+
+    /// Initializes one device, retrying once on failure unless the daemon is shutting down.
+    async fn initialize_device(
+        &self,
+        device_index: TypeIndex,
+        pump_mode: Option<String>,
+    ) -> Result<StatusResponse> {
+        let io = self.device_io(device_index)?;
+        let mut response = io.initialize(pump_mode.clone()).await;
+        if response.is_ok() {
+            return response;
+        }
+        for _ in 1..LIQCTLD_MAX_INIT_RETRIES {
+            // Do not retry while shutting down: the device is already failing, and each retry
+            // only adds a 1s delay plus log spam to the shutdown path (e.g. the LCD shutdown
+            // image). One failed attempt is enough.
+            if self.run_token.is_cancelled() {
+                return response;
+            }
+            sleep(Duration::from_millis(LIQCTLD_INIT_PAUSE_MS)).await;
+            info!("Retrying liquidctl device #{device_index} initialization request.");
+            response = io.initialize(pump_mode.clone()).await;
+            if response.is_ok() {
+                return response;
+            }
+        }
+        warn!(
+            "Failed to successfully initialize liquidctl device after {LIQCTLD_MAX_INIT_RETRIES} \
+             tries."
+        );
+        response
     }
 
     async fn check_for_legacy_690(&self, device: &mut Device) -> Result<()> {
@@ -1113,10 +1135,8 @@ impl LiquidctlRepo {
         if lc_info.driver_type == BaseDriver::Modern690Lc {
             if let Some(is_legacy690) = self.config.legacy690_ids()?.get(&device.uid) {
                 if *is_legacy690 {
-                    let device_response = self
-                        .liqctld_client
-                        .put_legacy690(&device.type_index)
-                        .await?;
+                    let device_response =
+                        self.device_io(device.type_index)?.put_legacy690().await?;
                     device.name.clone_from(&device_response.description);
                     lc_info.driver_type = self
                         .map_driver_type(&device_response)
@@ -1157,8 +1177,7 @@ impl LiquidctlRepo {
             } else {
                 "balanced".to_string()
             };
-            self.liqctld_client
-                .initialize_device(&device_data.type_index, Some(pump_mode))
+            self.initialize_device(device_data.type_index, Some(pump_mode))
                 .await
                 .map(|_| ()) // ignore successful result
                 .map_err(|err| {
@@ -1175,8 +1194,7 @@ impl LiquidctlRepo {
             } else {
                 "balanced".to_string()
             };
-            self.liqctld_client
-                .initialize_device(&device_data.type_index, Some(pump_mode))
+            self.initialize_device(device_data.type_index, Some(pump_mode))
                 .await
                 .map(|_| ()) // ignore successful result
                 .map_err(|err| {
@@ -1186,8 +1204,8 @@ impl LiquidctlRepo {
                     )
                 })
         } else {
-            self.liqctld_client
-                .put_fixed_speed(&device_data.type_index, channel_name, fixed_speed)
+            let io = self.device_io(device_data.type_index)?;
+            io.put_fixed_speed(channel_name, fixed_speed)
                 .await
                 .map_err(|err| {
                     anyhow!(
@@ -1240,13 +1258,8 @@ impl LiquidctlRepo {
             None
         };
         let result = self
-            .liqctld_client
-            .put_speed_profile(
-                &device_data.type_index,
-                channel_name,
-                &capped_profile,
-                temperature_sensor,
-            )
+            .device_io(device_data.type_index)?
+            .put_speed_profile(channel_name, &capped_profile, temperature_sensor)
             .await
             .map_err(|err| {
                 anyhow!(
@@ -1315,17 +1328,17 @@ impl LiquidctlRepo {
         let lc_channel_name = self
             .device_mapper
             .liquidctl_color_channel_name(&device_data.driver_type, channel_name);
+        let color_request = ColorRequest {
+            channel: lc_channel_name.to_owned(),
+            mode: mode.clone(),
+            colors,
+            time_per_color,
+            speed,
+            direction,
+        };
         let result = self
-            .liqctld_client
-            .put_color(
-                &device_data.type_index,
-                lc_channel_name,
-                mode,
-                colors,
-                time_per_color,
-                speed,
-                direction,
-            )
+            .device_io(device_data.type_index)?
+            .put_color(color_request)
             .await
             .map_err(|err| {
                 anyhow!(
@@ -1434,8 +1447,8 @@ impl LiquidctlRepo {
         mode: &str,
         value: Option<String>,
     ) -> Result<()> {
-        self.liqctld_client
-            .put_screen(type_index, channel_name, mode, value)
+        self.device_io(*type_index)?
+            .put_screen(channel_name, mode, value)
             .await
             .map_err(|err| {
                 anyhow!("Setting screen for LIQUIDCTL Device #{type_index}: {uid} - {err}")
@@ -1471,7 +1484,7 @@ impl LiquidctlRepo {
         // Best-effort graceful quit. Ignore both a timeout and a device error here: the child still
         // exits on its own signal handler, and the bounded await below plus the force-kill fallback
         // guarantee it is gone regardless.
-        if timeout(LIQCTLD_QUIT_TIMEOUT, self.liqctld_client.post_quit())
+        if timeout(LIQCTLD_QUIT_TIMEOUT, self.liqctld_control.post_quit())
             .await
             .is_err()
         {
@@ -1495,7 +1508,7 @@ impl LiquidctlRepo {
                 }
             }
         }
-        self.liqctld_client.shutdown();
+        self.liqctld_control.disconnect();
         for io in self.liqctld_devices.values() {
             io.disconnect();
         }
@@ -1727,9 +1740,8 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        // Tear down whenever the supervisor was started, NOT when the connection pool is non-empty:
-        // an error storm drains the pool (a failed request drops its connection), so gating on
-        // `is_connected()` would skip `/quit` and leave liqctld running for systemd to SIGKILL.
+        // Tear down whenever the supervisor was started, whatever state the connections are in:
+        // skipping `/quit` would leave liqctld running for systemd to SIGKILL.
         if self.liqctld_service_running.load(Ordering::Acquire) {
             // Due to issue quickly mentioned here:
             // https://github.com/liquidctl/liquidctl/issues/631#issuecomment-1826568352
@@ -1752,8 +1764,7 @@ impl Repository for LiquidctlRepo {
             .expect("device permit never closed");
         let result = if cached_device_data.driver_type == BaseDriver::CorsairHidPsu {
             // The only device so far that can be reset to hardware control
-            self.liqctld_client
-                .initialize_device(&cached_device_data.type_index, None)
+            self.initialize_device(cached_device_data.type_index, None)
                 .await
                 .map(|_| ())
                 .map_err(|err| {
@@ -1763,8 +1774,8 @@ impl Repository for LiquidctlRepo {
                     )
                 })
         } else if cached_device_data.driver_type == BaseDriver::LianLiUni {
-            self.liqctld_client
-                .put_control_mode(&cached_device_data.type_index, channel_name, "auto")
+            self.device_io(cached_device_data.type_index)?
+                .put_control_mode(channel_name, "auto")
                 .await
                 .map_err(|err| {
                     anyhow!(

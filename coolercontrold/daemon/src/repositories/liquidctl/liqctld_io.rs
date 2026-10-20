@@ -6,7 +6,7 @@
 //! One worker thread and one connection per liquidctl device, so the main thread does no socket
 //! IO and a request stalled inside liqctld parks only its own device's thread. Health follows the
 //! rules of a sysfs device: enough timeouts in a row take a device out of rotation until its next
-//! probe.
+//! probe. A control thread serves the calls that belong to no device.
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::thread;
@@ -14,23 +14,33 @@ use std::time::Duration;
 
 use anyhow::Result;
 use log::{debug, trace};
-use serde::de::DeserializeOwned;
+use serde::de::{DeserializeOwned, IgnoredAny};
 use serde::Serialize;
 use tokio::sync::{mpsc, oneshot};
 
 #[cfg(all(test, feature = "gated-tests"))]
 use crate::repositories::hwmon::device_io::DeviceHealth;
 use crate::repositories::hwmon::device_io::{HealthState, QUEUE_DEPTH};
-use crate::repositories::liquidctl::liqctld_client::StatusResponse;
-use crate::repositories::liquidctl::liqctld_http::{Endpoint, LiqctldHttp, Method};
+use crate::repositories::liquidctl::liqctld_client::{
+    ColorRequest, ControlModeRequest, DeviceResponse, DevicesResponse, FixedSpeedRequest,
+    InitializeRequest, ScreenRequest, SpeedProfileRequest, StatusResponse,
+};
+use crate::repositories::liquidctl::liqctld_http::{
+    Endpoint, LiqctldHttp, Method, LIQCTLD_RESPONSE_TIMEOUT,
+};
 use crate::rt;
 
+/// Budget for every device call but status. Matches the socket timeout, which covers
+/// liquidctl's own 9.5 s job timeout.
+const COMMAND_TIMEOUT: Duration = LIQCTLD_RESPONSE_TIMEOUT;
 /// Stack for a worker thread. It runs one blocking loop, and liqctld's replies nest a few levels
 /// deep at most, so the default 8 MiB is wasted address space once there is one per device.
 const WORKER_STACK_BYTES: usize = 256 * 1024;
 const THREAD_NAME_PREFIX: &str = "ccliq-";
+const CONTROL_THREAD_NAME: &str = "ccliq-ctl";
 /// The kernel caps thread names at 15 bytes, and a `u8` id adds at most 3.
 const _: () = assert!(THREAD_NAME_PREFIX.len() + 3 <= 15);
+const _: () = assert!(CONTROL_THREAD_NAME.len() <= 15);
 const NO_BODY: Option<&()> = None;
 
 type Reply<T> = oneshot::Sender<Result<T>>;
@@ -42,15 +52,81 @@ pub enum Request {
     Status {
         reply: Reply<StatusResponse>,
     },
+    Initialize {
+        body: InitializeRequest,
+        reply: Reply<StatusResponse>,
+    },
+    Legacy690 {
+        reply: Reply<DeviceResponse>,
+    },
+    Reconnect {
+        reply: Reply<()>,
+    },
+    DirectAccess {
+        reply: Reply<()>,
+    },
+    FixedSpeed {
+        body: FixedSpeedRequest,
+        reply: Reply<()>,
+    },
+    SpeedProfile {
+        body: SpeedProfileRequest,
+        reply: Reply<()>,
+    },
+    ControlMode {
+        body: ControlModeRequest,
+        reply: Reply<()>,
+    },
+    Color {
+        body: ColorRequest,
+        reply: Reply<()>,
+    },
+    Screen {
+        body: ScreenRequest,
+        reply: Reply<()>,
+    },
     /// Closes the connection, for when the service behind it is gone.
     Disconnect,
 }
 
-impl Request {
+/// Work for the control thread: the calls that belong to no device.
+#[derive(Debug)]
+pub enum ControlRequest {
+    Handshake { reply: Reply<()> },
+    Devices { reply: Reply<DevicesResponse> },
+    Scan { reply: Reply<DevicesResponse> },
+    Quit { reply: Reply<()> },
+    Disconnect,
+}
+
+/// What a worker loop needs to know about a request before serving it.
+trait Job {
     /// Whether the caller stopped waiting. Such a request is not sent at all.
+    fn is_abandoned(&self) -> bool;
+}
+
+impl Job for Request {
     fn is_abandoned(&self) -> bool {
         match self {
-            Self::Status { reply } => reply.is_closed(),
+            Self::Status { reply } | Self::Initialize { reply, .. } => reply.is_closed(),
+            Self::Legacy690 { reply } => reply.is_closed(),
+            Self::Reconnect { reply }
+            | Self::DirectAccess { reply }
+            | Self::FixedSpeed { reply, .. }
+            | Self::SpeedProfile { reply, .. }
+            | Self::ControlMode { reply, .. }
+            | Self::Color { reply, .. }
+            | Self::Screen { reply, .. } => reply.is_closed(),
+            Self::Disconnect => false,
+        }
+    }
+}
+
+impl Job for ControlRequest {
+    fn is_abandoned(&self) -> bool {
+        match self {
+            Self::Handshake { reply } | Self::Quit { reply } => reply.is_closed(),
+            Self::Devices { reply } | Self::Scan { reply } => reply.is_closed(),
             Self::Disconnect => false,
         }
     }
@@ -77,15 +153,10 @@ impl LiqctldIo {
     ) -> Result<Self> {
         debug_assert!(status_timeout > Duration::ZERO);
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
-        let thread_name = format!("{THREAD_NAME_PREFIX}{device_index}");
-        debug!("liqctld worker starting: {thread_name}");
-        let http = LiqctldHttp::new(endpoint);
-        // Detached deliberately: a worker stuck in a socket read only returns at its timeout, so
-        // a handle would only invite a `join` that cannot be bounded.
-        thread::Builder::new()
-            .name(thread_name)
-            .stack_size(WORKER_STACK_BYTES)
-            .spawn(move || run_worker(http, device_index, rx))?;
+        let mut http = LiqctldHttp::new(endpoint);
+        spawn_worker(format!("{THREAD_NAME_PREFIX}{device_index}"), move || {
+            run_loop(rx, |request| serve_device(&mut http, device_index, request));
+        })?;
         Ok(Self {
             tx,
             status_timeout,
@@ -96,6 +167,109 @@ impl LiqctldIo {
     /// The device's current status, within the poll-rate budget.
     pub async fn status(&self) -> Result<StatusResponse> {
         self.dispatch("status", self.status_timeout, |reply| Request::Status {
+            reply,
+        })
+        .await
+    }
+
+    pub async fn initialize(&self, pump_mode: Option<String>) -> Result<StatusResponse> {
+        let body = InitializeRequest { pump_mode };
+        self.dispatch("initialize", COMMAND_TIMEOUT, |reply| Request::Initialize {
+            body,
+            reply,
+        })
+        .await
+    }
+
+    /// Sets the device to legacy 690 mode (old Krakens and the EVGA CLC).
+    pub async fn put_legacy690(&self) -> Result<DeviceResponse> {
+        self.dispatch("legacy690", COMMAND_TIMEOUT, |reply| Request::Legacy690 {
+            reply,
+        })
+        .await
+    }
+
+    /// Releases and re-opens the device's USB handle, leaving the others alone.
+    ///
+    /// The lighter half of recovery: it does to a single device what restarting liqctld does to
+    /// every device, and keeps the driver object, so a legacy690 flip and a forced direct access
+    /// survive it. The device still has to be re-initialized afterwards.
+    pub async fn put_reconnect(&self) -> Result<()> {
+        self.dispatch("reconnect", COMMAND_TIMEOUT, |reply| Request::Reconnect {
+            reply,
+        })
+        .await
+    }
+
+    /// Forces direct access, before the device is initialized.
+    pub async fn put_direct_access(&self) -> Result<()> {
+        self.dispatch("direct access", COMMAND_TIMEOUT, |reply| {
+            Request::DirectAccess { reply }
+        })
+        .await
+    }
+
+    pub async fn put_fixed_speed(&self, channel_name: &str, duty: u8) -> Result<()> {
+        let body = FixedSpeedRequest {
+            channel: channel_name.to_owned(),
+            duty,
+        };
+        self.dispatch("fixed speed", COMMAND_TIMEOUT, |reply| {
+            Request::FixedSpeed { body, reply }
+        })
+        .await
+    }
+
+    pub async fn put_speed_profile(
+        &self,
+        channel_name: &str,
+        profile: &[(f64, u8)],
+        temperature_sensor: Option<u8>,
+    ) -> Result<()> {
+        let body = SpeedProfileRequest {
+            channel: channel_name.to_owned(),
+            profile: profile.to_vec(),
+            temperature_sensor,
+        };
+        self.dispatch("speed profile", COMMAND_TIMEOUT, |reply| {
+            Request::SpeedProfile { body, reply }
+        })
+        .await
+    }
+
+    pub async fn put_control_mode(&self, channel_name: &str, control_mode: &str) -> Result<()> {
+        let body = ControlModeRequest {
+            channel: channel_name.to_owned(),
+            desired_state: control_mode.to_owned(),
+        };
+        self.dispatch("control mode", COMMAND_TIMEOUT, |reply| {
+            Request::ControlMode { body, reply }
+        })
+        .await
+    }
+
+    pub async fn put_color(&self, body: ColorRequest) -> Result<()> {
+        self.dispatch("color", COMMAND_TIMEOUT, |reply| Request::Color {
+            body,
+            reply,
+        })
+        .await
+    }
+
+    /// `mode` is one of "gif", "static", "orientation", "brightness" or a liquid mode.
+    pub async fn put_screen(
+        &self,
+        channel_name: &str,
+        mode: &str,
+        value: Option<String>,
+    ) -> Result<()> {
+        let body = ScreenRequest {
+            channel: channel_name.to_owned(),
+            mode: mode.to_owned(),
+            value,
+        };
+        self.dispatch("screen", COMMAND_TIMEOUT, |reply| Request::Screen {
+            body,
             reply,
         })
         .await
@@ -150,64 +324,199 @@ impl LiqctldIo {
             return Err(unreachable(self.state.device_name(), what));
         }
         let (reply_tx, reply_rx) = oneshot::channel();
+        let gone = || worker_gone(self.state.device_name());
         let request = make_request(reply_tx);
-        let exchange = async {
-            self.tx
-                .send(request)
-                .await
-                .map_err(|_| worker_gone(self.state.device_name()))?;
-            reply_rx
-                .await
-                .map_err(|_| worker_gone(self.state.device_name()))?
+        let Some(result) = round_trip(&self.tx, request, reply_rx, budget, gone).await else {
+            self.state.record_timeout(&what);
+            return Err(timed_out(self.state.device_name(), what, budget));
         };
-        match rt::timeout(budget, exchange).await {
-            Ok(result) => {
-                self.state.record_answered();
-                result
-            }
-            Err(_elapsed) => {
-                self.state.record_timeout(&what);
-                Err(timed_out(self.state.device_name(), what, budget))
-            }
-        }
+        self.state.record_answered();
+        result
     }
 }
 
-/// The worker thread body: one connection, one blocking request at a time, until the last
-/// handle is dropped and the queue closes.
-fn run_worker(mut http: LiqctldHttp, device_index: u8, mut rx: mpsc::Receiver<Request>) {
-    while let Some(request) = rx.blocking_recv() {
-        if request.is_abandoned() {
-            trace!("Skipping an abandoned request for liquidctl device #{device_index}");
+/// The main-thread half of the control thread.
+///
+/// Not health-gated: startup, recovery and shutdown depend on these calls going through, and
+/// they are rare.
+pub struct LiqctldControl {
+    tx: mpsc::Sender<ControlRequest>,
+    budget: Duration,
+}
+
+impl LiqctldControl {
+    /// Start the control thread. Each call may take every connect try of `endpoint`, for
+    /// liqctld's startup scan.
+    ///
+    /// # Errors
+    ///
+    /// When the OS refuses the thread.
+    pub fn spawn(endpoint: Endpoint) -> Result<Self> {
+        let budget = endpoint.exchange_budget();
+        let (tx, rx) = mpsc::channel::<ControlRequest>(QUEUE_DEPTH);
+        let mut http = LiqctldHttp::new(endpoint);
+        spawn_worker(CONTROL_THREAD_NAME.to_owned(), move || {
+            run_loop(rx, |request| serve_control(&mut http, request));
+        })?;
+        Ok(Self { tx, budget })
+    }
+
+    /// Verifies liqctld is answering requests.
+    pub async fn handshake(&self) -> Result<()> {
+        self.dispatch("handshake", |reply| ControlRequest::Handshake { reply })
+            .await
+    }
+
+    /// The devices liqctld connected at startup.
+    pub async fn get_all_devices(&self) -> Result<DevicesResponse> {
+        self.dispatch("devices", |reply| ControlRequest::Devices { reply })
+            .await
+    }
+
+    /// A fresh scan for connected devices, leaving liqctld's own device state alone.
+    pub async fn scan_devices(&self) -> Result<DevicesResponse> {
+        self.dispatch("scan", |reply| ControlRequest::Scan { reply })
+            .await
+    }
+
+    /// Shuts the liqctld service down.
+    pub async fn post_quit(&self) -> Result<()> {
+        self.dispatch("quit", |reply| ControlRequest::Quit { reply })
+            .await
+    }
+
+    /// Closes the control connection, so it reconnects on its next request.
+    pub fn disconnect(&self) {
+        if self.tx.try_send(ControlRequest::Disconnect).is_err() {
+            debug!("could not disconnect the liqctld control connection: busy or gone");
+        }
+    }
+
+    async fn dispatch<T, F>(&self, what: &'static str, make_request: F) -> Result<T>
+    where
+        F: FnOnce(Reply<T>) -> ControlRequest,
+    {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let gone = || worker_gone("control");
+        round_trip(
+            &self.tx,
+            make_request(reply_tx),
+            reply_rx,
+            self.budget,
+            gone,
+        )
+        .await
+        .unwrap_or_else(|| Err(timed_out("control", what, self.budget)))
+    }
+}
+
+/// Queues `request` and waits for its reply. `None` when `budget` ran out first.
+async fn round_trip<R, T>(
+    tx: &mpsc::Sender<R>,
+    request: R,
+    reply_rx: oneshot::Receiver<Result<T>>,
+    budget: Duration,
+    gone: impl Fn() -> anyhow::Error,
+) -> Option<Result<T>> {
+    debug_assert!(budget > Duration::ZERO);
+    let exchange = async {
+        tx.send(request).await.map_err(|_| gone())?;
+        reply_rx.await.map_err(|_| gone())?
+    };
+    rt::timeout(budget, exchange).await.ok()
+}
+
+fn spawn_worker(thread_name: String, body: impl FnOnce() + Send + 'static) -> Result<()> {
+    debug!("liqctld worker starting: {thread_name}");
+    // Detached deliberately: a worker stuck in a socket read only returns at its timeout, so a
+    // handle would only invite a `join` that cannot be bounded.
+    thread::Builder::new()
+        .name(thread_name)
+        .stack_size(WORKER_STACK_BYTES)
+        .spawn(body)?;
+    Ok(())
+}
+
+/// The worker thread body: one blocking request at a time, until the last handle is dropped
+/// and the queue closes.
+fn run_loop<J: Job>(mut rx: mpsc::Receiver<J>, mut serve: impl FnMut(J)) {
+    while let Some(job) = rx.blocking_recv() {
+        if job.is_abandoned() {
+            trace!("Skipping an abandoned liqctld request");
             continue;
         }
-        serve_one(&mut http, device_index, request);
+        serve(job);
     }
-    debug!("liqctld worker for device #{device_index} stopped");
+    debug!("liqctld worker stopped");
 }
 
-fn serve_one(http: &mut LiqctldHttp, device_index: u8, request: Request) {
+fn serve_device(http: &mut LiqctldHttp, id: u8, request: Request) {
     match request {
-        Request::Status { reply } => {
-            let result = call(
-                http,
-                Method::Get,
-                format_args!("/devices/{device_index}/status"),
-                NO_BODY,
-                &|| reply.is_closed(),
-            );
-            // A dropped receiver means the caller already timed out. Expected, not an error.
-            let _ = reply.send(result);
-        }
+        Request::Status { reply } => answer(reply, |abandoned| {
+            call(http, id, Method::Get, "status", NO_BODY, abandoned)
+        }),
+        Request::Initialize { body, reply } => answer(reply, |abandoned| {
+            call(http, id, Method::Post, "initialize", Some(&body), abandoned)
+        }),
+        Request::Legacy690 { reply } => answer(reply, |abandoned| {
+            call(http, id, Method::Put, "legacy690", NO_BODY, abandoned)
+        }),
+        Request::Reconnect { reply } => answer(reply, |abandoned| {
+            put(http, id, "reconnect", NO_BODY, abandoned)
+        }),
+        Request::DirectAccess { reply } => answer(reply, |abandoned| {
+            put(http, id, "direct-access", NO_BODY, abandoned)
+        }),
+        Request::FixedSpeed { body, reply } => answer(reply, |abandoned| {
+            put(http, id, "speed/fixed", Some(&body), abandoned)
+        }),
+        Request::SpeedProfile { body, reply } => answer(reply, |abandoned| {
+            put(http, id, "speed/profile", Some(&body), abandoned)
+        }),
+        Request::ControlMode { body, reply } => answer(reply, |abandoned| {
+            put(http, id, "control-mode", Some(&body), abandoned)
+        }),
+        Request::Color { body, reply } => answer(reply, |abandoned| {
+            put(http, id, "color", Some(&body), abandoned)
+        }),
+        Request::Screen { body, reply } => answer(reply, |abandoned| {
+            put(http, id, "screen", Some(&body), abandoned)
+        }),
         Request::Disconnect => http.disconnect(),
     }
 }
 
-/// One exchange, with its reply parsed here rather than on the main thread.
+fn serve_control(http: &mut LiqctldHttp, request: ControlRequest) {
+    match request {
+        ControlRequest::Handshake { reply } => answer(reply, |abandoned| {
+            control_call::<IgnoredAny>(http, Method::Get, "/handshake", abandoned).map(drop)
+        }),
+        ControlRequest::Devices { reply } => answer(reply, |abandoned| {
+            control_call(http, Method::Get, "/devices", abandoned)
+        }),
+        ControlRequest::Scan { reply } => answer(reply, |abandoned| {
+            control_call(http, Method::Get, "/devices/scan", abandoned)
+        }),
+        ControlRequest::Quit { reply } => answer(reply, |abandoned| {
+            control_call::<IgnoredAny>(http, Method::Post, "/quit", abandoned).map(drop)
+        }),
+        ControlRequest::Disconnect => http.disconnect(),
+    }
+}
+
+/// Runs `work` while its caller waits, then hands the caller the result.
+fn answer<T>(reply: Reply<T>, work: impl FnOnce(&dyn Fn() -> bool) -> Result<T>) {
+    let result = work(&|| reply.is_closed());
+    // A dropped receiver means the caller already timed out. Expected, not an error.
+    let _ = reply.send(result);
+}
+
+/// One exchange on a device's path, with its reply parsed here rather than on the main thread.
 fn call<T, B>(
     http: &mut LiqctldHttp,
+    id: u8,
     method: Method,
-    path: std::fmt::Arguments<'_>,
+    route: &str,
     body: Option<&B>,
     abandoned: &dyn Fn() -> bool,
 ) -> Result<T>
@@ -215,7 +524,34 @@ where
     T: DeserializeOwned,
     B: Serialize,
 {
-    let reply_body = http.exchange(method, path, body, abandoned)?;
+    let reply_body = http.exchange(
+        method,
+        format_args!("/devices/{id}/{route}"),
+        body,
+        abandoned,
+    )?;
+    Ok(serde_json::from_slice(reply_body)?)
+}
+
+/// A device command whose reply carries nothing but success. Still parsed, so a reply that is
+/// not JSON fails loudly.
+fn put<B: Serialize>(
+    http: &mut LiqctldHttp,
+    id: u8,
+    route: &str,
+    body: Option<&B>,
+    abandoned: &dyn Fn() -> bool,
+) -> Result<()> {
+    call::<IgnoredAny, B>(http, id, Method::Put, route, body, abandoned).map(drop)
+}
+
+fn control_call<T: DeserializeOwned>(
+    http: &mut LiqctldHttp,
+    method: Method,
+    path: &str,
+    abandoned: &dyn Fn() -> bool,
+) -> Result<T> {
+    let reply_body = http.exchange(method, format_args!("{path}"), NO_BODY, abandoned)?;
     Ok(serde_json::from_slice(reply_body)?)
 }
 
@@ -252,7 +588,7 @@ mod tests {
     use crate::repositories::hwmon::device_io::UNREACHABLE_AFTER_TIMEOUTS;
     use std::io::{BufRead, BufReader, Read, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{mpsc as std_mpsc, Arc, Mutex};
 
@@ -271,9 +607,20 @@ mod tests {
     #[derive(Debug, PartialEq)]
     enum Event {
         Accepted,
-        Request(String),
+        Request { line: String, body: String },
         Closed,
     }
+
+    impl Event {
+        fn request(line: &str, body: &str) -> Self {
+            Self::Request {
+                line: line.to_owned(),
+                body: body.to_owned(),
+            }
+        }
+    }
+
+    type Handler = dyn Fn(usize) -> Action + Send + Sync;
 
     /// A liqctld stand-in on a socket in a temporary directory. Every connection is served on a
     /// thread of its own, and `handler` picks the action by request number.
@@ -286,20 +633,8 @@ mod tests {
     impl FakeLiqctld {
         fn start(handler: impl Fn(usize) -> Action + Send + Sync + 'static) -> Self {
             let dir = tempfile::tempdir().unwrap();
-            let socket_path = dir.path().join("liqctld.sock");
-            let listener = UnixListener::bind(&socket_path).unwrap();
-            let (events_tx, events) = std_mpsc::channel();
-            let handler: Arc<dyn Fn(usize) -> Action + Send + Sync> = Arc::new(handler);
-            let served = Arc::new(AtomicUsize::new(0));
-            thread::spawn(move || {
-                for stream in listener.incoming() {
-                    let Ok(stream) = stream else { return };
-                    let _ = events_tx.send(Event::Accepted);
-                    let (handler, served, events_tx) =
-                        (Arc::clone(&handler), Arc::clone(&served), events_tx.clone());
-                    thread::spawn(move || serve_connection(stream, &*handler, &served, &events_tx));
-                }
-            });
+            let socket_path = socket_in(dir.path());
+            let events = listen(&socket_path, Arc::new(handler));
             Self {
                 _dir: dir,
                 socket_path,
@@ -308,34 +643,62 @@ mod tests {
         }
 
         fn endpoint(&self, io_timeout: Duration) -> Endpoint {
-            Endpoint {
-                socket_path: self.socket_path.clone(),
-                connect_tries: 2,
-                connect_pause: Duration::from_millis(10),
-                io_timeout,
-            }
+            test_endpoint(self.socket_path.clone(), 2, io_timeout)
         }
 
         fn next_event(&self) -> Event {
             self.events.recv_timeout(EVENT_WAIT).unwrap()
         }
 
-        /// Every event so far, without waiting for more.
-        fn drain(&self) -> Vec<Event> {
-            self.events.try_iter().collect()
+        /// Every request so far, without waiting for more.
+        fn requests(&self) -> Vec<Event> {
+            self.events
+                .try_iter()
+                .filter(|event| matches!(event, Event::Request { .. }))
+                .collect()
         }
+    }
+
+    fn socket_in(dir: &Path) -> PathBuf {
+        dir.join("liqctld.sock")
+    }
+
+    fn test_endpoint(socket_path: PathBuf, connect_tries: usize, io_timeout: Duration) -> Endpoint {
+        Endpoint {
+            socket_path,
+            connect_tries,
+            connect_pause: Duration::from_millis(10),
+            io_timeout,
+        }
+    }
+
+    /// Binds `socket_path` and serves it until the test process exits.
+    fn listen(socket_path: &Path, handler: Arc<Handler>) -> std_mpsc::Receiver<Event> {
+        let listener = UnixListener::bind(socket_path).unwrap();
+        let (events_tx, events) = std_mpsc::channel();
+        let served = Arc::new(AtomicUsize::new(0));
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else { return };
+                let _ = events_tx.send(Event::Accepted);
+                let (handler, served, events_tx) =
+                    (Arc::clone(&handler), Arc::clone(&served), events_tx.clone());
+                thread::spawn(move || serve_connection(stream, &*handler, &served, &events_tx));
+            }
+        });
+        events
     }
 
     fn serve_connection(
         stream: UnixStream,
-        handler: &(dyn Fn(usize) -> Action + Send + Sync),
+        handler: &Handler,
         served: &AtomicUsize,
         events: &std_mpsc::Sender<Event>,
     ) {
         let mut writer = stream.try_clone().unwrap();
         let mut reader = BufReader::new(stream);
-        while let Some(request_line) = read_request(&mut reader) {
-            let _ = events.send(Event::Request(request_line));
+        while let Some((line, body)) = read_request(&mut reader) {
+            let _ = events.send(Event::Request { line, body });
             match handler(served.fetch_add(1, Ordering::SeqCst)) {
                 Action::Reply => write_reply(&mut writer),
                 Action::ReplyAndClose => {
@@ -348,8 +711,8 @@ mod tests {
         let _ = events.send(Event::Closed);
     }
 
-    /// The request line, after reading the head and any body. `None` at EOF.
-    fn read_request(reader: &mut BufReader<UnixStream>) -> Option<String> {
+    /// The request line and body. `None` at EOF.
+    fn read_request(reader: &mut BufReader<UnixStream>) -> Option<(String, String)> {
         let mut request_line = String::new();
         if reader.read_line(&mut request_line).ok()? == 0 {
             return None;
@@ -369,7 +732,10 @@ mod tests {
         }
         let mut body = vec![0; content_length];
         reader.read_exact(&mut body).ok()?;
-        Some(request_line.trim_end().to_owned())
+        Some((
+            request_line.trim_end().to_owned(),
+            String::from_utf8(body).unwrap(),
+        ))
     }
 
     fn write_reply(writer: &mut UnixStream) {
@@ -409,9 +775,37 @@ mod tests {
             assert_eq!(server.next_event(), Event::Accepted);
             assert_eq!(
                 server.next_event(),
-                Event::Request("GET /devices/3/status HTTP/1.1".to_owned())
+                Event::request("GET /devices/3/status HTTP/1.1", "")
             );
             assert_eq!(io.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: liqctld reads a command's arguments from its JSON body by `Content-Length`, so the
+    /// body must arrive whole and as liqctld names the fields. Method: a fixed speed and an
+    /// initialize, then compare what the stand-in read.
+    #[test]
+    fn a_command_carries_its_json_body() {
+        rt::test_runtime(async {
+            let server = FakeLiqctld::start(|_| Action::Reply);
+            let io = worker(&server, LONG, LONG);
+
+            io.put_fixed_speed("fan1", 40).await.unwrap();
+            io.initialize(Some("quiet".to_owned())).await.unwrap();
+
+            assert_eq!(
+                server.requests(),
+                vec![
+                    Event::request(
+                        "PUT /devices/3/speed/fixed HTTP/1.1",
+                        r#"{"channel":"fan1","duty":40}"#
+                    ),
+                    Event::request(
+                        "POST /devices/3/initialize HTTP/1.1",
+                        r#"{"pump_mode":"quiet"}"#
+                    ),
+                ]
+            );
         });
     }
 
@@ -428,8 +822,8 @@ mod tests {
             io.status().await.unwrap();
 
             let accepted = server
-                .drain()
-                .into_iter()
+                .events
+                .try_iter()
                 .filter(|event| *event == Event::Accepted)
                 .count();
             assert_eq!(accepted, 2, "the second request must have reconnected");
@@ -514,12 +908,11 @@ mod tests {
             io.status_timeout = LONG;
             io.status().await.unwrap();
 
-            let requests = server
-                .drain()
-                .into_iter()
-                .filter(|event| matches!(event, Event::Request(_)))
-                .count();
-            assert_eq!(requests, 2, "the abandoned second request was sent");
+            assert_eq!(
+                server.requests().len(),
+                2,
+                "the abandoned second request was sent"
+            );
         });
     }
 
@@ -533,11 +926,81 @@ mod tests {
             let io = worker(&server, LONG, LONG);
             io.status().await.unwrap();
             assert_eq!(server.next_event(), Event::Accepted);
-            assert!(matches!(server.next_event(), Event::Request(_)));
+            assert!(matches!(server.next_event(), Event::Request { .. }));
 
             io.disconnect();
 
             assert_eq!(server.next_event(), Event::Closed);
+        });
+    }
+
+    /// Goal: the control thread serves the calls that belong to no device, on liqctld's own
+    /// routes. Method: a handshake and a quit against a stand-in, then compare what it saw.
+    #[test]
+    fn control_calls_use_the_service_routes() {
+        rt::test_runtime(async {
+            let server = FakeLiqctld::start(|_| Action::Reply);
+            let control = LiqctldControl::spawn(server.endpoint(LONG)).unwrap();
+
+            control.handshake().await.unwrap();
+            control.post_quit().await.unwrap();
+
+            assert_eq!(
+                server.requests(),
+                vec![
+                    Event::request("GET /handshake HTTP/1.1", ""),
+                    Event::request("POST /quit HTTP/1.1", ""),
+                ]
+            );
+        });
+    }
+
+    /// Goal: liqctld's startup scan can keep it from listening for a while, and the first call
+    /// must ride that out on its connect tries rather than fail. Method: start the control
+    /// thread before the socket exists, bind it a moment later, then handshake.
+    #[test]
+    fn a_control_call_waits_for_liqctld_to_listen() {
+        rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let socket_path = socket_in(dir.path());
+            let endpoint = test_endpoint(socket_path.clone(), 100, LONG);
+            let control = LiqctldControl::spawn(endpoint).unwrap();
+            let binder = thread::spawn(move || {
+                thread::sleep(Duration::from_millis(50));
+                listen(&socket_path, Arc::new(|_: usize| Action::Reply))
+            });
+
+            control.handshake().await.unwrap();
+
+            let events = binder.join().unwrap();
+            assert_eq!(events.recv_timeout(EVENT_WAIT).unwrap(), Event::Accepted);
+        });
+    }
+
+    /// Goal: a call abandoned while the worker waits to connect must not be sent once it does.
+    /// A late `/quit` would stop the liqctld that a restart has just started. Method: give up on
+    /// a quit before the socket exists, bind it, then handshake. Only the handshake may arrive.
+    #[test]
+    fn a_call_abandoned_while_connecting_is_never_sent() {
+        rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let socket_path = socket_in(dir.path());
+            let endpoint = test_endpoint(socket_path.clone(), 100, LONG);
+            let control = LiqctldControl::spawn(endpoint).unwrap();
+            let quit = rt::timeout(Duration::from_millis(30), control.post_quit()).await;
+            assert!(quit.is_err(), "nothing is listening yet, so the quit waits");
+
+            let events = listen(&socket_path, Arc::new(|_: usize| Action::Reply));
+            control.handshake().await.unwrap();
+
+            let requests: Vec<Event> = events
+                .try_iter()
+                .filter(|event| matches!(event, Event::Request { .. }))
+                .collect();
+            assert_eq!(
+                requests,
+                vec![Event::request("GET /handshake HTTP/1.1", "")]
+            );
         });
     }
 }

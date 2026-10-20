@@ -61,17 +61,31 @@ impl Endpoint {
             io_timeout: LIQCTLD_RESPONSE_TIMEOUT,
         }
     }
+
+    /// The longest one call can take against a service that is down: every connect try, then one
+    /// full socket timeout.
+    #[must_use]
+    pub fn exchange_budget(&self) -> Duration {
+        let tries = u32::try_from(self.connect_tries).unwrap_or(u32::MAX);
+        self.connect_pause
+            .saturating_mul(tries)
+            .saturating_add(self.io_timeout)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Method {
     Get,
+    Post,
+    Put,
 }
 
 impl Method {
     fn as_str(self) -> &'static str {
         match self {
             Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Put => "PUT",
         }
     }
 }
@@ -576,10 +590,11 @@ mod tests {
         );
     }
 
-    /// Goal: liqctld routes by path and keeps the connection by header, so both must be exact.
-    /// Method: render a GET and compare the bytes.
+    /// Goal: liqctld routes by path, keeps the connection by header and reads a body by
+    /// `Content-Length`, so all three must be exact. Method: render a GET and a PUT and compare
+    /// the bytes.
     #[test]
-    fn a_request_names_its_path_and_host() {
+    fn a_request_names_its_path_host_and_body_length() {
         let mut out = Vec::new();
         render_request(
             &mut out,
@@ -589,8 +604,32 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            String::from_utf8(out).unwrap(),
+            String::from_utf8(out.clone()).unwrap(),
             "GET /devices/3/status HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n"
         );
+
+        let body = br#"{"channel":"fan1","duty":40}"#;
+        render_request(
+            &mut out,
+            Method::Put,
+            format_args!("/devices/{}/speed/fixed", 0),
+            Some(body),
+        )
+        .unwrap();
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "PUT /devices/0/speed/fixed HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\
+             Content-Length: 28\r\n\r\n{\"channel\":\"fan1\",\"duty\":40}"
+        );
+    }
+
+    /// Goal: the control budget must cover every connect try plus one full exchange, or a call
+    /// made while liqctld starts gives up before its last try. Method: compute it for the
+    /// standard endpoint.
+    #[test]
+    fn the_exchange_budget_covers_every_connect_try() {
+        let endpoint = Endpoint::liqctld(LIQCTLD_CONNECTION_TRIES);
+
+        assert_eq!(endpoint.exchange_budget(), Duration::from_secs(25));
     }
 }
