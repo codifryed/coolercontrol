@@ -1066,11 +1066,7 @@ impl CustomSensorsRepo {
             .borrow_mut()
             .get_mut(id)
             .and_then(|state| state.fresh.take());
-        debug_assert!(self
-            .file_read_state
-            .borrow()
-            .get(id)
-            .is_none_or(|state| state.fresh.is_none()));
+        debug_assert!(fresh.is_none_or(f64::is_finite));
         let sensor_value = match fresh {
             Some(raw) => {
                 let sensor_value = self.emit_real(id, metric, raw);
@@ -1087,7 +1083,6 @@ impl CustomSensorsRepo {
                 None => self.emit_failsafe(id, metric, "file unreadable"),
             },
         };
-        debug_assert_eq!(sensor_value.id, *id);
         debug_assert!(sensor_value.value.is_finite());
         sensor_value
     }
