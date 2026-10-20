@@ -63,6 +63,8 @@ pub struct GpuAMD {
     /// Per-device fdinfo delta state, keyed by PCI slot, for GPUs that source
     /// load from DRM fdinfo instead of `gpu_busy_percent`.
     amd_fdinfo_state: RefCell<HashMap<String, FdInfoLoadState>>,
+    /// Holds the fdinfo reads of a scan, kept so scans do not allocate one per client.
+    amd_fdinfo_read_buf: RefCell<Vec<u8>>,
 }
 
 impl GpuAMD {
@@ -73,6 +75,7 @@ impl GpuAMD {
             amd_driver_infos: HashMap::new(),
             amd_preloaded_statuses: RefCell::new(HashMap::new()),
             amd_fdinfo_state: RefCell::new(HashMap::new()),
+            amd_fdinfo_read_buf: RefCell::new(Vec::new()),
         }
     }
 
@@ -304,7 +307,11 @@ impl GpuAMD {
     /// Load `ChannelStatus` (0 on the first sample and while idle), since once
     /// fdinfo is the chosen source we report a value every tick.
     async fn extract_fdinfo_load_status(&self, fdinfo: &FdInfoLoad) -> Vec<ChannelStatus> {
-        let clients = amd_fdinfo::scan_clients(fdinfo.pci_slot()).await;
+        // Taken out rather than borrowed, as the scan yields. Two GPUs scanning at once leaves
+        // the second with a buffer of its own, which then replaces this one.
+        let mut read_buf = self.amd_fdinfo_read_buf.take();
+        let clients = amd_fdinfo::scan_clients(fdinfo.pci_slot(), &mut read_buf).await;
+        self.amd_fdinfo_read_buf.replace(read_buf);
         let percent = self
             .amd_fdinfo_state
             .borrow_mut()
