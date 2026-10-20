@@ -1065,7 +1065,12 @@ impl CustomSensorsRepo {
             .borrow_mut()
             .get_mut(id)
             .and_then(|state| state.fresh.take());
-        match fresh {
+        debug_assert!(self
+            .file_read_state
+            .borrow()
+            .get(id)
+            .is_none_or(|state| state.fresh.is_none()));
+        let sensor_value = match fresh {
             Some(Ok(raw)) => {
                 let sensor_value = self.emit_real(id, metric, raw);
                 // Held as reported, so a held value equals the one it stands in for.
@@ -1080,7 +1085,10 @@ impl CustomSensorsRepo {
                 },
                 None => self.emit_failsafe(id, metric, "file unreadable"),
             },
-        }
+        };
+        debug_assert!(sensor_value.id == *id);
+        debug_assert!(sensor_value.value.is_finite());
+        sensor_value
     }
 
     /// Clears the failure run and holds `value` as the value to emit if the next reads fail.
@@ -1106,10 +1114,13 @@ impl CustomSensorsRepo {
     /// Holds a checked File value as the sensor's last good one, so it reports before its first
     /// read pass lands.
     fn seed_file_read(&self, id: &CustomSensorId, metric: CustomSensorMetric, raw: f64) {
+        debug_assert!(raw.is_finite());
+        debug_assert!(raw >= 0.);
         let state = FileReadState {
             last_good_value: Self::reported_value(metric, raw),
             ..Default::default()
         };
+        debug_assert!(state.last_good_value.is_some());
         self.file_read_state.borrow_mut().insert(id.clone(), state);
     }
 
@@ -1129,6 +1140,11 @@ impl CustomSensorsRepo {
                 _ => None,
             })
             .collect();
+        debug_assert!(sources.len() <= self.sensors.borrow().len());
+        debug_assert!(sources
+            .iter()
+            .enumerate()
+            .all(|(i, source)| sources[..i].iter().all(|other| other.id != source.id)));
         *self.file_sources.borrow_mut() = sources;
     }
 
@@ -1143,6 +1159,7 @@ impl CustomSensorsRepo {
             return;
         }
         let _in_flight = FilePassGuard(&self.file_pass_in_flight);
+        debug_assert!(self.file_pass_in_flight.get());
         let sources = Rc::clone(&self.file_sources.borrow());
         if sources.is_empty() {
             return;
@@ -1151,6 +1168,7 @@ impl CustomSensorsRepo {
             for source in sources.iter() {
                 let sources = &sources;
                 scope.spawn(async move {
+                    debug_assert!(self.file_pass_in_flight.get());
                     let read = self.io.read_value(&source.path).await;
                     let value = Self::parse_file_value(source.metric, read);
                     self.store_file_read(sources, &source.id, value);
@@ -1172,8 +1190,12 @@ impl CustomSensorsRepo {
         id: &CustomSensorId,
         read: Result<f64>,
     ) {
+        debug_assert!(pass_sources.iter().any(|source| &source.id == id));
         if Rc::ptr_eq(pass_sources, &self.file_sources.borrow()).not() {
             return;
+        }
+        if let Ok(value) = &read {
+            debug_assert!(value.is_finite());
         }
         let mut states = self.file_read_state.borrow_mut();
         // Looked up before inserting, so the id is cloned once per sensor rather than per read.
