@@ -176,7 +176,7 @@ impl RecoveryState {
 enum CatchUpEscalation {
     CaughtUp,
     /// Recovery initializes devices, which `no_init` forbids.
-    LeftOnFailsafe,
+    NotEscalated,
     Escalated,
 }
 
@@ -190,7 +190,7 @@ fn escalate_catch_up(
         return CatchUpEscalation::CaughtUp;
     }
     if no_init {
-        return CatchUpEscalation::LeftOnFailsafe;
+        return CatchUpEscalation::NotEscalated;
     }
     recovery.merge_episode(failed_devices);
     CatchUpEscalation::Escalated
@@ -967,15 +967,17 @@ impl LiquidctlRepo {
                 .collect()
         });
         let no_init = self.no_init();
+        let failed_names = self.log_device_names(&failed_devices);
         let escalation =
             escalate_catch_up(&mut self.recovery.borrow_mut(), failed_devices, no_init);
         match escalation {
             CatchUpEscalation::CaughtUp => {
                 debug!("Liquidctl devices caught up with the restarted coolercontrol-liqctld.");
             }
-            CatchUpEscalation::LeftOnFailsafe => debug!(
-                "Some liquidctl devices could not be caught up with, and init is disabled, so \
-                coolercontrol-liqctld is not restarted for them."
+            CatchUpEscalation::NotEscalated => info!(
+                "Liquidctl devices {failed_names} could not be caught up with after \
+                coolercontrol-liqctld restarted. Init is disabled, so they are not recovered \
+                and are still read without their legacy690 or direct access settings."
             ),
             CatchUpEscalation::Escalated => {}
         }
@@ -1134,6 +1136,19 @@ impl LiquidctlRepo {
     /// a list that demonstrably changed shape would hand a saved fan curve to the wrong cooler.
     fn match_devices_after_restart(&self, fresh_devices: &[DeviceResponse]) -> HashSet<TypeIndex> {
         match_fresh_devices(&self.initial_descriptors, fresh_devices)
+    }
+
+    /// The `Label (raw)` names of `type_indexes`, for a log line.
+    fn log_device_names(&self, type_indexes: &HashSet<TypeIndex>) -> String {
+        self.devices
+            .iter()
+            .filter(|(_, device_lock)| type_indexes.contains(&device_lock.borrow().type_index))
+            .map(|(uid, device_lock)| {
+                self.overrides
+                    .log_device_name(uid, &device_lock.borrow().name)
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
@@ -2445,7 +2460,7 @@ mod tests {
         // reach it. Method: escalate a failure with `no_init` set.
         let mut recovery = RecoveryState::default();
         let escalation = escalate_catch_up(&mut recovery, HashSet::from([1]), true);
-        assert_eq!(escalation, CatchUpEscalation::LeftOnFailsafe);
+        assert_eq!(escalation, CatchUpEscalation::NotEscalated);
         assert!(recovery.failed_devices.is_empty());
         assert!(recovery.is_attempt_due().not());
     }
