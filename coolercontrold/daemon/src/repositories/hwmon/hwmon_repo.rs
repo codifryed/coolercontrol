@@ -861,8 +861,6 @@ impl HwmonRepo {
         Ok(())
     }
 
-    /// Notes an hwmon device the daemon is dropping, so the report can say why
-    /// it is absent from the app rather than leaving the user to guess.
     /// Leaves out a device whose identity read got no answer, for this start.
     fn skip_unanswered(&self, path: &Path, device: &dyn std::fmt::Display) {
         identity::log_skipped(device, path);
@@ -909,6 +907,8 @@ impl HwmonRepo {
         Ok(model)
     }
 
+    /// Notes an hwmon device the daemon is dropping, so the report can say why
+    /// it is absent from the app rather than leaving the user to guess.
     fn record_exclusion(&self, path: &Path, reason: HwmonExclusion) {
         let Some(hardware_support) = self.hardware_support.as_ref() else {
             return;
@@ -1717,8 +1717,6 @@ impl HwmonRepo {
     }
 }
 
-/// Clears `preload_in_flight` on drop so a panic / cancellation
-/// cannot wedge subsequent ticks into permanent coalesce-skip.
 /// What decides a hwmon device's UID: its identifier, and the tiebreakers tried on a collision.
 struct HwmonIdentity {
     identifier: UID,
@@ -1726,6 +1724,8 @@ struct HwmonIdentity {
     serial: String,
 }
 
+/// Clears `preload_in_flight` on drop so a panic / cancellation
+/// cannot wedge subsequent ticks into permanent coalesce-skip.
 struct PreloadInFlightGuard {
     flag: Rc<Cell<bool>>,
 }
