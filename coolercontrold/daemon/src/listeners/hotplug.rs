@@ -3,6 +3,7 @@
 
 use crate::config::Config;
 use crate::events::notifier::{self, NotificationHandle, NotificationIcon};
+use crate::repositories::hwmon::device_io;
 use crate::repositories::hwmon::devices::{self, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::identity::{IdentityReader, Stalled};
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
@@ -78,7 +79,7 @@ impl<'s> DeviceListener {
         let event_source = fd;
         // One for the listener's lifetime, so a device that stalled is not read again on every
         // scan, each read parking another thread beside the first.
-        let identity = IdentityReader::start("hotplug", IDENTITY_TIMEOUT);
+        let identity = IdentityReader::start("hotplug", device_io::reply_timeout_from(config));
         let hwmon_baseline = build_hwmon_baseline(&identity).await;
         let lc_baseline = build_liquidctl_baseline(&all_devices);
         // Disabled-device state requires a daemon restart to take effect, so a
@@ -160,10 +161,6 @@ fn create_netlink_socket() -> Result<OwnedFd> {
     bind(fd.as_raw_fd(), &addr)?;
     Ok(fd)
 }
-
-/// How long a scan waits on one device's `name`: the device reply timeout at the default poll
-/// rate, as a scan is not paced by the poll.
-const IDENTITY_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Captures the set of hwmon base paths that currently have applicable
 /// devices (with fans, temps, or power channels) and are not blacklisted.
