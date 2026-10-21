@@ -100,6 +100,7 @@ where
         result = start().await;
         tries += 1;
     }
+    debug_assert!(tries <= MAX_RETRIES);
     result
 }
 

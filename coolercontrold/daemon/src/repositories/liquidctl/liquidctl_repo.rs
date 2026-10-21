@@ -212,6 +212,7 @@ impl ServiceRestarts {
     /// Whether the supervisor restarted the service since the last claim. Claims it if so.
     fn claim_unseen(&self) -> bool {
         let count = self.count.load(Ordering::Acquire);
+        debug_assert!(count >= self.seen.get());
         if count == self.seen.get() {
             return false;
         }
@@ -1000,6 +1001,7 @@ impl LiquidctlRepo {
 
     /// Returns the ids that could not be caught up with.
     async fn catch_up_with_service_restart(&self) -> Result<HashSet<TypeIndex>> {
+        assert!(self.catch_up_active.get());
         // The supervisor counts a restart before the new service listens. This first request's
         // connection retries wait for it.
         let fresh_devices = self.liqctld_client.get_all_devices().await?.devices;
@@ -1026,6 +1028,7 @@ impl LiquidctlRepo {
             }
         }
         self.restart_in_progress.set(false);
+        assert!(failed_devices.len() <= self.devices.len());
         Ok(failed_devices)
     }
 
