@@ -984,16 +984,6 @@ impl LiquidctlRepo {
         }
     }
 
-    fn no_init(&self) -> bool {
-        match self.config.get_settings() {
-            Ok(settings) => settings.no_init,
-            Err(err) => {
-                error!("Error reading settings: {err}");
-                false
-            }
-        }
-    }
-
     /// Returns the ids that could not be caught up with.
     async fn catch_up_with_service_restart(&self) -> Result<HashSet<TypeIndex>> {
         assert!(self.catch_up_active.get());
@@ -1150,6 +1140,16 @@ impl LiquidctlRepo {
             })
             .collect::<Vec<_>>()
             .join(", ")
+    }
+
+    fn no_init(&self) -> bool {
+        match self.config.get_settings() {
+            Ok(settings) => settings.no_init,
+            Err(err) => {
+                error!("Error reading settings: {err}");
+                false
+            }
+        }
     }
 }
 
