@@ -27,6 +27,8 @@ const THREAD_NAME: &str = "nvapi";
 /// The first hotspot reads of all GPUs share one more such budget.
 pub const INIT_TIMEOUT: Duration = Duration::from_secs(10);
 const HEALTH_NAME: &str = "nvapi";
+// PCI bus numbers are 8-bit, so the latch holds at most one entry per bus.
+const PCI_BUSES_MAX: usize = 256;
 
 // Linux caps thread names at 15 bytes.
 const _: () = assert!(THREAD_NAME.len() <= 15);
@@ -180,6 +182,7 @@ impl NvApiIo {
             return true;
         }
         if non_finite_buses.insert(pci_bus) {
+            debug_assert!(non_finite_buses.len() <= PCI_BUSES_MAX);
             info!(
                 "nvapi reported an impossible hotspot temperature of {temp} for PCI bus \
                  {pci_bus}. It is omitted."
