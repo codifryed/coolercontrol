@@ -275,15 +275,14 @@ pub fn pread_reissuing(
 
 /// Reads the entire contents of a sysfs file into a UTF-8 encoded string.
 ///
-/// Tailored for sysfs files, which are typically small and contain few values. Returns an error if
-/// the file cannot be opened or read, or if the contents are not valid UTF-8. Numeric hot-path
-/// reads belong on `read_sysfs_value`; this remains for genuine text reads (names, labels,
-/// serials).
+/// Tests only, to check what a write left behind: the daemon's own text reads (names, labels,
+/// serials) go through a device worker, `DeviceIo::read_text`.
 ///
 /// The idle-CPU win comes from compio's completion-based IO. A managed buffer pool was tried here
 /// for registered buffers, but it corrupts/fails the per-tick concurrent fan-out (many reads share
 /// one pool over the `io_uring` buffer ring: cross-contaminated data or "flags are invalid"). The
 /// plain read is correct and still completion-based.
+#[cfg(test)]
 pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
     {
         Ok(String::from_utf8(compio::fs::read(path.as_ref()).await?)?)
