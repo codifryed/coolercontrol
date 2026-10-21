@@ -1364,7 +1364,9 @@ impl GpuNVidia {
         let search_timeout_time = Instant::now().add(XAUTHORITY_SEARCH_TIMEOUT);
         while Instant::now() < search_timeout_time {
             rt::sleep(Duration::from_millis(500)).await;
-            if let Some(path) = find_xauthority_path() {
+            // The glob walks home directories, which may be automounted, so it runs on the
+            // blocking pool.
+            if let Ok(Some(path)) = rt::spawn_blocking(find_xauthority_path).await {
                 return Some(path);
             }
         }
