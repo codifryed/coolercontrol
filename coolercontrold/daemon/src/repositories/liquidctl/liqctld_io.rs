@@ -304,10 +304,15 @@ impl LiqctldIo {
         );
     }
 
-    /// Lets the next request through even if the device is currently unreachable, for when the
-    /// service behind it was restarted.
-    pub fn allow_probe_now(&self) {
-        self.state.allow_next_dispatch();
+    /// Clears the device's timeout count and probe gate, for when the service behind it was
+    /// restarted.
+    pub fn reset_health(&self) {
+        self.state.reset();
+    }
+
+    #[cfg(test)]
+    pub fn record_timeout(&self) {
+        self.state.record_timeout(&"test");
     }
 
     /// Names the device in later logs.

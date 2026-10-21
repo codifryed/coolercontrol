@@ -1933,10 +1933,10 @@ fn remove_failed_devices(
     }
 }
 
-/// Lets the next request to every device through, whatever its probe gate says.
+/// Clears every device's timeout count and probe gate, so each starts over as healthy.
 fn rearm_device_probes(liqctld_devices: &HashMap<TypeIndex, LiqctldIo>) {
     for io in liqctld_devices.values() {
-        io.allow_probe_now();
+        io.reset_health();
     }
 }
 
@@ -2140,9 +2140,9 @@ mod tests {
         .unwrap()
     }
 
-    /// Goal: re-arming the probes, as resume and restart both do, lets an unreachable device's
-    /// next request through. Method: force two workers unreachable, re-arm, then check neither is
-    /// still gated. No request is sent, so the socket is never touched.
+    /// Goal: re-arming the probes, as resume and restart both do, leaves an unreachable device
+    /// healthy. Method: force two workers unreachable, re-arm, then check both are healthy. No
+    /// request is sent, so the socket is never touched.
     #[test]
     fn rearming_probes_clears_every_unreachable_gate() {
         let devices: HashMap<TypeIndex, LiqctldIo> =
@@ -2155,8 +2155,27 @@ mod tests {
         rearm_device_probes(&devices);
 
         for io in devices.values() {
-            assert!(matches!(io.health(), DeviceHealth::Unreachable { .. }).not());
+            assert_eq!(io.health(), DeviceHealth::Healthy);
         }
+    }
+
+    /// Goal: one timeout after a re-arm does not put the device straight back out of rotation.
+    /// Method: force a worker unreachable, re-arm, record one timeout, then check it is degraded.
+    #[test]
+    fn one_timeout_after_rearm_keeps_the_device_dispatchable() {
+        let devices: HashMap<TypeIndex, LiqctldIo> = [(1, unused_worker(1))].into();
+        let io = &devices[&1];
+        io.force_unreachable();
+
+        rearm_device_probes(&devices);
+        io.record_timeout();
+
+        assert_eq!(
+            io.health(),
+            DeviceHealth::Degraded {
+                consecutive_timeouts: 1
+            }
+        );
     }
 
     /// Runs `initialize_with_retries` with no pause, against an attempt that succeeds from

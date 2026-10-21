@@ -494,6 +494,12 @@ impl HealthState {
         self.probe_after.set(None);
     }
 
+    /// Forgets every past timeout, for when the service behind the device was restarted.
+    pub fn reset(&self) {
+        self.consecutive_timeouts.set(0);
+        self.probe_after.set(None);
+    }
+
     /// Puts the device into the state `record_timeout` would have left it in.
     #[cfg(test)]
     pub fn force_unreachable_at(&self, timeouts: u8, probe_after: Instant) {
