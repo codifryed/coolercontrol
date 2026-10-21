@@ -556,7 +556,7 @@ impl HwmonRepo {
         lc_locations: Vec<String>,
         overrides: Rc<OverridesController>,
     ) -> Self {
-        let poll_rate = config.get_settings().map_or(1.0, |s| s.poll_rate);
+        let poll_rate = config.poll_rate_or_default();
         let device_read_permit_timeout = device_read_permit_timeout_for(poll_rate);
         let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
         let slow_device_init_threshold = slow_device_init_threshold_for(poll_rate);

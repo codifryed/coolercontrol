@@ -89,8 +89,7 @@ impl GpuAMD {
         // Guards against two GPUs resolving to the same UID (e.g. serial-less duplicates that both
         // hash blank). base_paths is path-sorted, so the assignment is stable across boots.
         let mut assigned_uids: HashSet<UID> = HashSet::new();
-        let io_reply_timeout =
-            device_io::reply_timeout_for(self.config.get_settings().map_or(1.0, |s| s.poll_rate));
+        let io_reply_timeout = device_io::reply_timeout_from(&self.config);
         for path in base_paths {
             let device_name = devices::get_device_name(&path).await;
             if device_name != AMD_HWMON_NAME {

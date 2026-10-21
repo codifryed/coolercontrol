@@ -24,6 +24,7 @@ use log::{debug, warn};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::cc_fs::{self, ReadIndex, SysfsValue};
+use crate::config::Config;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::rt;
 
@@ -75,6 +76,12 @@ pub fn reply_timeout_for(poll_rate: f64) -> Duration {
     debug_assert!(poll_rate >= 0.5);
     debug_assert!(poll_rate <= 5.0);
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
+}
+
+/// `reply_timeout_for` the configured poll rate.
+#[must_use]
+pub fn reply_timeout_from(config: &Config) -> Duration {
+    reply_timeout_for(config.poll_rate_or_default())
 }
 
 /// What the caller can observe about a device's IO.
@@ -776,6 +783,16 @@ fn worker_gone(device_name: &str) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reply_timeout_from_follows_the_configured_poll_rate() {
+        let config = Config::init_default_config().unwrap();
+        let mut settings = config.get_settings().unwrap();
+        settings.poll_rate = 2.5;
+        config.set_settings(&settings);
+        assert_eq!(reply_timeout_from(&config), reply_timeout_for(2.5));
+        assert_ne!(reply_timeout_for(2.5), reply_timeout_for(1.0));
+    }
 
     /// Goal: the descriptor cache is the reason a device thread is cheaper than a pool, but it
     /// lives on the worker where nothing could see it, so the no-leak claim was only ever proven

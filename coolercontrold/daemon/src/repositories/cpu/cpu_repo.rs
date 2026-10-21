@@ -185,10 +185,9 @@ impl CpuRepo {
         let apple_silicon_model = apple_silicon::board_model().await;
         self.apple_silicon = if apple_silicon_model.is_some() {
             // Before any cpufreq read, so cluster discovery is isolated too.
-            let poll_rate = self.config.get_settings().map_or(1.0, |s| s.poll_rate);
             let io = DeviceIo::isolated_or_inline(
                 apple_silicon::DRIVER_NAME,
-                device_io::reply_timeout_for(poll_rate),
+                device_io::reply_timeout_from(&self.config),
             );
             Some(AppleSilicon::find(apple_silicon::CPUFREQ_POLICY_PATH.as_ref(), io).await)
         } else {
@@ -761,10 +760,8 @@ impl CpuRepo {
         }
         let mut channels = Vec::new();
         // Before any value read, so detection is isolated too.
-        let io = DeviceIo::isolated_or_inline(
-            device_name,
-            device_io::reply_timeout_for(self.config.get_settings().map_or(1.0, |s| s.poll_rate)),
-        );
+        let io =
+            DeviceIo::isolated_or_inline(device_name, device_io::reply_timeout_from(&self.config));
         match Self::init_cpu_temp(path, &io).await {
             Ok(temps) => channels.extend(temps),
             Err(err) => error!("Error initializing CPU Temps: {err}"),

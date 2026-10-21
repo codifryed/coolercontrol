@@ -125,8 +125,7 @@ impl GpuNVidia {
     async fn start_nvapi(&mut self) {
         debug_assert!(self.nvml_handles_pending_workers.is_empty().not());
         let register_hotspot_buses = self.collect_register_hotspot_buses();
-        let poll_rate = self.config.get_settings().map_or(1.0, |s| s.poll_rate);
-        let reply_timeout = device_io::reply_timeout_for(poll_rate);
+        let reply_timeout = device_io::reply_timeout_from(&self.config);
         self.nvapi_io = NvApiIo::start(register_hotspot_buses, reply_timeout).await;
     }
 
