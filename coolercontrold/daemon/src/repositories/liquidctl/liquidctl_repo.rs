@@ -950,7 +950,11 @@ impl LiquidctlRepo {
     /// control) and only the wake path re-applies saved settings after it. A device that cannot be
     /// caught up with is left to recovery, whose restart re-establishes it from scratch.
     async fn poll_service_restart(&self) {
-        if self.restart_in_progress.get() || self.service_restarts.claim_unseen().not() {
+        // A restart counted during our own work on the service is claimed on a later tick.
+        if self.restart_in_progress.get() {
+            return;
+        }
+        if self.service_restarts.claim_unseen().not() {
             return;
         }
         self.restart_in_progress.set(true);
@@ -1022,7 +1026,10 @@ impl LiquidctlRepo {
     /// without stalling the tick loop. Waits while a restart is being caught up with, so the two
     /// never work on the service at once.
     async fn poll_recovery(&self) {
-        if self.restart_in_progress.get() || self.recovery.borrow().is_attempt_due().not() {
+        if self.restart_in_progress.get() {
+            return;
+        }
+        if self.recovery.borrow().is_attempt_due().not() {
             return;
         }
         let attempt = self.recovery.borrow_mut().claim_attempt();
