@@ -1103,29 +1103,13 @@ impl LiquidctlRepo {
         pump_mode: Option<String>,
     ) -> Result<StatusResponse> {
         let io = self.device_io(device_index)?;
-        let mut response = io.initialize(pump_mode.clone()).await;
-        if response.is_ok() {
-            return response;
-        }
-        for _ in 1..LIQCTLD_INIT_ATTEMPTS_MAX {
-            // Do not retry while shutting down: the device is already failing, and each retry
-            // only adds a 1s delay plus log spam to the shutdown path (e.g. the LCD shutdown
-            // image). One failed attempt is enough.
-            if self.run_token.is_cancelled() {
-                return response;
-            }
-            sleep(Duration::from_millis(LIQCTLD_INIT_PAUSE_MS)).await;
-            info!("Retrying liquidctl device #{device_index} initialization request.");
-            response = io.initialize(pump_mode.clone()).await;
-            if response.is_ok() {
-                return response;
-            }
-        }
-        warn!(
-            "Failed to successfully initialize liquidctl device after {LIQCTLD_INIT_ATTEMPTS_MAX} \
-             tries."
-        );
-        response
+        initialize_with_retries(
+            device_index,
+            &self.run_token,
+            Duration::from_millis(LIQCTLD_INIT_PAUSE_MS),
+            || io.initialize(pump_mode.clone()),
+        )
+        .await
     }
 
     async fn check_for_legacy_690(&self, device: &mut Device) -> Result<()> {
@@ -1899,6 +1883,42 @@ impl Repository for LiquidctlRepo {
     }
 }
 
+/// Runs `attempt` up to `LIQCTLD_INIT_ATTEMPTS_MAX` times, `pause` apart, until one succeeds.
+async fn initialize_with_retries<T, F, Fut>(
+    device_index: TypeIndex,
+    run_token: &CancellationToken,
+    pause: Duration,
+    mut attempt: F,
+) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    let mut response = attempt().await;
+    if response.is_ok() {
+        return response;
+    }
+    for _ in 1..LIQCTLD_INIT_ATTEMPTS_MAX {
+        // Do not retry while shutting down: the device is already failing, and each retry
+        // only adds a 1s delay plus log spam to the shutdown path (e.g. the LCD shutdown
+        // image). One failed attempt is enough.
+        if run_token.is_cancelled() {
+            return response;
+        }
+        sleep(pause).await;
+        info!("Retrying liquidctl device #{device_index} initialization request.");
+        response = attempt().await;
+        if response.is_ok() {
+            return response;
+        }
+    }
+    warn!(
+        "Failed to successfully initialize liquidctl device after {LIQCTLD_INIT_ATTEMPTS_MAX} \
+         tries."
+    );
+    response
+}
+
 /// Lets the next request to every device through, whatever its probe gate says.
 fn rearm_device_probes(liqctld_devices: &HashMap<TypeIndex, LiqctldIo>) {
     for io in liqctld_devices.values() {
@@ -2123,6 +2143,66 @@ mod tests {
         for io in devices.values() {
             assert!(matches!(io.health(), DeviceHealth::Unreachable { .. }).not());
         }
+    }
+
+    /// Runs `initialize_with_retries` with no pause, against an attempt that succeeds from
+    /// attempt number `succeeds_from` on. Returns the result and how many attempts were made.
+    fn run_init(succeeds_from: usize, run_token: &CancellationToken) -> (Result<u8>, usize) {
+        let attempts = Cell::new(0_usize);
+        let result = crate::rt::test_runtime(initialize_with_retries(
+            1,
+            run_token,
+            Duration::ZERO,
+            || {
+                attempts.set(attempts.get() + 1);
+                let number = attempts.get();
+                async move {
+                    if number >= succeeds_from {
+                        Ok(7)
+                    } else {
+                        Err(anyhow!("attempt {number} failed"))
+                    }
+                }
+            },
+        ));
+        (result, attempts.get())
+    }
+
+    /// Goal: a first success is returned without a retry. Method: an attempt that always works.
+    #[test]
+    fn init_success_makes_one_attempt() {
+        let (result, attempts) = run_init(1, &CancellationToken::new());
+        assert_eq!(result.unwrap(), 7);
+        assert_eq!(attempts, 1);
+    }
+
+    /// Goal: a failure is retried, and success on the last attempt counts. Method: an attempt
+    /// that only works on the final try.
+    #[test]
+    fn init_success_on_the_last_attempt_is_returned() {
+        let (result, attempts) = run_init(LIQCTLD_INIT_ATTEMPTS_MAX, &CancellationToken::new());
+        assert_eq!(result.unwrap(), 7);
+        assert_eq!(attempts, LIQCTLD_INIT_ATTEMPTS_MAX);
+    }
+
+    /// Goal: retries stop at the limit and the last error is returned. Method: an attempt that
+    /// never works.
+    #[test]
+    fn init_failure_stops_after_every_attempt() {
+        let (result, attempts) = run_init(usize::MAX, &CancellationToken::new());
+        assert!(result.is_err());
+        assert_eq!(attempts, LIQCTLD_INIT_ATTEMPTS_MAX);
+    }
+
+    /// Goal: no retry once the daemon is shutting down. Method: a cancelled token and an
+    /// attempt that would work on retry.
+    #[test]
+    fn init_is_not_retried_while_shutting_down() {
+        let run_token = CancellationToken::new();
+        run_token.cancel();
+        let (result, attempts) = run_init(2, &run_token);
+        assert!(result.is_err());
+        assert_eq!(attempts, 1);
     }
 
     #[test]
