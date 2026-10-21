@@ -111,6 +111,23 @@ impl RecoveryState {
         self.next_attempt_at = Some(Instant::now());
     }
 
+    /// Adds devices to recovery without resetting a scheduled episode's attempts or timing.
+    ///
+    /// An episode that gave up starts over with all of them, as a new failure is new evidence.
+    fn merge_episode(&mut self, failed_devices: HashSet<TypeIndex>) {
+        if failed_devices.is_empty() {
+            return;
+        }
+        if self.next_attempt_at.is_some() {
+            self.failed_devices.extend(failed_devices);
+        } else {
+            let mut all_failed = std::mem::take(&mut self.failed_devices);
+            all_failed.extend(failed_devices);
+            self.begin_episode(all_failed);
+        }
+        assert!(self.next_attempt_at.is_some());
+    }
+
     fn clear(&mut self) {
         self.failed_devices.clear();
         self.attempts = 0;
@@ -925,7 +942,7 @@ impl LiquidctlRepo {
             debug!("Liquidctl devices caught up with the restarted coolercontrol-liqctld.");
             return;
         }
-        self.recovery.borrow_mut().begin_episode(failed_devices);
+        self.recovery.borrow_mut().merge_episode(failed_devices);
     }
 
     /// Returns the ids that could not be caught up with.
@@ -2260,6 +2277,59 @@ mod tests {
         // backoff before the restart that fixes it. Method: begin an episode and ask right away.
         let mut recovery = RecoveryState::default();
         recovery.begin_episode(HashSet::from([1]));
+        assert!(recovery.is_attempt_due());
+    }
+
+    #[test]
+    fn merging_with_no_episode_starts_one() {
+        // Goal: a catch-up failure with nothing in recovery escalates at once.
+        // Method: merge into a fresh state.
+        let mut recovery = RecoveryState::default();
+        recovery.merge_episode(HashSet::from([2]));
+        assert_eq!(recovery.failed_devices, HashSet::from([2]));
+        assert!(recovery.is_attempt_due());
+    }
+
+    #[test]
+    fn merging_keeps_a_scheduled_episode_and_its_devices() {
+        // Goal: a catch-up failure neither drops the devices already in recovery nor resets their
+        // backoff. Method: a failed first attempt for #1, then merge #2.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        recovery.claim_attempt();
+        recovery.record_attempt(HashSet::from([1]));
+        let next_attempt_at = recovery.next_attempt_at;
+        recovery.merge_episode(HashSet::from([2]));
+        assert_eq!(recovery.failed_devices, HashSet::from([1, 2]));
+        assert_eq!(recovery.attempts, 1);
+        assert_eq!(recovery.next_attempt_at, next_attempt_at);
+    }
+
+    #[test]
+    fn merging_restarts_an_episode_that_gave_up() {
+        // Goal: a new failure is new evidence, so recovery tries again for every failed device.
+        // Method: run #1 out of attempts, then merge #2.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        for _ in 0..=RECOVERY_BACKOFF.len() {
+            recovery.claim_attempt();
+            recovery.record_attempt(HashSet::from([1]));
+        }
+        assert!(recovery.is_attempt_due().not());
+        recovery.merge_episode(HashSet::from([2]));
+        assert_eq!(recovery.failed_devices, HashSet::from([1, 2]));
+        assert_eq!(recovery.attempts, 0);
+        assert!(recovery.is_attempt_due());
+    }
+
+    #[test]
+    fn merging_nothing_leaves_an_episode_untouched() {
+        // Goal: a clean catch-up must not end recovery for devices still failed.
+        // Method: merge an empty set into a due episode.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        recovery.merge_episode(HashSet::new());
+        assert_eq!(recovery.failed_devices, HashSet::from([1]));
         assert!(recovery.is_attempt_due());
     }
 
