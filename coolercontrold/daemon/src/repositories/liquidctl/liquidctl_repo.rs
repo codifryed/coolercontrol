@@ -170,6 +170,31 @@ impl RecoveryState {
     }
 }
 
+/// What a catch-up's failed devices lead to.
+#[derive(Debug, PartialEq, Eq)]
+enum CatchUpEscalation {
+    CaughtUp,
+    /// Recovery initializes devices, which `no_init` forbids.
+    LeftOnFailsafe,
+    Escalated,
+}
+
+/// Hands the devices a catch-up could not re-establish to recovery.
+fn escalate_catch_up(
+    recovery: &mut RecoveryState,
+    failed_devices: HashSet<TypeIndex>,
+    no_init: bool,
+) -> CatchUpEscalation {
+    if failed_devices.is_empty() {
+        return CatchUpEscalation::CaughtUp;
+    }
+    if no_init {
+        return CatchUpEscalation::LeftOnFailsafe;
+    }
+    recovery.merge_episode(failed_devices);
+    CatchUpEscalation::Escalated
+}
+
 /// Notices the supervisor restarting liqctld on its own after it exited.
 ///
 /// The fresh service connects every device again, but its driver objects have lost the legacy690
@@ -938,11 +963,29 @@ impl LiquidctlRepo {
                 .map(|device_lock| device_lock.borrow().type_index)
                 .collect()
         });
-        if failed_devices.is_empty() {
-            debug!("Liquidctl devices caught up with the restarted coolercontrol-liqctld.");
-            return;
+        let no_init = self.no_init();
+        let escalation =
+            escalate_catch_up(&mut self.recovery.borrow_mut(), failed_devices, no_init);
+        match escalation {
+            CatchUpEscalation::CaughtUp => {
+                debug!("Liquidctl devices caught up with the restarted coolercontrol-liqctld.");
+            }
+            CatchUpEscalation::LeftOnFailsafe => debug!(
+                "Some liquidctl devices could not be caught up with, and init is disabled, so \
+                coolercontrol-liqctld is not restarted for them."
+            ),
+            CatchUpEscalation::Escalated => {}
         }
-        self.recovery.borrow_mut().merge_episode(failed_devices);
+    }
+
+    fn no_init(&self) -> bool {
+        match self.config.get_settings() {
+            Ok(settings) => settings.no_init,
+            Err(err) => {
+                error!("Error reading settings: {err}");
+                false
+            }
+        }
     }
 
     /// Returns the ids that could not be caught up with.
@@ -1912,14 +1955,7 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn reinitialize_devices(&self) {
-        let no_init = match self.config.get_settings() {
-            Ok(settings) => settings.no_init,
-            Err(err) => {
-                error!("Error reading settings: {err}");
-                false
-            }
-        };
-        if no_init {
+        if self.no_init() {
             return;
         }
         let failed_devices = self.call_reinitialize_concurrently().await;
@@ -2331,6 +2367,17 @@ mod tests {
         recovery.merge_episode(HashSet::new());
         assert_eq!(recovery.failed_devices, HashSet::from([1]));
         assert!(recovery.is_attempt_due());
+    }
+
+    #[test]
+    fn a_failed_catch_up_with_init_disabled_starts_no_recovery() {
+        // Goal: recovery initializes devices, so with `no_init` set a failed catch-up must not
+        // reach it. Method: escalate a failure with `no_init` set.
+        let mut recovery = RecoveryState::default();
+        let escalation = escalate_catch_up(&mut recovery, HashSet::from([1]), true);
+        assert_eq!(escalation, CatchUpEscalation::LeftOnFailsafe);
+        assert!(recovery.failed_devices.is_empty());
+        assert!(recovery.is_attempt_due().not());
     }
 
     #[test]
