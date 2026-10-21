@@ -300,6 +300,7 @@ impl CpuRepo {
         &self,
         physical_id: PhysicalID,
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+        io: &DeviceIo,
     ) -> Vec<HwmonChannelInfo> {
         let mut channels = Vec::with_capacity(5); // one load, up to three freqs, one power
         match self.init_cpu_load(physical_id) {
@@ -312,7 +313,7 @@ impl CpuRepo {
                 Err(err) => error!("Error matching cpu frequencies to processors: {err}"),
             }
         }
-        match power_cap::find_power_cap_paths().await {
+        match power_cap::find_power_cap_paths(io).await {
             Ok(power_channels) => {
                 if let Some(channel) = power_channels
                     .into_iter()
@@ -767,7 +768,7 @@ impl CpuRepo {
             Err(err) => error!("Error initializing CPU Temps: {err}"),
         }
         if let Some(physical_id) = association.physical_id() {
-            channels.extend(self.init_socket_channels(physical_id, cpu_freqs).await);
+            channels.extend(self.init_socket_channels(physical_id, cpu_freqs, &io).await);
         }
         let mut channels = self
             .retain_visible_channels(channels, cc_device_setting.as_ref(), path)
@@ -812,7 +813,7 @@ impl CpuRepo {
         }
         let mut cpu_freqs = self.collect_freq().await;
         let mut channels = self
-            .init_socket_channels(apple_silicon::PACKAGE, &mut cpu_freqs)
+            .init_socket_channels(apple_silicon::PACKAGE, &mut cpu_freqs, apple_silicon.io())
             .await;
         channels.extend(cluster_channels);
         Some(HwmonDriverInfo {
