@@ -76,7 +76,10 @@ impl<'s> DeviceListener {
         };
         // Hold the raw fd and poll it; `run_event_loop` drains whatever has queued.
         let event_source = fd;
-        let hwmon_baseline = build_hwmon_baseline().await;
+        // One for the listener's lifetime, so a device that stalled is not read again on every
+        // scan, each read parking another thread beside the first.
+        let identity = IdentityReader::start("hotplug", IDENTITY_TIMEOUT);
+        let hwmon_baseline = build_hwmon_baseline(&identity).await;
         let lc_baseline = build_liquidctl_baseline(&all_devices);
         // Disabled-device state requires a daemon restart to take effect, so a
         // one-time snapshot is sufficient for the listener's lifetime.
@@ -95,6 +98,7 @@ impl<'s> DeviceListener {
         scope.spawn(async move {
             run_event_loop(
                 event_source,
+                identity,
                 hwmon_baseline,
                 lc_baseline,
                 disabled_names,
@@ -166,12 +170,11 @@ const IDENTITY_TIMEOUT: Duration = Duration::from_secs(8);
 ///
 /// A device whose name gets no answer is left out: the hwmon repository skipped it for the same
 /// reason, so a later scan that reads it reports it as new, which it is to the daemon.
-async fn build_hwmon_baseline() -> HashSet<PathBuf> {
+async fn build_hwmon_baseline(identity: &IdentityReader) -> HashSet<PathBuf> {
     let paths = devices::find_all_hwmon_device_paths();
-    let reader = IdentityReader::start("hotplug", IDENTITY_TIMEOUT);
     let mut baseline = HashSet::with_capacity(paths.len());
     for path in paths {
-        let Ok(name) = devices::get_device_name(&path, &reader).await else {
+        let Ok(name) = devices::get_device_name(&path, identity).await else {
             continue;
         };
         if is_hwmon_applicable(&name) {
@@ -233,6 +236,7 @@ fn extract_disabled_device_names(
 /// results in one combined scan rather than two separate ones.
 async fn run_event_loop(
     netlink_fd: OwnedFd,
+    identity: IdentityReader,
     mut hwmon_baseline: HashSet<PathBuf>,
     mut lc_baseline: HashSet<String>,
     disabled_names: HashSet<String>,
@@ -269,9 +273,13 @@ async fn run_event_loop(
             let scans = pending.take();
             let mut detected = false;
             if scans.hwmon {
-                detected |=
-                    scan_hwmon_changes(&mut hwmon_baseline, &notification_handle, &disabled_names)
-                        .await;
+                detected |= scan_hwmon_changes(
+                    &mut hwmon_baseline,
+                    &identity,
+                    &notification_handle,
+                    &disabled_names,
+                )
+                .await;
             }
             if scans.liquidctl {
                 detected |= scan_liquidctl_changes(
@@ -402,15 +410,17 @@ fn classify_uevent(buf: &[u8]) -> UeventKind {
 /// device, since that is what callers track as a real device change.
 async fn scan_hwmon_changes(
     baseline: &mut HashSet<PathBuf>,
+    reader: &IdentityReader,
     notification_handle: &NotificationHandle,
     disabled_names: &HashSet<String>,
 ) -> bool {
     let current_paths = devices::find_all_hwmon_device_paths();
-    let reader = IdentityReader::start("hotplug", IDENTITY_TIMEOUT);
+    // hwmon numbers are reused, so a stalled device that left must not skip what replaces it.
+    reader.forget_stalled_except(&current_paths);
     let mut current_applicable = HashSet::with_capacity(current_paths.len());
     let mut names = HashMap::with_capacity(current_paths.len());
     for path in current_paths {
-        match devices::get_device_name(&path, &reader).await {
+        match devices::get_device_name(&path, reader).await {
             Ok(name) if is_hwmon_applicable(&name) => {
                 current_applicable.insert(path.clone());
                 names.insert(path, name);
@@ -448,7 +458,7 @@ async fn scan_hwmon_changes(
     for path in baseline.iter() {
         if current_applicable.contains(path).not() {
             baseline_changed = true;
-            let name = device_name_for_removed(path, &reader).await;
+            let name = device_name_for_removed(path, reader).await;
             if disabled_names.contains(&name) {
                 debug!("Ignoring remove for user-disabled hwmon device: {name}");
                 continue;

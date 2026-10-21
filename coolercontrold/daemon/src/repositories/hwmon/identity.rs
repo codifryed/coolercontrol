@@ -11,20 +11,20 @@
 //! to the device's location, as it always has; a stalled one must not, or the device's settings
 //! are keyed to a device that does not exist. The device is skipped for this boot instead, and is
 //! found again at the next start.
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::fmt::Display;
 use std::ops::Not;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use log::{debug, warn};
 
 use crate::repositories::hwmon::device_io::{self, DeviceIo};
 
-/// Fresh workers one reader starts after stalls, each replacing one parked in the kernel. Past
-/// this every read is a stall: on a machine where this many identity reads hung, another worker
-/// would only park as well.
-const RESTARTS_MAX: u8 = 3;
+/// Devices one reader remembers as stalled, each with a worker parked in the kernel. Past this
+/// every read is a stall: on a machine where this many devices hung, another worker would only
+/// park as well.
+const STALLED_DEVICES_MAX: usize = 32;
 
 /// An identity read that got no answer. The device it was for is skipped for this boot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,10 +40,14 @@ pub fn log_skipped(device: &dyn Display, path: &Path) {
     );
 }
 
-/// Reads identity attributes for one init on a worker of its own.
+/// Reads identity attributes for one init, or for the hotplug listener, on a worker of its own.
 ///
 /// The worker starts on the first read, so an init whose attributes are all cached already (the
 /// `uevent` cache) starts none, and it ends when the reader is dropped.
+///
+/// A stall parks the worker in the kernel, so the reader remembers that device and starts a fresh
+/// worker for the next one. A device that stalled once is not read again: its reads stall at once,
+/// so each wedged device costs one thread, and devices that answer are still read.
 pub struct IdentityReader {
     /// `None` until the first read, and again after a stall, until the next.
     io: RefCell<Option<DeviceIo>>,
@@ -53,10 +57,9 @@ pub struct IdentityReader {
     /// Starts a worker. A field so tests can replace a wedged worker with one that answers,
     /// without starting a thread.
     start_worker: fn(&'static str, Duration) -> DeviceIo,
-    /// Workers that may still start after a stall.
-    restarts_left: Cell<u8>,
-    /// Set once the restarts are spent: every read is then a stall without waiting for one.
-    given_up: Cell<bool>,
+    /// Devices a read got no answer from, as `device_of` names them. At most
+    /// `STALLED_DEVICES_MAX`.
+    stalled: RefCell<Vec<PathBuf>>,
 }
 
 impl IdentityReader {
@@ -80,8 +83,7 @@ impl IdentityReader {
             owner,
             reply_timeout,
             start_worker,
-            restarts_left: Cell::new(RESTARTS_MAX),
-            given_up: Cell::new(false),
+            stalled: RefCell::new(Vec::new()),
         }
     }
 
@@ -117,7 +119,7 @@ impl IdentityReader {
     ///
     /// `Stalled` when the worker gave no answer.
     pub async fn text(&self, path: &Path) -> Result<Option<String>, Stalled> {
-        if self.given_up.get() {
+        if self.is_stalled(path) {
             return Err(Stalled);
         }
         match self.io().read_text(path).await {
@@ -132,7 +134,7 @@ impl IdentityReader {
     ///
     /// `Stalled` when the worker gave no answer.
     pub async fn bytes(&self, path: &Path) -> Result<Option<Vec<u8>>, Stalled> {
-        if self.given_up.get() {
+        if self.is_stalled(path) {
             return Err(Stalled);
         }
         match self.io().read_bytes(path).await {
@@ -152,22 +154,53 @@ impl IdentityReader {
             self.owner,
             path.display()
         );
-        self.replace_stalled_worker();
+        self.record_stall(path);
         Err(Stalled)
     }
 
-    /// The stalled worker stays parked in the kernel, so the next read starts a fresh one, up to
-    /// `RESTARTS_MAX` of them.
-    fn replace_stalled_worker(&self) {
-        let restarts_left = self.restarts_left.get();
-        if restarts_left == 0 {
-            self.given_up.set(true);
-            return;
+    /// Whether `path` belongs to a device that stalled, or the reader has given up on new ones.
+    fn is_stalled(&self, path: &Path) -> bool {
+        let stalled = self.stalled.borrow();
+        debug_assert!(stalled.len() <= STALLED_DEVICES_MAX);
+        if stalled.len() == STALLED_DEVICES_MAX {
+            return true;
         }
-        self.restarts_left.set(restarts_left - 1);
+        let device = device_of(path);
+        stalled.iter().any(|stalled| device.starts_with(stalled))
+    }
+
+    /// Remembers the device, and drops the worker parked in the kernel so the next read starts a
+    /// fresh one.
+    fn record_stall(&self, path: &Path) {
+        let mut stalled = self.stalled.borrow_mut();
+        // Reads in flight together can each stall past the check in `is_stalled`.
+        if stalled.len() < STALLED_DEVICES_MAX {
+            stalled.push(device_of(path).to_path_buf());
+        }
+        debug_assert!(stalled.len() <= STALLED_DEVICES_MAX);
         // Dropping the handle closes the queue, so the worker exits once its read returns.
         *self.io.borrow_mut() = None;
-        debug_assert!(self.restarts_left.get() < RESTARTS_MAX);
+    }
+
+    /// Forgets the stalled devices outside `present`, so a device that reappears at a reused path
+    /// is read again. For a reader that outlives the devices it reads, such as hotplug's.
+    pub fn forget_stalled_except(&self, present: &[PathBuf]) {
+        self.stalled.borrow_mut().retain(|stalled| {
+            present
+                .iter()
+                .any(|path| device_of(&path.join("name")).starts_with(stalled))
+        });
+    }
+}
+
+/// The device an attribute belongs to: its directory, or the one above for an attribute behind a
+/// `device` link, so `hwmonN/name` and `hwmonN/device/serial` name the same device.
+fn device_of(attribute: &Path) -> &Path {
+    let dir = attribute.parent().unwrap_or(attribute);
+    if dir.ends_with("device") {
+        dir.parent().unwrap_or(dir)
+    } else {
+        dir
     }
 }
 
@@ -223,42 +256,91 @@ mod tests {
     }
 
     #[test]
-    fn a_read_with_no_answer_stalls_and_the_next_gets_a_fresh_worker() {
+    fn a_read_with_no_answer_stalls_and_the_next_device_gets_a_fresh_worker() {
         // Goal: a stall is reported as one, never as an absent attribute, and does not stall the
-        // devices read after it. Method: read through a wedged worker whose replacement answers.
+        // devices read after it. Method: read one device through a wedged worker whose
+        // replacement answers, then another device.
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
-            std::fs::write(dir.path().join("name"), "nvme\n").unwrap();
+            let other = dir.path().join("hwmon1");
+            std::fs::create_dir(&other).unwrap();
+            std::fs::write(other.join("name"), "nvme\n").unwrap();
             let (wedged, _rx) = DeviceIo::wedged_for_test(WEDGE_TIMEOUT);
             let reader = IdentityReader::with_io(wedged, |_, _| DeviceIo::default());
 
-            let stalled = reader.text(&dir.path().join("serial")).await;
-            let next = reader.text(&dir.path().join("name")).await;
+            let stalled = reader.text(&dir.path().join("hwmon0/serial")).await;
+            let next = reader.text(&other.join("name")).await;
 
             assert_eq!(stalled, Err(Stalled));
             assert_eq!(next, Ok(Some("nvme\n".to_owned())));
-            assert_eq!(reader.restarts_left.get(), RESTARTS_MAX - 1);
-            assert!(reader.given_up.get().not());
+            assert_eq!(reader.stalled.borrow().len(), 1);
         });
     }
 
     #[test]
-    fn a_reader_gives_up_once_its_restarts_are_spent() {
-        // Goal: restarts are bounded, and once spent every read stalls without waiting out
-        // another timeout. Method: replace a wedged worker with workers that never answer, one
-        // stall per restart and one more.
+    fn a_device_that_stalled_is_not_read_again() {
+        // Goal: a wedged device costs one worker, not one per read: its later reads stall at
+        // once, its `device` directory included, while another device is still read. Method:
+        // stall one device, then read it again through workers that would answer.
         crate::rt::test_runtime(async {
-            let path = Path::new("/sys/class/hwmon/hwmon0/name");
+            let dir = tempfile::tempdir().unwrap();
+            let device = dir.path().join("hwmon0");
+            std::fs::create_dir_all(device.join("device")).unwrap();
+            std::fs::write(device.join("name"), "nct6775\n").unwrap();
+            std::fs::write(device.join("device/serial"), "S5GX\n").unwrap();
+            let (wedged, _rx) = DeviceIo::wedged_for_test(WEDGE_TIMEOUT);
+            let reader = IdentityReader::with_io(wedged, |_, _| DeviceIo::default());
+
+            assert_eq!(reader.text(&device.join("uevent")).await, Err(Stalled));
+
+            assert_eq!(reader.text(&device.join("name")).await, Err(Stalled));
+            assert_eq!(
+                reader.bytes(&device.join("device/serial")).await,
+                Err(Stalled)
+            );
+            assert!(reader.io.borrow().is_none(), "no worker was started for it");
+            assert_eq!(reader.stalled.borrow().len(), 1);
+        });
+    }
+
+    #[test]
+    fn a_reader_gives_up_once_too_many_devices_stalled() {
+        // Goal: the parked workers are bounded, and once the limit is reached every read stalls
+        // without waiting out another timeout. Method: replace a wedged worker with workers that
+        // never answer, one stall per device up to the limit, then a device that would answer.
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("name"), "k10temp\n").unwrap();
             let (wedged, _rx) = DeviceIo::wedged_for_test(WEDGE_TIMEOUT);
             let reader = IdentityReader::with_io(wedged, gone);
 
-            for _ in 0..=RESTARTS_MAX {
-                assert_eq!(reader.text(path).await, Err(Stalled));
+            for index in 0..STALLED_DEVICES_MAX {
+                let path = PathBuf::from(format!("/sys/class/hwmon/hwmon{index}/name"));
+                assert_eq!(reader.text(&path).await, Err(Stalled));
             }
 
-            assert_eq!(reader.restarts_left.get(), 0);
-            assert!(reader.given_up.get());
-            assert_eq!(reader.bytes(path).await, Err(Stalled));
+            assert_eq!(reader.stalled.borrow().len(), STALLED_DEVICES_MAX);
+            assert_eq!(reader.text(&dir.path().join("name")).await, Err(Stalled));
+        });
+    }
+
+    #[test]
+    fn a_stalled_device_that_left_is_read_again() {
+        // Goal: a long-lived reader forgets a stalled device once its path is gone, so a device
+        // that reappears there is read, while one still present stays skipped. Method: stall two
+        // devices, then forget all but one.
+        crate::rt::test_runtime(async {
+            let (wedged, _rx) = DeviceIo::wedged_for_test(WEDGE_TIMEOUT);
+            let reader = IdentityReader::with_io(wedged, gone);
+            let kept = PathBuf::from("/sys/class/hwmon/hwmon0");
+            let gone_path = PathBuf::from("/sys/class/hwmon/hwmon1");
+            assert_eq!(reader.text(&kept.join("name")).await, Err(Stalled));
+            assert_eq!(reader.text(&gone_path.join("name")).await, Err(Stalled));
+
+            reader.forget_stalled_except(&[kept.join("device")]);
+
+            assert!(reader.is_stalled(&kept.join("name")));
+            assert!(reader.is_stalled(&gone_path.join("name")).not());
         });
     }
 }

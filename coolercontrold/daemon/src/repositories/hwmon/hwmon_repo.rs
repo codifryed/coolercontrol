@@ -2388,10 +2388,8 @@ impl Repository for HwmonRepo {
             if let Err(err) = install_read_registry(&path, None, &mut channels, &io).await {
                 error!("Could not install the read table for {device_name}: {err}");
             }
-            let Ok(model) = Self::read_model(&path, &identity).await else {
-                self.skip_unanswered(&path, &device_name);
-                continue;
-            };
+            // Display only, not in the UID: a stall leaves the device without a model.
+            let model = Self::read_model(&path, &identity).await.unwrap_or_default();
             debug!("Detected Device Model: {model:?}");
             let hwmon_driver_info = HwmonDriverInfo {
                 name: device_name,
