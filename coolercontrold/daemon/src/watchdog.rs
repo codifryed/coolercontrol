@@ -208,18 +208,32 @@ pub async fn notify_stopping() {
 /// pool thread rather than the main thread. Unlike a heartbeat it must not be lost, so it waits
 /// for room, but the daemon waits on it for at most `NOTIFY_WAIT`.
 async fn notify_from_pool(state: NotifyState<'static>, description: &'static str) {
+    send_from_pool_within(
+        move || sd_notify::notify(&[state]),
+        description,
+        NOTIFY_WAIT,
+    )
+    .await;
+}
+
+/// Runs the blocking `send` on the blocking pool, and waits on it for at most `wait`.
+async fn send_from_pool_within(
+    send: impl FnOnce() -> io::Result<()> + Send + 'static,
+    description: &'static str,
+    wait: Duration,
+) {
     let send = async {
-        rt::spawn_blocking(move || sd_notify::notify(&[state]))
+        rt::spawn_blocking(send)
             .await
             .unwrap_or_else(|err| Err(io::Error::other(err)))
     };
-    match rt::timeout(NOTIFY_WAIT, send).await {
+    match rt::timeout(wait, send).await {
         Ok(Ok(())) => {}
         // A lost readiness costs a start timeout, which is visible; panicking would not help.
         Ok(Err(err)) => warn!("Could not send {description} to the service manager: {err}"),
         Err(_) => info!(
             "The service manager has not taken {description} after {}s, still sending it",
-            NOTIFY_WAIT.as_secs()
+            wait.as_secs()
         ),
     }
 }
@@ -413,6 +427,40 @@ mod tests {
             }
         }
         panic!("the queue never filled");
+    }
+
+    /// READY or STOPPING to a service manager that has stopped reading must not hold up startup
+    /// or shutdown past the wait. Fill a stand-in socket's queue, send to it blocking, as
+    /// `sd_notify` does, from the pool, and time the wait.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_stalled_service_manager_holds_up_ready_only_briefly() {
+        rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("notify");
+            let manager = UnixDatagram::bind(&path).unwrap();
+            fill_queue(path.as_os_str());
+            let wait = Duration::from_millis(50);
+            let socket = path.clone();
+            let start = Instant::now();
+
+            send_from_pool_within(
+                move || {
+                    let datagram = UnixDatagram::unbound()?;
+                    datagram.connect(&socket)?;
+                    datagram.send(b"READY=1\n").map(|_| ())
+                },
+                "ready",
+                wait,
+            )
+            .await;
+
+            let elapsed = start.elapsed();
+            assert!(elapsed >= wait, "{elapsed:?}");
+            assert!(elapsed < NOTIFY_WAIT, "{elapsed:?}");
+            // Closing the stand-in fails the parked send, which frees its pool thread.
+            drop(manager);
+        });
     }
 
     /// A socket that is not there is not a full queue: retrying it every tick would only warn
