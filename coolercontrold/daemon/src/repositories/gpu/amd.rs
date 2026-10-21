@@ -151,29 +151,33 @@ impl GpuAMD {
                 .canonicalize()
                 .unwrap_or_else(|_| path.join("device"));
             let mut fdinfo_load = None;
-            if let Some(load_channel) = Self::init_load(&device_path, &io).await {
-                if disabled_channels.contains(&load_channel.name).not() {
-                    channels.push(load_channel);
-                }
-            } else {
-                // hwmon load sensor is unsupported (older ASICs): fall back to
-                // DRM fdinfo, the only load source these GPUs have.
-                let load_disabled = disabled_channels.iter().any(|c| c == GPU_LOAD_NAME);
-                if load_disabled.not() {
-                    let Ok(fdinfo) = Self::init_fdinfo_load(&path, &identity).await else {
-                        identity::log_skipped(&device_name, &path);
-                        continue;
-                    };
-                    if let Some(fd_load) = fdinfo {
-                        channels.push(HwmonChannelInfo {
-                            hwmon_type: HwmonChannelType::Load,
-                            name: GPU_LOAD_NAME.to_string(),
-                            label: Some(GPU_LOAD_NAME.to_string()),
-                            ..Default::default()
-                        });
-                        fdinfo_load = Some(fd_load);
+            match Self::init_load(&device_path, &io).await {
+                HwmonLoad::Supported(load_channel) => {
+                    if disabled_channels.contains(&load_channel.name).not() {
+                        channels.push(load_channel);
                     }
                 }
+                HwmonLoad::Unsupported => {
+                    // hwmon load sensor is unsupported (older ASICs): fall back to
+                    // DRM fdinfo, the only load source these GPUs have.
+                    let load_disabled = disabled_channels.iter().any(|c| c == GPU_LOAD_NAME);
+                    if load_disabled.not() {
+                        let Ok(fdinfo) = Self::init_fdinfo_load(&path, &identity).await else {
+                            identity::log_skipped(&device_name, &path);
+                            continue;
+                        };
+                        if let Some(fd_load) = fdinfo {
+                            channels.push(HwmonChannelInfo {
+                                hwmon_type: HwmonChannelType::Load,
+                                name: GPU_LOAD_NAME.to_string(),
+                                label: Some(GPU_LOAD_NAME.to_string()),
+                                ..Default::default()
+                            });
+                            fdinfo_load = Some(fd_load);
+                        }
+                    }
+                }
+                HwmonLoad::Unanswered => {}
             }
             match freqs::init_freqs(&path, &io).await {
                 Ok(freqs) => channels.extend(
@@ -254,11 +258,11 @@ impl GpuAMD {
     }
 
     /// On the GPU's thread: the read is an SMU message, which can wait on the firmware.
-    async fn init_load(device_path: &Path, io: &DeviceIo) -> Option<HwmonChannelInfo> {
+    async fn init_load(device_path: &Path, io: &DeviceIo) -> HwmonLoad {
         let load_path = device_path.join("gpu_busy_percent");
         match io.read_value(&load_path).await {
             Ok(load) => match fans::check_parsing_8(load) {
-                Ok(_) => Some(HwmonChannelInfo {
+                Ok(_) => HwmonLoad::Supported(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
                     name: GPU_LOAD_NAME.to_string(),
                     label: Some(GPU_LOAD_NAME.to_string()),
@@ -269,9 +273,18 @@ impl GpuAMD {
                         "Error parsing AMD GPU load from {}: {err}",
                         load_path.display()
                     );
-                    None
+                    HwmonLoad::Unsupported
                 }
             },
+            Err(err) if device_io::is_unanswered(&err) => {
+                // A GPU waking from D3cold can miss the timeout. Not a sign the sensor is
+                // unsupported, so fdinfo is not taken on for the whole boot.
+                warn!(
+                    "AMD GPU load at {} got no answer; GPU load is off for this start: {err}",
+                    load_path.display()
+                );
+                HwmonLoad::Unanswered
+            }
             Err(err) => {
                 // The file may be absent, or present but unsupported on this ASIC
                 // (older GPUs return an error rather than a value).
@@ -279,7 +292,7 @@ impl GpuAMD {
                     "AMD GPU load unavailable from hwmon at {}: {err}",
                     load_path.display()
                 );
-                None
+                HwmonLoad::Unsupported
             }
         }
     }
@@ -1404,6 +1417,17 @@ impl AMDDriverInfo {
     }
 }
 
+/// Outcome of probing `gpu_busy_percent` for a GPU's Load channel.
+#[derive(Debug)]
+enum HwmonLoad {
+    /// It answered with a load: the channel.
+    Supported(HwmonChannelInfo),
+    /// It answered with an error or no load, as on older ASICs: DRM fdinfo stands in.
+    Unsupported,
+    /// It gave no answer in time, as a GPU waking from D3cold can: no Load channel this start.
+    Unanswered,
+}
+
 /// Outcome of probing libdrm for an amdgpu device.
 enum DrmProbe {
     /// libdrm could not be dynamically loaded (package not installed).
@@ -1472,7 +1496,7 @@ struct FanCurve {
 #[cfg(test)]
 mod tests {
     use crate::repositories::gpu::amd::{
-        AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HEADER_ZERO_RPM_ENABLE,
+        AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HwmonLoad, HEADER_ZERO_RPM_ENABLE,
         HEADER_ZERO_RPM_STOP_TEMP,
     };
     use crate::repositories::hwmon::device_io::DeviceIo;
@@ -1857,7 +1881,7 @@ mod tests {
             let load = GpuAMD::init_load(&ctx.test_base_path, &io).await;
             let curve = GpuAMD::get_fan_curve_info(&ctx.test_base_path, &io).await;
 
-            assert!(load.is_none());
+            assert!(matches!(load, HwmonLoad::Unanswered), "{load:?}");
             assert!(curve.is_err());
             let mut queued = Vec::new();
             while let Ok(request) = rx.try_recv() {
@@ -2360,6 +2384,36 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(curve, "r\n");
             assert_eq!(zero_rpm, "r\n");
+        });
+    }
+
+    #[test]
+    fn a_load_read_with_no_answer_takes_no_fallback() {
+        // Goal: only an answered error moves Load to DRM fdinfo; a read that got no answer, as from
+        // a GPU waking from D3cold, leaves Load off instead of committing the boot to fdinfo.
+        // Method: probe a readable load, an absent one and one through a worker that never answers.
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("gpu_busy_percent"), "42\n").unwrap();
+            let absent = dir.path().join("absent");
+            let (wedged, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+
+            let supported = GpuAMD::init_load(dir.path(), &DeviceIo::default()).await;
+            let unsupported = GpuAMD::init_load(&absent, &DeviceIo::default()).await;
+            let unanswered = GpuAMD::init_load(dir.path(), &wedged).await;
+
+            assert!(
+                matches!(supported, HwmonLoad::Supported(_)),
+                "{supported:?}"
+            );
+            assert!(
+                matches!(unsupported, HwmonLoad::Unsupported),
+                "{unsupported:?}"
+            );
+            assert!(
+                matches!(unanswered, HwmonLoad::Unanswered),
+                "{unanswered:?}"
+            );
         });
     }
 }
