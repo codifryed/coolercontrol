@@ -257,11 +257,13 @@ pub struct LiquidctlRepo {
     initial_descriptors: HashMap<TypeIndex, InitialDescriptor>,
     /// Drives liqctld restarts for devices that failed to re-initialize. See `RecoveryState`.
     recovery: RefCell<RecoveryState>,
-    /// True while liqctld is being restarted, or caught up with after the supervisor restarted it.
+    /// True while liqctld is being restarted, or while a catch-up re-applies driver choices.
     /// Preloads spawned by a later tick skip their reads rather than counting them as failures:
     /// during our own restart the service is deliberately down, and latching failsafe for it would
-    /// be a self-inflicted fan spin-up. A catch-up keeps reads off the driver objects it changes.
+    /// be a self-inflicted fan spin-up.
     restart_in_progress: Cell<bool>,
+    /// True for a whole catch-up, so neither recovery nor another catch-up overlaps it.
+    catch_up_active: Cell<bool>,
     service_restarts: ServiceRestarts,
 }
 
@@ -408,6 +410,7 @@ impl LiquidctlRepo {
             initial_descriptors: HashMap::new(),
             recovery: RefCell::new(RecoveryState::default()),
             restart_in_progress: Cell::new(false),
+            catch_up_active: Cell::new(false),
             service_restarts,
         })
     }
@@ -954,12 +957,15 @@ impl LiquidctlRepo {
         if self.restart_in_progress.get() {
             return;
         }
+        if self.catch_up_active.get() {
+            return;
+        }
         if self.service_restarts.claim_unseen().not() {
             return;
         }
-        self.restart_in_progress.set(true);
+        self.catch_up_active.set(true);
         let result = self.catch_up_with_service_restart().await;
-        self.restart_in_progress.set(false);
+        self.catch_up_active.set(false);
         let failed_devices = result.unwrap_or_else(|err| {
             debug!("Catching up with the restarted coolercontrol-liqctld failed: {err}");
             self.devices
@@ -999,6 +1005,9 @@ impl LiquidctlRepo {
         let fresh_devices = self.liqctld_client.get_all_devices().await?.devices;
         let matched_devices = self.match_devices_after_restart(&fresh_devices);
         let mut failed_devices = HashSet::new();
+        // Reads stay off the driver objects being changed. Up to here they ran, so a service that
+        // never came back still latches failsafe.
+        self.restart_in_progress.set(true);
         for device_lock in self.devices.values() {
             let device_index = device_lock.borrow().type_index;
             if matched_devices.contains(&device_index).not() {
@@ -1016,6 +1025,7 @@ impl LiquidctlRepo {
                 failed_devices.insert(device_index);
             }
         }
+        self.restart_in_progress.set(false);
         Ok(failed_devices)
     }
 
@@ -1027,6 +1037,9 @@ impl LiquidctlRepo {
     /// never work on the service at once.
     async fn poll_recovery(&self) {
         if self.restart_in_progress.get() {
+            return;
+        }
+        if self.catch_up_active.get() {
             return;
         }
         if self.recovery.borrow().is_attempt_due().not() {
