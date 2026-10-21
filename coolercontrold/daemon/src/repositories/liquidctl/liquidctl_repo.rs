@@ -2370,6 +2370,45 @@ mod tests {
     }
 
     #[test]
+    fn a_clean_catch_up_leaves_recovery_alone() {
+        // Goal: a catch-up with nothing failed neither starts nor ends an episode.
+        // Method: escalate an empty set over an episode already due.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        let escalation = escalate_catch_up(&mut recovery, HashSet::new(), false);
+        assert_eq!(escalation, CatchUpEscalation::CaughtUp);
+        assert_eq!(recovery.failed_devices, HashSet::from([1]));
+        assert!(recovery.is_attempt_due());
+    }
+
+    #[test]
+    fn a_failed_catch_up_escalates_to_recovery() {
+        // Goal: a device that cannot be caught up with is restarted from scratch at once.
+        // Method: escalate a failure with nothing in recovery.
+        let mut recovery = RecoveryState::default();
+        let escalation = escalate_catch_up(&mut recovery, HashSet::from([2]), false);
+        assert_eq!(escalation, CatchUpEscalation::Escalated);
+        assert_eq!(recovery.failed_devices, HashSet::from([2]));
+        assert!(recovery.is_attempt_due());
+    }
+
+    #[test]
+    fn a_failed_catch_up_joins_a_scheduled_episode() {
+        // Goal: escalating never drops a device already in recovery or resets its backoff.
+        // Method: a failed first attempt for #1, then escalate #2.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        recovery.claim_attempt();
+        recovery.record_attempt(HashSet::from([1]));
+        let next_attempt_at = recovery.next_attempt_at;
+        let escalation = escalate_catch_up(&mut recovery, HashSet::from([2]), false);
+        assert_eq!(escalation, CatchUpEscalation::Escalated);
+        assert_eq!(recovery.failed_devices, HashSet::from([1, 2]));
+        assert_eq!(recovery.attempts, 1);
+        assert_eq!(recovery.next_attempt_at, next_attempt_at);
+    }
+
+    #[test]
     fn a_failed_catch_up_with_init_disabled_starts_no_recovery() {
         // Goal: recovery initializes devices, so with `no_init` set a failed catch-up must not
         // reach it. Method: escalate a failure with `no_init` set.
