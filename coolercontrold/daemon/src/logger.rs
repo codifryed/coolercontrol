@@ -21,6 +21,7 @@ use std::io::Write as _;
 use std::ops::Not;
 use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
+use std::sync::{Arc, Mutex, PoisonError};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -304,16 +305,16 @@ impl CCLogger {
             TimestampPrecision::Seconds
         };
         let log_filter = Self::build_log_filter(max_level);
-        let sink = match journal {
-            Some(journal) => {
-                SinkFeed::journal(journal.with_extra_fields(vec![("VERSION", version)]))?
-            }
-            None => SinkFeed::stderr(
+        let sink = if let Some(journal) = journal {
+            SinkFeed::journal(journal.with_extra_fields(vec![("VERSION", version)]))?
+        } else {
+            let write_style = stderr_write_style();
+            SinkFeed::stderr(
                 max_level,
                 timestamp_precision,
-                stderr_write_style(),
-                stderr_writer()?,
-            ),
+                write_style,
+                stderr_writer(timestamp_precision, write_style)?,
+            )
         };
         let log_buf_handle = LogBufHandle::new(run_token).with_level_info(level_info);
         // We use a 2nd logger here for now. It's not super efficient, but in normal circumstances
@@ -407,9 +408,11 @@ enum SinkFeed {
 
 impl SinkFeed {
     fn journal(journal: JournalLog) -> Result<Self> {
-        let writer = LogWriter::start("the journal", move |record: QueuedRecord| {
-            record.log_to(&journal);
-        })?;
+        let writer = LogWriter::start(
+            "the journal",
+            move |record: QueuedRecord| record.log_to(&journal),
+            QueuedRecord::of,
+        )?;
         Ok(Self::Journal(writer))
     }
 
@@ -443,13 +446,63 @@ impl SinkFeed {
     }
 }
 
-fn stderr_writer() -> Result<LogWriter<Vec<u8>>> {
+fn stderr_writer(
+    timestamp_precision: TimestampPrecision,
+    write_style: WriteStyle,
+) -> Result<LogWriter<Vec<u8>>> {
     let mut stderr = std::io::stderr();
-    let writer = LogWriter::start("stderr", move |line: Vec<u8>| {
-        // A failed write has nowhere left to be reported.
-        let _ = stderr.write_all(&line);
-    })?;
+    let writer = LogWriter::start(
+        "stderr",
+        move |line: Vec<u8>| {
+            // A failed write has nowhere left to be reported.
+            let _ = stderr.write_all(&line);
+        },
+        report_formatter(timestamp_precision, write_style),
+    )?;
     Ok(writer)
+}
+
+/// Formats the dropped-lines report as stderr's lines are formatted, but into a buffer of its
+/// own: the report skips the queue. It passes at INFO whatever the log level.
+fn report_formatter(
+    timestamp_precision: TimestampPrecision,
+    write_style: WriteStyle,
+) -> impl FnMut(&Record) -> Vec<u8> + Send + 'static {
+    let line = LineBuf::default();
+    let format = env_logger::Builder::new()
+        .filter_level(LevelFilter::Info)
+        .format_timestamp(Some(timestamp_precision))
+        .write_style(write_style)
+        .target(env_logger::Target::Pipe(Box::new(line.clone())))
+        .build();
+    move |record| {
+        format.log(record);
+        line.take()
+    }
+}
+
+/// A pipe target whose writes are taken back out with `take`.
+#[derive(Clone, Default)]
+struct LineBuf(Arc<Mutex<Vec<u8>>>);
+
+impl LineBuf {
+    fn take(&self) -> Vec<u8> {
+        std::mem::take(&mut *self.0.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+}
+
+impl std::io::Write for LineBuf {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 /// The colour choice `env_logger` makes for its own stderr target, which a pipe target skips.
@@ -896,8 +949,9 @@ mod tests {
             };
             let (mut cc_logger, handle) =
                 CCLogger::new(level_info, None, VERSION, CancellationToken::new()).unwrap();
-            cc_logger.sink =
-                SinkFeed::Journal(LogWriter::start("nowhere", drop::<QueuedRecord>).unwrap());
+            cc_logger.sink = SinkFeed::Journal(
+                LogWriter::start("nowhere", drop::<QueuedRecord>, QueuedRecord::of).unwrap(),
+            );
             cc_logger.log(
                 &Record::builder()
                     .level(Level::Info)
@@ -930,11 +984,15 @@ mod tests {
         let sink_lines = Arc::clone(&lines);
         let (started_tx, started) = mpsc::sync_channel(4);
         let (gate, gate_rx) = mpsc::sync_channel::<()>(0);
-        let writer = LogWriter::start("the test sink", move |line: Vec<u8>| {
-            let _ = started_tx.try_send(());
-            let _ = gate_rx.recv();
-            sink_lines.lock().unwrap().push(line);
-        })
+        let writer = LogWriter::start(
+            "the test sink",
+            move |line: Vec<u8>| {
+                let _ = started_tx.try_send(());
+                let _ = gate_rx.recv();
+                sink_lines.lock().unwrap().push(line);
+            },
+            |_: &Record| Vec::new(),
+        )
         .unwrap();
         let feed = SinkFeed::stderr(
             LevelFilter::Info,
@@ -966,6 +1024,29 @@ mod tests {
             stamped < logged_by + chrono::Duration::milliseconds(100),
             "{held:?} was stamped after {logged_by}"
         );
+    }
+
+    // Goal: the stderr report comes out as one whole formatted line per call, nothing carried
+    // over. Method: format two records and compare each line's message and ending.
+    #[test]
+    fn the_stderr_report_is_one_formatted_line_per_call() {
+        let mut report = report_formatter(TimestampPrecision::Seconds, WriteStyle::Never);
+        let mut record = |message: &str| {
+            report(
+                &Record::builder()
+                    .level(Level::Info)
+                    .target("coolercontrold::log_writer")
+                    .args(format_args!("{message}"))
+                    .build(),
+            )
+        };
+
+        let first = String::from_utf8(record("first report")).unwrap();
+        let second = String::from_utf8(record("second report")).unwrap();
+
+        assert!(first.ends_with("first report\n"), "{first:?}");
+        assert!(second.ends_with("second report\n"), "{second:?}");
+        assert!(second.contains("first").not(), "{second:?}");
     }
 
     // Goal: a handle built without level info reports the INFO default, so tests and any

@@ -6,12 +6,13 @@
 //! Either sink can stop reading for a while: journald flushing, restarting or backed up, or a
 //! stderr pipe nobody drains. A write then blocks whichever thread logged, the main thread
 //! included. So lines go through a bounded queue to one `cc-log` thread, the only thread that
-//! writes to the sink. A full queue drops the line and counts it, and the thread logs the count
-//! once it has written what was queued.
+//! writes to the sink. A full queue drops the line and counts it, and the thread writes the count
+//! once it has written what was queued, and before it answers a drain.
 
-use log::{info, Level, Log, Record};
+use log::{Level, Log, Record};
 use std::borrow::Cow;
 use std::io;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
@@ -42,15 +43,26 @@ pub struct LogWriter<E> {
 }
 
 impl<E: Send + 'static> LogWriter<E> {
-    /// Starts the `cc-log` thread, which hands each entry to `write`. `sink` names the sink in the
-    /// line that reports dropped entries.
-    pub fn start(sink: &'static str, write: impl FnMut(E) + Send + 'static) -> io::Result<Self> {
+    /// Starts the `cc-log` thread, which hands each entry to `write`. `report` turns the record
+    /// that reports dropped entries into an entry, which skips the queue. `sink` names the sink in
+    /// that record.
+    pub fn start(
+        sink: &'static str,
+        write: impl FnMut(E) + Send + 'static,
+        report: impl FnMut(&Record) -> E + Send + 'static,
+    ) -> io::Result<Self> {
         let (tx, rx) = mpsc::sync_channel(QUEUE_DEPTH);
         let dropped = Arc::new(AtomicUsize::new(0));
-        let thread_dropped = Arc::clone(&dropped);
+        let mut thread = WriterThread {
+            write,
+            report,
+            dropped: Arc::clone(&dropped),
+            sink,
+            entry: PhantomData,
+        };
         std::thread::Builder::new()
             .name(THREAD_NAME.to_owned())
-            .spawn(move || run(&rx, write, &thread_dropped, sink))?;
+            .spawn(move || thread.run(&rx))?;
         Ok(Self { tx, dropped })
     }
 
@@ -120,36 +132,64 @@ impl io::Write for LogWriter<Vec<u8>> {
     }
 }
 
-fn run<E>(rx: &Receiver<Message<E>>, mut write: impl FnMut(E), dropped: &AtomicUsize, sink: &str) {
-    while let Ok(first) = rx.recv() {
-        write_message(first, &mut write);
-        // Bounded, so a sink that only just keeps up with a flood still reports what it dropped.
-        for _ in 1..QUEUE_DEPTH {
-            let Ok(message) = rx.try_recv() else {
-                break;
-            };
-            write_message(message, &mut write);
-        }
-        report_dropped(dropped, sink);
-    }
+/// What the `cc-log` thread owns.
+struct WriterThread<E, W, R> {
+    write: W,
+    report: R,
+    dropped: Arc<AtomicUsize>,
+    sink: &'static str,
+    entry: PhantomData<fn(E)>,
 }
 
-fn write_message<E>(message: Message<E>, write: &mut impl FnMut(E)) {
-    match message {
-        Message::Entry(entry) => write(entry),
-        Message::Drained(done) => {
-            let _ = done.try_send(());
+impl<E, W: FnMut(E), R: FnMut(&Record) -> E> WriterThread<E, W, R> {
+    fn run(&mut self, rx: &Receiver<Message<E>>) {
+        while let Ok(first) = rx.recv() {
+            self.write_message(first);
+            // Bounded, so a sink that only just keeps up with a flood still reports what it
+            // dropped.
+            for _ in 1..QUEUE_DEPTH {
+                let Ok(message) = rx.try_recv() else {
+                    break;
+                };
+                self.write_message(message);
+            }
+            self.report_dropped();
         }
     }
-}
 
-fn report_dropped(dropped: &AtomicUsize, sink: &str) {
-    let count = dropped.swap(0, Ordering::Relaxed);
-    if count == 0 {
-        return;
+    fn write_message(&mut self, message: Message<E>) {
+        match message {
+            Message::Entry(entry) => (self.write)(entry),
+            Message::Drained(done) => {
+                // An exit follows a drain, so the count goes out first or not at all.
+                self.report_dropped();
+                let _ = done.try_send(());
+            }
+        }
     }
-    // Queued like any other line, so it follows the lines that did get through.
-    info!("{count} log lines did not reach {sink}, which stopped taking them for a while");
+
+    /// Written straight to the sink: queued, it would be dropped by the full queue it reports,
+    /// or land behind a drain already answered.
+    fn report_dropped(&mut self) {
+        let count = self.dropped.swap(0, Ordering::Relaxed);
+        if count == 0 {
+            return;
+        }
+        let sink = self.sink;
+        let entry = (self.report)(
+            &Record::builder()
+                .level(Level::Info)
+                .target(module_path!())
+                .module_path_static(Some(module_path!()))
+                .file_static(Some(file!()))
+                .line(Some(line!()))
+                .args(format_args!(
+                    "{count} log lines did not reach {sink}, which stopped taking them for a while"
+                ))
+                .build(),
+        );
+        (self.write)(entry);
+    }
 }
 
 /// A record that can cross to the `cc-log` thread: `Record` borrows from the logging call.
@@ -205,8 +245,8 @@ mod tests {
     /// A writer whose sink records each entry and, once `hold` is set, blocks on the first entry
     /// until the returned gate sender is dropped. `started` fires when the sink takes an entry.
     struct Held {
-        writer: LogWriter<usize>,
-        written: Arc<Mutex<Vec<usize>>>,
+        writer: LogWriter<String>,
+        written: Arc<Mutex<Vec<String>>>,
         started: Receiver<()>,
         gate: Option<SyncSender<()>>,
     }
@@ -216,12 +256,16 @@ mod tests {
         let sink_written = Arc::clone(&written);
         let (started_tx, started) = mpsc::sync_channel(QUEUE_DEPTH * 2);
         let (gate, gate_rx) = mpsc::sync_channel::<()>(0);
-        let writer = LogWriter::start("the test sink", move |entry| {
-            let _ = started_tx.try_send(());
-            // Blocks until the gate sender is dropped, then returns at once from then on.
-            let _ = gate_rx.recv();
-            sink_written.lock().unwrap().push(entry);
-        })
+        let writer = LogWriter::start(
+            "the test sink",
+            move |entry| {
+                let _ = started_tx.try_send(());
+                // Blocks until the gate sender is dropped, then returns at once from then on.
+                let _ = gate_rx.recv();
+                sink_written.lock().unwrap().push(entry);
+            },
+            |record: &Record| record.args().to_string(),
+        )
         .unwrap();
         Held {
             writer,
@@ -231,55 +275,82 @@ mod tests {
         }
     }
 
+    fn lines(entries: impl Iterator<Item = usize>) -> Vec<String> {
+        entries.map(|entry| entry.to_string()).collect()
+    }
+
+    fn dropped_report(count: usize) -> String {
+        format!(
+            "{count} log lines did not reach the test sink, which stopped taking them for a \
+             while"
+        )
+    }
+
     // Goal: entries reach the sink in the order they were queued, and `drain` returns only once
     // they all have. Method: an open sink records entries; queue ten, drain, read the record.
     #[test]
     fn entries_are_written_in_order_before_drain_returns() {
         let mut held = held_writer();
         held.gate = None;
-        for entry in 0..10 {
+        for entry in lines(0..10) {
             held.writer.push(entry);
         }
 
         held.writer.drain();
 
-        assert_eq!(*held.written.lock().unwrap(), (0..10).collect::<Vec<_>>());
+        assert_eq!(*held.written.lock().unwrap(), lines(0..10));
         assert_eq!(held.writer.dropped(), 0);
     }
 
     // Goal: a sink that stops reading never blocks the logging thread; lines past the queue are
-    // dropped and counted, and the ones queued are still written once the sink reads again.
-    // Method: wedge the sink on the first entry, fill the queue, push three more, then reopen.
+    // dropped and counted, the ones queued are still written once the sink reads again, and the
+    // whole count is reported to the sink despite the full queue. Method: wedge the sink on the
+    // first entry, fill the queue, push three more, then reopen and drain.
     #[test]
     fn a_full_queue_drops_and_counts_without_blocking() {
         let mut held = held_writer();
-        held.writer.push(0);
+        held.writer.push(0.to_string());
         held.started.recv().unwrap();
-        for entry in 1..=QUEUE_DEPTH {
+        for entry in lines(1..=QUEUE_DEPTH) {
             held.writer.push(entry);
         }
-        for entry in 0..3 {
-            held.writer.push(QUEUE_DEPTH + 1 + entry);
+        for entry in lines(QUEUE_DEPTH + 1..QUEUE_DEPTH + 4) {
+            held.writer.push(entry);
         }
 
         assert_eq!(held.writer.dropped(), 3);
         held.gate = None;
         held.writer.drain();
-        assert_eq!(
-            *held.written.lock().unwrap(),
-            (0..=QUEUE_DEPTH).collect::<Vec<_>>()
-        );
+        let mut expected = lines(0..QUEUE_DEPTH);
+        expected.push(dropped_report(3));
+        expected.push(QUEUE_DEPTH.to_string());
+        assert_eq!(*held.written.lock().unwrap(), expected);
+        assert_eq!(held.writer.dropped(), 0);
     }
 
-    // Goal: reporting the dropped lines starts the count again, so each loss is reported once.
-    // Method: call it on a count of five and read the count back.
+    // Goal: the drop count reaches the sink before a drain is answered, since an exit follows
+    // the drain. Method: wedge the sink, queue a drain marker ahead of a full queue's worth of
+    // lines, drop three more, reopen, and read the sink as soon as the marker is answered.
     #[test]
-    fn reporting_dropped_lines_resets_the_count() {
-        let dropped = AtomicUsize::new(5);
+    fn dropped_lines_are_reported_before_a_drain_is_answered() {
+        let mut held = held_writer();
+        held.writer.push(0.to_string());
+        held.started.recv().unwrap();
+        let (done_tx, done_rx) = mpsc::sync_channel(1);
+        assert!(held.writer.tx.try_send(Message::Drained(done_tx)).is_ok());
+        for entry in lines(1..QUEUE_DEPTH + 3) {
+            held.writer.push(entry);
+        }
+        assert_eq!(held.writer.dropped(), 3);
 
-        report_dropped(&dropped, "the test sink");
+        held.gate = None;
+        done_rx.recv().unwrap();
 
-        assert_eq!(dropped.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            held.written.lock().unwrap()[..2],
+            [0.to_string(), dropped_report(3)]
+        );
+        assert_eq!(held.writer.dropped(), 0);
     }
 
     // Goal: env_logger's pipe writes become one entry per write, bytes intact. Method: two
@@ -288,9 +359,13 @@ mod tests {
     fn each_pipe_write_is_one_line() {
         let written = Arc::new(Mutex::new(Vec::new()));
         let sink_written = Arc::clone(&written);
-        let mut writer = LogWriter::start("the test sink", move |line: Vec<u8>| {
-            sink_written.lock().unwrap().push(line);
-        })
+        let mut writer = LogWriter::start(
+            "the test sink",
+            move |line: Vec<u8>| {
+                sink_written.lock().unwrap().push(line);
+            },
+            |_: &Record| Vec::new(),
+        )
         .unwrap();
 
         writer.write_all(b"first line\n").unwrap();
@@ -404,9 +479,9 @@ mod tests {
     #[cfg(feature = "gated-tests")]
     fn drain_gives_up_on_a_wedged_sink() {
         let held = held_writer();
-        held.writer.push(0);
+        held.writer.push(0.to_string());
         held.started.recv().unwrap();
-        for entry in 1..=QUEUE_DEPTH {
+        for entry in lines(1..=QUEUE_DEPTH) {
             held.writer.push(entry);
         }
         let start = Instant::now();
@@ -428,7 +503,7 @@ mod tests {
     #[cfg(feature = "gated-tests")]
     fn drain_on_the_writer_thread_returns_at_once() {
         let held = held_writer();
-        held.writer.push(0);
+        held.writer.push(0.to_string());
         held.started.recv().unwrap();
         let writer = held.writer.clone();
         let elapsed = std::thread::Builder::new()
