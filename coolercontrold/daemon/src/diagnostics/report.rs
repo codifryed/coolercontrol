@@ -923,12 +923,14 @@ async fn scan_hwmon(
         // device precisely so it would not be touched; the report has no
         // business overriding that, and the Liquidctl section already carries
         // its fan counts from the repository that actually drives it.
-        let scanned = if scan_is_safe(excluded).not() {
-            Some(Vec::new())
-        } else if io.is_unreachable() {
-            None
+        let scanned = if scan_is_safe(excluded) {
+            if io.is_unreachable() {
+                None
+            } else {
+                within_budget(budget, &name, &path, read_fans(&path, &name, &io)).await
+            }
         } else {
-            within_budget(budget, &name, &path, read_fans(&path, &name, &io)).await
+            Some(Vec::new())
         };
         devices.push(ReportDevice {
             path,
