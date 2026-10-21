@@ -388,6 +388,29 @@ impl CCLogger {
     }
 }
 
+impl Log for CCLogger {
+    /// Whether this logger is enabled.
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        self.log_filter.enabled(metadata)
+    }
+
+    /// Logs the messages and filters them by matching against the `env_logger` filter
+    fn log(&self, record: &Record) {
+        if self.log_filter.matches(record) {
+            self.sink.log(record);
+            if is_ui_buffered(record.level()) {
+                self.buf_logger.log(record);
+            }
+        }
+    }
+
+    /// Waits, for at most `log_writer::DRAIN_TIMEOUT`, until the lines logged so far reach the
+    /// journal or stderr. The process exiting would lose them.
+    fn flush(&self) {
+        self.sink.drain();
+    }
+}
+
 /// How long a panic on the main runtime thread waits for the log queue. The runtime catches task
 /// panics and carries on, so a longer wait would stall fan ticks and heartbeats.
 const MAIN_THREAD_PANIC_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
@@ -542,29 +565,6 @@ impl std::io::Write for LineBuf {
 /// The colour choice `env_logger` makes for its own stderr target, which a pipe target skips.
 fn stderr_write_style() -> WriteStyle {
     anstream::AutoStream::choice(&std::io::stderr()).into()
-}
-
-impl Log for CCLogger {
-    /// Whether this logger is enabled.
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        self.log_filter.enabled(metadata)
-    }
-
-    /// Logs the messages and filters them by matching against the `env_logger` filter
-    fn log(&self, record: &Record) {
-        if self.log_filter.matches(record) {
-            self.sink.log(record);
-            if is_ui_buffered(record.level()) {
-                self.buf_logger.log(record);
-            }
-        }
-    }
-
-    /// Waits, for at most `log_writer::DRAIN_TIMEOUT`, until the lines logged so far reach the
-    /// journal or stderr. The process exiting would lose them.
-    fn flush(&self) {
-        self.sink.drain();
-    }
 }
 
 /// DEBUG and TRACE stay out of the UI ring buffer and its SSE stream: their volume would evict
