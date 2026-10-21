@@ -6,6 +6,7 @@
 //! It is a blocking vendor FFI into nvidia.ko with no timeout. Loading it, initializing it and
 //! every hotspot read run on this thread, so the main thread never touches the library. One
 //! thread serves every GPU: nvapi's thread safety is undocumented, so its calls stay serialized.
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Not;
 use std::thread;
@@ -52,6 +53,8 @@ pub struct NvApiIo {
     tx: mpsc::Sender<Request>,
     reply_timeout: Duration,
     state: HealthState,
+    /// Buses whose last answered hotspot was impossible, so it is logged once on the way in.
+    non_finite_buses: RefCell<HashSet<u32>>,
 }
 
 impl NvApiIo {
@@ -111,6 +114,7 @@ impl NvApiIo {
                     tx,
                     reply_timeout,
                     state,
+                    non_finite_buses: RefCell::new(HashSet::new()),
                 })
             }
             // Unavailable or failed, which the library load already logged, or the thread died.
@@ -146,7 +150,7 @@ impl NvApiIo {
         match rt::timeout(self.reply_timeout, exchange).await {
             Ok(Some(temp)) => {
                 self.record_answered();
-                temp.filter(|temp| temp.is_finite())
+                temp.filter(|temp| self.record_finite(pci_bus, *temp))
             }
             // The thread is gone. Nothing will answer again.
             Ok(None) => None,
@@ -164,6 +168,24 @@ impl NvApiIo {
         if was_unreachable {
             info!("nvapi is answering again. GPU hotspot temperatures are back.");
         }
+    }
+
+    /// Whether `temp` is finite, latching an impossible one per bus so it is logged only once.
+    fn record_finite(&self, pci_bus: u32, temp: f64) -> bool {
+        let mut non_finite_buses = self.non_finite_buses.borrow_mut();
+        if temp.is_finite() {
+            if non_finite_buses.remove(&pci_bus) {
+                info!("nvapi reports a valid hotspot temperature again for PCI bus {pci_bus}.");
+            }
+            return true;
+        }
+        if non_finite_buses.insert(pci_bus) {
+            info!(
+                "nvapi reported an impossible hotspot temperature of {temp} for PCI bus \
+                 {pci_bus}. It is omitted."
+            );
+        }
+        false
     }
 
     fn record_timeout(&self) {
@@ -186,6 +208,11 @@ impl NvApiIo {
     #[cfg(test)]
     fn health(&self) -> DeviceHealth {
         self.state.health()
+    }
+
+    #[cfg(test)]
+    fn non_finite_latched(&self, pci_bus: u32) -> bool {
+        self.non_finite_buses.borrow().contains(&pci_bus)
     }
 }
 
@@ -243,6 +270,17 @@ mod tests {
         }
     }
 
+    /// Answers whatever hotspot the test last set, for every bus.
+    struct SettableNvApi {
+        temp: Arc<Mutex<f64>>,
+    }
+
+    impl HotspotReader for SettableNvApi {
+        fn hotspot_temp(&self, _pci_bus: u32) -> Option<f64> {
+            Some(*self.temp.lock().unwrap())
+        }
+    }
+
     /// Blocks every read until the test lets it go, like a driver call that does not return.
     #[cfg(feature = "gated-tests")]
     struct StalledNvApi {
@@ -292,6 +330,30 @@ mod tests {
             assert_eq!(io.hotspot_temp(3).await, None);
             assert_eq!(*threads.lock().unwrap(), [THREAD_NAME; 4]);
             assert_eq!(io.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    #[test]
+    fn an_impossible_hotspot_latches_until_a_valid_one() {
+        // Goal: an impossible hotspot is omitted and latched per bus, so it is logged once, and a
+        // valid reading re-arms the latch. Method: a fake whose answer the test switches.
+        crate::rt::test_runtime(async {
+            let temp = Arc::new(Mutex::new(f64::NAN));
+            let reader_temp = Arc::clone(&temp);
+            let init = move || Some(SettableNvApi { temp: reader_temp });
+            let io = NvApiIo::start_with(init, INIT_TIMEOUT, Duration::from_secs(5))
+                .await
+                .expect("the fake initializes");
+
+            assert_eq!(io.hotspot_temp(1).await, None);
+            assert!(io.non_finite_latched(1));
+            assert!(io.non_finite_latched(2).not());
+            assert_eq!(io.hotspot_temp(1).await, None);
+            assert!(io.non_finite_latched(1));
+
+            *temp.lock().unwrap() = 61.;
+            assert_eq!(io.hotspot_temp(1).await, Some(61.));
+            assert!(io.non_finite_latched(1).not());
         });
     }
 
