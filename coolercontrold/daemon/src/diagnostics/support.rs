@@ -14,6 +14,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelName, DeviceInfo, DeviceUID};
+use crate::rt;
 use log::{info, warn};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -484,13 +485,20 @@ pub struct SystemInfo {
 }
 
 impl SystemInfo {
+    /// Read on the blocking pool, so no sysfs read runs on the runtime thread.
     pub async fn read() -> Self {
+        rt::spawn_blocking(Self::read_blocking)
+            .await
+            .unwrap_or_default()
+    }
+
+    fn read_blocking() -> Self {
         Self {
-            board_vendor: crate::logger::get_dmi_system_info("board_vendor").await,
-            board_name: crate::logger::get_dmi_system_info("board_name").await,
-            board_version: crate::logger::get_dmi_system_info("board_version").await,
-            bios_vendor: crate::logger::get_dmi_system_info("bios_vendor").await,
-            bios_release: crate::logger::get_dmi_system_info("bios_release").await,
+            board_vendor: crate::logger::read_dmi_system_info("board_vendor"),
+            board_name: crate::logger::read_dmi_system_info("board_name"),
+            board_version: crate::logger::read_dmi_system_info("board_version"),
+            bios_vendor: crate::logger::read_dmi_system_info("bios_vendor"),
+            bios_release: crate::logger::read_dmi_system_info("bios_release"),
         }
     }
 }
@@ -542,7 +550,7 @@ impl HardwareSupportController {
         detection_supported: bool,
     ) -> Self {
         let system_info = SystemInfo::read().await;
-        let system_findings = Self::compute_findings(detection.as_ref(), detection_supported);
+        let system_findings = Self::compute_findings(detection.as_ref(), detection_supported).await;
         Self {
             system_info,
             detection: RefCell::new(detection),
@@ -568,8 +576,8 @@ impl HardwareSupportController {
     /// Replaces the retained results after an explicit re-scan, and recomputes
     /// the findings from them so the health snapshot cannot keep asserting a
     /// driver is unbound after the same request loaded it.
-    pub fn refresh_detection(&self, results: cc_detect::DetectionResults) {
-        let findings = Self::compute_findings(Some(&results), self.detection_supported);
+    pub async fn refresh_detection(&self, results: cc_detect::DetectionResults) {
+        let findings = Self::compute_findings(Some(&results), self.detection_supported).await;
         *self.detection.borrow_mut() = Some(results);
         *self.system_findings.borrow_mut() = findings;
     }
@@ -722,7 +730,7 @@ impl HardwareSupportController {
     /// `None` detection means the probe was switched off by config or
     /// environment, which is not an observation and therefore yields no
     /// findings.
-    fn compute_findings(
+    async fn compute_findings(
         detection: Option<&cc_detect::DetectionResults>,
         detection_supported: bool,
     ) -> Vec<SystemFinding> {
@@ -732,7 +740,14 @@ impl HardwareSupportController {
         let Some(results) = detection else {
             return Vec::new();
         };
-        let bound_drivers = resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
+        // A walk of the hwmon class, on the blocking pool like the probe before it.
+        let resolved =
+            rt::spawn_blocking(|| resolve_bound_drivers(Path::new(HWMON_CLASS_PATH))).await;
+        let Ok(bound_drivers) = resolved else {
+            // An empty set would report every detected chip as unbound, so report nothing.
+            warn!("Could not resolve the bound hwmon drivers; no hardware findings this time");
+            return Vec::new();
+        };
         let chips = results
             .detected_chips
             .iter()
@@ -833,23 +848,25 @@ mod tests {
             let controller = HardwareSupportController::init(None, true).await;
             assert!(controller.system_findings().is_empty());
 
-            controller.refresh_detection(cc_detect::DetectionResults {
-                detected_chips: vec![cc_detect::DetectedChipInfo {
-                    name: "CC-TEST-CHIP".to_string(),
-                    driver: "cc_test_no_such_driver".to_string(),
-                    address: "0x4e".to_string(),
-                    base_address: "0x4e".to_string(),
-                    device_id: "0xd592".to_string(),
-                    features: Vec::new(),
-                    module_status: "detection_only".to_string(),
-                }],
-                blacklisted: Vec::new(),
-                environment: cc_detect::EnvironmentInfo {
-                    is_container: false,
-                    is_secure_boot: false,
-                    has_dev_port: true,
-                },
-            });
+            controller
+                .refresh_detection(cc_detect::DetectionResults {
+                    detected_chips: vec![cc_detect::DetectedChipInfo {
+                        name: "CC-TEST-CHIP".to_string(),
+                        driver: "cc_test_no_such_driver".to_string(),
+                        address: "0x4e".to_string(),
+                        base_address: "0x4e".to_string(),
+                        device_id: "0xd592".to_string(),
+                        features: Vec::new(),
+                        module_status: "detection_only".to_string(),
+                    }],
+                    blacklisted: Vec::new(),
+                    environment: cc_detect::EnvironmentInfo {
+                        is_container: false,
+                        is_secure_boot: false,
+                        has_dev_port: true,
+                    },
+                })
+                .await;
 
             let findings = controller.system_findings();
             assert_eq!(findings.len(), 1, "expected exactly one finding");
@@ -875,23 +892,25 @@ mod tests {
                 vec![SystemFinding::DetectionUnsupported]
             );
 
-            controller.refresh_detection(cc_detect::DetectionResults {
-                detected_chips: vec![cc_detect::DetectedChipInfo {
-                    name: "CC-TEST-CHIP".to_string(),
-                    driver: "cc_test_no_such_driver".to_string(),
-                    address: "0x4e".to_string(),
-                    base_address: "0x4e".to_string(),
-                    device_id: "0xd592".to_string(),
-                    features: Vec::new(),
-                    module_status: "detection_only".to_string(),
-                }],
-                blacklisted: Vec::new(),
-                environment: cc_detect::EnvironmentInfo {
-                    is_container: false,
-                    is_secure_boot: false,
-                    has_dev_port: true,
-                },
-            });
+            controller
+                .refresh_detection(cc_detect::DetectionResults {
+                    detected_chips: vec![cc_detect::DetectedChipInfo {
+                        name: "CC-TEST-CHIP".to_string(),
+                        driver: "cc_test_no_such_driver".to_string(),
+                        address: "0x4e".to_string(),
+                        base_address: "0x4e".to_string(),
+                        device_id: "0xd592".to_string(),
+                        features: Vec::new(),
+                        module_status: "detection_only".to_string(),
+                    }],
+                    blacklisted: Vec::new(),
+                    environment: cc_detect::EnvironmentInfo {
+                        is_container: false,
+                        is_secure_boot: false,
+                        has_dev_port: true,
+                    },
+                })
+                .await;
 
             assert_eq!(
                 controller.system_findings(),

@@ -92,7 +92,7 @@ impl ApiActor<HardwareReportMessage> for HardwareReportActor {
                 results,
                 respond_to,
             } => {
-                self.hardware_support.refresh_detection(*results);
+                self.hardware_support.refresh_detection(*results).await;
                 let _ = respond_to.send(());
             }
             HardwareReportMessage::Generate { full, respond_to } => {
