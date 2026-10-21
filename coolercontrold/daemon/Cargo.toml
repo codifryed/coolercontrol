@@ -143,8 +143,9 @@ hyper-util = { version = "0.1", default-features = false, features = [
   "tokio",
 ] }
 http-body-util = "0.1"
-# Parses liqctld's reply heads on its blocking workers. Already in the tree through hyper.
-httparse = "1.10"
+# Parses liqctld's reply heads on its blocking workers. Already in the tree through hyper. Any
+# 1.x: only the basic response parser is used, so hyper's own requirement sets the floor.
+httparse = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 zbus = { version = "5.18", default-features = false, features = [
