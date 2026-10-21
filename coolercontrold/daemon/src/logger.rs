@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::diagnostics::support::SystemInfo;
 use crate::repositories::liquidctl::liqctld_service;
 use crate::rt;
 use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
@@ -169,11 +170,7 @@ struct SystemBanner {
     host: String,
     kernel: String,
     arch: String,
-    board_vendor: String,
-    board_name: String,
-    board_version: String,
-    bios_vendor: String,
-    bios_release: String,
+    board: SystemInfo,
     desktops: Result<(String, String)>,
 }
 
@@ -186,11 +183,7 @@ impl SystemBanner {
             host: sysinfo::System::host_name().unwrap_or_default(),
             kernel: sysinfo::System::kernel_version().unwrap_or_default(),
             arch: sysinfo::System::cpu_arch(),
-            board_vendor: read_dmi_system_info("board_vendor"),
-            board_name: read_dmi_system_info("board_name"),
-            board_version: read_dmi_system_info("board_version"),
-            bios_vendor: read_dmi_system_info("bios_vendor"),
-            bios_release: read_dmi_system_info("bios_release"),
+            board: SystemInfo::read_blocking(),
             desktops: read_xdg_desktop_info(),
         }
     }
@@ -204,11 +197,11 @@ impl SystemBanner {
         info!("  {:<20} {}", "Host", self.host);
         info!("  {:<20} {}", "Kernel", self.kernel);
         info!("  {:<20} {}", "Arch", self.arch);
-        info!("  {:<20} {}", "Board Manufacturer", self.board_vendor);
-        info!("  {:<20} {}", "Board Name", self.board_name);
-        info!("  {:<20} {}", "Board Version", self.board_version);
-        info!("  {:<20} {}", "BIOS Manufacturer", self.bios_vendor);
-        info!("  {:<20} {}", "BIOS Version", self.bios_release);
+        info!("  {:<20} {}", "Board Manufacturer", self.board.board_vendor);
+        info!("  {:<20} {}", "Board Name", self.board.board_name);
+        info!("  {:<20} {}", "Board Version", self.board.board_version);
+        info!("  {:<20} {}", "BIOS Manufacturer", self.board.bios_vendor);
+        info!("  {:<20} {}", "BIOS Version", self.board.bios_release);
         match &self.desktops {
             Ok((desktops, sessions)) => {
                 info!("  {:<20} {}", "XDG Desktops", desktops);

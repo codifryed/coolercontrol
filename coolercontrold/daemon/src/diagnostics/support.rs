@@ -492,7 +492,7 @@ impl SystemInfo {
             .unwrap_or_default()
     }
 
-    fn read_blocking() -> Self {
+    pub fn read_blocking() -> Self {
         Self {
             board_vendor: crate::logger::read_dmi_system_info("board_vendor"),
             board_name: crate::logger::read_dmi_system_info("board_name"),
