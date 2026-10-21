@@ -1545,6 +1545,7 @@ mod tests {
     };
     use crate::repositories::hwmon::device_io::DeviceIo;
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
+    use crate::repositories::hwmon::identity::IdentityReader;
     use nix::libc;
     use std::ops::Not;
     use std::ops::RangeInclusive;
@@ -2428,6 +2429,41 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(curve, "r\n");
             assert_eq!(zero_rpm, "r\n");
+        });
+    }
+
+    #[test]
+    fn an_unanswered_load_channel_leaves_load_off_without_fdinfo() {
+        // Goal: a load read that got no answer adds no Load channel and never probes the fdinfo
+        // fallback. Method: init the channel through a GPU worker that never answers and an
+        // identity reader whose worker records every read, then require no channel and no read.
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("gpu_busy_percent"), "42\n").unwrap();
+            let (wedged, _gpu_rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+            let (identity_io, mut identity_rx) =
+                DeviceIo::wedged_for_test(Duration::from_millis(20));
+            let identity = IdentityReader::with_io(identity_io, |_, _| {
+                panic!("the fdinfo fallback restarted the identity worker")
+            });
+            let mut channels = Vec::new();
+
+            let fdinfo = GpuAMD::init_load_channel(
+                dir.path(),
+                dir.path(),
+                &wedged,
+                &identity,
+                &[],
+                &mut channels,
+            )
+            .await;
+
+            assert!(matches!(fdinfo, Ok(None)), "{fdinfo:?}");
+            assert!(channels.is_empty(), "{channels:?}");
+            assert!(
+                identity_rx.try_recv().is_err(),
+                "the fdinfo fallback read the GPU's identity"
+            );
         });
     }
 
