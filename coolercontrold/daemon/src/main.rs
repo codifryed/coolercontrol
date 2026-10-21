@@ -512,7 +512,7 @@ fn main() -> Result<()> {
                 info!("Initialization Complete");
                 // Only now is the daemon serving, so this is what releases
                 // systemd's start job.
-                watchdog::notify_ready();
+                watchdog::notify_ready().await;
                 main_loop::run(
                     Rc::clone(&config),
                     Rc::clone(&repos),
@@ -536,7 +536,7 @@ fn main() -> Result<()> {
             error!("Main scope failed to start: {err}");
         });
         // all tasks from the main scope must have completed by this point.
-        watchdog::notify_stopping();
+        watchdog::notify_stopping().await;
         let shutdown_result = shutdown(repos, config).await;
         // Repos have finished their shutdown (incl. any sidecar round-trips like the service-plugin
         // gRPC shutdown), so the sidecar can now be torn down and joined (bounded, force-exit).
