@@ -1597,13 +1597,11 @@ impl Repository for LiquidctlRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         let failed_init_devices = self.call_initialize_concurrently().await;
-        for device_uid in failed_init_devices {
-            if let Some(device_lock) = self.devices.remove(&device_uid) {
-                // Dropping the handle closes the queue, and the worker thread exits.
-                self.liqctld_devices
-                    .remove(&device_lock.borrow().type_index);
-            }
-        }
+        remove_failed_devices(
+            &mut self.devices,
+            &mut self.liqctld_devices,
+            failed_init_devices,
+        );
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.borrow().clone());
@@ -1919,6 +1917,20 @@ where
     response
 }
 
+/// Drops each failed device along with its worker. Dropping the handle closes the queue, and the
+/// worker thread exits.
+fn remove_failed_devices(
+    devices: &mut HashMap<UID, DeviceLock>,
+    liqctld_devices: &mut HashMap<TypeIndex, LiqctldIo>,
+    failed_devices: Vec<DeviceUID>,
+) {
+    for device_uid in failed_devices {
+        if let Some(device_lock) = devices.remove(&device_uid) {
+            liqctld_devices.remove(&device_lock.borrow().type_index);
+        }
+    }
+}
+
 /// Lets the next request to every device through, whatever its probe gate says.
 fn rearm_device_probes(liqctld_devices: &HashMap<TypeIndex, LiqctldIo>) {
     for io in liqctld_devices.values() {
@@ -2102,7 +2114,7 @@ fn find_duplicate_names<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::{ChannelInfo, LcdInfo, LcdMode, LcdModeType};
+    use crate::device::{ChannelInfo, DeviceInfo, DeviceType, LcdInfo, LcdMode, LcdModeType};
     use crate::repositories::hwmon::device_io::DeviceHealth;
     use crate::repositories::liquidctl::liqctld_client::{DeviceProperties, LCStatus};
 
@@ -2203,6 +2215,37 @@ mod tests {
         let (result, attempts) = run_init(2, &run_token);
         assert!(result.is_err());
         assert_eq!(attempts, 1);
+    }
+
+    fn device_lock(type_index: TypeIndex) -> DeviceLock {
+        Rc::new(RefCell::new(Device::new(
+            format!("Test Cooler {type_index}"),
+            DeviceType::Liquidctl,
+            type_index,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        )))
+    }
+
+    /// Goal: a device that failed to initialize leaves no worker behind, and the others keep
+    /// theirs. Method: two devices with workers, fail one, then check both maps.
+    #[test]
+    fn a_failed_device_loses_its_worker() {
+        let (failed, kept) = (device_lock(1), device_lock(2));
+        let failed_uid = failed.borrow().uid.clone();
+        let kept_uid = kept.borrow().uid.clone();
+        assert_ne!(failed_uid, kept_uid);
+        let mut devices: HashMap<UID, DeviceLock> =
+            [(failed_uid.clone(), failed), (kept_uid.clone(), kept)].into();
+        let mut workers: HashMap<TypeIndex, LiqctldIo> =
+            [(1, unused_worker(1)), (2, unused_worker(2))].into();
+
+        remove_failed_devices(&mut devices, &mut workers, vec![failed_uid]);
+
+        assert_eq!(devices.keys().collect::<Vec<_>>(), vec![&kept_uid]);
+        assert_eq!(workers.keys().collect::<Vec<_>>(), vec![&2]);
     }
 
     #[test]
