@@ -643,8 +643,15 @@ async fn await_running(manager: &impl ServiceManager, service_id: &ServiceId) ->
 ///
 /// A failure is logged and the plugin is started regardless: one that cannot use its own
 /// files says so in its service log.
+///
+/// The user lookup can ask sssd, LDAP or NIS, and the rest are metadata calls on the plugin's
+/// files, so all of it runs on the blocking pool. Only the recursive `chown` is a command, which
+/// runs on the sidecar.
 pub async fn secure_plugin_files(manifest: &ServiceManifest, owner: Option<&str>) {
-    let owner = owner.map(Owner::resolve);
+    let owner = match owner {
+        Some(name) => Some(resolve_owner(name).await),
+        None => None,
+    };
     let owner = owner.as_ref();
     if let Err(err) = secure_plugin_folder(&manifest.path, owner).await {
         warn!(
@@ -653,11 +660,20 @@ pub async fn secure_plugin_files(manifest: &ServiceManifest, owner: Option<&str>
         );
     }
     let config_path = manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
-    // The entry itself: a link the plugin planted counts, wherever it points.
-    if config_path.symlink_metadata().is_err() {
-        return;
-    }
-    if let Err(err) = secure_config_file(&config_path, owner) {
+    let secure_path = config_path.clone();
+    let parts = owner.map(Owner::to_parts);
+    let secured = crate::rt::spawn_blocking(move || {
+        // The entry itself: a link the plugin planted counts, wherever it points.
+        if secure_path.symlink_metadata().is_err() {
+            return Ok(());
+        }
+        let owner = parts.as_ref().map(Owner::from_parts);
+        secure_config_file(&secure_path, owner.as_ref())
+    })
+    .await
+    .map_err(anyhow::Error::from)
+    .and_then(|secured| secured);
+    if let Err(err) = secured {
         warn!(
             "Failed to secure plugin config file {}: {err}",
             config_path.display()
@@ -687,13 +703,22 @@ async fn secure_plugin_folder(path: &Path, owner: Option<&Owner<'_>>) -> Result<
     // state this guards against, and the caller only warns on error and starts the plugin
     // anyway: a step that is skipped is a file left readable by the plugin user.
     //
+    //
     // The folder first: under a folder that is root's and sticky, nothing handed over
     // below can be moved over one of root's files.
-    let entries = secure_folder_entries(path, owner).await;
-    let manifest = secure_manifest(path);
-    let credentials = secure_daemon_credentials(path);
-    let handover = hand_over_entries(path, owner.name).await;
-    entries.and(manifest).and(credentials).and(handover)
+    let plugin_dir = path.to_path_buf();
+    let parts = owner.to_parts();
+    let (secured, listed) = crate::rt::spawn_blocking(move || {
+        let owner = Owner::from_parts(&parts);
+        let entries = secure_folder_entries(&plugin_dir, &owner);
+        let manifest = secure_manifest(&plugin_dir);
+        let credentials = secure_daemon_credentials(&plugin_dir);
+        let secured = entries.and(manifest).and(credentials);
+        (secured, handover_paths(&plugin_dir))
+    })
+    .await?;
+    let handover = hand_over_entries(path, listed, owner.name).await;
+    secured.and(handover)
 }
 
 /// Makes the folder itself root's, while the plugin's group can still write in it.
@@ -701,14 +726,13 @@ async fn secure_plugin_folder(path: &Path, owner: Option<&Owner<'_>>) -> Result<
 /// The owner of a directory can rename or delete any entry in it, whoever owns the entry, so
 /// a plugin that owned its folder could swap the root-owned manifest or TLS pin for a file
 /// of its own. Under a root-owned folder with the sticky bit, it can only replace what it owns.
-async fn secure_folder_entries(plugin_dir: &Path, owner: &Owner<'_>) -> Result<()> {
+fn secure_folder_entries(plugin_dir: &Path, owner: &Owner<'_>) -> Result<()> {
     // The mode first: a root-owned folder without the group write bit would lock the
     // plugin out of its own files, so a failure here leaves the folder as it was.
-    cc_fs::set_permissions(
+    std::fs::set_permissions(
         plugin_dir,
         Permissions::from_mode(PLUGIN_FOLDER_PERMISSIONS),
-    )
-    .await?;
+    )?;
     let ids = owner.ids();
     // Root takes the folder even when the plugin's group cannot be found.
     let gid = ids.as_ref().ok().map(|ids| ids.gid);
@@ -718,8 +742,13 @@ async fn secure_folder_entries(plugin_dir: &Path, owner: &Owner<'_>) -> Result<(
 }
 
 /// Gives `owner` every entry of the plugin folder that is not root's, and what is under it.
-async fn hand_over_entries(plugin_dir: &Path, owner: &str) -> Result<()> {
-    let (paths, skipped_count) = handover_paths(plugin_dir)?;
+/// `listed` is `handover_paths`, taken on the blocking pool.
+async fn hand_over_entries(
+    plugin_dir: &Path,
+    listed: Result<(Vec<String>, usize)>,
+    owner: &str,
+) -> Result<()> {
+    let (paths, skipped_count) = listed?;
     let handover = if paths.is_empty() {
         Ok(())
     } else {
@@ -961,7 +990,7 @@ const ROOT_IDS: OwnerIds = OwnerIds { uid: 0, gid: 0 };
 /// Who a plugin's files are handed to.
 ///
 /// Looked up once for a whole handover and passed along: the lookup reads the system's user
-/// database, which can block, and a handover runs on the runtime thread.
+/// database, which can block, so it is made once, on the blocking pool (`resolve_owner`).
 struct Owner<'a> {
     name: &'a str,
     /// An error where the system has no such user or group. Kept, so that each step fails
@@ -993,6 +1022,35 @@ impl<'a> Owner<'a> {
             Err(err) => Err(anyhow!("{err:#}")),
         }
     }
+
+    /// The name and ids, owned, so they can cross onto the blocking pool and be rebuilt there.
+    fn to_parts(&self) -> (String, Result<OwnerIds>) {
+        (self.name.to_owned(), self.ids())
+    }
+
+    fn from_parts(parts: &'a (String, Result<OwnerIds>)) -> Self {
+        let (name, ids) = parts;
+        let ids = match ids {
+            Ok(ids) => Ok(*ids),
+            Err(err) => Err(anyhow!("{err:#}")),
+        };
+        Self { name, ids }
+    }
+}
+
+/// `Owner::resolve` with the lookup on the blocking pool: the user database can be sssd, LDAP or
+/// NIS, any of which can take seconds to answer.
+async fn resolve_owner(name: &str) -> Owner<'_> {
+    assert!(name.is_empty().not(), "ownership needs a user name");
+    if name == ROOT_USER {
+        return Owner::ROOT;
+    }
+    let lookup_name = name.to_owned();
+    let ids = crate::rt::spawn_blocking(move || owner_ids(&lookup_name))
+        .await
+        .map_err(anyhow::Error::from)
+        .and_then(|ids| ids);
+    Owner { name, ids }
 }
 
 /// The uid of `owner` and the gid of the group that carries its name.
@@ -2633,5 +2691,52 @@ mod tests {
                 "Config file should have 600 permissions even without chown"
             );
         });
+    }
+
+    #[test]
+    fn root_resolves_without_a_lookup() {
+        // Goal: root's ids are fixed, so resolving root asks no user database and takes no trip
+        // to the blocking pool. Method: resolve root and compare with the constant.
+        crate::rt::test_runtime(async {
+            let owner = resolve_owner(ROOT_USER).await;
+
+            assert_eq!(owner.name, ROOT_USER);
+            let ids = owner.ids().unwrap();
+            assert_eq!(ids.uid, ROOT_IDS.uid);
+            assert_eq!(ids.gid, ROOT_IDS.gid);
+        });
+    }
+
+    #[test]
+    fn an_owner_crosses_threads_with_its_ids_or_its_error() {
+        // Goal: an owner rebuilt on the blocking pool secures with the same ids, and one whose
+        // lookup failed still fails each step with the lookup's reason. Method: round-trip a
+        // resolved owner and a failed one through their parts.
+        let found = Owner {
+            name: "cc-plugin-user",
+            ids: Ok(OwnerIds { uid: 961, gid: 962 }),
+        };
+        let missing = Owner {
+            name: "cc-no-such-user",
+            ids: Err(anyhow!("There is no user cc-no-such-user")),
+        };
+        let found_parts = found.to_parts();
+        let missing_parts = missing.to_parts();
+
+        let found = Owner::from_parts(&found_parts);
+        let missing = Owner::from_parts(&missing_parts);
+
+        assert_eq!(found.name, "cc-plugin-user");
+        assert_eq!(found.ids().unwrap().uid, 961);
+        assert_eq!(found.ids().unwrap().gid, 962);
+        assert_eq!(missing.name, "cc-no-such-user");
+        let Err(reason) = missing.ids() else {
+            panic!("a failed lookup must keep failing");
+        };
+        let reason = reason.to_string();
+        assert!(
+            reason.contains("There is no user cc-no-such-user"),
+            "{reason}"
+        );
     }
 }
