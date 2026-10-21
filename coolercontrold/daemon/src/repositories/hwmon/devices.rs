@@ -6,6 +6,7 @@ use crate::cc_fs;
 use crate::device::UID;
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 use crate::repositories::hwmon::identity::{IdentityReader, Stalled};
+use crate::rt;
 use log::{debug, info, warn};
 use nu_glob::{glob, GlobResult, Uninterruptible};
 use regex::Regex;
@@ -472,22 +473,39 @@ pub async fn get_device_pci_names(
     reader: &IdentityReader,
 ) -> Result<Option<PciDeviceNames>, Stalled> {
     let uevents = get_device_uevent_details(base_path, reader).await?;
-    Ok(pci_names_for(&uevents))
+    let Some(ids) = pci_ids_for(&uevents) else {
+        return Ok(None);
+    };
+    // A streaming scan of a 1.3 MB file on disk, so it runs on the blocking pool.
+    let lookup =
+        rt::spawn_blocking(move || pci_ids::lookup_device(ids.0, ids.1, ids.2, ids.3)).await;
+    let info = match lookup {
+        Ok(Ok(info)) => info,
+        Ok(Err(err)) => {
+            info!("Could not read PCI ID database: {err}, device name information will be limited");
+            return Ok(None);
+        }
+        Err(err) => {
+            info!("PCI ID lookup failed: {err}, device name information will be limited");
+            return Ok(None);
+        }
+    };
+    Ok(Some(pci_names_from(info)))
 }
 
-fn pci_names_for(uevents: &HashMap<String, String>) -> Option<PciDeviceNames> {
+/// The vendor, device, subsystem vendor and subsystem device ids from a PCI device's `uevent`.
+fn pci_ids_for(uevents: &HashMap<String, String>) -> Option<(u16, u16, u16, u16)> {
     let (vendor_id, model_id) = uevents.get("PCI_ID")?.split_once(':')?;
     let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
-    let info = pci_ids::lookup_device(
+    Some((
         parse_hex_str_to_u16(vendor_id)?,
         parse_hex_str_to_u16(model_id)?,
         parse_hex_str_to_u16(subsys_vendor_id)?,
         parse_hex_str_to_u16(subsys_model_id)?,
-    )
-    .inspect_err(|err| {
-        info!("Could not read PCI ID database: {err}, device name information will be limited");
-    })
-    .ok()?;
+    ))
+}
+
+fn pci_names_from(info: pci_ids::PciIdLookup) -> PciDeviceNames {
     let pci_device_names = PciDeviceNames {
         vendor_name: info.vendor_name,
         device_name: info.device_name,
@@ -495,7 +513,7 @@ fn pci_names_for(uevents: &HashMap<String, String>) -> Option<PciDeviceNames> {
         subdevice_name: info.subdevice_name,
     };
     debug!("Found PCI Device Names: {pci_device_names:?}");
-    Some(pci_device_names)
+    pci_device_names
 }
 
 fn parse_hex_str_to_u16(value: &str) -> Option<u16> {
@@ -1264,6 +1282,27 @@ mod tests {
             assert_eq!(id_one, id_two);
             assert_ne!(id_one, id_other);
         });
+    }
+
+    // Goal: the ids handed to the blocking pci.ids scan come from `uevent` exactly, and a device
+    // missing either id is not looked up at all. Method: parse an RX 6700's ids, then the same
+    // with the subsystem id missing and with a field that is not hex.
+    #[test]
+    fn pci_ids_are_read_from_uevent_before_the_lookup() {
+        let uevent = |subsys: Option<&str>| {
+            let mut details = HashMap::from([("PCI_ID".to_owned(), "1002:73DF".to_owned())]);
+            if let Some(subsys) = subsys {
+                details.insert("PCI_SUBSYS_ID".to_owned(), subsys.to_owned());
+            }
+            details
+        };
+
+        assert_eq!(
+            pci_ids_for(&uevent(Some("1DA2:E445"))),
+            Some((0x1002, 0x73df, 0x1da2, 0xe445))
+        );
+        assert_eq!(pci_ids_for(&uevent(None)), None);
+        assert_eq!(pci_ids_for(&uevent(Some("1DA2:XYZ1"))), None);
     }
 
     // Goal: an identity read that gets no answer stalls the whole identity, never falling back
