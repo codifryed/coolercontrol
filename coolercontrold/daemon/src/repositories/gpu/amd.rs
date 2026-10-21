@@ -141,7 +141,7 @@ impl GpuAMD {
                 .canonicalize()
                 .unwrap_or_else(|_| path.join("device"));
             let mut fdinfo_load = None;
-            if let Some(load_channel) = Self::init_load(&device_path).await {
+            if let Some(load_channel) = Self::init_load(&device_path, &io).await {
                 if disabled_channels.contains(&load_channel.name).not() {
                     channels.push(load_channel);
                 }
@@ -179,7 +179,7 @@ impl GpuAMD {
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Power: {err}"),
             }
-            let fan_curve_info = Self::get_fan_curve_info(&device_path)
+            let fan_curve_info = Self::get_fan_curve_info(&device_path, &io)
                 .await
                 .inspect_err(|err| {
                     debug!("Could not get RDNA3/4 fan curve info: {err}");
@@ -236,9 +236,10 @@ impl GpuAMD {
         amd_infos
     }
 
-    async fn init_load(device_path: &Path) -> Option<HwmonChannelInfo> {
+    /// On the GPU's thread: the read is an SMU message, which can wait on the firmware.
+    async fn init_load(device_path: &Path, io: &DeviceIo) -> Option<HwmonChannelInfo> {
         let load_path = device_path.join("gpu_busy_percent");
-        match cc_fs::read_sysfs_value(&load_path).await {
+        match io.read_value(&load_path).await {
             Ok(load) => match fans::check_parsing_8(load) {
                 Ok(_) => Some(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
@@ -273,7 +274,14 @@ impl GpuAMD {
     /// reports a value (0 while idle).
     async fn init_fdinfo_load(base_path: &Path) -> Option<FdInfoLoad> {
         let pci_slot = devices::get_pci_slot_name(base_path).await?;
-        if Self::fdinfo_engine_available(&pci_slot).await.not() {
+        // Off the runtime thread and bounded: opening the render node resumes a GPU in D3cold.
+        let probe_slot = pci_slot.clone();
+        let probe = crate::rt::spawn_blocking(move || Self::fdinfo_engine_available(&probe_slot));
+        let available = matches!(
+            crate::rt::timeout(DRM_NAME_LOOKUP_TIMEOUT, probe).await,
+            Ok(Ok(true))
+        );
+        if available.not() {
             debug!("amdgpu DRM fdinfo engine accounting unavailable for {pci_slot}; GPU load off");
             return None;
         }
@@ -287,7 +295,9 @@ impl GpuAMD {
     /// `/proc/self/fdinfo`: the standard framework that carries `drm-engine-*`
     /// always emits a `drm-client-id`, even when the engine lines are absent
     /// because our probe client has submitted no work.
-    async fn fdinfo_engine_available(pci_slot: &str) -> bool {
+    ///
+    /// Blocking calls, for the blocking pool.
+    fn fdinfo_engine_available(pci_slot: &str) -> bool {
         let render_path = format!("/dev/dri/by-path/pci-{pci_slot}-render");
         let Ok(render_node) = cc_fs::open_options()
             .read(true)
@@ -297,9 +307,9 @@ impl GpuAMD {
             return false;
         };
         let fdinfo_path = format!("/proc/self/fdinfo/{}", render_node.as_raw_fd());
-        cc_fs::read_txt(&fdinfo_path)
-            .await
-            .is_ok_and(|content| amd_fdinfo::engine_accounting_available(&content))
+        cc_fs::read_bytes_blocking(Path::new(&fdinfo_path)).is_ok_and(|content| {
+            std::str::from_utf8(&content).is_ok_and(amd_fdinfo::engine_accounting_available)
+        })
     }
 
     /// Computes GPU load from DRM fdinfo for a sensor-less GPU. Always returns a
@@ -377,9 +387,11 @@ impl GpuAMD {
     /// See: <https://docs.kernel.org/gpu/amdgpu/thermal.html#fan-curve>
     ///
     /// Only available on Navi3x (RDNA 3) or newer devices.
-    async fn get_fan_curve_info(device_path: &Path) -> Result<FanCurveInfo> {
+    ///
+    /// The PMFW tables are read on the GPU's thread: each read takes the SMU mutex.
+    async fn get_fan_curve_info(device_path: &Path, io: &DeviceIo) -> Result<FanCurveInfo> {
         let (path, fan_curve, temperature_range, speed_range) =
-            Self::get_fan_curve_with_ranges(device_path).await?;
+            Self::get_fan_curve_with_ranges(device_path, io).await?;
         let changeable = super::amd_overdrive::is_overdrive_enabled().await;
         if changeable.not() {
             let fan_control_boot_option = super::amd_overdrive::get_fan_control_boot_option().await;
@@ -390,7 +402,7 @@ impl GpuAMD {
             );
         }
 
-        let zero_rpm = Self::get_zero_rpm_enable_path(device_path).await;
+        let zero_rpm = Self::get_zero_rpm_enable_path(device_path, io).await;
         if zero_rpm.is_none() {
             // Whether the firmware applies Zero RPM at all is a per-device pptable decision.
             // Some cards, such as the Radeon AI PRO R9700, never stop the fan. Do not claim
@@ -403,7 +415,7 @@ impl GpuAMD {
         }
 
         let (zero_rpm_stop_temp, zero_rpm_stop_temp_range) =
-            Self::get_zero_rpm_stop_temp_with_range(device_path).await?;
+            Self::get_zero_rpm_stop_temp_with_range(device_path, io).await?;
         Ok(FanCurveInfo {
             fan_curve,
             changeable,
@@ -418,6 +430,7 @@ impl GpuAMD {
 
     async fn get_fan_curve_with_ranges(
         device_path: &Path,
+        io: &DeviceIo,
     ) -> Result<(
         PathBuf,
         FanCurve,
@@ -425,7 +438,7 @@ impl GpuAMD {
         RangeInclusive<Duty>,
     )> {
         let path = device_path.join("gpu_od/fan_ctrl/fan_curve");
-        let fan_curve_file = cc_fs::read_txt(&path).await?;
+        let fan_curve_file = io.read_text(&path).await?;
         let mut points = Vec::new();
         let mut temp_min: CurveTemp = 0;
         let mut temp_max: CurveTemp = 0;
@@ -488,9 +501,9 @@ impl GpuAMD {
     }
 
     /// The Zero RPM Enable path, but only when the driver reports the feature as usable.
-    async fn get_zero_rpm_enable_path(device_path: &Path) -> Option<PathBuf> {
+    async fn get_zero_rpm_enable_path(device_path: &Path, io: &DeviceIo) -> Option<PathBuf> {
         let path = device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_enable");
-        cc_fs::read_txt(&path)
+        io.read_text(&path)
             .await
             .ok()
             .filter(|content| Self::feature_is_supported(content, HEADER_ZERO_RPM_ENABLE))
@@ -499,12 +512,14 @@ impl GpuAMD {
 
     async fn get_zero_rpm_stop_temp_with_range(
         device_path: &Path,
+        io: &DeviceIo,
     ) -> Result<(Option<PathBuf>, RangeInclusive<CurveTemp>)> {
         let mut zero_rpm_stop_temp_min: CurveTemp = 0;
         let mut zero_rpm_stop_temp_max: CurveTemp = 0;
         let zero_rpm_stop_temp_path =
             device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_stop_temperature");
-        let supported_content = cc_fs::read_txt(&zero_rpm_stop_temp_path)
+        let supported_content = io
+            .read_text(&zero_rpm_stop_temp_path)
             .await
             .ok()
             .filter(|content| Self::feature_is_supported(content, HEADER_ZERO_RPM_STOP_TEMP));
@@ -1778,6 +1793,41 @@ mod tests {
     }
 
     #[test]
+    fn init_probes_and_pmfw_tables_are_read_on_the_gpu_thread() {
+        // Goal: the load probe and the PMFW tables, which wait on the SMU, are asked of the GPU's
+        // worker rather than read on the runtime thread. Method: probe through a wedged worker and
+        // look for each read on its queue.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup();
+            let (io, mut rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+
+            let load = GpuAMD::init_load(&ctx.test_base_path, &io).await;
+            let curve = GpuAMD::get_fan_curve_info(&ctx.test_base_path, &io).await;
+
+            assert!(load.is_none());
+            assert!(curve.is_err());
+            let mut queued = Vec::new();
+            while let Ok(request) = rx.try_recv() {
+                match request {
+                    crate::repositories::hwmon::device_io::Request::Read { path, .. }
+                    | crate::repositories::hwmon::device_io::Request::ReadBytes { path, .. } => {
+                        queued.push(path);
+                    }
+                    _ => {}
+                }
+            }
+            let base = &ctx.test_base_path;
+            assert_eq!(
+                queued,
+                [
+                    base.join("gpu_busy_percent"),
+                    base.join("gpu_od/fan_ctrl/fan_curve")
+                ]
+            );
+        });
+    }
+
+    #[test]
     #[serial]
     fn extract_load_status_returns_value_on_success() {
         // Verifies a readable gpu_busy_percent results in a channel status
@@ -1951,7 +2001,8 @@ mod tests {
             .await;
 
             // when:
-            let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert!(result.is_err());
@@ -1969,7 +2020,8 @@ mod tests {
             write_fan_ctrl_file(&ctx, "fan_curve", "OD_FAN_CURVE:\n0: 40C 30%\n1: 60C 50%\n").await;
 
             // when:
-            let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert!(result.is_err());
@@ -1987,7 +2039,8 @@ mod tests {
                 write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_SUPPORTED).await;
 
             // when:
-            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, Some(expected));
@@ -2005,7 +2058,8 @@ mod tests {
             write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_UNSUPPORTED).await;
 
             // when:
-            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, None);
@@ -2021,7 +2075,8 @@ mod tests {
             // given: no gpu_od/fan_ctrl tree at all.
 
             // when:
-            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, None);
@@ -2043,9 +2098,12 @@ mod tests {
             .await;
 
             // when:
-            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(&ctx.test_base_path)
-                .await
-                .unwrap();
+            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(
+                &ctx.test_base_path,
+                &DeviceIo::default(),
+            )
+            .await
+            .unwrap();
 
             // then:
             assert_eq!(path, Some(expected));
@@ -2065,9 +2123,12 @@ mod tests {
             write_fan_ctrl_file(&ctx, "fan_zero_rpm_stop_temperature", "\n").await;
 
             // when:
-            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(&ctx.test_base_path)
-                .await
-                .unwrap();
+            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(
+                &ctx.test_base_path,
+                &DeviceIo::default(),
+            )
+            .await
+            .unwrap();
 
             // then:
             assert_eq!(path, None);
