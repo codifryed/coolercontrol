@@ -26,7 +26,7 @@ use crate::device::{ChannelAttribute, DeviceType, Duty, MAX_CHANNEL_ATTRIBUTES, 
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{AMDDriverInfo, GpuAMD, TEMP_FOR_FAN_CURVE};
-use crate::repositories::gpu::nvidia::{GpuNVidia, NvmlInitResult, StatusNvidiaDeviceSMI};
+use crate::repositories::gpu::nvidia::{GpuNVidia, NvmlInitResult};
 use crate::repositories::hwmon::attributes;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
@@ -289,17 +289,8 @@ impl GpuRepo {
                     match self.gpus_nvidia.request_nvml_status(nv_info).await {
                         Some(nvml_status) => {
                             self.gpus_nvidia
-                                .nvidia_preloaded_statuses
-                                .borrow_mut()
-                                .insert(
-                                    type_index,
-                                    StatusNvidiaDeviceSMI {
-                                        temps: nvml_status.temps,
-                                        channels: nvml_status.channels,
-                                        ..Default::default()
-                                    },
-                                );
-                            self.gpus_nvidia.record_nvml_answer(type_index);
+                                .store_nvml_status(type_index, nv_info, nvml_status)
+                                .await;
                         }
                         None => self.gpus_nvidia.record_nvml_no_answer(type_index),
                     }

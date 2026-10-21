@@ -30,7 +30,7 @@ const HEALTH_NAME: &str = "nvapi";
 const _: () = assert!(THREAD_NAME.len() <= 15);
 
 /// What the thread reads hotspots from: nvapi, or a fake in tests.
-trait HotspotReader {
+pub trait HotspotReader {
     fn hotspot_temp(&self, pci_bus: u32) -> Option<f64>;
 }
 
@@ -65,6 +65,15 @@ impl NvApiIo {
     ) -> Option<Self> {
         let init = move || NvApi::try_init(&register_hotspot_buses);
         Self::start_with(init, INIT_TIMEOUT, reply_timeout).await
+    }
+
+    /// nvapi served by `reader` instead of the library, for tests.
+    #[cfg(test)]
+    pub async fn start_for_test<R>(reader: R, reply_timeout: Duration) -> Option<Self>
+    where
+        R: HotspotReader + Send + 'static,
+    {
+        Self::start_with(move || Some(reader), INIT_TIMEOUT, reply_timeout).await
     }
 
     /// `init` runs on the new thread, and what it returns never leaves that thread.
