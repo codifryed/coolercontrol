@@ -338,9 +338,8 @@ fn main() -> Result<()> {
             config.save_config_file().await?;
         }
         paths::ensure_data_dir().await?;
-        // admin uses `sidecar_fs` (always Tokio); on the compio main thread there is no Tokio
-        // reactor, so run it on the sidecar. Harmless on the Tokio backend too. The hash is
-        // unused here: loading it resets a stored file's permissions to 0600.
+        // admin uses `sidecar_fs`, which the auth subsystem awaits on the sidecar, so run it
+        // there. The hash is unused here: loading it resets a stored file's permissions to 0600.
         sidecar::handle().run(auth::admin::load_passwd).await??;
 
         // The startup pause below is covered by TimeoutStartSec: systemd does
@@ -727,8 +726,8 @@ fn handle_non_root_commands(args: &Args) -> Result<()> {
 async fn parse_cmd_args(cmd_args: &Args) -> Result<()> {
     if cmd_args.reset_password {
         info!("Resetting UI password to default");
-        // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
-        // main thread. `unwrap_or_else(Err)` flattens a dispatch failure into the same exit path.
+        // admin uses `sidecar_fs`, so run it on the sidecar. `unwrap_or_else(Err)` flattens a
+        // dispatch failure into the same exit path.
         match crate::sidecar::handle()
             .run(auth::admin::reset_passwd)
             .await
@@ -1140,8 +1139,7 @@ async fn create_devices_map(repos: &Repos) -> AllDevices {
 /// Linux threads inherit the creating thread's affinity mask, so pinning before the blocking
 /// IO pool has warmed up would trap every later-spawned blocking thread on this one CPU.
 /// Running it now lets those threads spawn while affinity is still all-CPUs and stay spread
-/// across cores. This is also why compio's build-time `RuntimeBuilder::thread_affinity` is
-/// not used: it pins inside `build()`, before any blocking worker exists.
+/// across cores.
 fn set_cpu_affinity() -> Result<()> {
     let current_cpu = sched_getcpu()?;
     let mut cpu_set = CpuSet::new();

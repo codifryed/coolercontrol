@@ -6,9 +6,9 @@
 //!
 //! A read of one of these cannot wait on hardware the way a hwmon attribute can, so it needs no
 //! device thread. It is read on the runtime thread with plain positional reads, yielding to the
-//! runtime after each one so other ready tasks run in between. `io_uring` would run these reads
-//! on the runtime thread as well, and allocate an operation for each. A held descriptor and a
-//! buffer sized once keep a read free of allocations. Device-backed sysfs attributes go through
+//! runtime after each one so other ready tasks run in between. tokio's file utilities would send
+//! each read to the blocking pool, allocating a job and waking a thread for it. A held descriptor
+//! and a buffer sized once keep a read free of allocations. Device-backed sysfs attributes go through
 //! the hwmon repo's `DeviceIo` instead.
 
 use std::cell::RefCell;

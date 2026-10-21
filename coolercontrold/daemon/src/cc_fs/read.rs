@@ -263,8 +263,8 @@ pub fn read_dir(path: impl AsRef<Path>) -> Result<ReadDir> {
 
 /// Reads a symbolic link, returning the path it points to.
 ///
-/// Sync `std::fs` wrapper: compio exposes no async `read_link`. Used by the AMD DRM fdinfo scan to
-/// resolve `/proc/<pid>/fd` entries to their targets.
+/// Sync `std::fs` wrapper. Used by the AMD DRM fdinfo scan to resolve `/proc/<pid>/fd` entries to
+/// their targets.
 pub fn read_link(path: impl AsRef<Path>) -> Result<PathBuf> {
     Ok(std::fs::read_link(path)?)
 }
@@ -275,9 +275,9 @@ mod tests {
     #[cfg(feature = "gated-tests")]
     use std::ops::Not;
 
-    /// Goal: an interrupted read must be re-issued. `io_uring` hands us `EINTR` for a read the
-    /// kernel aborted before it produced anything, instead of restarting it the way a plain
-    /// `read(2)` does, so giving up loses a sensor value that was never actually read. Method:
+    /// Goal: an interrupted read must be re-issued. A `pread` interrupted by a signal whose handler
+    /// lacks `SA_RESTART` returns `EINTR` for a read the kernel aborted before it produced
+    /// anything, so giving up loses a sensor value that was never actually read. Method:
     /// exercise the policy directly; a real `EINTR` needs a driver that sleeps interruptibly
     /// inside its sysfs read and cannot be produced from a regular file.
     #[test]
@@ -430,7 +430,7 @@ mod tests {
     #[cfg(feature = "gated-tests")]
     fn read_sysfs_concurrent_reads_are_not_cross_contaminated() {
         crate::rt::test_runtime(async {
-            const N: usize = 256; // high concurrency to stress io_uring ring reuse
+            const N: usize = 256; // many reads in flight at once
             let dir = tempfile::tempdir().unwrap();
             let mut expected = Vec::with_capacity(N);
             for i in 0..N {
@@ -582,19 +582,19 @@ mod tests {
                 let path = dir.path().join(name);
                 std::fs::write(&path, contents).unwrap();
                 let blocking = read_sysfs_value_blocking(&path).unwrap();
-                let compio = read_sysfs_value(&path).await.unwrap();
+                let pooled = read_sysfs_value(&path).await.unwrap();
                 assert_eq!(
                     blocking.as_bytes(),
-                    compio.as_bytes(),
+                    pooled.as_bytes(),
                     "bytes differ for {name}"
                 );
             }
             let missing = dir.path().join("missing");
             let blocking = read_sysfs_value_blocking(&missing).unwrap_err();
-            let compio = read_sysfs_value(&missing).await.unwrap_err();
+            let pooled = read_sysfs_value(&missing).await.unwrap_err();
             let kind = |err: &anyhow::Error| err.downcast_ref::<Error>().map(Error::kind);
             assert_eq!(kind(&blocking), Some(ErrorKind::NotFound));
-            assert_eq!(kind(&blocking), kind(&compio));
+            assert_eq!(kind(&blocking), kind(&pooled));
         });
     }
 
@@ -619,13 +619,12 @@ mod tests {
 
     /// Goal: concurrent `read_sysfs_value` calls (as the hwmon hot path does each tick) must each
     /// return their own file's bytes. Stack buffers make cross-contamination impossible by
-    /// construction, but this guards io_uring ring regressions. Method: port of the `read_sysfs`
-    /// fan-out test.
+    /// construction, but this guards the fan-out. Method: port of the `read_sysfs` fan-out test.
     #[test]
     #[cfg(feature = "gated-tests")]
     fn read_sysfs_value_concurrent_reads_are_not_cross_contaminated() {
         crate::rt::test_runtime(async {
-            const N: usize = 256; // high concurrency to stress io_uring ring reuse
+            const N: usize = 256; // many reads in flight at once
             let dir = tempfile::tempdir().unwrap();
             let mut expected = Vec::with_capacity(N);
             for i in 0..N {

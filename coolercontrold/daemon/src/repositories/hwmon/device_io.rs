@@ -3,11 +3,10 @@
 
 //! Per-device sysfs IO, isolated on a thread of its own.
 //!
-//! kernfs advertises a `.poll`, so `io_uring` issues sysfs reads inline on the submitting thread
-//! and kernfs then blocks anyway. A driver that does a USB round trip inside its read therefore
-//! parks the whole single-threaded runtime, and with it the snapshot cap, the permit timeouts and
-//! the failsafe's staleness counting: every protection the daemon has is a timer on the runtime
-//! the stall is holding.
+//! A sysfs read blocks in the driver's `show()`, and cannot be cancelled. A driver that does a
+//! USB round trip inside its read would therefore park the whole single-threaded runtime, were it
+//! read there, and with it the snapshot cap, the permit timeouts and the failsafe's staleness
+//! counting: every protection the daemon has is a timer on the runtime the stall would hold.
 //!
 //! One thread and one `SysfsFdCache` per device makes that machinery able to run. It adds no
 //! safety of its own. The thread runs no runtime: it blocks on its queue and in plain syscalls.

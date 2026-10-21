@@ -6172,14 +6172,14 @@ mod prepare_for_sleep_tests {
 
             // Pair the FIFO BEFORE the assertions: a panic here
             // would leave the leaked blocking write thread stuck in
-            // open(), and the test runtime drop would hang forever
-            // waiting for it. A blocking read-open would itself hang
-            // if the timed-out write never reached open(2), so open
-            // O_NONBLOCK (never blocks): a parked write-open pairs
-            // the instant this fd opens. The release is not readable
-            // from this side (a cancelled compio op closes its fd
-            // without writing), so hold the fd for a grace period to
-            // also catch a late write-open, then close.
+            // open() for the rest of the run. A blocking read-open
+            // would itself hang if the timed-out write never reached
+            // open(2), so open O_NONBLOCK (never blocks): a parked
+            // write-open pairs the instant this fd opens. The release
+            // is not readable from this side (a timed-out write
+            // closes its fd without writing), so hold the fd for a
+            // grace period to also catch a late write-open, then
+            // close.
             let fifo_for_reader = fifo_path.clone();
             let _ = crate::rt::spawn_blocking(move || {
                 use std::os::unix::fs::OpenOptionsExt;
