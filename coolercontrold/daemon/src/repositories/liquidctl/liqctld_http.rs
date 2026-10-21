@@ -35,6 +35,8 @@ const RESPONSE_HEAD_BYTES_MAX: usize = 8 * 1024;
 const RESPONSE_BODY_BYTES_MAX: usize = 1024 * 1024;
 const READ_CHUNK_BYTES: usize = 4 * 1024;
 const REQUEST_BYTES_INITIAL: usize = 512;
+/// Signals in a row a single read may be interrupted by before giving up on the connection.
+const READ_INTERRUPTED_TRIES_MAX: usize = 8;
 const _: () = assert!(LIQCTLD_CONNECTION_TRIES > 0);
 const _: () = assert!(LIQCTLD_EXPIRED_CONNECTION_RETRIES > 0);
 const _: () = assert!(RESPONSE_HEAD_BYTES_MAX < RESPONSE_BODY_BYTES_MAX);
@@ -344,7 +346,7 @@ fn read_into(
     if buf.len() < until {
         buf.resize(until, 0);
     }
-    loop {
+    for _ in 0..READ_INTERRUPTED_TRIES_MAX {
         match stream.read(&mut buf[*filled..until]) {
             Ok(read) => {
                 *filled += read;
@@ -357,6 +359,10 @@ fn read_into(
             Err(err) => return Err(HttpError::Io(err)),
         }
     }
+    Err(HttpError::Io(io::Error::new(
+        ErrorKind::Interrupted,
+        format!("read interrupted {READ_INTERRUPTED_TRIES_MAX} times in a row"),
+    )))
 }
 
 /// The head's length, status and `Content-Length`, or `None` while it is incomplete.
@@ -440,6 +446,51 @@ mod tests {
             }
             Ok(len)
         }
+    }
+
+    /// A reader interrupted on its first `interruptions` reads, then at EOF.
+    struct Interrupting {
+        interruptions: usize,
+        reads: usize,
+    }
+
+    impl Read for Interrupting {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            self.reads += 1;
+            if self.reads <= self.interruptions {
+                return Err(ErrorKind::Interrupted.into());
+            }
+            Ok(0)
+        }
+    }
+
+    /// Goal: a read interrupted by a signal is retried, but not forever. Method: one reader
+    /// interrupted just under the limit, which must reach its EOF, and one interrupted every
+    /// time, which must fail after exactly the limit.
+    #[test]
+    fn interrupted_reads_are_retried_up_to_the_limit() {
+        let mut buf = Vec::new();
+        let mut recovers = Interrupting {
+            interruptions: READ_INTERRUPTED_TRIES_MAX - 1,
+            reads: 0,
+        };
+        let mut filled = 0;
+        assert_eq!(
+            read_into(&mut recovers, &mut buf, &mut filled, 1).unwrap(),
+            0
+        );
+        assert_eq!(recovers.reads, READ_INTERRUPTED_TRIES_MAX);
+
+        let mut stuck = Interrupting {
+            interruptions: usize::MAX,
+            reads: 0,
+        };
+        let err = read_into(&mut stuck, &mut buf, &mut filled, 1).unwrap_err();
+        assert!(
+            matches!(&err, HttpError::Io(io) if io.kind() == ErrorKind::Interrupted),
+            "{err}"
+        );
+        assert_eq!(stuck.reads, READ_INTERRUPTED_TRIES_MAX);
     }
 
     fn reply(status_line: &str, body: &str) -> Vec<u8> {
