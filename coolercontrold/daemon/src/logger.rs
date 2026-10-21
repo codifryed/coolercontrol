@@ -452,7 +452,7 @@ fn stderr_writer() -> Result<LogWriter<Vec<u8>>> {
     Ok(writer)
 }
 
-/// The colour choice env_logger makes for its own stderr target, which a pipe target skips.
+/// The colour choice `env_logger` makes for its own stderr target, which a pipe target skips.
 fn stderr_write_style() -> WriteStyle {
     anstream::AutoStream::choice(&std::io::stderr()).into()
 }

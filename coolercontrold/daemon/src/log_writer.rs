@@ -57,12 +57,11 @@ impl<E: Send + 'static> LogWriter<E> {
     /// Queues `entry` without waiting. A full queue drops it and counts it.
     pub fn push(&self, entry: E) {
         match self.tx.try_send(Message::Entry(entry)) {
-            Ok(()) => {}
+            // Disconnected: the thread is gone, so nothing is left to write this or report it.
+            Ok(()) | Err(TrySendError::Disconnected(_)) => {}
             Err(TrySendError::Full(_)) => {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
             }
-            // The thread is gone, so nothing is left to write this or report it.
-            Err(TrySendError::Disconnected(_)) => {}
         }
     }
 
@@ -108,7 +107,7 @@ impl<E> Clone for LogWriter<E> {
     }
 }
 
-/// The target for env_logger's pipe. env_logger writes each formatted record with one
+/// The target for `env_logger`'s pipe. `env_logger` writes each formatted record with one
 /// `write_all`, and this takes it all at once, so every write is one line.
 impl io::Write for LogWriter<Vec<u8>> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
