@@ -703,7 +703,6 @@ async fn secure_plugin_folder(path: &Path, owner: Option<&Owner<'_>>) -> Result<
     // state this guards against, and the caller only warns on error and starts the plugin
     // anyway: a step that is skipped is a file left readable by the plugin user.
     //
-    //
     // The folder first: under a folder that is root's and sticky, nothing handed over
     // below can be moved over one of root's files.
     let plugin_dir = path.to_path_buf();
