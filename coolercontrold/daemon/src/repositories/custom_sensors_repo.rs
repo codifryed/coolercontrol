@@ -259,9 +259,9 @@ impl CustomSensorsRepo {
         self.verify_sensor_relationships(&custom_sensor)?;
         let file_value = match &custom_sensor.kind {
             // Make sure the file exists and its value is properly formatted
-            CustomSensorKind::File { file_path } => {
-                Some(Self::read_file_value(&self.io, custom_sensor.metric, file_path).await?)
-            }
+            CustomSensorKind::File { file_path } => Some(
+                Self::read_file_value(&self.check_io(), custom_sensor.metric, file_path).await?,
+            ),
             _ => None,
         };
         // A reconfigured sensor starts fresh: drop any prior failsafing state so the
@@ -457,7 +457,7 @@ impl CustomSensorsRepo {
         // failsafe substitution).
         let file_value = match &sensor.kind {
             CustomSensorKind::File { file_path } => {
-                Some(Self::read_file_value(&self.io, sensor.metric, file_path).await?)
+                Some(Self::read_file_value(&self.check_io(), sensor.metric, file_path).await?)
             }
             _ => None,
         };
@@ -1240,9 +1240,23 @@ impl CustomSensorsRepo {
         states.insert(id.clone(), state);
     }
 
+    /// A worker of its own for one create or update check read, ended when dropped. The File
+    /// worker serves every File sensor's tick read, so a new file that blocks (a FIFO with no
+    /// writer) would fail them all; on its own worker it costs only the request. Inline when File
+    /// reads are, as in tests.
+    fn check_io(&self) -> DeviceIo {
+        match self.io {
+            DeviceIo::Inline(_) => DeviceIo::default(),
+            DeviceIo::Threaded(_) => DeviceIo::isolated_or_inline(
+                "custom-sensor-check",
+                reply_timeout_for(self.poll_rate),
+            ),
+        }
+    }
+
     /// Reads a File sensor's value: a whole number in the hwmon unit of the sensor's metric.
     ///
-    /// The check reads on create and update use the File worker too: the file can be a FIFO or a
+    /// The check reads on create and update go through a worker too: the file can be a FIFO or a
     /// driver attribute, and a request must not park the main thread on it.
     async fn read_file_value(
         io: &DeviceIo,
@@ -5807,12 +5821,15 @@ mod tests {
         (repo, rx)
     }
 
-    // Goal: the check reads on create and update go through the File worker, so a FIFO or a
-    // stalled attribute fails the request instead of parking the main thread. Method: wedge the
-    // worker, then repoint a sensor and create one, and look for each read on the worker's queue.
+    // Goal: the check reads on create and update run on a worker of their own, not the shared
+    // File worker, so a file that blocks costs only that request and never the File sensors
+    // already ticking. Method: wedge the File worker, then repoint a sensor and create one, and
+    // require both to succeed with nothing reaching the wedged worker's queue. Gated: the check
+    // worker is a real thread.
     #[test]
     #[serial]
-    fn create_and_update_check_reads_go_through_the_file_worker() {
+    #[cfg(feature = "gated-tests")]
+    fn create_and_update_check_reads_skip_the_file_worker() {
         cc_fs::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
             let (mut repo, _first_rx) = repo_with_wedged_file(dir.path(), "45000").await;
@@ -5824,20 +5841,17 @@ mod tests {
             std::fs::write(&created, "47000").unwrap();
 
             let update = repo
-                .update_custom_sensor(file_sensor("file1", repointed.clone()))
+                .update_custom_sensor(file_sensor("file1", repointed))
                 .await;
-            let create = repo
-                .set_custom_sensor(file_sensor("file2", created.clone()))
-                .await;
+            let create = repo.set_custom_sensor(file_sensor("file2", created)).await;
 
-            assert!(update.is_err());
-            assert!(create.is_err());
-            let mut queued = Vec::new();
-            while let Ok(Request::Read { path, .. }) = rx.try_recv() {
-                queued.push(path);
-            }
-            assert_eq!(queued, [repointed, created]);
-            assert_eq!(repo.get_custom_sensors().len(), 1);
+            assert!(update.is_ok(), "{update:?}");
+            assert!(create.is_ok(), "{create:?}");
+            assert!(
+                rx.try_recv().is_err(),
+                "a check read reached the File worker"
+            );
+            assert_eq!(repo.get_custom_sensors().len(), 2);
         });
     }
 
