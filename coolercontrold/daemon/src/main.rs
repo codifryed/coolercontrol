@@ -185,8 +185,8 @@ const ENV_SERVICE_MANAGER: &str = "CC_SERVICE_MANAGER";
 /// ```
 const ENV_NVML: &str = "CC_NVML";
 
-/// Environment Variable: Force the async runtime's reactor backend
-/// Takes one of: [`epoll`, `io_uring`]
+/// Environment Variable: No longer has an effect. It chose the compio runtime's reactor backend;
+/// the tokio runtime always uses epoll. Still named so a unit file that sets it gets a note.
 ///
 /// # Example
 /// ```
@@ -348,7 +348,7 @@ fn main() -> Result<()> {
         let watchdog = Rc::new(watchdog::Watchdog::init());
         pause_before_startup(&config).await?;
         let detection_results = run_sensors_detection(&config).await;
-        rt::log_active_backend();
+        rt::log_ignored_driver_override();
         let hardware_support = Rc::new(
             diagnostics::support::HardwareSupportController::init(
                 detection_results,
