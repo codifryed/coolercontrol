@@ -195,14 +195,10 @@ fn escalate_catch_up(
     CatchUpEscalation::Escalated
 }
 
-/// Notices the supervisor restarting liqctld on its own after it exited.
-///
-/// The fresh service connects every device again, but its driver objects have lost the legacy690
-/// flip and direct access that discovery applied. A PSU with direct access, for one, goes back to
-/// reading through its kernel driver.
+/// Counts the supervisor's in-place liqctld restarts, and how many were caught up with.
 #[derive(Debug, Default)]
 struct ServiceRestarts {
-    /// Bumped on the sidecar by the supervisor before each in-place restart.
+    /// Bumped by the supervisor before each in-place restart.
     count: Arc<AtomicU32>,
     /// The count this repository last caught up with.
     seen: Cell<u32>,
@@ -946,13 +942,8 @@ impl LiquidctlRepo {
         Ok(())
     }
 
-    /// Catches up with a restart the supervisor made on its own, if it made one since the last.
-    ///
-    /// The fresh service has connected every device, and the devices kept their own state, so only
-    /// what died with the old process is re-applied: the legacy690 flip and direct access. Nothing
-    /// is initialized, as that resets device modes (a Corsair PSU's fan goes back to hardware
-    /// control) and only the wake path re-applies saved settings after it. A device that cannot be
-    /// caught up with is left to recovery, whose restart re-establishes it from scratch.
+    /// Re-applies legacy690 and direct access after the supervisor restarted liqctld on its own.
+    /// No re-init: it resets device modes, and only the wake path re-applies settings after it.
     async fn poll_service_restart(&self) {
         // A restart counted during our own work on the service is claimed on a later tick.
         if self.restart_in_progress.get() {
