@@ -5998,6 +5998,32 @@ mod tests {
         });
     }
 
+    fn refuse_check_worker(_name: &str, _timeout: Duration) -> anyhow::Result<DeviceIo> {
+        Err(anyhow::anyhow!("thread refused"))
+    }
+
+    // Goal: when the check worker cannot start, the check fails rather than reading on the
+    // main thread. Method: refuse every check worker, create a File sensor over a readable,
+    // valid file, and require the create to fail with no worker counted or kept.
+    #[test]
+    #[serial]
+    fn a_refused_check_worker_fails_the_check() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut repo, _rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            repo.start_check_worker = refuse_check_worker;
+            let valid = dir.path().join("valid");
+            std::fs::write(&valid, "46000").unwrap();
+
+            let create = repo.set_custom_sensor(file_sensor("file2", valid)).await;
+
+            assert!(create.is_err(), "{create:?}");
+            assert_eq!(repo.check_workers_started.get(), 0);
+            assert!(repo.check_worker.borrow().is_none());
+            assert_eq!(repo.get_custom_sensors().len(), 1);
+        });
+    }
+
     // Goal: a read that has not landed by the snapshot is a miss like a failed read: held for
     // the tolerance window, then the failsafe. Method: one good tick, then keep a read pass in
     // flight on a queue nobody drains and take snapshots past the threshold.
