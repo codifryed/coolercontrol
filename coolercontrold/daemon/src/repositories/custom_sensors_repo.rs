@@ -260,7 +260,7 @@ impl CustomSensorsRepo {
         let file_value = match &custom_sensor.kind {
             // Make sure the file exists and its value is properly formatted
             CustomSensorKind::File { file_path } => {
-                Some(Self::read_file_value(custom_sensor.metric, file_path).await?)
+                Some(Self::read_file_value(&self.io, custom_sensor.metric, file_path).await?)
             }
             _ => None,
         };
@@ -457,7 +457,7 @@ impl CustomSensorsRepo {
         // failsafe substitution).
         let file_value = match &sensor.kind {
             CustomSensorKind::File { file_path } => {
-                Some(Self::read_file_value(sensor.metric, file_path).await?)
+                Some(Self::read_file_value(&self.io, sensor.metric, file_path).await?)
             }
             _ => None,
         };
@@ -1241,8 +1241,15 @@ impl CustomSensorsRepo {
     }
 
     /// Reads a File sensor's value: a whole number in the hwmon unit of the sensor's metric.
-    async fn read_file_value(metric: CustomSensorMetric, file_path: &Path) -> Result<f64> {
-        Self::parse_file_value(metric, cc_fs::read_sysfs_value(file_path).await)
+    ///
+    /// The check reads on create and update use the File worker too: the file can be a FIFO or a
+    /// driver attribute, and a request must not park the main thread on it.
+    async fn read_file_value(
+        io: &DeviceIo,
+        metric: CustomSensorMetric,
+        file_path: &Path,
+    ) -> Result<f64> {
+        Self::parse_file_value(metric, io.read_value(file_path).await)
     }
 
     /// Checks a File sensor's read and converts it, whichever path read it.
@@ -2571,8 +2578,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_ok());
@@ -2593,8 +2604,12 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_ok());
@@ -2612,8 +2627,12 @@ mod tests {
             let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
 
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2637,8 +2656,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2664,8 +2687,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2686,8 +2713,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2710,8 +2741,12 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2738,8 +2773,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             // println!("{temp_result:?}");
@@ -2759,8 +2798,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2779,8 +2822,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2799,8 +2846,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -5644,10 +5695,18 @@ mod tests {
                 .await
                 .unwrap();
 
-            let watts =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Watts, &test_file).await;
-            let as_temp =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let watts = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Watts,
+                &test_file,
+            )
+            .await;
+            let as_temp = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             assert_eq!(watts.unwrap(), 100_000.);
             assert!(as_temp.is_err());
@@ -5746,6 +5805,40 @@ mod tests {
         let (io, rx) = DeviceIo::wedged_for_test(Duration::from_secs(60));
         repo.io = io;
         (repo, rx)
+    }
+
+    // Goal: the check reads on create and update go through the File worker, so a FIFO or a
+    // stalled attribute fails the request instead of parking the main thread. Method: wedge the
+    // worker, then repoint a sensor and create one, and look for each read on the worker's queue.
+    #[test]
+    #[serial]
+    fn create_and_update_check_reads_go_through_the_file_worker() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut repo, _first_rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            let (io, mut rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+            repo.io = io;
+            let repointed = dir.path().join("repointed");
+            let created = dir.path().join("created");
+            std::fs::write(&repointed, "46000").unwrap();
+            std::fs::write(&created, "47000").unwrap();
+
+            let update = repo
+                .update_custom_sensor(file_sensor("file1", repointed.clone()))
+                .await;
+            let create = repo
+                .set_custom_sensor(file_sensor("file2", created.clone()))
+                .await;
+
+            assert!(update.is_err());
+            assert!(create.is_err());
+            let mut queued = Vec::new();
+            while let Ok(Request::Read { path, .. }) = rx.try_recv() {
+                queued.push(path);
+            }
+            assert_eq!(queued, [repointed, created]);
+            assert_eq!(repo.get_custom_sensors().len(), 1);
+        });
     }
 
     // Goal: a read that has not landed by the snapshot is a miss like a failed read: held for
