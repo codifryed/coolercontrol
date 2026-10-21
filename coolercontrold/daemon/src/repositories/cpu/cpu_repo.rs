@@ -882,6 +882,25 @@ impl CpuRepo {
         }
         locations
     }
+
+    /// The kernel driver behind a CPU device, as its device info shows it.
+    async fn driver_info(driver: &HwmonDriverInfo, identity: &IdentityReader) -> DriverInfo {
+        if driver.name == apple_silicon::DRIVER_NAME {
+            DriverInfo {
+                drv_type: DriverType::Kernel,
+                name: apple_silicon::scaling_driver(&driver.io).await,
+                version: sysinfo::System::kernel_version(),
+                locations: vec![driver.path.display().to_string()],
+            }
+        } else {
+            DriverInfo {
+                drv_type: DriverType::Kernel,
+                name: devices::get_device_driver_name(&driver.path),
+                version: sysinfo::System::kernel_version(),
+                locations: Self::get_driver_locations(&driver.path, identity).await,
+            }
+        }
+    }
 }
 
 #[async_trait(?Send)]
@@ -1000,21 +1019,7 @@ impl Repository for CpuRepo {
                     channels: channel_infos,
                     temps: temp_infos,
                     temp_max: 100,
-                    driver_info: if driver.name == apple_silicon::DRIVER_NAME {
-                        DriverInfo {
-                            drv_type: DriverType::Kernel,
-                            name: apple_silicon::scaling_driver(&driver.io).await,
-                            version: sysinfo::System::kernel_version(),
-                            locations: vec![driver.path.display().to_string()],
-                        }
-                    } else {
-                        DriverInfo {
-                            drv_type: DriverType::Kernel,
-                            name: devices::get_device_driver_name(&driver.path),
-                            version: sysinfo::System::kernel_version(),
-                            locations: Self::get_driver_locations(&driver.path, &identity).await,
-                        }
-                    },
+                    driver_info: Self::driver_info(&driver, &identity).await,
                     ..Default::default()
                 },
                 None,

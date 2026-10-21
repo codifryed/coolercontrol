@@ -896,6 +896,37 @@ impl HwmonRepo {
         })
     }
 
+    /// The device's UID from its identity, unique among `assigned_uids`, with any settings kept
+    /// under its legacy UID moved to it.
+    async fn resolve_device_uid(
+        &self,
+        path: &Path,
+        device_name: &str,
+        assigned_uids: &mut HashSet<UID>,
+        identity: &IdentityReader,
+    ) -> Result<(String, UID), Stalled> {
+        let HwmonIdentity {
+            identifier: raw_id,
+            wwid: wwid_id,
+            serial: serial_id,
+        } = Self::read_identity(path, device_name, identity).await?;
+        // Distinct per-device sysfs path. Last resort only: see the note on `assigned_uids`.
+        let path_id = devices::get_static_device_path_str(path)
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        let (u_id, device_uid) = Device::assign_unique(
+            assigned_uids,
+            DeviceType::Hwmon,
+            device_name,
+            &raw_id,
+            &[wwid_id.as_str(), serial_id.as_str(), path_id.as_str()],
+        );
+        debug!("Detected UID: {u_id}");
+        self.migrate_legacy_device_uid(path, device_name, &device_uid, assigned_uids, identity)
+            .await?;
+        debug_assert!(assigned_uids.contains(&device_uid));
+        Ok((u_id, device_uid))
+    }
+
     /// The device's model, from its own attribute or its PCI ids.
     async fn read_model(path: &Path, identity: &IdentityReader) -> Result<Option<String>, Stalled> {
         let pci_device_names = devices::get_device_pci_names(path, identity).await?;
@@ -2236,40 +2267,13 @@ impl Repository for HwmonRepo {
                 self.record_exclusion(&path, HwmonExclusion::DuplicateOfLiquidctl);
                 continue;
             }
-            let Ok(HwmonIdentity {
-                identifier: raw_id,
-                wwid: wwid_id,
-                serial: serial_id,
-            }) = Self::read_identity(&path, &device_name, &identity).await
+            let Ok((u_id, device_uid)) = self
+                .resolve_device_uid(&path, &device_name, &mut assigned_uids, &identity)
+                .await
             else {
                 self.skip_unanswered(&path, &device_name);
                 continue;
             };
-            // Distinct per-device sysfs path. Last resort only: see the note on `assigned_uids`.
-            let path_id = devices::get_static_device_path_str(&path)
-                .unwrap_or_else(|| path.to_string_lossy().into_owned());
-            let (u_id, device_uid) = Device::assign_unique(
-                &mut assigned_uids,
-                DeviceType::Hwmon,
-                &device_name,
-                &raw_id,
-                &[wwid_id.as_str(), serial_id.as_str(), path_id.as_str()],
-            );
-            debug!("Detected UID: {u_id}");
-            if self
-                .migrate_legacy_device_uid(
-                    &path,
-                    &device_name,
-                    &device_uid,
-                    &assigned_uids,
-                    &identity,
-                )
-                .await
-                .is_err()
-            {
-                self.skip_unanswered(&path, &device_name);
-                continue;
-            }
             let cc_device_setting = self
                 .config
                 .get_cc_settings_for_device(&device_uid)

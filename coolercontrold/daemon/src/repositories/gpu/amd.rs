@@ -103,21 +103,12 @@ impl GpuAMD {
             }
             // Before any value read, so detection is isolated too.
             let io = DeviceIo::isolated_or_inline(&device_name, io_reply_timeout);
-            let Ok(raw_id) = devices::get_device_unique_id(&path, &device_name, &identity).await
+            let Ok((u_id, device_uid)) =
+                Self::resolve_uid(&path, &device_name, &mut assigned_uids, &identity).await
             else {
                 identity::log_skipped(&device_name, &path);
                 continue;
             };
-            // Distinct per-device sysfs path, used only if raw_id collides (e.g. a blank serial).
-            let path_id = devices::get_static_device_path_str(&path)
-                .unwrap_or_else(|| path.to_string_lossy().into_owned());
-            let (u_id, device_uid) = Device::assign_unique(
-                &mut assigned_uids,
-                DeviceType::GPU,
-                &device_name,
-                &raw_id,
-                &[path_id.as_str()],
-            );
             let cc_device_setting = self
                 .config
                 .get_cc_settings_for_device(&device_uid)
@@ -150,35 +141,19 @@ impl GpuAMD {
                 .join("device")
                 .canonicalize()
                 .unwrap_or_else(|_| path.join("device"));
-            let mut fdinfo_load = None;
-            match Self::init_load(&device_path, &io).await {
-                HwmonLoad::Supported(load_channel) => {
-                    if disabled_channels.contains(&load_channel.name).not() {
-                        channels.push(load_channel);
-                    }
-                }
-                HwmonLoad::Unsupported => {
-                    // hwmon load sensor is unsupported (older ASICs): fall back to
-                    // DRM fdinfo, the only load source these GPUs have.
-                    let load_disabled = disabled_channels.iter().any(|c| c == GPU_LOAD_NAME);
-                    if load_disabled.not() {
-                        let Ok(fdinfo) = Self::init_fdinfo_load(&path, &identity).await else {
-                            identity::log_skipped(&device_name, &path);
-                            continue;
-                        };
-                        if let Some(fd_load) = fdinfo {
-                            channels.push(HwmonChannelInfo {
-                                hwmon_type: HwmonChannelType::Load,
-                                name: GPU_LOAD_NAME.to_string(),
-                                label: Some(GPU_LOAD_NAME.to_string()),
-                                ..Default::default()
-                            });
-                            fdinfo_load = Some(fd_load);
-                        }
-                    }
-                }
-                HwmonLoad::Unanswered => {}
-            }
+            let Ok(fdinfo_load) = Self::init_load_channel(
+                &path,
+                &device_path,
+                &io,
+                &identity,
+                &disabled_channels,
+                &mut channels,
+            )
+            .await
+            else {
+                identity::log_skipped(&device_name, &path);
+                continue;
+            };
             match freqs::init_freqs(&path, &io).await {
                 Ok(freqs) => channels.extend(
                     freqs
@@ -255,6 +230,75 @@ impl GpuAMD {
             );
         }
         amd_infos
+    }
+
+    /// The GPU's UID from its identity, unique among `assigned_uids`.
+    ///
+    /// # Errors
+    ///
+    /// `Stalled` when its identity did not read.
+    async fn resolve_uid(
+        path: &Path,
+        device_name: &str,
+        assigned_uids: &mut HashSet<UID>,
+        identity: &IdentityReader,
+    ) -> Result<(String, UID), Stalled> {
+        let raw_id = devices::get_device_unique_id(path, device_name, identity).await?;
+        // Distinct per-device sysfs path, used only if raw_id collides (e.g. a blank serial).
+        let path_id = devices::get_static_device_path_str(path)
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        let (u_id, device_uid) = Device::assign_unique(
+            assigned_uids,
+            DeviceType::GPU,
+            device_name,
+            &raw_id,
+            &[path_id.as_str()],
+        );
+        debug_assert!(assigned_uids.contains(&device_uid));
+        Ok((u_id, device_uid))
+    }
+
+    /// Adds the GPU's Load channel unless the user disabled it: from hwmon, or from DRM fdinfo,
+    /// whose source is returned, where the hwmon sensor is unsupported.
+    ///
+    /// # Errors
+    ///
+    /// `Stalled` when the fdinfo fallback's PCI slot did not read.
+    async fn init_load_channel(
+        base_path: &Path,
+        device_path: &Path,
+        io: &DeviceIo,
+        identity: &IdentityReader,
+        disabled_channels: &[String],
+        channels: &mut Vec<HwmonChannelInfo>,
+    ) -> Result<Option<FdInfoLoad>, Stalled> {
+        match Self::init_load(device_path, io).await {
+            HwmonLoad::Supported(load_channel) => {
+                if disabled_channels.contains(&load_channel.name).not() {
+                    channels.push(load_channel);
+                }
+                Ok(None)
+            }
+            HwmonLoad::Unsupported => {
+                // hwmon load sensor is unsupported (older ASICs): fall back to
+                // DRM fdinfo, the only load source these GPUs have.
+                let load_disabled = disabled_channels.iter().any(|c| c == GPU_LOAD_NAME);
+                if load_disabled {
+                    return Ok(None);
+                }
+                let fdinfo = Self::init_fdinfo_load(base_path, identity).await?;
+                if fdinfo.is_some() {
+                    channels.push(HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Load,
+                        name: GPU_LOAD_NAME.to_string(),
+                        label: Some(GPU_LOAD_NAME.to_string()),
+                        ..Default::default()
+                    });
+                }
+                Ok(fdinfo)
+            }
+            HwmonLoad::Unanswered => Ok(None),
+        }
     }
 
     /// On the GPU's thread: the read is an SMU message, which can wait on the firmware.
