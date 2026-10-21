@@ -1144,6 +1144,7 @@ mod tests {
             HwmonExclusion::ServedByGpuRepository,
             HwmonExclusion::UserDisabled,
             HwmonExclusion::AllChannelsIgnored,
+            HwmonExclusion::Unanswered,
         ] {
             assert!(reason.label().is_empty().not(), "{reason:?} has no label");
         }

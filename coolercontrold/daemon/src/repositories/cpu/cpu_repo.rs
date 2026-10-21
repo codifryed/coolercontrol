@@ -29,13 +29,14 @@ use crate::repositories::hwmon::chip_name::{self, ChipName};
 use crate::repositories::hwmon::hwmon_repo::{
     install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
+use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{attributes, devices, power_cap, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, log, trace};
+use log::{debug, error, info, log, trace, warn};
 use std::time::Instant;
 
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
@@ -146,16 +147,17 @@ impl CpuRepo {
         channels: Vec<HwmonChannelInfo>,
         cc_device_setting: Option<&CCDeviceSettings>,
         path: &Path,
-    ) -> Vec<HwmonChannelInfo> {
+        identity: &IdentityReader,
+    ) -> Result<Vec<HwmonChannelInfo>, Stalled> {
         let disabled_channels =
             cc_device_setting.map_or_else(Vec::new, CCDeviceSettings::get_disabled_channels);
         let mut channels = channels
             .into_iter()
             .filter(|channel| disabled_channels.contains(&channel.name).not())
             .collect::<Vec<HwmonChannelInfo>>();
-        let chip = chip_name::derive(path).await;
+        let chip = chip_name::derive(path, identity).await?;
         self.drop_ignored_channels(chip.as_ref(), &mut channels);
-        channels
+        Ok(channels)
     }
 
     /// Drops the CPU channels the user's lm-sensors configuration ignores. Relabelling and hiding
@@ -239,17 +241,18 @@ impl CpuRepo {
     async fn driver_census(
         driver_name: &str,
         potential_cpu_paths: &[(String, PathBuf)],
-    ) -> DriverCensus {
+        identity: &IdentityReader,
+    ) -> Result<DriverCensus, Stalled> {
         let driver_paths = potential_cpu_paths
             .iter()
             .filter(|(device_name, _)| device_name == driver_name)
             .map(|(_, path)| path);
         if CpuDriver::of(driver_name) == CpuDriver::Amd {
-            return DriverCensus {
+            return Ok(DriverCensus {
                 device_count: driver_paths.count(),
                 all_zones_online: true,
                 multi_die: false,
-            };
+            });
         }
         let zone_ids = driver_paths
             .filter_map(|path| devices::get_platform_device_id(path))
@@ -257,12 +260,12 @@ impl CpuRepo {
         let platform_zone_count = devices::count_platform_devices(INTEL_DEVICE_NAME);
         let all_zones_online = association::zones_all_online(&zone_ids, platform_zone_count);
         // The die check reads every online CPU, and only the offline fallback needs it.
-        let multi_die = all_zones_online.not() && Self::any_cpu_on_a_later_die().await;
-        DriverCensus {
+        let multi_die = all_zones_online.not() && Self::any_cpu_on_a_later_die(identity).await?;
+        Ok(DriverCensus {
             device_count: zone_ids.len(),
             all_zones_online,
             multi_die,
-        }
+        })
     }
 
     /// The driver's own id for this device, read from where that driver puts it: a `coretemp`
@@ -278,20 +281,20 @@ impl CpuRepo {
     /// A kernel without `die_id` (before 5.2) predates multi-die support, so it reads as single.
     /// Only asked for `coretemp`: on current AMD a die is a CCD, which a single desktop part
     /// already has two of.
-    async fn any_cpu_on_a_later_die() -> bool {
+    async fn any_cpu_on_a_later_die(identity: &IdentityReader) -> Result<bool, Stalled> {
         let pattern = "/sys/devices/system/cpu/cpu[0-9]*/topology/die_id";
         let Ok(paths) = nu_glob::glob(pattern, nu_glob::Uninterruptible) else {
-            return false;
+            return Ok(false);
         };
         for path in paths.filter_map(Result::ok) {
-            let Ok(die_id) = cc_fs::read_txt(&path).await else {
+            let Some(die_id) = identity.text(&path).await? else {
                 continue;
             };
             if die_id.trim().parse::<u32>().is_ok_and(|die_id| die_id > 0) {
-                return true;
+                return Ok(true);
             }
         }
-        false
+        Ok(false)
     }
 
     /// The channels that only make sense once a device is tied to a processor: load, frequency
@@ -624,10 +627,13 @@ impl CpuRepo {
         }
     }
 
-    async fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
+    async fn get_potential_cpu_paths(identity: &IdentityReader) -> Vec<(String, PathBuf)> {
         let mut potential_cpu_paths = Vec::new();
         for path in devices::find_all_hwmon_device_paths() {
-            let device_name = devices::get_device_name(&path).await;
+            let Ok(device_name) = devices::get_device_name(&path, identity).await else {
+                identity::log_skipped(&"a hwmon device", &path);
+                continue;
+            };
             if CPU_DEVICE_NAMES_ORDERED.contains(&device_name.as_str()) {
                 potential_cpu_paths.push((device_name, path));
             }
@@ -638,6 +644,7 @@ impl CpuRepo {
     async fn init_hwmon_cpu_devices(
         &mut self,
         potential_cpu_paths: Vec<(String, PathBuf)>,
+        identity: &IdentityReader,
     ) -> HashMap<CpuAssociation, HwmonDriverInfo> {
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.topology.package_count();
@@ -652,7 +659,15 @@ impl CpuRepo {
             log!(lvl, "No CPU frequencies found in cpuinfo");
         }
         for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
-            let census = Self::driver_census(cpu_device_name, &potential_cpu_paths).await;
+            let Ok(census) =
+                Self::driver_census(cpu_device_name, &potential_cpu_paths, identity).await
+            else {
+                warn!(
+                    "Skipping every {cpu_device_name} device for this start: reading which die \
+                     each CPU is on got no answer. It is read again at the next start."
+                );
+                continue;
+            };
             if census.all_zones_online.not() {
                 info!(
                     "A {cpu_device_name} zone has no online CPU, so its CPU devices are matched by \
@@ -669,7 +684,7 @@ impl CpuRepo {
                     continue;
                 };
                 let Some(hwmon_driver_info) = self
-                    .init_cpu_device(device_name, path, association, &mut cpu_freqs)
+                    .init_cpu_device(device_name, path, association, &mut cpu_freqs, identity)
                     .await
                 else {
                     continue;
@@ -737,6 +752,7 @@ impl CpuRepo {
         path: &Path,
         association: CpuAssociation,
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+        identity: &IdentityReader,
     ) -> Option<HwmonDriverInfo> {
         let Some(type_index) = association::device_type_index(&self.topology, association) else {
             error!(
@@ -770,19 +786,22 @@ impl CpuRepo {
         if let Some(physical_id) = association.physical_id() {
             channels.extend(self.init_socket_channels(physical_id, cpu_freqs, &io).await);
         }
-        let mut channels = self
-            .retain_visible_channels(channels, cc_device_setting.as_ref(), path)
-            .await;
+        let Ok(mut channels) = self
+            .retain_visible_channels(channels, cc_device_setting.as_ref(), path, identity)
+            .await
+        else {
+            identity::log_skipped(&device_name, path);
+            return None;
+        };
         // Detection is done with this device's channel set, so the per-tick pass can address the
         // worker's table by slot from here on.
         if let Err(err) = install_read_registry(path, None, &mut channels, &io).await {
             error!("Could not install the read table for {cpu_name}: {err}");
         }
-        let pci_device_names = devices::get_device_pci_names(path).await;
-        let model = devices::get_device_model_name(path).await.or_else(|| {
-            pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
-        });
-        let u_id = devices::get_device_unique_id(path, device_name).await;
+        let Ok((model, u_id)) = Self::read_model_and_id(path, device_name, identity).await else {
+            identity::log_skipped(&device_name, path);
+            return None;
+        };
         Some(HwmonDriverInfo {
             name: device_name.to_owned(),
             path: path.to_path_buf(),
@@ -840,11 +859,28 @@ impl CpuRepo {
         }
     }
 
-    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    /// The device's model, from its own attribute or its PCI ids, and its identifier.
+    async fn read_model_and_id(
+        path: &Path,
+        device_name: &str,
+        identity: &IdentityReader,
+    ) -> Result<(Option<String>, UID), Stalled> {
+        let pci_device_names = devices::get_device_pci_names(path, identity).await?;
+        let model = devices::get_device_model_name(path, identity)
+            .await?
+            .or_else(|| {
+                pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
+            });
+        let u_id = devices::get_device_unique_id(path, device_name, identity).await?;
+        Ok((model, u_id))
+    }
+
+    /// For display only, read once the device is accepted: a stalled read leaves out its entry.
+    async fn get_driver_locations(base_path: &Path, identity: &IdentityReader) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
         let device_path = devices::get_static_device_path_str(base_path);
         let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+        if let Ok(Some(mod_alias)) = devices::get_device_mod_alias(base_path, identity).await {
             locations.push(mod_alias);
         }
         locations
@@ -865,10 +901,15 @@ impl Repository for CpuRepo {
         self.set_topology(CPUINFO_PATH.as_ref()).await?;
         // The first load status is read during initialization, so it needs a sample already.
         self.sample_cpu_load().await;
-        let potential_cpu_paths = Self::get_potential_cpu_paths().await;
+        // Dropped at the end of init, which ends its thread.
+        let identity =
+            IdentityReader::start("cpu-init", device_io::reply_timeout_from(&self.config));
+        let potential_cpu_paths = Self::get_potential_cpu_paths(&identity).await;
 
         let num_of_cpus = self.topology.package_count();
-        let mut hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
+        let mut hwmon_devices = self
+            .init_hwmon_cpu_devices(potential_cpu_paths, &identity)
+            .await;
         if hwmon_devices.is_empty() {
             if let Some(driver) = self.init_apple_silicon_cpu_device().await {
                 hwmon_devices.insert(CpuAssociation::Socket(apple_silicon::PACKAGE), driver);
@@ -905,6 +946,12 @@ impl Repository for CpuRepo {
                 error!("No device number left for {association:?}. Skipping device.");
                 continue;
             };
+            // Derived when the device was built, so a stall here is the device going quiet since.
+            // Read before anything is stored for the device, so skipping it leaves nothing behind.
+            let Ok(chip) = chip_name::derive(&driver.path, &identity).await else {
+                identity::log_skipped(&driver.name, &driver.path);
+                continue;
+            };
             // Only a processor's own device has a package power channel, and the counter is per
             // processor, so a zone-keyed device seeds nothing.
             if let Some(physical_id) = association.physical_id() {
@@ -916,7 +963,6 @@ impl Repository for CpuRepo {
             self.preloaded_statuses
                 .borrow_mut()
                 .insert(association, (channels.clone(), temps.clone()));
-            let chip = chip_name::derive(&driver.path).await;
             let temp_infos = driver
                 .channels
                 .iter()
@@ -960,16 +1006,16 @@ impl Repository for CpuRepo {
                     driver_info: if driver.name == apple_silicon::DRIVER_NAME {
                         DriverInfo {
                             drv_type: DriverType::Kernel,
-                            name: apple_silicon::scaling_driver().await,
+                            name: apple_silicon::scaling_driver(&driver.io).await,
                             version: sysinfo::System::kernel_version(),
                             locations: vec![driver.path.display().to_string()],
                         }
                     } else {
                         DriverInfo {
                             drv_type: DriverType::Kernel,
-                            name: devices::get_device_driver_name(&driver.path).await,
+                            name: devices::get_device_driver_name(&driver.path),
                             version: sysinfo::System::kernel_version(),
-                            locations: Self::get_driver_locations(&driver.path).await,
+                            locations: Self::get_driver_locations(&driver.path, &identity).await,
                         }
                     },
                     ..Default::default()

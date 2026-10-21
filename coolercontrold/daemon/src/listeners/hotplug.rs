@@ -4,10 +4,11 @@
 use crate::config::Config;
 use crate::events::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::repositories::hwmon::devices::{self, HWMON_DEVICE_NAME_BLACKLIST};
+use crate::repositories::hwmon::identity::{IdentityReader, Stalled};
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::rt;
 use crate::setting::CCDeviceSettings;
-use crate::{cc_fs, AllDevices, ENV_DEVICE_EVENTS};
+use crate::{AllDevices, ENV_DEVICE_EVENTS};
 use anyhow::Result;
 use log::{debug, info, warn};
 use moro_local::Scope;
@@ -156,13 +157,23 @@ fn create_netlink_socket() -> Result<OwnedFd> {
     Ok(fd)
 }
 
+/// How long a scan waits on one device's `name`: the device reply timeout at the default poll
+/// rate, as a scan is not paced by the poll.
+const IDENTITY_TIMEOUT: Duration = Duration::from_secs(8);
+
 /// Captures the set of hwmon base paths that currently have applicable
 /// devices (with fans, temps, or power channels) and are not blacklisted.
+///
+/// A device whose name gets no answer is left out: the hwmon repository skipped it for the same
+/// reason, so a later scan that reads it reports it as new, which it is to the daemon.
 async fn build_hwmon_baseline() -> HashSet<PathBuf> {
     let paths = devices::find_all_hwmon_device_paths();
+    let reader = IdentityReader::start("hotplug", IDENTITY_TIMEOUT);
     let mut baseline = HashSet::with_capacity(paths.len());
     for path in paths {
-        let name = devices::get_device_name(&path).await;
+        let Ok(name) = devices::get_device_name(&path, &reader).await else {
+            continue;
+        };
         if is_hwmon_applicable(&name) {
             baseline.insert(path);
         }
@@ -395,11 +406,23 @@ async fn scan_hwmon_changes(
     disabled_names: &HashSet<String>,
 ) -> bool {
     let current_paths = devices::find_all_hwmon_device_paths();
+    let reader = IdentityReader::start("hotplug", IDENTITY_TIMEOUT);
     let mut current_applicable = HashSet::with_capacity(current_paths.len());
-    for path in &current_paths {
-        let name = devices::get_device_name(path).await;
-        if is_hwmon_applicable(&name) {
-            current_applicable.insert(path.clone());
+    let mut names = HashMap::with_capacity(current_paths.len());
+    for path in current_paths {
+        match devices::get_device_name(&path, &reader).await {
+            Ok(name) if is_hwmon_applicable(&name) => {
+                current_applicable.insert(path.clone());
+                names.insert(path, name);
+            }
+            Ok(_) => {}
+            // Unread is unchanged: a device the baseline holds stays in it rather than reading as
+            // removed, and one it lacks waits for a scan that reads it.
+            Err(Stalled) => {
+                if baseline.contains(&path) {
+                    current_applicable.insert(path);
+                }
+            }
         }
     }
     let mut detected_real = false;
@@ -408,12 +431,16 @@ async fn scan_hwmon_changes(
     for path in &current_applicable {
         if baseline.contains(path).not() {
             baseline_changed = true;
-            let name = devices::get_device_name(path).await;
-            if disabled_names.contains(&name) {
+            // Only a path whose name was read can be new, by the loop above.
+            debug_assert!(names.contains_key(path));
+            let Some(name) = names.get(path) else {
+                continue;
+            };
+            if disabled_names.contains(name) {
                 debug!("Ignoring add for user-disabled hwmon device: {name}");
                 continue;
             }
-            notify_device_added(&name, notification_handle);
+            notify_device_added(name, notification_handle);
             detected_real = true;
         }
     }
@@ -421,7 +448,7 @@ async fn scan_hwmon_changes(
     for path in baseline.iter() {
         if current_applicable.contains(path).not() {
             baseline_changed = true;
-            let name = device_name_for_removed(path).await;
+            let name = device_name_for_removed(path, &reader).await;
             if disabled_names.contains(&name) {
                 debug!("Ignoring remove for user-disabled hwmon device: {name}");
                 continue;
@@ -438,8 +465,8 @@ async fn scan_hwmon_changes(
 
 /// Gets a device name for a removed device path.
 /// The sysfs name file may no longer exist, so fall back to the path itself.
-async fn device_name_for_removed(path: &Path) -> String {
-    if let Ok(contents) = cc_fs::read_sysfs(path.join("name")).await {
+async fn device_name_for_removed(path: &Path, reader: &IdentityReader) -> String {
+    if let Ok(Some(contents)) = reader.text(&path.join("name")).await {
         let name = contents.trim().to_string();
         if name.is_empty().not() {
             return name;

@@ -258,6 +258,9 @@ pub enum HwmonExclusion {
     /// The lm-sensors configuration ignores every channel it has. Absent from
     /// the app.
     AllChannelsIgnored,
+    /// Reading its identity got no answer at startup, so it is absent from the
+    /// app until the next start.
+    Unanswered,
 }
 
 impl HwmonExclusion {
@@ -274,6 +277,7 @@ impl HwmonExclusion {
             Self::ServedByGpuRepository => "handled by the GPU repository",
             Self::UserDisabled => "hidden: disabled in settings",
             Self::AllChannelsIgnored => "hidden: every channel ignored by sensors.conf",
+            Self::Unanswered => "hidden: did not answer at startup",
         }
     }
 }

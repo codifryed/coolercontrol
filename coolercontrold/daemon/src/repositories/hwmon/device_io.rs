@@ -770,28 +770,57 @@ fn unreachable_warning(device_name: &str, timeouts: u8) -> String {
     )
 }
 
+/// Whether `err` means the worker never answered, rather than answered with an error.
+///
+/// The kind alone cannot tell them apart: a driver that fails its own read with `ETIMEDOUT`
+/// answered. Callers that must not mistake a stall for a missing attribute ask here.
+#[must_use]
+pub fn is_unanswered(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<Error>()
+            .and_then(Error::get_ref)
+            .is_some_and(<dyn std::error::Error + Send + Sync>::is::<Unanswered>)
+    })
+}
+
+/// The payload of every error that means no answer came: a timeout, an unreachable device, or a
+/// worker that is gone. Carried inside the `io::Error`, so its kind and message stay as they were.
+#[derive(Debug)]
+struct Unanswered(String);
+
+impl Display for Unanswered {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Unanswered {}
+
+fn unanswered(kind: ErrorKind, message: String) -> anyhow::Error {
+    Error::new(kind, Unanswered(message)).into()
+}
+
 fn timed_out(
     device_name: &str,
     verb: &'static str,
     what: &dyn Display,
     budget: Duration,
 ) -> anyhow::Error {
-    Error::new(
+    unanswered(
         ErrorKind::TimedOut,
         format!(
             "device {device_name} did not answer within {} ms {verb} {what}",
             budget.as_millis()
         ),
     )
-    .into()
 }
 
 fn unreachable(device_name: &str, what: &dyn Display) -> anyhow::Error {
-    Error::new(
+    unanswered(
         ErrorKind::HostUnreachable,
         format!("device {device_name} is unreachable, skipping {what}"),
     )
-    .into()
 }
 
 /// Names a batch in a timeout message without carrying a path across the boundary.
@@ -804,11 +833,10 @@ impl Display for BatchLabel {
 }
 
 fn worker_gone(device_name: &str) -> anyhow::Error {
-    Error::new(
+    unanswered(
         ErrorKind::BrokenPipe,
         format!("device {device_name} IO worker is gone"),
     )
-    .into()
 }
 
 #[cfg(test)]
@@ -1224,6 +1252,41 @@ mod tests {
                 assert!(io.read_text(&binary).await.is_err());
             }
             assert_eq!(threaded.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: a caller can tell a worker that never answered from a driver that answered with an
+    /// error, its own `ETIMEDOUT` included, without changing what either error says. Method: time
+    /// out, gate and lose a wedged worker, and compare with answered errors of every kind.
+    #[test]
+    fn only_a_missing_answer_reads_as_unanswered() {
+        crate::rt::test_runtime(async {
+            let path = Path::new("/sys/class/hwmon/hwmon0/temp1_input");
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let timed_out = io.read_text(path).await.unwrap_err();
+            worker_of(&io).state.force_unreachable_at(
+                UNREACHABLE_AFTER_TIMEOUTS,
+                Instant::now() + UNREACHABLE_PROBE_INTERVAL,
+            );
+            let gated = io.read_value(path).await.unwrap_err();
+            let (gone_io, gone_rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            drop(gone_rx);
+            let gone = gone_io.read_bytes(path).await.unwrap_err();
+
+            for err in [&timed_out, &gated, &gone] {
+                assert!(is_unanswered(err), "{err}");
+            }
+            assert!(timed_out.to_string().contains("did not answer within"));
+            let driver_timeout = anyhow::Error::from(Error::from(ErrorKind::TimedOut));
+            let dir = tempfile::tempdir().unwrap();
+            let missing = DeviceIo::default()
+                .read_text(&dir.path().join("temp1_label"))
+                .await
+                .unwrap_err();
+            let wrapped = gone.context("reading a label");
+            assert!(is_unanswered(&driver_timeout).not());
+            assert!(is_unanswered(&missing).not());
+            assert!(is_unanswered(&wrapped), "context must not hide it");
         });
     }
 

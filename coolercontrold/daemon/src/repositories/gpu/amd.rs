@@ -24,6 +24,7 @@ use crate::repositories::gpu::gpu_repo::{
 use crate::repositories::hwmon::hwmon_repo::{
     install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
+use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{devices, fans, freqs, power, temps};
 use crate::repositories::repository::DeviceLock;
 use anyhow::{anyhow, Context, Result};
@@ -90,14 +91,23 @@ impl GpuAMD {
         // hash blank). base_paths is path-sorted, so the assignment is stable across boots.
         let mut assigned_uids: HashSet<UID> = HashSet::new();
         let io_reply_timeout = device_io::reply_timeout_from(&self.config);
+        // Dropped at the end of detection, which ends its thread.
+        let identity = IdentityReader::start("gpu-init", io_reply_timeout);
         for path in base_paths {
-            let device_name = devices::get_device_name(&path).await;
+            let Ok(device_name) = devices::get_device_name(&path, &identity).await else {
+                identity::log_skipped(&"a hwmon device", &path);
+                continue;
+            };
             if device_name != AMD_HWMON_NAME {
                 continue;
             }
             // Before any value read, so detection is isolated too.
             let io = DeviceIo::isolated_or_inline(&device_name, io_reply_timeout);
-            let raw_id = devices::get_device_unique_id(&path, &device_name).await;
+            let Ok(raw_id) = devices::get_device_unique_id(&path, &device_name, &identity).await
+            else {
+                identity::log_skipped(&device_name, &path);
+                continue;
+            };
             // Distinct per-device sysfs path, used only if raw_id collides (e.g. a blank serial).
             let path_id = devices::get_static_device_path_str(&path)
                 .unwrap_or_else(|| path.to_string_lossy().into_owned());
@@ -150,7 +160,11 @@ impl GpuAMD {
                 // DRM fdinfo, the only load source these GPUs have.
                 let load_disabled = disabled_channels.iter().any(|c| c == GPU_LOAD_NAME);
                 if load_disabled.not() {
-                    if let Some(fd_load) = Self::init_fdinfo_load(&path).await {
+                    let Ok(fdinfo) = Self::init_fdinfo_load(&path, &identity).await else {
+                        identity::log_skipped(&device_name, &path);
+                        continue;
+                    };
+                    if let Some(fd_load) = fdinfo {
                         channels.push(HwmonChannelInfo {
                             hwmon_type: HwmonChannelType::Load,
                             name: GPU_LOAD_NAME.to_string(),
@@ -187,7 +201,11 @@ impl GpuAMD {
                 .ok();
             let has_rdna_fan_ctrl = device_path.join("gpu_od/fan_ctrl").is_dir();
             let overdrive_enabled = super::amd_overdrive::is_overdrive_enabled().await;
-            let (drm_device_name, is_rdna3_or_newer) = match Self::get_drm_info(&path).await {
+            let Ok(drm_probe) = Self::get_drm_info(&path, &identity).await else {
+                identity::log_skipped(&device_name, &path);
+                continue;
+            };
+            let (drm_device_name, is_rdna3_or_newer) = match drm_probe {
                 DrmProbe::Info(info) => (info.device_name, info.is_rdna3_or_newer),
                 DrmProbe::LibUnavailable => {
                     libdrm_unavailable = true;
@@ -202,11 +220,10 @@ impl GpuAMD {
             {
                 error!("Could not install the read table for {device_name}: {err}");
             }
-            let pci_device_names = devices::get_device_pci_names(&path).await;
-            let model = devices::get_device_model_name(&path)
-                .await
-                .or(drm_device_name)
-                .or_else(|| pci_device_names.and_then(|names| names.device_name));
+            let Ok(model) = Self::read_model(&path, drm_device_name, &identity).await else {
+                identity::log_skipped(&device_name, &path);
+                continue;
+            };
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
                     name: device_name,
@@ -272,8 +289,17 @@ impl GpuAMD {
     /// present), so it works at boot before any GPU client exists yet is not
     /// enabled on kernels that lack `drm-engine-*` accounting. Load then always
     /// reports a value (0 while idle).
-    async fn init_fdinfo_load(base_path: &Path) -> Option<FdInfoLoad> {
-        let pci_slot = devices::get_pci_slot_name(base_path).await?;
+    ///
+    /// # Errors
+    ///
+    /// `Stalled` when the GPU's PCI slot did not read.
+    async fn init_fdinfo_load(
+        base_path: &Path,
+        identity: &IdentityReader,
+    ) -> Result<Option<FdInfoLoad>, Stalled> {
+        let Some(pci_slot) = devices::get_pci_slot_name(base_path, identity).await? else {
+            return Ok(None);
+        };
         // Off the runtime thread and bounded: opening the render node resumes a GPU in D3cold.
         let probe_slot = pci_slot.clone();
         let probe = crate::rt::spawn_blocking(move || Self::fdinfo_engine_available(&probe_slot));
@@ -283,10 +309,10 @@ impl GpuAMD {
         );
         if available.not() {
             debug!("amdgpu DRM fdinfo engine accounting unavailable for {pci_slot}; GPU load off");
-            return None;
+            return Ok(None);
         }
         info!("AMD GPU load sourced from DRM fdinfo (hwmon sensor unsupported): {pci_slot}");
-        Some(FdInfoLoad::new(pci_slot))
+        Ok(Some(FdInfoLoad::new(pci_slot)))
     }
 
     /// Probes whether the amdgpu DRM driver exposes per-engine fdinfo accounting
@@ -337,9 +363,17 @@ impl GpuAMD {
     /// Queries libdrm for the device name and GPU generation. libdrm is loaded
     /// dynamically, so it may be absent; that case is reported distinctly via
     /// `DrmProbe::LibUnavailable` so the caller can warn the user to install it.
-    async fn get_drm_info(base_path: &Path) -> DrmProbe {
-        let render_path = devices::get_pci_slot_name(base_path)
-            .await
+    ///
+    /// # Errors
+    ///
+    /// `Stalled` when the GPU's PCI slot did not read: a guessed generation would pick the wrong
+    /// fan control path.
+    async fn get_drm_info(
+        base_path: &Path,
+        identity: &IdentityReader,
+    ) -> Result<DrmProbe, Stalled> {
+        let render_path = devices::get_pci_slot_name(base_path, identity)
+            .await?
             .map(|slot_name| format!("/dev/dri/by-path/pci-{slot_name}-render"));
         // libdrm performs synchronous DRM ioctls, so probe off the runtime thread
         // (the offload-blocking-FFI rule), bounded by a timeout so a wedged driver
@@ -355,9 +389,23 @@ impl GpuAMD {
             DrmProbe::Info(info)
         };
         match crate::rt::timeout(DRM_NAME_LOOKUP_TIMEOUT, crate::rt::spawn_blocking(probe)).await {
-            Ok(Ok(probe)) => probe,
-            _ => DrmProbe::Info(DrmGpuInfo::default()),
+            Ok(Ok(probe)) => Ok(probe),
+            _ => Ok(DrmProbe::Info(DrmGpuInfo::default())),
         }
+    }
+
+    /// The GPU's model: its own attribute, then libdrm's name for it, then its PCI ids.
+    async fn read_model(
+        path: &Path,
+        drm_device_name: Option<String>,
+        identity: &IdentityReader,
+    ) -> Result<Option<String>, Stalled> {
+        let pci_device_names = devices::get_device_pci_names(path, identity).await?;
+        let model = devices::get_device_model_name(path, identity)
+            .await?
+            .or(drm_device_name)
+            .or_else(|| pci_device_names.and_then(|names| names.device_name));
+        Ok(model)
     }
 
     /// Opens the GPU's DRM render node and reads its device info. Returns `None`
@@ -562,6 +610,9 @@ impl GpuAMD {
         );
         let mut devices = HashMap::with_capacity(amd_drivers.len());
         let poll_rate = self.config.get_settings()?.poll_rate;
+        // Detection cached each GPU's `uevent`, so this starts a thread only if one was not.
+        let identity =
+            IdentityReader::start("gpu-init", device_io::reply_timeout_from(&self.config));
         for (index, amd_driver) in amd_drivers.into_iter().enumerate() {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
@@ -669,9 +720,10 @@ impl GpuAMD {
                     },
                     driver_info: DriverInfo {
                         drv_type: DriverType::Kernel,
-                        name: devices::get_device_driver_name(&amd_driver.hwmon.path).await,
+                        name: devices::get_device_driver_name(&amd_driver.hwmon.path),
                         version: sysinfo::System::kernel_version(),
-                        locations: Self::get_driver_locations(&amd_driver.hwmon.path).await,
+                        locations: Self::get_driver_locations(&amd_driver.hwmon.path, &identity)
+                            .await,
                     },
                     ..Default::default()
                 },
@@ -736,11 +788,12 @@ impl GpuAMD {
         }
     }
 
-    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    /// For display only, read once the device is accepted: a stalled read leaves out its entry.
+    async fn get_driver_locations(base_path: &Path, identity: &IdentityReader) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
         let device_path = devices::get_static_device_path_str(base_path);
         let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+        if let Ok(Some(mod_alias)) = devices::get_device_mod_alias(base_path, identity).await {
             locations.push(mod_alias);
         }
         locations

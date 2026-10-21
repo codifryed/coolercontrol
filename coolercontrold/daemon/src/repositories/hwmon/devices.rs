@@ -5,6 +5,7 @@ use super::pci_ids;
 use crate::cc_fs;
 use crate::device::UID;
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
+use crate::repositories::hwmon::identity::{IdentityReader, Stalled};
 use log::{debug, info, warn};
 use nu_glob::{glob, GlobResult, Uninterruptible};
 use regex::Regex;
@@ -125,9 +126,9 @@ fn deduplicate_and_sort_paths(base_paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 /// Returns the found device "name" or if not found, the hwmon number
-pub async fn get_device_name(base_path: &Path) -> String {
-    if let Ok(contents) = cc_fs::read_sysfs(base_path.join("name")).await {
-        contents.trim().to_string()
+pub async fn get_device_name(base_path: &Path, reader: &IdentityReader) -> Result<String, Stalled> {
+    if let Some(contents) = reader.text(&base_path.join("name")).await? {
+        Ok(contents.trim().to_string())
     } else {
         // hwmon\d+ should always exist in the path (from previous search)
         let captures = Regex::new(PATTERN_HWMON_PATH_NUMBER)
@@ -141,7 +142,7 @@ pub async fn get_device_name(base_path: &Path) -> String {
             base_path.display(),
             hwmon_name
         );
-        hwmon_name
+        Ok(hwmon_name)
     }
 }
 
@@ -152,11 +153,12 @@ pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
 
 /// Returns the device model name if it exists.
 /// This is common for some hardware, like hard drives, and helps differentiate similar devices.
-pub async fn get_device_model_name(base_path: &Path) -> Option<String> {
-    cc_fs::read_sysfs(device_path(base_path).join("model"))
-        .await
-        .map(|model| model.trim().to_string())
-        .ok()
+pub async fn get_device_model_name(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<String>, Stalled> {
+    let model = reader.text(&device_path(base_path).join("model")).await?;
+    Ok(model.map(|model| model.trim().to_string()))
 }
 
 /// Gets the real device path under /sys. It contains additional sysfs files
@@ -216,38 +218,49 @@ fn get_canonical_path_str(path: &Path) -> Option<String> {
 ///
 /// The wwid and i2c rungs sit below the serial so a device that already resolves by serial is
 /// not re-keyed for no gain. Uniqueness is handled separately by `Device::assign_unique`.
-pub async fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
-    if let Some(serial) = get_device_serial_number(base_path).await {
-        return serial;
+pub async fn get_device_unique_id(
+    base_path: &Path,
+    device_name: &str,
+    reader: &IdentityReader,
+) -> Result<UID, Stalled> {
+    if let Some(serial) = get_device_serial_number(base_path, reader).await? {
+        return Ok(serial);
     }
-    if let Some(wwid) = get_scsi_device_wwid(base_path).await {
-        return wwid;
+    if let Some(wwid) = get_scsi_device_wwid(base_path, reader).await? {
+        return Ok(wwid);
     }
-    if let Some(i2c_client) = get_i2c_client_id(base_path).await {
-        return i2c_client;
+    if let Some(i2c_client) = get_i2c_client_id(base_path, reader).await? {
+        return Ok(i2c_client);
     }
-    get_location_based_id(base_path, device_name).await
+    get_location_based_id(base_path, device_name, reader).await
 }
 
 /// What `get_device_unique_id` returned before the `wwid` and i2c rungs, so the migration can
 /// find what an older release wrote. Identical to the current chain for any device with a serial.
-pub async fn get_legacy_device_unique_id(base_path: &Path, device_name: &str) -> UID {
-    if let Some(serial) = get_device_serial_number(base_path).await {
-        return serial;
+pub async fn get_legacy_device_unique_id(
+    base_path: &Path,
+    device_name: &str,
+    reader: &IdentityReader,
+) -> Result<UID, Stalled> {
+    if let Some(serial) = get_device_serial_number(base_path, reader).await? {
+        return Ok(serial);
     }
-    get_location_based_id(base_path, device_name).await
+    get_location_based_id(base_path, device_name, reader).await
 }
 
 /// Location-derived tail shared by both chains so they cannot drift.
-async fn get_location_based_id(base_path: &Path, device_name: &str) -> UID {
+async fn get_location_based_id(
+    base_path: &Path,
+    device_name: &str,
+    reader: &IdentityReader,
+) -> Result<UID, Stalled> {
     if let Some(device_path) = get_static_device_path_str(base_path) {
-        device_path
-    } else if let Some(vendor_and_model_id) =
-        get_device_uevent_details(base_path).await.get("PCI_ID")
-    {
-        vendor_and_model_id.to_owned()
-    } else {
-        device_name.to_owned()
+        return Ok(device_path);
+    }
+    let uevent = get_device_uevent_details(base_path, reader).await?;
+    match uevent.get("PCI_ID") {
+        Some(vendor_and_model_id) => Ok(vendor_and_model_id.to_owned()),
+        None => Ok(device_name.to_owned()),
     }
 }
 
@@ -263,7 +276,35 @@ async fn get_location_based_id(base_path: &Path, device_name: &str) -> UID {
 ///
 /// Deliberately absent from `get_legacy_device_unique_id`, so `migrate_legacy_device_uid`
 /// carries an affected device's saved settings onto this identity exactly once.
-pub async fn get_i2c_client_id(base_path: &Path) -> Option<String> {
+pub async fn get_i2c_client_id(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<String>, Stalled> {
+    let Some(location) = i2c_client_location(base_path) else {
+        return Ok(None);
+    };
+    let Some(name) = reader.text(&location.adapter.join("name")).await? else {
+        return Ok(None);
+    };
+    let Some(adapter_name) = normalize_sysfs_identifier(&name) else {
+        return Ok(None);
+    };
+    debug_assert!(location.controller.is_empty().not());
+    debug_assert!(adapter_name.is_empty().not());
+    Ok(Some(format!(
+        "{}/{adapter_name}/{}",
+        location.controller, location.client
+    )))
+}
+
+/// Where an i2c client sits, from its canonical path alone.
+struct I2cClientLocation {
+    adapter: PathBuf,
+    controller: String,
+    client: String,
+}
+
+fn i2c_client_location(base_path: &Path) -> Option<I2cClientLocation> {
     // Quiet on failure: the location fallback already reports a device with no `device` link.
     let device = cc_fs::canonicalize(device_path(base_path)).ok()?;
     let adapter = device.parent()?;
@@ -286,12 +327,11 @@ pub async fn get_i2c_client_id(base_path: &Path) -> Option<String> {
     if client.is_empty() {
         return None;
     }
-    let name = cc_fs::read_sysfs(adapter.join("name")).await.ok()?;
-    let adapter_name = normalize_sysfs_identifier(&name)?;
-    let controller = controller.to_str()?;
-    debug_assert!(controller.is_empty().not());
-    debug_assert!(adapter_name.is_empty().not());
-    Some(format!("{controller}/{adapter_name}/{client}"))
+    Some(I2cClientLocation {
+        adapter: adapter.to_path_buf(),
+        controller: controller.to_str()?.to_owned(),
+        client: client.to_owned(),
+    })
 }
 
 /// The bus number of an `i2c-N` adapter directory.
@@ -306,11 +346,12 @@ fn i2c_bus_number(adapter: &Path) -> Option<&str> {
 /// Returns the SCSI `wwid`, which only a `scsi_device` exposes, so this doubles as the test
 /// for whether the device is an `sd` disk. Behind a USB bridge it identifies the BRIDGE, which
 /// is why `assign_unique` stays load bearing.
-pub async fn get_scsi_device_wwid(base_path: &Path) -> Option<String> {
-    let raw = cc_fs::read_sysfs(device_path(base_path).join("wwid"))
-        .await
-        .ok()?;
-    normalize_sysfs_identifier(&raw)
+pub async fn get_scsi_device_wwid(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<String>, Stalled> {
+    let raw = reader.text(&device_path(base_path).join("wwid")).await?;
+    Ok(raw.and_then(|raw| normalize_sysfs_identifier(&raw)))
 }
 
 const VPD_PAGE_UNIT_SERIAL: u8 = 0x80;
@@ -320,11 +361,14 @@ const VPD_HEADER_LEN: usize = 4;
 /// The drive serial from VPD page 0x80, used only as a collision tiebreaker. Must NOT be folded
 /// into `get_device_serial_number`: that feeds the legacy chain, so the migration would see no
 /// change and skip these drives.
-pub async fn get_scsi_vpd_serial(base_path: &Path) -> Option<String> {
-    let page = cc_fs::read_bytes(device_path(base_path).join("vpd_pg80"))
-        .await
-        .ok()?;
-    parse_vpd_unit_serial(&page)
+pub async fn get_scsi_vpd_serial(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<String>, Stalled> {
+    let page = reader
+        .bytes(&device_path(base_path).join("vpd_pg80"))
+        .await?;
+    Ok(page.and_then(|page| parse_vpd_unit_serial(&page)))
 }
 
 /// Split out from the read so the byte handling is testable. The field is padded with spaces
@@ -362,19 +406,27 @@ fn normalize_sysfs_identifier(raw: &str) -> Option<String> {
 }
 
 /// Returns the device serial number if found.
-pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
-    if let Ok(serial) = cc_fs::read_sysfs(device_path(base_path).join("serial")).await {
-        Some(serial.trim().to_string())
-    } else {
-        // usb hid serial numbers are here:
-        let device_details = get_device_uevent_details(base_path).await;
-        device_details.get("HID_UNIQ").map(ToString::to_string)
+pub async fn get_device_serial_number(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<String>, Stalled> {
+    if let Some(serial) = reader.text(&device_path(base_path).join("serial")).await? {
+        return Ok(Some(serial.trim().to_string()));
     }
+    // usb hid serial numbers are here:
+    let device_details = get_device_uevent_details(base_path, reader).await?;
+    Ok(device_details.get("HID_UNIQ").map(ToString::to_string))
 }
 
 /// Checks if there are duplicate device names but different device paths,
 /// and adjust them as necessary. i.e. nvme drivers.
-pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
+///
+/// Runs once the devices are accepted, for their display names only, so a stalled read keeps a
+/// device's own name rather than skipping it.
+pub async fn handle_duplicate_device_names(
+    hwmon_drivers: &mut [HwmonDriverInfo],
+    reader: &IdentityReader,
+) {
     let mut duplicate_name_count_map = HashMap::new();
     for (sd_index, starting_driver) in hwmon_drivers.iter().enumerate() {
         let mut count = 0;
@@ -388,17 +440,21 @@ pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]
     for (driver_index, count) in duplicate_name_count_map {
         if count > 1 {
             if let Some(driver) = hwmon_drivers.get_mut(driver_index) {
-                let alternate_name = get_alternative_device_name(driver).await;
-                driver.name = alternate_name;
+                if let Ok(alternate_name) = get_alternative_device_name(driver, reader).await {
+                    driver.name = alternate_name;
+                }
             }
         }
     }
 }
 
 /// Searches for the best alternative name to use in case of a duplicate device name
-async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
-    let device_details = get_device_uevent_details(&driver.path).await;
-    if let Some(dev_name) = device_details.get("DEVNAME") {
+async fn get_alternative_device_name(
+    driver: &HwmonDriverInfo,
+    reader: &IdentityReader,
+) -> Result<String, Stalled> {
+    let device_details = get_device_uevent_details(&driver.path, reader).await?;
+    let name = if let Some(dev_name) = device_details.get("DEVNAME") {
         dev_name.clone()
     } else if let Some(minor_num) = device_details.get("MINOR") {
         format!("{}{}", driver.name, minor_num)
@@ -406,12 +462,20 @@ async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
         model
     } else {
         driver.name.clone()
-    }
+    };
+    Ok(name)
 }
 
 /// Gets the device's **PCI and SUBSYSTEM PCI** vendor and model names
-pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
-    let uevents = get_device_uevent_details(base_path).await;
+pub async fn get_device_pci_names(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<PciDeviceNames>, Stalled> {
+    let uevents = get_device_uevent_details(base_path, reader).await?;
+    Ok(pci_names_for(&uevents))
+}
+
+fn pci_names_for(uevents: &HashMap<String, String>) -> Option<PciDeviceNames> {
     let (vendor_id, model_id) = uevents.get("PCI_ID")?.split_once(':')?;
     let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
     let info = pci_ids::lookup_device(
@@ -495,46 +559,65 @@ fn parse_amd_node_id(device_path: &str) -> Option<u8> {
     (node_id < AMD_MAX_NODES).then_some(node_id)
 }
 
-pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
-    get_device_uevent_details(base_path)
-        .await
-        .get("PCI_SLOT_NAME")
-        .map(ToOwned::to_owned)
+pub async fn get_pci_slot_name(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<String>, Stalled> {
+    uevent_value(base_path, "PCI_SLOT_NAME", reader).await
 }
 
-pub async fn get_device_driver_name(base_path: &Path) -> Option<String> {
-    get_device_uevent_details(base_path)
-        .await
-        .get("DRIVER")
-        .map(ToOwned::to_owned)
+/// The kernel driver bound to the device. Resolved from the `driver` link, which names the same
+/// driver `uevent` would as `DRIVER`, so no attribute is read.
+pub fn get_device_driver_name(base_path: &Path) -> Option<String> {
+    let target = cc_fs::read_link(device_path(base_path).join("driver"))
+        .or_else(|_| cc_fs::read_link(base_path.join("driver")))
+        .ok()?;
+    let driver = target.file_name()?.to_str()?;
+    if driver.is_empty() {
+        return None;
+    }
+    Some(driver.to_owned())
 }
 
-pub async fn get_device_mod_alias(base_path: &Path) -> Option<String> {
-    get_device_uevent_details(base_path)
-        .await
-        .get("MODALIAS")
-        .map(ToOwned::to_owned)
+pub async fn get_device_mod_alias(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<String>, Stalled> {
+    uevent_value(base_path, "MODALIAS", reader).await
 }
 
-pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
-    get_device_uevent_details(base_path)
-        .await
-        .get("HID_PHYS")
-        .map(ToOwned::to_owned)
+pub async fn get_device_hid_phys(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<String>, Stalled> {
+    uevent_value(base_path, "HID_PHYS", reader).await
 }
 
-async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
+async fn uevent_value(
+    base_path: &Path,
+    key: &str,
+    reader: &IdentityReader,
+) -> Result<Option<String>, Stalled> {
+    let details = get_device_uevent_details(base_path, reader).await?;
+    Ok(details.get(key).map(ToOwned::to_owned))
+}
+
+/// A stall is not cached, so a later read gets to try again.
+async fn get_device_uevent_details(
+    base_path: &Path,
+    reader: &IdentityReader,
+) -> Result<HashMap<String, String>, Stalled> {
     let cached = UEVENT_CACHE.with(|cache| cache.borrow().get(base_path).cloned());
     if let Some(details) = cached {
-        return details;
+        return Ok(details);
     }
     let mut device_details = HashMap::new();
-    let mut uevent_content = cc_fs::read_txt(device_path(base_path).join("uevent")).await;
-    if uevent_content.is_err() {
+    let mut uevent_content = reader.text(&device_path(base_path).join("uevent")).await?;
+    if uevent_content.is_none() {
         // If the `device_path` doesn't exist, try to read it from the `base_path`
-        uevent_content = cc_fs::read_txt(base_path.join("uevent")).await;
+        uevent_content = reader.text(&base_path.join("uevent")).await?;
     }
-    if let Ok(content) = uevent_content {
+    if let Some(content) = uevent_content {
         for line in content.lines() {
             if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();
@@ -548,7 +631,7 @@ async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> 
             .borrow_mut()
             .insert(base_path.to_path_buf(), device_details.clone());
     });
-    device_details
+    Ok(device_details)
 }
 
 // NOT USED UNTIL ABOVE BUG IS FIXED IN HWMON DRIVER:
@@ -605,6 +688,7 @@ mod tests {
 
     use super::*;
     use crate::device::{Device, DeviceType};
+    use crate::repositories::hwmon::device_io::DeviceIo;
 
     /// Goal: the k10temp node id must come from the PCI slot, since that is what the kernel
     /// itself derives it from and it does not move with probe order. Method: the real device
@@ -1062,7 +1146,9 @@ mod tests {
                 .await
                 .unwrap();
 
-            let wwid = get_scsi_device_wwid(&ctx.hwmon_path).await;
+            let wwid = get_scsi_device_wwid(&ctx.hwmon_path, &IdentityReader::inline())
+                .await
+                .unwrap();
 
             assert_eq!(wwid, Some("naa.5000c500a1b2c3d4".to_string()));
         });
@@ -1086,7 +1172,9 @@ mod tests {
             .await
             .unwrap();
 
-            let wwid = get_scsi_device_wwid(&ctx.hwmon_path).await;
+            let wwid = get_scsi_device_wwid(&ctx.hwmon_path, &IdentityReader::inline())
+                .await
+                .unwrap();
 
             assert_eq!(
                 wwid,
@@ -1109,7 +1197,9 @@ mod tests {
                 .await
                 .unwrap();
 
-            let wwid = get_scsi_device_wwid(&ctx.hwmon_path).await;
+            let wwid = get_scsi_device_wwid(&ctx.hwmon_path, &IdentityReader::inline())
+                .await
+                .unwrap();
 
             assert_eq!(wwid, None);
         });
@@ -1126,7 +1216,9 @@ mod tests {
             let device_dir = ctx.hwmon_path.join("device");
             cc_fs::create_dir_all(&device_dir).await.unwrap();
 
-            let wwid = get_scsi_device_wwid(&ctx.hwmon_path).await;
+            let wwid = get_scsi_device_wwid(&ctx.hwmon_path, &IdentityReader::inline())
+                .await
+                .unwrap();
 
             assert_eq!(wwid, None);
         });
@@ -1156,12 +1248,50 @@ mod tests {
                     .unwrap();
             }
 
-            let id_one = get_device_unique_id(&boot_one, "ST6000VN0033-2EE").await;
-            let id_two = get_device_unique_id(&boot_two, "ST6000VN0033-2EE").await;
-            let id_other = get_device_unique_id(&other, "ST6000VN0033-2EE").await;
+            let id_one =
+                get_device_unique_id(&boot_one, "ST6000VN0033-2EE", &IdentityReader::inline())
+                    .await
+                    .unwrap();
+            let id_two =
+                get_device_unique_id(&boot_two, "ST6000VN0033-2EE", &IdentityReader::inline())
+                    .await
+                    .unwrap();
+            let id_other =
+                get_device_unique_id(&other, "ST6000VN0033-2EE", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             assert_eq!(id_one, id_two);
             assert_ne!(id_one, id_other);
+        });
+    }
+
+    // Goal: an identity read that gets no answer stalls the whole identity, never falling back
+    // to a lower rung: a UID built from the device's location while its serial exists would key
+    // its settings to a device that does not exist. Method: resolve the UID, model and name of a
+    // device through a worker that never answers, beside a serial on disk.
+    #[test]
+    #[serial]
+    fn a_stalled_identity_read_is_a_stall_and_not_a_fallback() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let device_dir = ctx.hwmon_path.join("device");
+            cc_fs::create_dir_all(&device_dir).await.unwrap();
+            cc_fs::write(device_dir.join("serial"), b"S5GXNX0R\n".to_vec())
+                .await
+                .unwrap();
+            let (wedged, _rx) = DeviceIo::wedged_for_test(std::time::Duration::from_millis(20));
+            // Replacements whose queue is already closed, so they fail at once as unanswered.
+            let reader =
+                IdentityReader::with_io(wedged, |_, timeout| DeviceIo::wedged_for_test(timeout).0);
+
+            let uid = get_device_unique_id(&ctx.hwmon_path, "nvme", &reader).await;
+            let model = get_device_model_name(&ctx.hwmon_path, &reader).await;
+            let name = get_device_name(&ctx.hwmon_path, &reader).await;
+
+            assert_eq!(uid, Err(Stalled));
+            assert_eq!(model, Err(Stalled));
+            assert_eq!(name, Err(Stalled));
         });
     }
 
@@ -1229,9 +1359,16 @@ mod tests {
                 .await
                 .unwrap();
 
-            let vpd_serial = get_scsi_vpd_serial(&ctx.hwmon_path).await;
-            let current = get_device_unique_id(&ctx.hwmon_path, "drive").await;
-            let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "drive").await;
+            let vpd_serial = get_scsi_vpd_serial(&ctx.hwmon_path, &IdentityReader::inline())
+                .await
+                .unwrap();
+            let current = get_device_unique_id(&ctx.hwmon_path, "drive", &IdentityReader::inline())
+                .await
+                .unwrap();
+            let legacy =
+                get_legacy_device_unique_id(&ctx.hwmon_path, "drive", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             assert_eq!(vpd_serial, Some("WCC34KL1".to_string()));
             assert_eq!(current, "naa.5000c500a9068285".to_string());
@@ -1260,7 +1397,13 @@ mod tests {
                 .await
                 .unwrap();
 
-            let unique_id = get_device_unique_id(&ctx.hwmon_path, "ST6000VN0033-2EE").await;
+            let unique_id = get_device_unique_id(
+                &ctx.hwmon_path,
+                "ST6000VN0033-2EE",
+                &IdentityReader::inline(),
+            )
+            .await
+            .unwrap();
 
             assert_eq!(unique_id, "WD-WCC4N0803777".to_string());
         });
@@ -1283,8 +1426,13 @@ mod tests {
                 .await
                 .unwrap();
 
-            let current = get_device_unique_id(&ctx.hwmon_path, "drive").await;
-            let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "drive").await;
+            let current = get_device_unique_id(&ctx.hwmon_path, "drive", &IdentityReader::inline())
+                .await
+                .unwrap();
+            let legacy =
+                get_legacy_device_unique_id(&ctx.hwmon_path, "drive", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             assert_eq!(current, legacy, "no serial-bearing device may be re-keyed");
         });
@@ -1304,8 +1452,13 @@ mod tests {
                 .await
                 .unwrap();
 
-            let current = get_device_unique_id(&ctx.hwmon_path, "drive").await;
-            let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "drive").await;
+            let current = get_device_unique_id(&ctx.hwmon_path, "drive", &IdentityReader::inline())
+                .await
+                .unwrap();
+            let legacy =
+                get_legacy_device_unique_id(&ctx.hwmon_path, "drive", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             assert_eq!(current, "naa.5000c500a1b2c3d4".to_string());
             assert_ne!(current, legacy, "the affected cohort must move");
@@ -1345,13 +1498,31 @@ mod tests {
             let name = "SMBus PIIX4 adapter port 0 at 0b00";
             let ctx_low = setup().await;
             setup_i2c_client(&ctx_low, "15", "0050", name).await;
-            let low = get_device_unique_id(&ctx_low.hwmon_path, "spd5118").await;
-            let low_legacy = get_legacy_device_unique_id(&ctx_low.hwmon_path, "spd5118").await;
+            let low =
+                get_device_unique_id(&ctx_low.hwmon_path, "spd5118", &IdentityReader::inline())
+                    .await
+                    .unwrap();
+            let low_legacy = get_legacy_device_unique_id(
+                &ctx_low.hwmon_path,
+                "spd5118",
+                &IdentityReader::inline(),
+            )
+            .await
+            .unwrap();
 
             let ctx_high = setup().await;
             setup_i2c_client(&ctx_high, "16", "0050", name).await;
-            let high = get_device_unique_id(&ctx_high.hwmon_path, "spd5118").await;
-            let high_legacy = get_legacy_device_unique_id(&ctx_high.hwmon_path, "spd5118").await;
+            let high =
+                get_device_unique_id(&ctx_high.hwmon_path, "spd5118", &IdentityReader::inline())
+                    .await
+                    .unwrap();
+            let high_legacy = get_legacy_device_unique_id(
+                &ctx_high.hwmon_path,
+                "spd5118",
+                &IdentityReader::inline(),
+            )
+            .await
+            .unwrap();
 
             assert!(low.ends_with(&format!("/{name}/0050")), "got {low}");
             assert_eq!(
@@ -1375,11 +1546,17 @@ mod tests {
         cc_fs::test_runtime(async {
             let ctx_a = setup().await;
             setup_i2c_client(&ctx_a, "15", "0050", "SMBus PIIX4 adapter port 0 at 0b00").await;
-            let port_zero = get_device_unique_id(&ctx_a.hwmon_path, "spd5118").await;
+            let port_zero =
+                get_device_unique_id(&ctx_a.hwmon_path, "spd5118", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             let ctx_b = setup().await;
             setup_i2c_client(&ctx_b, "15", "0050", "SMBus PIIX4 adapter port 2 at 0b00").await;
-            let port_two = get_device_unique_id(&ctx_b.hwmon_path, "spd5118").await;
+            let port_two =
+                get_device_unique_id(&ctx_b.hwmon_path, "spd5118", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             assert_ne!(
                 strip_test_dir(&port_zero, &ctx_a.test_dir),
@@ -1399,9 +1576,17 @@ mod tests {
             let device_dir = ctx.hwmon_path.join("device");
             cc_fs::create_dir_all(&device_dir).await.unwrap();
 
-            let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
-            let current = get_device_unique_id(&ctx.hwmon_path, "nct6799").await;
-            let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "nct6799").await;
+            let i2c = get_i2c_client_id(&ctx.hwmon_path, &IdentityReader::inline())
+                .await
+                .unwrap();
+            let current =
+                get_device_unique_id(&ctx.hwmon_path, "nct6799", &IdentityReader::inline())
+                    .await
+                    .unwrap();
+            let legacy =
+                get_legacy_device_unique_id(&ctx.hwmon_path, "nct6799", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             assert_eq!(i2c, None, "a plain device is not an i2c client");
             assert_eq!(current, legacy, "an unaffected device must not move");
@@ -1417,11 +1602,16 @@ mod tests {
             let name = "Synopsys DesignWare I2C adapter";
             let ctx_low = setup().await;
             link_i2c_device(&ctx_low, "i2c-0", "i2c-ITE8853:00", name).await;
-            let low = get_device_unique_id(&ctx_low.hwmon_path, "lm75").await;
+            let low = get_device_unique_id(&ctx_low.hwmon_path, "lm75", &IdentityReader::inline())
+                .await
+                .unwrap();
 
             let ctx_high = setup().await;
             link_i2c_device(&ctx_high, "i2c-3", "i2c-ITE8853:00", name).await;
-            let high = get_device_unique_id(&ctx_high.hwmon_path, "lm75").await;
+            let high =
+                get_device_unique_id(&ctx_high.hwmon_path, "lm75", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             assert!(
                 low.ends_with(&format!("/{name}/i2c-ITE8853:00")),
@@ -1445,9 +1635,16 @@ mod tests {
             let ctx = setup().await;
             link_i2c_device(&ctx, "i2c-3/i2c-7", "7-0048", "i2c-3-mux (chan_id 0)").await;
 
-            let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
-            let current = get_device_unique_id(&ctx.hwmon_path, "lm75").await;
-            let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "lm75").await;
+            let i2c = get_i2c_client_id(&ctx.hwmon_path, &IdentityReader::inline())
+                .await
+                .unwrap();
+            let current = get_device_unique_id(&ctx.hwmon_path, "lm75", &IdentityReader::inline())
+                .await
+                .unwrap();
+            let legacy =
+                get_legacy_device_unique_id(&ctx.hwmon_path, "lm75", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             assert_eq!(i2c, None, "a nested adapter has no stable identity");
             assert_eq!(current, legacy, "a muxed client must not move");
@@ -1463,9 +1660,17 @@ mod tests {
             let ctx = setup().await;
             setup_i2c_client(&ctx, "15", "0050", "").await;
 
-            let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
-            let current = get_device_unique_id(&ctx.hwmon_path, "spd5118").await;
-            let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "spd5118").await;
+            let i2c = get_i2c_client_id(&ctx.hwmon_path, &IdentityReader::inline())
+                .await
+                .unwrap();
+            let current =
+                get_device_unique_id(&ctx.hwmon_path, "spd5118", &IdentityReader::inline())
+                    .await
+                    .unwrap();
+            let legacy =
+                get_legacy_device_unique_id(&ctx.hwmon_path, "spd5118", &IdentityReader::inline())
+                    .await
+                    .unwrap();
 
             assert_eq!(i2c, None);
             assert_eq!(current, legacy);
@@ -1481,7 +1686,9 @@ mod tests {
         cc_fs::test_runtime(async {
             let ctx = setup().await;
             setup_i2c_client(&ctx, "11", "0051", "SMBus PIIX4 adapter port 0 at 0b00").await;
-            let id = get_device_unique_id(&ctx.hwmon_path, "spd5118").await;
+            let id = get_device_unique_id(&ctx.hwmon_path, "spd5118", &IdentityReader::inline())
+                .await
+                .unwrap();
 
             let on_real_sysfs = format!("/sys{}", strip_test_dir(&id, &ctx.test_dir));
             assert_eq!(
