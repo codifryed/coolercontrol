@@ -243,7 +243,11 @@ pub async fn ensure_data_dir() -> anyhow::Result<()> {
     cc_fs::create_dir_all(data).await?;
     cc_fs::set_permissions(data, Permissions::from_mode(0o711)).await?;
 
-    migrate_session_data(config_dir(), data, session_key_file(), sessions_dir());
+    // Renames, or a `mv` across filesystems, so off the runtime thread. Once per install.
+    crate::rt::spawn_blocking(|| {
+        migrate_session_data(config_dir(), data_dir(), session_key_file(), sessions_dir());
+    })
+    .await?;
     Ok(())
 }
 
@@ -307,8 +311,14 @@ pub async fn migrate_plugins_dir(canonical: &Path, legacy: &Path) -> anyhow::Res
         return Ok(());
     }
 
-    // Step 3: Clear the legacy path so the compatibility symlink can be placed.
-    if !prepare_legacy_path_for_symlink(canonical, legacy)? {
+    // Step 3: Clear the legacy path so the compatibility symlink can be placed. It may move
+    // every plugin, with a `mv` across filesystems, so it runs off the runtime thread.
+    let (canonical_owned, legacy_owned) = (canonical.to_path_buf(), legacy.to_path_buf());
+    let prepared = crate::rt::spawn_blocking(move || {
+        prepare_legacy_path_for_symlink(&canonical_owned, &legacy_owned)
+    })
+    .await??;
+    if !prepared {
         return Ok(());
     }
 
