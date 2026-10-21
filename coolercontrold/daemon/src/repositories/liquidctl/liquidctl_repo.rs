@@ -968,18 +968,21 @@ impl LiquidctlRepo {
                 .collect()
         });
         let no_init = self.no_init();
-        let failed_names = self.log_device_names(&failed_devices);
+        let failed_names = no_init.then(|| self.log_device_names(&failed_devices));
         let escalation =
             escalate_catch_up(&mut self.recovery.borrow_mut(), failed_devices, no_init);
         match escalation {
             CatchUpEscalation::CaughtUp => {
                 debug!("Liquidctl devices caught up with the restarted coolercontrol-liqctld.");
             }
-            CatchUpEscalation::NotEscalated => info!(
-                "Liquidctl devices {failed_names} could not be caught up with after \
-                coolercontrol-liqctld restarted. Init is disabled, so they are not recovered \
-                and are still read without their legacy690 or direct access settings."
-            ),
+            CatchUpEscalation::NotEscalated => {
+                let failed_names = failed_names.expect("not escalated only when init is disabled");
+                info!(
+                    "Liquidctl devices {failed_names} could not be caught up with after \
+                    coolercontrol-liqctld restarted. Init is disabled, so they are not recovered \
+                    and are still read without their legacy690 or direct access settings."
+                );
+            }
             CatchUpEscalation::Escalated => {}
         }
     }
