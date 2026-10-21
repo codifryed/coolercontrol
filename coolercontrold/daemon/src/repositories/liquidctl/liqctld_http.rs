@@ -166,6 +166,7 @@ impl LiqctldHttp {
             path,
             body.map(|_| self.body.as_slice()),
         )?;
+        debug_assert!(self.request.is_empty().not());
         let mut head = None;
         for _ in 0..LIQCTLD_EXPIRED_CONNECTION_RETRIES {
             if abandoned() {
@@ -190,6 +191,7 @@ impl LiqctldHttp {
             }
         }
         let head = head.ok_or(HttpError::Exhausted(LIQCTLD_EXPIRED_CONNECTION_RETRIES))?;
+        debug_assert!(self.stream.is_some());
         successful_body(&head, &self.response)
     }
 

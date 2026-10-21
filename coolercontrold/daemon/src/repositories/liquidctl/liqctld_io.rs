@@ -328,6 +328,8 @@ impl LiqctldIo {
     where
         F: FnOnce(Reply<T>) -> Request,
     {
+        debug_assert!(what.is_empty().not());
+        debug_assert!(budget > Duration::ZERO);
         // Refuse to queue for a device that is not answering until its next probe is due, or
         // every tick queues a request nobody serves and pays a full timeout to learn that.
         if self.state.dispatchable().not() {
@@ -406,6 +408,8 @@ impl LiqctldControl {
     where
         F: FnOnce(Reply<T>) -> ControlRequest,
     {
+        debug_assert!(what.is_empty().not());
+        debug_assert!(self.budget > Duration::ZERO);
         let (reply_tx, reply_rx) = oneshot::channel();
         let gone = || worker_gone("control");
         round_trip(
@@ -534,6 +538,8 @@ where
     T: DeserializeOwned,
     B: Serialize,
 {
+    debug_assert!(route.is_empty().not());
+    debug_assert!(route.starts_with('/').not());
     let reply_body = http.exchange(
         method,
         format_args!("/devices/{id}/{route}"),
@@ -561,6 +567,7 @@ fn control_call<T: DeserializeOwned>(
     path: &str,
     abandoned: &dyn Fn() -> bool,
 ) -> Result<T> {
+    debug_assert!(path.starts_with('/'));
     let reply_body = http.exchange(method, format_args!("{path}"), NO_BODY, abandoned)?;
     Ok(serde_json::from_slice(reply_body)?)
 }

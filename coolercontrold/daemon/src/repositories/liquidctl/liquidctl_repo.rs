@@ -70,6 +70,7 @@ const LIQCTLD_REAP_TIMEOUT: Duration = Duration::from_secs(1);
 /// then to restarting liqctld, both of which actually reopen it. Retrying a dead handle four more
 /// times at 1s each just delays whichever of those works.
 const LIQCTLD_INIT_ATTEMPTS_MAX: usize = 2;
+const _: () = assert!(LIQCTLD_INIT_ATTEMPTS_MAX >= 1);
 const LIQCTLD_INIT_PAUSE_MS: u64 = 1_000;
 
 /// Delay before each restart after the first. The first failure escalates with no wait, so this is
@@ -458,6 +459,7 @@ impl LiquidctlRepo {
             error!("{err:#}. This device is unmanaged.");
             return Ok(false);
         }
+        debug_assert!(self.liqctld_devices.contains_key(&device.type_index));
         self.check_for_legacy_690(device).await?;
         self.rename_device_io(device);
         if direct_access {
