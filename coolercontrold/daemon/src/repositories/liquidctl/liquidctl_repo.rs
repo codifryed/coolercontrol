@@ -127,6 +127,7 @@ impl RecoveryState {
             self.begin_episode(all_failed);
             assert!(self.next_attempt_at.is_some());
         }
+        assert!(self.failed_devices.is_empty().not());
     }
 
     fn clear(&mut self) {
