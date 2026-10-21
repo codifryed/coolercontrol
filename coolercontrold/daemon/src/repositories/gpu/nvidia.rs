@@ -458,8 +458,13 @@ impl GpuNVidia {
                 }
             }
             let hotspot_temp_name = GPU_TEMP_HOTSPOT_NAME.to_string();
+            let mut hotspot_pci_bus = None;
             if disabled_channels.contains(&hotspot_temp_name).not() {
-                if let Some(hotspot_temp) = init_hotspots.get(gpu_index).copied() {
+                if let (Some(hotspot_temp), Ok(pci_info)) = (
+                    init_hotspots.get(gpu_index).copied(),
+                    device_lock.pci_info(),
+                ) {
+                    hotspot_pci_bus = Some(pci_info.bus);
                     temp_infos.insert(
                         hotspot_temp_name.clone(),
                         TempInfo {
@@ -682,7 +687,7 @@ impl GpuNVidia {
                     freqs: nvidia_freq_infos,
                     power: nvidia_power_supported,
                     fan_ranges,
-                    pci_bus: device_lock.pci_info().ok().map(|info| info.bus),
+                    hotspot_pci_bus,
                     read_plan_parts: std::cell::OnceCell::new(),
                 }),
             );
@@ -924,15 +929,10 @@ impl GpuNVidia {
     /// This tick's hotspot, read through nvapi once NVML has answered. None when the GPU has no
     /// hotspot channel or the read failed or timed out, which omits it for this tick.
     async fn read_hotspot(&self, nv_info: &NvidiaDeviceInfo) -> Option<f64> {
-        let has_hotspot = nv_info
-            .temps
-            .iter()
-            .any(|name| name == GPU_TEMP_HOTSPOT_NAME);
-        if has_hotspot.not() {
-            return None;
-        }
-        let pci_bus = nv_info.pci_bus?;
-        self.nvapi_io.as_ref()?.hotspot_temp(pci_bus).await
+        self.nvapi_io
+            .as_ref()?
+            .hotspot_temp(nv_info.hotspot_pci_bus?)
+            .await
     }
 
     /// What this tick's read pass gathers. The per-device parts are shared, not copied.
@@ -1306,7 +1306,7 @@ impl GpuNVidia {
                             freqs: Vec::new(),
                             power: false,
                             fan_ranges,
-                            pci_bus: None,
+                            hotspot_pci_bus: None,
                             read_plan_parts: std::cell::OnceCell::new(),
                         }),
                     );
@@ -1658,9 +1658,8 @@ pub struct NvidiaDeviceInfo {
     pub freqs: Vec<Clock>,
     /// Whether power is supported
     pub power: bool,
-    /// Cached PCI bus, read once at init, for the per-tick nvapi hotspot lookup
-    /// so it does not call `pci_info()` on every poll.
-    pub pci_bus: Option<u32>,
+    /// PCI bus for the per-tick nvapi hotspot read. Some only when the GPU has a hotspot channel.
+    pub hotspot_pci_bus: Option<u32>,
     read_plan_parts: std::cell::OnceCell<NvmlReadPlanParts>,
 }
 
@@ -1693,7 +1692,7 @@ impl NvidiaDeviceInfo {
             temps: Vec::new(),
             freqs: Vec::new(),
             power: false,
-            pci_bus: None,
+            hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
         }
     }
@@ -1929,7 +1928,7 @@ mod tests {
             temps: Vec::new(),
             freqs: Vec::new(),
             power: false,
-            pci_bus: None,
+            hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
         }
     }
@@ -1990,7 +1989,7 @@ mod tests {
             temps: vec![GPU_TEMP_MEMORY_NAME.to_string(), GPU_TEMP_NAME.to_string()],
             freqs: vec![],
             power: false,
-            pci_bus: None,
+            hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
         });
         let readings = NvmlReadings {
@@ -2071,7 +2070,7 @@ mod tests {
             assert!(gpus.nvapi_io.is_some());
             let nv_info = NvidiaDeviceInfo {
                 temps: vec![GPU_TEMP_NAME.to_string(), GPU_TEMP_HOTSPOT_NAME.to_string()],
-                pci_bus: Some(1),
+                hotspot_pci_bus: Some(1),
                 ..nv_info_for(0)
             };
             let nvml_status = StatusNvidiaDeviceNvml {
@@ -2117,7 +2116,7 @@ mod tests {
             temps: vec![GPU_TEMP_NAME.to_string(), GPU_TEMP_MEMORY_NAME.to_string()],
             freqs: vec![],
             power: false,
-            pci_bus: None,
+            hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
         });
         // Memory temp unsupported on this card, so the worker reports nothing for it.
