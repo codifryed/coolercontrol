@@ -13,6 +13,7 @@ use log::{Level, Log, Record};
 use std::borrow::Cow;
 use std::io;
 use std::marker::PhantomData;
+use std::ops::Not;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
@@ -29,6 +30,10 @@ pub const DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// How long `drain` sleeps while the queue has no room for its marker.
 const DRAIN_RETRY: Duration = Duration::from_millis(1);
+
+/// `run` takes the first message of a batch, then up to `QUEUE_DEPTH - 1` more.
+const _: () = assert!(QUEUE_DEPTH > 1);
+const _: () = assert!(DRAIN_RETRY.as_millis() < DRAIN_TIMEOUT.as_millis());
 
 enum Message<E> {
     Entry(E),
@@ -51,6 +56,7 @@ impl<E: Send + 'static> LogWriter<E> {
         write: impl FnMut(E) + Send + 'static,
         report: impl FnMut(&Record) -> E + Send + 'static,
     ) -> io::Result<Self> {
+        assert!(sink.is_empty().not());
         let (tx, rx) = mpsc::sync_channel(QUEUE_DEPTH);
         let dropped = Arc::new(AtomicUsize::new(0));
         let mut thread = WriterThread {
@@ -84,6 +90,7 @@ impl<E: Send + 'static> LogWriter<E> {
 
     /// `drain` with a timeout of the caller's.
     pub fn drain_within(&self, timeout: Duration) {
+        debug_assert!(timeout.is_zero().not());
         // The writer cannot wait for itself: a panic in a sink lands here on its own thread.
         if std::thread::current().name() == Some(THREAD_NAME) {
             return;
@@ -146,6 +153,7 @@ impl<E, W: FnMut(E), R: FnMut(&Record) -> E> WriterThread<E, W, R> {
     fn run(&mut self, rx: &Receiver<Message<E>>) {
         while let Ok(first) = rx.recv() {
             self.write_message(first);
+            let mut batch = 1;
             // Bounded, so a sink that only just keeps up with a flood still reports what it
             // dropped.
             for _ in 1..QUEUE_DEPTH {
@@ -153,7 +161,9 @@ impl<E, W: FnMut(E), R: FnMut(&Record) -> E> WriterThread<E, W, R> {
                     break;
                 };
                 self.write_message(message);
+                batch += 1;
             }
+            debug_assert!(batch <= QUEUE_DEPTH);
             self.report_dropped();
         }
     }

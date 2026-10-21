@@ -47,6 +47,7 @@ const HEARTBEAT: &[u8] = b"WATCHDOG=1\n";
 /// How long READY or STOPPING may hold up startup or shutdown. Past it the send carries on, on
 /// the blocking pool, and the daemon goes on without waiting for it.
 const NOTIFY_WAIT: Duration = Duration::from_secs(2);
+const _: () = assert!(NOTIFY_WAIT.as_millis() > 0);
 
 /// Single-threaded like the rest of the main-thread daemon, so `ping` takes
 /// `&self` and keeps its rate limit in a `Cell`.
@@ -222,6 +223,7 @@ async fn send_from_pool_within(
     description: &'static str,
     wait: Duration,
 ) {
+    debug_assert!(wait.is_zero().not());
     let send = async {
         rt::spawn_blocking(send)
             .await
@@ -242,6 +244,9 @@ async fn send_from_pool_within(
 /// rather than parking the caller, which for a heartbeat is the main thread. A fresh socket per
 /// send, as `sd_notify` makes, follows the service manager across a restart of its own.
 fn send_now(socket: &OsStr, message: &[u8]) -> io::Result<()> {
+    debug_assert!(message.is_empty().not());
+    // sd_notify ends each assignment with a newline.
+    debug_assert!(message.ends_with(b"\n"));
     let datagram = UnixDatagram::unbound()?;
     datagram.set_nonblocking(true)?;
     datagram.connect(socket)?;
