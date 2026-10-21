@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::diagnostics::support::SystemInfo;
+use crate::log_writer::{LogWriter, QueuedRecord};
 use crate::repositories::liquidctl::liqctld_service;
 use crate::rt;
 use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
-use env_logger::Logger;
+use env_logger::fmt::TimestampPrecision;
+use env_logger::{Logger, WriteStyle};
 use log::{debug, info, trace, Level, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use nix::NixPath;
 use nu_glob::{glob, Uninterruptible};
@@ -15,6 +17,7 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
+use std::io::Write as _;
 use std::ops::Not;
 use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
@@ -50,7 +53,13 @@ pub async fn setup_logging(
         source,
         journal: connected_to_journal(),
     };
-    let (logger, log_buf_handle) = CCLogger::new(level_info, VERSION, run_token)?;
+    // Connecting sends to journald, which can be slow to read.
+    let journal = if level_info.journal {
+        Some(rt::spawn_blocking(JournalLog::new).await??)
+    } else {
+        None
+    };
+    let (logger, log_buf_handle) = CCLogger::new(level_info, journal, VERSION, run_token)?;
     logger.init()?;
     if cmd_args.wants_system_info_banner() {
         info!("Log level: {level} ({})", source.description());
@@ -276,32 +285,35 @@ fn read_xdg_desktop_info() -> Result<(String, String)> {
 struct CCLogger {
     max_level: LevelFilter,
     log_filter: Logger,
-    logger: Box<dyn Log>,
+    sink: SinkFeed,
     buf_logger: Box<dyn Log>,
 }
 
 impl CCLogger {
+    /// Logs to `journal` when given, to stderr otherwise.
     fn new(
         level_info: LogLevelInfo,
+        journal: Option<JournalLog>,
         version: &str,
         run_token: CancellationToken,
     ) -> Result<(Self, LogBufHandle)> {
         let max_level = level_info.level;
         let timestamp_precision = if max_level >= LevelFilter::Debug {
-            env_logger::fmt::TimestampPrecision::Millis
+            TimestampPrecision::Millis
         } else {
-            env_logger::fmt::TimestampPrecision::Seconds
+            TimestampPrecision::Seconds
         };
         let log_filter = Self::build_log_filter(max_level);
-        let logger: Box<dyn Log> = if level_info.journal {
-            Box::new(JournalLog::new()?.with_extra_fields(vec![("VERSION", version)]))
-        } else {
-            Box::new(
-                env_logger::Builder::new()
-                    .filter_level(max_level)
-                    .format_timestamp(Some(timestamp_precision))
-                    .build(),
-            )
+        let sink = match journal {
+            Some(journal) => {
+                SinkFeed::journal(journal.with_extra_fields(vec![("VERSION", version)]))?
+            }
+            None => SinkFeed::stderr(
+                max_level,
+                timestamp_precision,
+                stderr_write_style(),
+                stderr_writer()?,
+            ),
         };
         let log_buf_handle = LogBufHandle::new(run_token).with_level_info(level_info);
         // We use a 2nd logger here for now. It's not super efficient, but in normal circumstances
@@ -317,7 +329,7 @@ impl CCLogger {
             Self {
                 max_level,
                 log_filter,
-                logger,
+                sink,
                 buf_logger,
             },
             log_buf_handle,
@@ -365,8 +377,84 @@ impl CCLogger {
 
     fn init(self) -> Result<(), SetLoggerError> {
         log::set_max_level(self.max_level);
-        log::set_boxed_logger(Box::new(self))
+        log::set_boxed_logger(Box::new(self))?;
+        drain_on_panic();
+        Ok(())
     }
+}
+
+/// Drains the log queue before a panic is reported, so the lines that led up to it reach the
+/// journal ahead of the panic message.
+fn drain_on_panic() {
+    let report = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::logger().flush();
+        report(info);
+    }));
+}
+
+/// How a record reaches the `cc-log` thread, which owns the journal or stderr.
+enum SinkFeed {
+    /// The journal takes records, and stamps each one as it arrives.
+    Journal(LogWriter<QueuedRecord>),
+    /// stderr takes lines formatted, and so stamped, on the thread that logged them, which keeps
+    /// their time true while stderr stalls. `format` writes into `writer`.
+    Stderr {
+        format: Logger,
+        writer: LogWriter<Vec<u8>>,
+    },
+}
+
+impl SinkFeed {
+    fn journal(journal: JournalLog) -> Result<Self> {
+        let writer = LogWriter::start("the journal", move |record: QueuedRecord| {
+            record.log_to(&journal);
+        })?;
+        Ok(Self::Journal(writer))
+    }
+
+    fn stderr(
+        max_level: LevelFilter,
+        timestamp_precision: TimestampPrecision,
+        write_style: WriteStyle,
+        writer: LogWriter<Vec<u8>>,
+    ) -> Self {
+        let format = env_logger::Builder::new()
+            .filter_level(max_level)
+            .format_timestamp(Some(timestamp_precision))
+            .write_style(write_style)
+            .target(env_logger::Target::Pipe(Box::new(writer.clone())))
+            .build();
+        Self::Stderr { format, writer }
+    }
+
+    fn log(&self, record: &Record) {
+        match self {
+            Self::Journal(writer) => writer.push(QueuedRecord::of(record)),
+            Self::Stderr { format, .. } => format.log(record),
+        }
+    }
+
+    fn drain(&self) {
+        match self {
+            Self::Journal(writer) => writer.drain(),
+            Self::Stderr { writer, .. } => writer.drain(),
+        }
+    }
+}
+
+fn stderr_writer() -> Result<LogWriter<Vec<u8>>> {
+    let mut stderr = std::io::stderr();
+    let writer = LogWriter::start("stderr", move |line: Vec<u8>| {
+        // A failed write has nowhere left to be reported.
+        let _ = stderr.write_all(&line);
+    })?;
+    Ok(writer)
+}
+
+/// The colour choice env_logger makes for its own stderr target, which a pipe target skips.
+fn stderr_write_style() -> WriteStyle {
+    anstream::AutoStream::choice(&std::io::stderr()).into()
 }
 
 impl Log for CCLogger {
@@ -378,17 +466,18 @@ impl Log for CCLogger {
     /// Logs the messages and filters them by matching against the `env_logger` filter
     fn log(&self, record: &Record) {
         if self.log_filter.matches(record) {
-            self.logger.log(record);
+            self.sink.log(record);
             if is_ui_buffered(record.level()) {
                 self.buf_logger.log(record);
             }
         }
     }
 
-    /// Flush log records.
-    ///
-    /// A no-op for this implementation.
-    fn flush(&self) {}
+    /// Waits, for at most `log_writer::DRAIN_TIMEOUT`, until the lines logged so far reach the
+    /// journal or stderr. The process exiting would lose them.
+    fn flush(&self) {
+        self.sink.drain();
+    }
 }
 
 /// DEBUG and TRACE stay out of the UI ring buffer and its SSE stream: their volume would evict
@@ -792,18 +881,6 @@ mod tests {
         assert!(is_ui_buffered(Level::Trace).not());
     }
 
-    #[cfg(feature = "gated-tests")]
-    struct NullLog;
-
-    #[cfg(feature = "gated-tests")]
-    impl Log for NullLog {
-        fn enabled(&self, _metadata: &Metadata) -> bool {
-            true
-        }
-        fn log(&self, _record: &Record) {}
-        fn flush(&self) {}
-    }
-
     // Goal: at DEBUG level, a debug record still skips the UI buffer while an info record
     // lands in it, and the handle reports the level it was built with. Methodology: build
     // the real logger, swap its journal/stderr sink for a no-op, log one of each, then read
@@ -818,8 +895,9 @@ mod tests {
                 journal: false,
             };
             let (mut cc_logger, handle) =
-                CCLogger::new(level_info, VERSION, CancellationToken::new()).unwrap();
-            cc_logger.logger = Box::new(NullLog);
+                CCLogger::new(level_info, None, VERSION, CancellationToken::new()).unwrap();
+            cc_logger.sink =
+                SinkFeed::Journal(LogWriter::start("nowhere", drop::<QueuedRecord>).unwrap());
             cc_logger.log(
                 &Record::builder()
                     .level(Level::Info)
@@ -839,6 +917,55 @@ mod tests {
             assert!(logs.contains("debug line").not(), "logs were: {logs:?}");
             assert_eq!(handle.level_info(), level_info);
         });
+    }
+
+    // Goal: a stderr line carries the time it was logged, not the later time a stalled stderr
+    // took it. Method: wedge the sink on a first line, log a second at millisecond precision,
+    // hold the sink well past that, then read the second line's timestamp back.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn stderr_lines_keep_the_time_they_were_logged() {
+        use std::sync::{mpsc, Arc, Mutex};
+        let lines = Arc::new(Mutex::new(Vec::new()));
+        let sink_lines = Arc::clone(&lines);
+        let (started_tx, started) = mpsc::sync_channel(4);
+        let (gate, gate_rx) = mpsc::sync_channel::<()>(0);
+        let writer = LogWriter::start("the test sink", move |line: Vec<u8>| {
+            let _ = started_tx.try_send(());
+            let _ = gate_rx.recv();
+            sink_lines.lock().unwrap().push(line);
+        })
+        .unwrap();
+        let feed = SinkFeed::stderr(
+            LevelFilter::Info,
+            TimestampPrecision::Millis,
+            WriteStyle::Never,
+            writer.clone(),
+        );
+        writer.push(b"first\n".to_vec());
+        started.recv().unwrap();
+
+        feed.log(
+            &Record::builder()
+                .level(Level::Info)
+                .target("coolercontrold")
+                .args(format_args!("held line"))
+                .build(),
+        );
+        let logged_by = chrono::Utc::now();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        drop(gate);
+        feed.drain();
+
+        let lines = lines.lock().unwrap();
+        let held = String::from_utf8(lines[1].clone()).unwrap();
+        assert!(held.contains("held line"), "{held:?}");
+        let stamp = held.trim_start_matches('[').split(' ').next().unwrap();
+        let stamped = DateTime::parse_from_rfc3339(stamp).unwrap();
+        assert!(
+            stamped < logged_by + chrono::Duration::milliseconds(100),
+            "{held:?} was stamped after {logged_by}"
+        );
     }
 
     // Goal: a handle built without level info reports the INFO default, so tests and any
