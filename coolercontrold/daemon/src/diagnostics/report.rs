@@ -700,12 +700,58 @@ fn hidden_channel_suffix(count: usize) -> String {
 
 /// Whether the report may read this device's channels.
 ///
-/// Everything except a liquidctl duplicate: that is one piece of hardware with
-/// another process actively talking to it, and a read here can break its
-/// transfers. Every other exclusion is a device nothing else is using, so
-/// inspecting it is free and often the whole point.
+/// Everything except a liquidctl duplicate and a device that did not answer at
+/// startup. The first is one piece of hardware with another process actively
+/// talking to it, and a read here can break its transfers. The second may still
+/// be stuck in its driver, and each read would park another thread beside it.
+/// Every other exclusion is a device nothing else is using, so inspecting it is
+/// free and often the whole point.
 fn scan_is_safe(excluded: Option<HwmonExclusion>) -> bool {
-    excluded != Some(HwmonExclusion::DuplicateOfLiquidctl)
+    match excluded {
+        Some(HwmonExclusion::DuplicateOfLiquidctl | HwmonExclusion::Unanswered) => false,
+        Some(
+            HwmonExclusion::ServedByGpuRepository
+            | HwmonExclusion::UserDisabled
+            | HwmonExclusion::AllChannelsIgnored,
+        )
+        | None => true,
+    }
+}
+
+/// The recorded path of the hwmon entry at `hwmon_path` when the daemon left it out for not
+/// answering. Checked before any read, on the entry and on the `device` directory an old-style
+/// driver keeps its attributes in, matched canonically as the daemon recorded them.
+fn unanswered_entry(hidden: &HiddenHardware, hwmon_path: &Path) -> Option<PathBuf> {
+    [hwmon_path.to_path_buf(), hwmon_path.join("device")]
+        .into_iter()
+        .filter_map(|dir| cc_fs::canonicalize(dir).ok())
+        .find(|canonical| hidden.devices.get(canonical) == Some(&HwmonExclusion::Unanswered))
+}
+
+/// A device that did not answer at startup, listed as not answering without a read: no worker
+/// is started for it, as a driver still stuck would park that one too. Named by its sysfs entry,
+/// since its `name` is one of the reads it did not answer.
+fn unanswered_device(path: &Path, hidden: &HiddenHardware) -> ReportDevice {
+    let entry = if path.ends_with("device") {
+        path.parent().unwrap_or(path)
+    } else {
+        path
+    };
+    let name = entry.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    ReportDevice {
+        path: path.to_path_buf(),
+        name,
+        driver: resolve_driver(path),
+        fans: Vec::new(),
+        excluded: Some(HwmonExclusion::Unanswered),
+        excluded_channels: hidden_channels(hidden, path),
+        unresponsive: true,
+        // Never read: every stage skips an unresponsive device.
+        io: DeviceIo::default(),
+    }
 }
 
 /// The trailing "hidden: ..." note, or nothing for a device the app shows.
@@ -783,6 +829,10 @@ async fn collect_retained(
         });
     }
     for (path, reason) in &hidden.devices {
+        if *reason == HwmonExclusion::Unanswered {
+            devices.push(unanswered_device(path, hidden));
+            continue;
+        }
         let io = new_io();
         let Ok(name) = io.read_text(&path.join("name")).await else {
             continue;
@@ -848,6 +898,10 @@ async fn scan_hwmon(
     // which reads as a mistake in a report a human is scanning.
     paths.sort_by_key(|path| (hwmon_index(path), path.clone()));
     for hwmon_path in paths {
+        if let Some(path) = unanswered_entry(hidden, &hwmon_path) {
+            devices.push(unanswered_device(&path, hidden));
+            continue;
+        }
         let io = retained_io(retained, &hwmon_path).unwrap_or_else(new_io);
         let Some((path, name)) = attribute_dir(&hwmon_path, &io).await else {
             continue;
@@ -1371,6 +1425,56 @@ mod tests {
         });
     }
 
+    /// Goal: a device that did not answer at startup is listed as not answering without starting a
+    /// worker for it, so a driver still stuck cannot park one more thread per report. Method: the
+    /// compact path with such a device recorded, and a worker factory that panics if called.
+    #[test]
+    fn an_unanswered_device_is_listed_without_a_worker() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("hwmon3");
+        std::fs::create_dir(&entry).unwrap();
+        let canonical = cc_fs::canonicalize(&entry).unwrap();
+        let mut hidden = HiddenHardware::default();
+        hidden
+            .devices
+            .insert(canonical.clone(), HwmonExclusion::Unanswered);
+        let devices = crate::rt::test_runtime(async {
+            collect_retained(&[], &hidden, ReadBudget::starting_now(), || -> DeviceIo {
+                panic!("no worker may start for an unanswered device")
+            })
+            .await
+        });
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].name, "hwmon3");
+        assert_eq!(devices[0].path, canonical);
+        assert!(devices[0].unresponsive);
+        assert!(devices[0].fans.is_empty());
+        assert_eq!(devices[0].excluded, Some(HwmonExclusion::Unanswered));
+    }
+
+    /// Goal: the full scan spots an unanswered device before reading its name, on the entry and on
+    /// an old-style driver's `device` directory alike, and only for that exclusion. Method: a
+    /// tempdir entry recorded under each path in turn, then under another reason.
+    #[test]
+    fn the_full_scan_finds_an_unanswered_entry_before_reading() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("hwmon4");
+        std::fs::create_dir_all(entry.join("device")).unwrap();
+        for recorded in [entry.clone(), entry.join("device")] {
+            let canonical = cc_fs::canonicalize(&recorded).unwrap();
+            let mut hidden = HiddenHardware::default();
+            hidden
+                .devices
+                .insert(canonical.clone(), HwmonExclusion::Unanswered);
+            assert_eq!(unanswered_entry(&hidden, &entry), Some(canonical.clone()));
+            hidden
+                .devices
+                .insert(canonical, HwmonExclusion::UserDisabled);
+            assert_eq!(unanswered_entry(&hidden, &entry), None);
+        }
+        assert_eq!(unanswered_entry(&HiddenHardware::default(), &entry), None);
+    }
+
     /// Goal: the report must not read a device liquidctl is talking to.
     ///
     /// `corsairpsu` is excluded from the daemon precisely because liqctld owns
@@ -1381,6 +1485,7 @@ mod tests {
     #[test]
     fn a_device_liquidctl_owns_is_never_read() {
         assert!(scan_is_safe(Some(HwmonExclusion::DuplicateOfLiquidctl)).not());
+        assert!(scan_is_safe(Some(HwmonExclusion::Unanswered)).not());
         assert!(scan_is_safe(None));
         for reason in [
             HwmonExclusion::ServedByGpuRepository,
