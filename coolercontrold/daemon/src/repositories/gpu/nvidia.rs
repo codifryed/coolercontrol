@@ -36,7 +36,7 @@ use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
     GPU_TEMP_NAME,
 };
-use crate::repositories::gpu::nvapi_io::NvApiIo;
+use crate::repositories::gpu::nvapi_io::{self, NvApiIo};
 use crate::repositories::gpu::nvml_io::{self, NvmlIo};
 use crate::repositories::hwmon::device_io;
 use crate::repositories::repository::DeviceLock;
@@ -132,20 +132,17 @@ impl GpuNVidia {
 
     /// Each GPU's hotspot at init, by GPU index. Only a GPU found here gets a hotspot channel.
     async fn read_init_hotspots(&self) -> HashMap<GpuIndex, f64> {
-        let mut init_hotspots = HashMap::with_capacity(self.nvml_handles_pending_workers.len());
         let Some(nvapi_io) = self.nvapi_io.as_ref() else {
-            return init_hotspots;
+            return HashMap::new();
         };
-        for (gpu_index, nvml_device) in &self.nvml_handles_pending_workers {
-            let Ok(pci_info) = nvml_device.pci_info() else {
-                continue;
-            };
-            if let Some(hotspot_temp) = nvapi_io.hotspot_temp(pci_info.bus).await {
-                init_hotspots.insert(*gpu_index, hotspot_temp);
-            }
-        }
-        debug_assert!(init_hotspots.len() <= self.nvml_handles_pending_workers.len());
-        init_hotspots
+        let buses: Vec<(GpuIndex, u32)> = self
+            .nvml_handles_pending_workers
+            .iter()
+            .filter_map(|(gpu_index, nvml_device)| {
+                Some((*gpu_index, nvml_device.pci_info().ok()?.bus))
+            })
+            .collect();
+        read_hotspots_within(nvapi_io, &buses, nvapi_io::INIT_TIMEOUT).await
     }
 
     pub fn update_all_statuses(&self, timestamp: DateTime<Local>) {
@@ -1819,6 +1816,34 @@ fn collect_nvml_device_uids(
     device_uids
 }
 
+/// Each GPU's hotspot by GPU index, read in turn within one shared `budget`, so a wedged nvapi
+/// cannot hold startup for a full reply timeout per GPU. A GPU not reached in time gets none.
+async fn read_hotspots_within(
+    nvapi_io: &NvApiIo,
+    buses: &[(GpuIndex, u32)],
+    budget: Duration,
+) -> HashMap<GpuIndex, f64> {
+    debug_assert!(budget > Duration::ZERO);
+    let deadline = Instant::now() + budget;
+    let mut hotspots = HashMap::with_capacity(buses.len());
+    for &(gpu_index, pci_bus) in buses {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            warn!(
+                "nvapi did not read every GPU hotspot within {budget:?}. The rest have no \
+                 hotspot temperature."
+            );
+            break;
+        }
+        if let Ok(Some(hotspot_temp)) = rt::timeout(remaining, nvapi_io.hotspot_temp(pci_bus)).await
+        {
+            hotspots.insert(gpu_index, hotspot_temp);
+        }
+    }
+    debug_assert!(hotspots.len() <= buses.len());
+    hotspots
+}
+
 /// True for Blackwell and newer, where nvapi thermals no longer exposes hotspot.
 /// `Unknown` and unmapped raw variants sort above Blackwell too; guessing wrong there
 /// only costs one register probe, since nvapi falls back to thermals on failure.
@@ -2050,6 +2075,64 @@ mod tests {
             let _ = self.release.recv();
             Some(80.0)
         }
+    }
+
+    /// Answers every hotspot at once, at 70 plus the PCI bus.
+    struct FixedHotspot;
+
+    impl HotspotReader for FixedHotspot {
+        fn hotspot_temp(&self, pci_bus: u32) -> Option<f64> {
+            Some(70.0 + f64::from(pci_bus))
+        }
+    }
+
+    /// Goal: an answering nvapi gives every GPU its init hotspot, keyed by GPU index. Method: a
+    /// fake that answers at once, asked for three GPUs.
+    #[test]
+    fn init_hotspots_are_read_for_every_gpu() {
+        crate::rt::test_runtime(async {
+            let nvapi_io = NvApiIo::start_for_test(FixedHotspot, Duration::from_secs(30))
+                .await
+                .expect("the fake initializes");
+
+            let hotspots = read_hotspots_within(
+                &nvapi_io,
+                &[(0, 1), (1, 2), (2, 3)],
+                Duration::from_secs(30),
+            )
+            .await;
+
+            assert_eq!(hotspots.len(), 3);
+            assert_eq!(hotspots[&0], 71.0);
+            assert_eq!(hotspots[&2], 73.0);
+        });
+    }
+
+    /// Goal: a wedged nvapi holds startup for one shared budget, not a reply timeout per GPU.
+    /// Method: a fake that never answers, a long reply timeout, three GPUs and a short budget.
+    /// Gated: it bounds a real-time wait from above.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn init_hotspot_reads_share_one_budget() {
+        crate::rt::test_runtime(async {
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let nvapi_io = NvApiIo::start_for_test(
+                StalledHotspot {
+                    release: release_rx,
+                },
+                Duration::from_secs(30),
+            )
+            .await
+            .expect("the fake initializes");
+            let budget = Duration::from_millis(100);
+
+            let started = Instant::now();
+            let hotspots = read_hotspots_within(&nvapi_io, &[(0, 1), (1, 2), (2, 3)], budget).await;
+
+            assert!(started.elapsed() < Duration::from_secs(5));
+            assert!(hotspots.is_empty());
+            drop(release_tx);
+        });
     }
 
     /// Goal: a stalled nvapi never holds back a GPU's NVML status, and a hotspot that does answer

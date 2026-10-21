@@ -23,7 +23,8 @@ use crate::rt;
 const THREAD_NAME: &str = "nvapi";
 /// Bound on loading and initializing nvapi, which enumerates every GPU and probes each one's
 /// hotspot. Startup waits no longer than this; a library that has not answered by then is off.
-const INIT_TIMEOUT: Duration = Duration::from_secs(10);
+/// The first hotspot reads of all GPUs share one more such budget.
+pub const INIT_TIMEOUT: Duration = Duration::from_secs(10);
 const HEALTH_NAME: &str = "nvapi";
 
 // Linux caps thread names at 15 bytes.
