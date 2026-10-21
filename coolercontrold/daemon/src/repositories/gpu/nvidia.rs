@@ -456,7 +456,7 @@ impl GpuNVidia {
 
             let temp_name = GPU_TEMP_NAME.to_string();
             if disabled_channels.contains(&temp_name).not() {
-                if let Some(temp) = readings.temp {
+                if let Some(temp) = readings.temperature_celsius {
                     temp_infos.insert(
                         temp_name.clone(),
                         TempInfo {
@@ -473,7 +473,7 @@ impl GpuNVidia {
             }
             let mem_temp_name = GPU_TEMP_MEMORY_NAME.to_string();
             if disabled_channels.contains(&mem_temp_name).not() {
-                if let Some(mem_temp) = readings.memory_temp {
+                if let Some(mem_temp) = readings.memory_temperature_celsius {
                     temp_infos.insert(
                         mem_temp_name.clone(),
                         TempInfo {
@@ -513,11 +513,11 @@ impl GpuNVidia {
             let mut channel_status = Vec::new();
             let mut fan_indices = Vec::new();
             let num_fans = u8::try_from(readings.fan_count)?;
-            for &(fan_index, fan_speed, fan_rpm) in &readings.fans {
-                debug_assert!(fan_index < num_fans);
-                let fan_name = format!("{NVIDIA_FAN_PREFIX}{}", fan_index + 1);
+            for fan in &readings.fans {
+                debug_assert!(fan.index < num_fans);
+                let fan_name = format!("{NVIDIA_FAN_PREFIX}{}", fan.index + 1);
                 if disabled_channels.contains(&fan_name).not() {
-                    fan_indices.push(fan_index);
+                    fan_indices.push(fan.index);
                     channel_infos.insert(
                         fan_name.clone(),
                         ChannelInfo {
@@ -530,15 +530,15 @@ impl GpuNVidia {
                     );
                     channel_status.push(ChannelStatus {
                         name: fan_name,
-                        duty: Some(f64::from(fan_speed)),
-                        rpm: fan_rpm,
+                        duty: Some(f64::from(fan.duty_percent)),
+                        rpm: fan.rpm,
                         ..Default::default()
                     });
                 }
             }
             if self.nvidia_nvml_load_enabled.get() {
                 let load_name = GPU_LOAD_NAME.to_string();
-                if let Some(gpu_load) = readings.load {
+                if let Some(gpu_load) = readings.load_percent {
                     channel_infos.insert(
                         load_name.clone(),
                         ChannelInfo {
@@ -629,7 +629,7 @@ impl GpuNVidia {
 
             let device = Rc::new(RefCell::new(device_raw));
             self.nvidia_devices.insert(type_index, Rc::clone(&device));
-            let fan_range = match readings.fan_speed_range {
+            let fan_range = match readings.fan_duty_percent_range {
                 Some((min, max)) => {
                     debug!("Nvidia NVML returned Fan range: {min} - {max}");
                     NvidiaFanRange::new(Duty::try_from(min)?, Duty::try_from(max)?)
@@ -1840,26 +1840,35 @@ async fn release_nvml(nvml: Box<Nvml>) {
     }
 }
 
+/// One fan an init read the duty of.
+#[derive(Debug)]
+struct NvmlFanReading {
+    index: FanIndex,
+    duty_percent: u32,
+    /// When the device reports one.
+    rpm: Option<u32>,
+}
+
 /// Every NVML read a GPU's init makes, taken in one call on its worker. Plain data, so it crosses
 /// the thread boundary by value.
 #[derive(Debug, Default)]
 pub struct NvmlInitReadings {
     name: Option<String>,
-    temp: Option<u32>,
-    memory_temp: Option<Temp>,
+    temperature_celsius: Option<u32>,
+    memory_temperature_celsius: Option<Temp>,
     pci_bus: Option<u32>,
     pci_bus_id: Option<String>,
     needs_hotspot_register: bool,
     fan_count: u32,
-    /// Each fan whose duty reads: its index, duty and speed.
-    fans: Vec<(FanIndex, u32, Option<u32>)>,
-    load: Option<u32>,
+    /// Each fan whose duty reads.
+    fans: Vec<NvmlFanReading>,
+    load_percent: Option<u32>,
     /// Each clock that answers, with its current value.
     clocks: Vec<(Clock, u32)>,
     power_milliwatts: Option<u32>,
     driver_version: Option<String>,
     nvml_version: Option<String>,
-    fan_speed_range: Option<(u32, u32)>,
+    fan_duty_percent_range: Option<(u32, u32)>,
 }
 
 impl NvmlInitReadings {
@@ -1869,14 +1878,14 @@ impl NvmlInitReadings {
         let fan_count = device.num_fans().unwrap_or_default();
         Self {
             name: device.name().ok(),
-            temp: device.temperature(TemperatureSensor::Gpu).ok(),
-            memory_temp: GpuNVidia::get_memory_temp(device),
+            temperature_celsius: device.temperature(TemperatureSensor::Gpu).ok(),
+            memory_temperature_celsius: GpuNVidia::get_memory_temp(device),
             pci_bus: pci_info.as_ref().map(|info| info.bus),
             pci_bus_id: pci_info.map(|info| info.bus_id),
             needs_hotspot_register: needs_hotspot_register(device.architecture()),
             fan_count,
             fans: Self::read_fans(device, fan_count),
-            load: device.utilization_rates().ok().map(|rates| rates.gpu),
+            load_percent: device.utilization_rates().ok().map(|rates| rates.gpu),
             clocks: NVML_CLOCKS
                 .iter()
                 .filter_map(|(clock, _, _)| Some((*clock, device.clock_info(*clock).ok()?)))
@@ -1884,26 +1893,27 @@ impl NvmlInitReadings {
             power_milliwatts: device.power_usage().ok(),
             driver_version: device.nvml().sys_driver_version().ok(),
             nvml_version: device.nvml().sys_nvml_version().ok(),
-            fan_speed_range: device.min_max_fan_speed().ok(),
+            fan_duty_percent_range: device.min_max_fan_speed().ok(),
         }
     }
 
     /// Each fan whose duty reads. Past `FanIndex` there are none: the count is not believable,
     /// and the build fails on it as it always has.
-    fn read_fans(
-        device: &nvml_wrapper::Device<'static>,
-        fan_count: u32,
-    ) -> Vec<(FanIndex, u32, Option<u32>)> {
+    fn read_fans(device: &nvml_wrapper::Device<'static>, fan_count: u32) -> Vec<NvmlFanReading> {
         let Ok(fan_count) = FanIndex::try_from(fan_count) else {
             return Vec::new();
         };
         let mut fans = Vec::with_capacity(usize::from(fan_count));
         for fan_index in 0..fan_count {
-            let Ok(fan_speed) = device.fan_speed(u32::from(fan_index)) else {
+            let Ok(duty_percent) = device.fan_speed(u32::from(fan_index)) else {
                 continue;
             };
-            let fan_rpm = device.fan_speed_rpm(u32::from(fan_index)).ok();
-            fans.push((fan_index, fan_speed, fan_rpm));
+            let rpm = device.fan_speed_rpm(u32::from(fan_index)).ok();
+            fans.push(NvmlFanReading {
+                index: fan_index,
+                duty_percent,
+                rpm,
+            });
         }
         fans
     }
@@ -2593,18 +2603,29 @@ mod tests {
         let mut repo = repo_with_disabled(&[]);
         let readings = NvmlInitReadings {
             name: Some("RTX 5090".to_owned()),
-            temp: Some(61),
-            memory_temp: Some(70.0),
+            temperature_celsius: Some(61),
+            memory_temperature_celsius: Some(70.0),
             pci_bus: Some(1),
             pci_bus_id: Some("00000000:01:00.0".to_owned()),
             fan_count: 2,
-            fans: vec![(0, 40, Some(1200)), (1, 45, None)],
-            load: Some(12),
+            fans: vec![
+                NvmlFanReading {
+                    index: 0,
+                    duty_percent: 40,
+                    rpm: Some(1200),
+                },
+                NvmlFanReading {
+                    index: 1,
+                    duty_percent: 45,
+                    rpm: None,
+                },
+            ],
+            load_percent: Some(12),
             clocks: vec![(Clock::Memory, 10_501), (Clock::Graphics, 2407)],
             power_milliwatts: Some(85_000),
             driver_version: Some("610.57.04".to_owned()),
             nvml_version: Some("13.610.57".to_owned()),
-            fan_speed_range: Some((30, 100)),
+            fan_duty_percent_range: Some((30, 100)),
             ..Default::default()
         };
         let init_readings = HashMap::from([(0, readings)]);
