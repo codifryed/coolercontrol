@@ -126,8 +126,9 @@ impl NvApiIo {
     }
 
     /// The hotspot of the GPU on `pci_bus`, read on the nvapi thread. None when nvapi has no
-    /// hotspot for it, did not answer in time, or is not answering at all.
+    /// hotspot for it, answered an impossible one, did not answer in time, or is not answering.
     pub async fn hotspot_temp(&self, pci_bus: u32) -> Option<f64> {
+        debug_assert!(self.reply_timeout > Duration::ZERO);
         // A thread that is not answering gets no new request until its next probe is due, or
         // every tick would queue a read nobody serves and wait a full timeout to learn that.
         if self.state.dispatchable().not() {
@@ -145,7 +146,7 @@ impl NvApiIo {
         match rt::timeout(self.reply_timeout, exchange).await {
             Ok(Some(temp)) => {
                 self.record_answered();
-                temp
+                temp.filter(|temp| temp.is_finite())
             }
             // The thread is gone. Nothing will answer again.
             Ok(None) => None,
@@ -159,6 +160,7 @@ impl NvApiIo {
     fn record_answered(&self) {
         let was_unreachable = matches!(self.state.health(), DeviceHealth::Unreachable { .. });
         self.state.record_answered();
+        debug_assert_eq!(self.state.health(), DeviceHealth::Healthy);
         if was_unreachable {
             info!("nvapi is answering again. GPU hotspot temperatures are back.");
         }
@@ -167,6 +169,7 @@ impl NvApiIo {
     fn record_timeout(&self) {
         let was_unreachable = matches!(self.state.health(), DeviceHealth::Unreachable { .. });
         self.state.record_timeout(&"hotspot read");
+        debug_assert_ne!(self.state.health(), DeviceHealth::Healthy);
         let is_unreachable = matches!(self.state.health(), DeviceHealth::Unreachable { .. });
         // Once, on the way in. An nvapi that stays wedged must not log every probe.
         if is_unreachable {
@@ -222,7 +225,8 @@ mod tests {
 
     const REPLY_TIMEOUT: Duration = Duration::from_millis(50);
 
-    /// Answers a fixed hotspot for bus 1 and records the thread each read runs on.
+    /// Answers a fixed hotspot for bus 1, an impossible one for bus 3, and records the thread
+    /// each read runs on.
     struct FakeNvApi {
         threads: Arc<Mutex<Vec<String>>>,
     }
@@ -231,7 +235,11 @@ mod tests {
         fn hotspot_temp(&self, pci_bus: u32) -> Option<f64> {
             let name = thread::current().name().unwrap_or_default().to_owned();
             self.threads.lock().unwrap().push(name);
-            (pci_bus == 1).then_some(61.)
+            match pci_bus {
+                1 => Some(61.),
+                3 => Some(f64::NAN),
+                _ => None,
+            }
         }
     }
 
@@ -262,9 +270,9 @@ mod tests {
 
     #[test]
     fn hotspots_are_read_on_the_nvapi_thread() {
-        // Goal: init and every read run on the nvapi thread, and a GPU nvapi has no hotspot for
-        // reads as none. Method: a fake library that records the thread of its init and of each
-        // read.
+        // Goal: init and every read run on the nvapi thread, and a GPU nvapi has no hotspot for,
+        // or an impossible one, reads as none. Method: a fake library that records the thread of
+        // its init and of each read.
         crate::rt::test_runtime(async {
             let threads = Arc::new(Mutex::new(Vec::new()));
             let reader_threads = Arc::clone(&threads);
@@ -281,7 +289,8 @@ mod tests {
 
             assert_eq!(io.hotspot_temp(1).await, Some(61.));
             assert_eq!(io.hotspot_temp(2).await, None);
-            assert_eq!(*threads.lock().unwrap(), [THREAD_NAME; 3]);
+            assert_eq!(io.hotspot_temp(3).await, None);
+            assert_eq!(*threads.lock().unwrap(), [THREAD_NAME; 4]);
             assert_eq!(io.health(), DeviceHealth::Healthy);
         });
     }
