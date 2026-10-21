@@ -88,12 +88,14 @@ fn process_carousel_images_blocking(
         let processed_image_path = create_carousel_lcd_image_path(&content_type, image_hash);
         debug!("New Image Path created: {}", processed_image_path.display());
         if processed_image_path.exists().not() {
-            let Ok((_, processed_image_data)) = cc_image::process_image(
-                &content_type,
-                file_data,
-                lcd_info.screen_width,
-                lcd_info.screen_height,
-            ) else {
+            let Some((_, processed_image_data)) = skip_on_panic(|| {
+                cc_image::process_image(
+                    &content_type,
+                    file_data,
+                    lcd_info.screen_width,
+                    lcd_info.screen_height,
+                )
+            }) else {
                 debug!("Image processing failed for path: {}", path.display());
                 continue;
             };
@@ -122,6 +124,15 @@ fn process_carousel_images_blocking(
         processed_image_paths.push(processed_image_path_str);
     }
     Ok(processed_image_paths)
+}
+
+/// One image's processing, with a failure or a decoder panic on a malformed file both a skip: the
+/// whole scan runs in one blocking task, so a panic must not fail the rest of the Carousel.
+fn skip_on_panic<T, E>(process: impl FnOnce() -> std::result::Result<T, E>) -> Option<T> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(process)) {
+        Ok(Ok(processed)) => Some(processed),
+        Ok(Err(_)) | Err(_) => None,
+    }
 }
 
 fn verify_images_path(images_path_str: &str) -> Result<PathBuf> {
@@ -216,6 +227,19 @@ mod tests {
         assert_eq!(
             image_digest(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn a_panicking_or_failing_image_is_skipped() {
+        // Goal: one malformed image that panics its decoder is skipped like one that fails,
+        // leaving the rest of the Carousel to process. Method: run a processed, a failing and a
+        // panicking image through the per-image guard.
+        assert_eq!(skip_on_panic(|| Ok::<_, ()>(7)), Some(7));
+        assert_eq!(skip_on_panic(|| Err::<u8, _>("unsupported format")), None);
+        assert_eq!(
+            skip_on_panic(|| -> std::result::Result<u8, ()> { panic!("malformed image") }),
+            None
         );
     }
 }
