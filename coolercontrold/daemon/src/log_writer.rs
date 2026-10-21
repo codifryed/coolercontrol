@@ -82,7 +82,8 @@ impl<E: Send + 'static> LogWriter<E> {
         self.drain_within(DRAIN_TIMEOUT);
     }
 
-    fn drain_within(&self, timeout: Duration) {
+    /// `drain` with a timeout of the caller's.
+    pub fn drain_within(&self, timeout: Duration) {
         // The writer cannot wait for itself: a panic in a sink lands here on its own thread.
         if std::thread::current().name() == Some(THREAD_NAME) {
             return;

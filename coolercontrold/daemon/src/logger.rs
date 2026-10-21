@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::diagnostics::support::SystemInfo;
-use crate::log_writer::{LogWriter, QueuedRecord};
+use crate::log_writer::{LogWriter, QueuedRecord, DRAIN_TIMEOUT};
 use crate::repositories::liquidctl::liqctld_service;
 use crate::rt;
 use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
@@ -22,6 +22,8 @@ use std::ops::Not;
 use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::thread::ThreadId;
+use std::time::Duration;
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -376,22 +378,40 @@ impl CCLogger {
             .build()
     }
 
+    /// Called on the main runtime thread, which the panic hook tells apart by it.
     fn init(self) -> Result<(), SetLoggerError> {
+        let drainer = self.sink.drainer();
         log::set_max_level(self.max_level);
         log::set_boxed_logger(Box::new(self))?;
-        drain_on_panic();
+        drain_on_panic(drainer, std::thread::current().id());
         Ok(())
     }
 }
 
+/// How long a panic on the main runtime thread waits for the log queue. The runtime catches task
+/// panics and carries on, so a longer wait would stall fan ticks and heartbeats.
+const MAIN_THREAD_PANIC_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
+const _: () = assert!(MAIN_THREAD_PANIC_DRAIN_TIMEOUT.as_millis() < DRAIN_TIMEOUT.as_millis());
+
+/// Waits, for at most the timeout given, until the lines logged so far reach the sink.
+type Drainer = Box<dyn Fn(Duration) + Send + Sync>;
+
 /// Drains the log queue before a panic is reported, so the lines that led up to it reach the
 /// journal ahead of the panic message.
-fn drain_on_panic() {
+fn drain_on_panic(drainer: Drainer, main_thread: ThreadId) {
     let report = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        log::logger().flush();
+        drain_for_panic(&drainer, main_thread);
         report(info);
     }));
+}
+
+fn drain_for_panic(drainer: &Drainer, main_thread: ThreadId) {
+    if std::thread::current().id() == main_thread {
+        drainer(MAIN_THREAD_PANIC_DRAIN_TIMEOUT);
+    } else {
+        drainer(DRAIN_TIMEOUT);
+    }
 }
 
 /// How a record reaches the `cc-log` thread, which owns the journal or stderr.
@@ -442,6 +462,20 @@ impl SinkFeed {
         match self {
             Self::Journal(writer) => writer.drain(),
             Self::Stderr { writer, .. } => writer.drain(),
+        }
+    }
+
+    /// Drains this feed's queue from wherever it is held, the panic hook included.
+    fn drainer(&self) -> Drainer {
+        match self {
+            Self::Journal(writer) => {
+                let writer = writer.clone();
+                Box::new(move |timeout| writer.drain_within(timeout))
+            }
+            Self::Stderr { writer, .. } => {
+                let writer = writer.clone();
+                Box::new(move |timeout| writer.drain_within(timeout))
+            }
         }
     }
 }
@@ -1024,6 +1058,104 @@ mod tests {
             stamped < logged_by + chrono::Duration::milliseconds(100),
             "{held:?} was stamped after {logged_by}"
         );
+    }
+
+    /// A journal feed whose sink records each message. The sink signals `started` as it takes a
+    /// record, then waits `delay`, and holds until the returned gate drops when `hold` is set.
+    fn recording_journal(
+        delay: std::time::Duration,
+        hold: bool,
+    ) -> (
+        SinkFeed,
+        Arc<Mutex<Vec<String>>>,
+        std::sync::mpsc::Receiver<()>,
+        Option<std::sync::mpsc::SyncSender<()>>,
+    ) {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let sink_messages = Arc::clone(&messages);
+        let (started_tx, started) = std::sync::mpsc::sync_channel(16);
+        let (gate, gate_rx) = std::sync::mpsc::sync_channel::<()>(0);
+        let writer = LogWriter::start(
+            "the test sink",
+            move |record: QueuedRecord| {
+                let _ = started_tx.try_send(());
+                std::thread::sleep(delay);
+                let _ = gate_rx.recv();
+                let fields = FirstMessage(Mutex::new(None));
+                record.log_to(&fields);
+                sink_messages
+                    .lock()
+                    .unwrap()
+                    .extend(fields.0.into_inner().unwrap());
+            },
+            QueuedRecord::of,
+        )
+        .unwrap();
+        let gate = if hold { Some(gate) } else { None };
+        (SinkFeed::Journal(writer), messages, started, gate)
+    }
+
+    /// Keeps the message of the record it is given.
+    struct FirstMessage(Mutex<Option<String>>);
+
+    impl Log for FirstMessage {
+        fn enabled(&self, _metadata: &Metadata) -> bool {
+            true
+        }
+
+        fn log(&self, record: &Record) {
+            *self.0.lock().unwrap() = Some(record.args().to_string());
+        }
+
+        fn flush(&self) {}
+    }
+
+    fn log_info(feed: &SinkFeed, message: &str) {
+        feed.log(
+            &Record::builder()
+                .level(Level::Info)
+                .target("coolercontrold")
+                .args(format_args!("{message}"))
+                .build(),
+        );
+    }
+
+    // Goal: a panic off the main thread waits for the lines queued before it, so they reach the
+    // sink ahead of the panic report. Method: queue a line to a slow sink, run the hook's drain
+    // as a thread other than the main one, and read the sink.
+    #[test]
+    fn a_panic_drains_queued_lines_first() {
+        let (feed, messages, _started, _gate) =
+            recording_journal(std::time::Duration::from_millis(50), false);
+        let other_thread = std::thread::spawn(|| std::thread::current().id())
+            .join()
+            .unwrap();
+        log_info(&feed, "before the panic");
+
+        drain_for_panic(&feed.drainer(), other_thread);
+
+        assert_eq!(*messages.lock().unwrap(), vec!["before the panic"]);
+    }
+
+    // Goal: a panic on the main runtime thread, which carries on afterwards, waits only briefly
+    // for a stalled sink. Method: wedge the sink, queue a line, run the hook's drain as the main
+    // thread, and time it.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_main_thread_panic_waits_briefly_for_a_stalled_sink() {
+        let (feed, messages, started, gate) = recording_journal(std::time::Duration::ZERO, true);
+        log_info(&feed, "wedges the sink");
+        started.recv().unwrap();
+        log_info(&feed, "queued");
+        let start = std::time::Instant::now();
+
+        drain_for_panic(&feed.drainer(), std::thread::current().id());
+
+        let elapsed = start.elapsed();
+        assert!(elapsed >= MAIN_THREAD_PANIC_DRAIN_TIMEOUT, "{elapsed:?}");
+        assert!(elapsed < DRAIN_TIMEOUT, "{elapsed:?}");
+        assert!(messages.lock().unwrap().is_empty());
+        drop(gate);
     }
 
     // Goal: the stderr report comes out as one whole formatted line per call, nothing carried
