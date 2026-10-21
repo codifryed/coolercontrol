@@ -89,6 +89,21 @@ impl NvmlIo {
         F: FnOnce(&mut nvml_wrapper::Device<'static>) -> T + Send + 'static,
         T: Send + 'static,
     {
+        self.call_within(what, self.reply_timeout, f).await
+    }
+
+    /// `call` within `budget` rather than the per-tick reply timeout, for init's one call of many
+    /// reads, which may first have to wake the GPU.
+    ///
+    /// # Errors
+    ///
+    /// As `call`.
+    pub async fn call_within<T, F>(&self, what: &str, budget: Duration, f: F) -> Result<T>
+    where
+        F: FnOnce(&mut nvml_wrapper::Device<'static>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        debug_assert!(budget > Duration::ZERO);
         // Refuse to queue for a GPU that is not answering until its next probe is due, or every
         // tick adds a job to a queue nobody drains and pays a full timeout to learn that.
         if self.state.dispatchable().not() {
@@ -109,7 +124,7 @@ impl NvmlIo {
                 .map_err(|_| self.worker_gone(what))?;
             reply_rx.await.map_err(|_| self.worker_gone(what))
         };
-        match rt::timeout(self.reply_timeout, exchange).await {
+        match rt::timeout(budget, exchange).await {
             Ok(result) => {
                 self.state.record_answered();
                 result
@@ -117,9 +132,8 @@ impl NvmlIo {
             Err(_elapsed) => {
                 self.state.record_timeout(&what);
                 Err(anyhow!(
-                    "NVML {what} for GPU {} did not complete within {:?}",
+                    "NVML {what} for GPU {} did not complete within {budget:?}",
                     self.state.device_name(),
-                    self.reply_timeout
                 ))
             }
         }
