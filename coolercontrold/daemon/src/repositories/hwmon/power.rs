@@ -12,6 +12,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 const POWER_AVERAGE_SUFFIX: &str = "average";
 const PATTERN_POWER_FILE_NUMBER: &str = r"^power(?P<number>\d+)_(average|input)$";
@@ -90,6 +91,16 @@ async fn insert_power_metrics(
         power_inputs.push((channel_number, file_name.to_string()));
     }
     Ok(())
+}
+
+/// Whether a directory entry names an attribute power detection reads, `powerN_average` or
+/// `powerN_input`, so a chip with neither can be ruled out from its listing alone.
+pub fn is_power_attribute(file_name: &str) -> bool {
+    // Compiled once. The pattern is a constant, so only a typo fails, and the tests catch that.
+    static PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(PATTERN_POWER_FILE_NUMBER).expect("power attribute pattern is valid")
+    });
+    PATTERN.is_match(file_name)
 }
 
 /// Reads a set of power channels in one hop. See `temps::read_temp_statuses` for why the per-tick

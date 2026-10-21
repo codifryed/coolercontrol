@@ -9,9 +9,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::cc_fs::{self, SysfsValue};
 use crate::device::TempStatus;
 use crate::repositories::cpu::CPU_DEVICE_NAMES_ORDERED;
-use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
+use crate::repositories::hwmon::{devices, fans, power};
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
 use log::{debug, info, log_enabled, trace, warn};
@@ -252,6 +252,28 @@ pub async fn extract_temp_statuses_concurrently(
 /// This is used to remove cpu temps, as we already have repos for that that use `HWMon`.
 fn temps_used_by_another_repo(device_name: &str) -> bool {
     CPU_DEVICE_NAMES_ORDERED.contains(&device_name)
+}
+
+/// Whether a chip has nothing for the hwmon repository: its temps belong to the CPU repository,
+/// and its listing names no attribute that fan or power detection reads.
+///
+/// Decided from the listing alone, so such a chip never gets a worker that detection would only
+/// drop again: the CPU repository starts the chip's one worker. zenpower is the CPU chip this
+/// keeps, for its power channels.
+pub fn only_temps_of_another_repo(base_path: &Path, device_name: &str) -> bool {
+    if temps_used_by_another_repo(device_name).not() {
+        return false;
+    }
+    let Ok(entries) = cc_fs::read_dir(base_path) else {
+        // Detection reports an unreadable directory, as it always has.
+        return false;
+    };
+    let offers_channels = entries.filter_map(Result::ok).any(|entry| {
+        entry.file_name().to_str().is_some_and(|file_name| {
+            fans::is_fan_attribute(file_name) || power::is_power_attribute(file_name)
+        })
+    });
+    offers_channels.not()
 }
 
 /// Returns whether the temperature sensor is returning valid and sane values
@@ -974,5 +996,67 @@ mod tests {
             assert_eq!(temps.len(), 1);
             assert_eq!(temps[0].name, "temp1");
         });
+    }
+
+    /// Seeds a chip directory holding exactly `files`, each with a plausible value.
+    fn chip_dir_with(files: &[&str]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for file in files {
+            std::fs::write(dir.path().join(file), "1000\n").unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn a_cpu_chip_with_only_temps_offers_nothing_here() {
+        // Goal: k10temp and coretemp, whose temps the CPU repository reads, start no hwmon worker.
+        // Method: list a chip directory with temps, labels and a name but no fan or power file.
+        let dir = chip_dir_with(&["name", "temp1_input", "temp1_label", "temp3_input"]);
+
+        assert!(only_temps_of_another_repo(dir.path(), "k10temp"));
+        assert!(only_temps_of_another_repo(dir.path(), "coretemp"));
+        assert!(only_temps_of_another_repo(dir.path(), "cpu_thermal"));
+    }
+
+    #[test]
+    fn a_cpu_chip_with_power_or_fans_is_kept() {
+        // Goal: zenpower keeps its power channels, and a CPU chip with a fan keeps it. Method: list
+        // directories holding each attribute detection reads, beside the chip's temps.
+        for file in ["power1_input", "power2_average", "fan1_input", "pwm1"] {
+            let dir = chip_dir_with(&["name", "temp1_input", file]);
+
+            assert!(
+                only_temps_of_another_repo(dir.path(), "zenpower").not(),
+                "{file} must keep the chip"
+            );
+        }
+    }
+
+    #[test]
+    fn a_chip_the_cpu_repository_does_not_read_is_never_ruled_out() {
+        // Goal: the listing check applies to CPU chips alone, whose temps go elsewhere. Method: a
+        // temps-only directory under a board chip's name, and a missing directory under a CPU
+        // chip's name, which detection must still get to report.
+        let dir = chip_dir_with(&["name", "temp1_input"]);
+        let missing = dir.path().join("gone");
+
+        assert!(only_temps_of_another_repo(dir.path(), "nct6687").not());
+        assert!(only_temps_of_another_repo(&missing, "k10temp").not());
+    }
+
+    #[test]
+    fn the_listing_check_names_exactly_what_detection_reads() {
+        // Goal: the check rules out no chip that detection would give a channel, and does not keep
+        // a chip for files detection skips. Method: match detection's attribute names and their
+        // near misses.
+        assert!(fans::is_fan_attribute("pwm1"));
+        assert!(fans::is_fan_attribute("fan12_input"));
+        assert!(fans::is_fan_attribute("pwm1_enable").not());
+        assert!(fans::is_fan_attribute("fan1_label").not());
+        assert!(fans::is_fan_attribute("temp1_input").not());
+        assert!(power::is_power_attribute("power1_average"));
+        assert!(power::is_power_attribute("power2_input"));
+        assert!(power::is_power_attribute("power1_cap").not());
+        assert!(power::is_power_attribute("power1_label").not());
     }
 }

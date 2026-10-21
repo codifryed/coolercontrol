@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
@@ -153,6 +154,17 @@ fn unread_fan_inputs(base_path: &Path, fans: &[HwmonChannelInfo]) -> Vec<u8> {
         .collect();
     channel_numbers.sort_unstable();
     channel_numbers
+}
+
+/// Whether a directory entry names an attribute fan detection reads, `pwmN` or `fanN_input`, so a
+/// chip with neither can be ruled out from its listing alone.
+pub fn is_fan_attribute(file_name: &str) -> bool {
+    // Compiled once. The patterns are constants, so only a typo fails, and the tests catch that.
+    static PATTERNS: LazyLock<[Regex; 2]> = LazyLock::new(|| {
+        [PATTERN_PWM_FILE_NUMBER, PATTERN_FAN_INPUT_FILE_NUMBER]
+            .map(|pattern| Regex::new(pattern).expect("fan attribute patterns are valid"))
+    });
+    PATTERNS.iter().any(|regex| regex.is_match(file_name))
 }
 
 /// Detects if a fan has pwm capability and pwm-write capabilities.

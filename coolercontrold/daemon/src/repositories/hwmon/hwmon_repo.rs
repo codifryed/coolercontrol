@@ -2214,6 +2214,14 @@ impl Repository for HwmonRepo {
             let disabled_channels = cc_device_setting
                 .as_ref()
                 .map_or_else(Vec::new, CCDeviceSettings::get_disabled_channels);
+            if temps::only_temps_of_another_repo(&path, &device_name) {
+                debug!(
+                    "No fans or power under {}, and its temps belong to the CPU repository, \
+                     skipping.",
+                    path.display()
+                );
+                continue;
+            }
             // The chip identity the lm-sensors configuration names, needed here to apply its
             // `ignore` statements, and reused below for the labels and the summary log.
             let chip = chip_name::derive(&path).await;
