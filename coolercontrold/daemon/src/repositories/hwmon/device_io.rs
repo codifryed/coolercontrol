@@ -786,6 +786,8 @@ mod tests {
 
     #[test]
     fn reply_timeout_from_follows_the_configured_poll_rate() {
+        // Goal: the reply timeout scales with the configured poll rate. Method: set a non-default
+        // rate and compare against the timeout derived from it.
         let config = Config::init_default_config().unwrap();
         let mut settings = config.get_settings().unwrap();
         settings.poll_rate = 2.5;

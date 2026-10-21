@@ -3148,12 +3148,15 @@ mod tests {
 
     #[test]
     fn poll_rate_or_default_reads_the_configured_rate() {
+        // Goal: a readable poll rate is returned as configured. Method: a document that sets it.
         let config = config_from("[settings]\npoll_rate = 2.5\n");
         assert_eq!(config.poll_rate_or_default(), 2.5);
     }
 
     #[test]
     fn poll_rate_or_default_falls_back_when_settings_are_unreadable() {
+        // Goal: unreadable settings fall back to the default rate instead of failing. Method: a
+        // document whose poll rate has the wrong type.
         let config = config_from("[settings]\npoll_rate = \"fast\"\n");
         assert!(config.get_settings().is_err());
         assert_eq!(config.poll_rate_or_default(), 1.0);
