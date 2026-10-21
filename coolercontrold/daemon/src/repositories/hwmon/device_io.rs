@@ -194,6 +194,30 @@ impl DeviceIo {
         }
     }
 
+    /// Reads one whole attribute by path, for what does not fit a `SysfsValue`: labels, multi-line
+    /// attributes such as `uevent` and the PMFW tables, and binary pages such as SCSI VPD.
+    ///
+    /// One-shot like `read_value`, and bounded by `cc_fs::ATTRIBUTE_MAX_BYTES` on the worker.
+    pub async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+        match self {
+            Self::Inline(_) => cc_fs::read_bytes(path).await,
+            Self::Threaded(worker) => {
+                worker
+                    .dispatch("reading", &path.display(), |reply| Request::ReadBytes {
+                        path: path.to_path_buf(),
+                        reply,
+                    })
+                    .await
+            }
+        }
+    }
+
+    /// `read_bytes` as UTF-8 text.
+    pub async fn read_text(&self, path: &Path) -> Result<String> {
+        let bytes = self.read_bytes(path).await?;
+        Ok(String::from_utf8(bytes)?)
+    }
+
     /// Reads one attribute through its slot when the registry gave it one, by path otherwise.
     ///
     /// The per-tick single reads all want this: the slot keeps the descriptor across ticks, and
@@ -648,6 +672,10 @@ pub enum Request {
         path: PathBuf,
         reply: oneshot::Sender<Result<SysfsValue>>,
     },
+    ReadBytes {
+        path: PathBuf,
+        reply: oneshot::Sender<Result<Vec<u8>>>,
+    },
     ReadMany {
         indices: Vec<ReadIndex>,
         reply: oneshot::Sender<Result<Vec<Result<SysfsValue>>>>,
@@ -688,6 +716,9 @@ fn serve_one(fds: &cc_fs::SysfsFdCache, request: Request) {
             let result = cc_fs::read_sysfs_value_blocking(&path);
             // A dropped receiver means the caller already timed out. Expected, not an error.
             let _ = reply.send(result);
+        }
+        Request::ReadBytes { path, reply } => {
+            let _ = reply.send(cc_fs::read_bytes_blocking(&path));
         }
         Request::ReadMany { indices, reply } => {
             let mut values = Vec::with_capacity(indices.len());
@@ -1163,6 +1194,36 @@ mod tests {
             let written = std::fs::read_to_string(&path).unwrap();
             assert_eq!(written, "128");
             assert_eq!(io.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: whole-attribute reads cross the thread boundary unchanged, past the 64 bytes of a
+    /// `SysfsValue`, so moving a label or `uevent` read onto the worker changes only where it runs.
+    /// Method: read a multi-line text file and a binary file through a real worker and inline, and
+    /// compare both with what was written.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn threaded_whole_attribute_reads_match_inline() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let uevent =
+                "OF_NAME=fan\nOF_FULLNAME=/soc/fan\nOF_COMPATIBLE_0=pwm-fan\nMODALIAS=of\n";
+            assert!(uevent.len() > cc_fs::SYSFS_VALUE_MAX_BYTES);
+            let text = dir.path().join("uevent");
+            std::fs::write(&text, uevent).unwrap();
+            let binary = dir.path().join("vpd_pg80");
+            std::fs::write(&binary, [0x80, 0x00, 0x01, b'S']).unwrap();
+            let threaded = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
+
+            for io in [&threaded, &DeviceIo::default()] {
+                assert_eq!(io.read_text(&text).await.unwrap(), uevent);
+                assert_eq!(
+                    io.read_bytes(&binary).await.unwrap(),
+                    [0x80, 0x00, 0x01, b'S']
+                );
+                assert!(io.read_text(&binary).await.is_err());
+            }
+            assert_eq!(threaded.health(), DeviceHealth::Healthy);
         });
     }
 

@@ -56,7 +56,7 @@ pub async fn init_temps(
                 continue;
             }
             let channel_name = get_temp_channel_name(channel_number);
-            let label = get_temp_channel_label(base_path, &channel_number).await;
+            let label = get_temp_channel_label(base_path, &channel_number, io).await;
             temps.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Temp,
                 number: channel_number,
@@ -412,8 +412,13 @@ fn check_parsing_32(value: cc_fs::SysfsValue) -> Result<i32> {
 /// Returns:
 ///
 /// an `Option<String>`.
-async fn get_temp_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
-    cc_fs::read_txt(base_path.join(format!("temp{channel_number}_label")))
+async fn get_temp_channel_label(
+    base_path: &Path,
+    channel_number: &u8,
+    io: &DeviceIo,
+) -> Option<String> {
+    // On the device's thread: the label comes from the driver, which may have to ask the hardware.
+    io.read_text(&base_path.join(format!("temp{channel_number}_label")))
         .await
         .ok()
         .and_then(|label| {
@@ -995,6 +1000,28 @@ mod tests {
             assert!(any_failure.not());
             assert_eq!(temps.len(), 1);
             assert_eq!(temps[0].name, "temp1");
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_label_is_read_whole_on_the_device_thread() {
+        // Goal: labels come through the device's worker and lose nothing past a `SysfsValue`'s 64
+        // bytes. Method: detect a temp with a long label through a real worker thread.
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            let label = "Package id 0 on the second die of the first socket, long on purpose";
+            assert!(label.len() > cc_fs::SYSFS_VALUE_MAX_BYTES);
+            std::fs::write(ctx.test_base_path.join("temp1_input"), "30000").unwrap();
+            std::fs::write(ctx.test_base_path.join("temp1_label"), format!("{label}\n")).unwrap();
+            let io = DeviceIo::threaded("testdev", std::time::Duration::from_secs(10)).unwrap();
+
+            let temps = init_temps(&ctx.test_base_path, "Test Driver", &io)
+                .await
+                .unwrap();
+
+            assert_eq!(temps.len(), 1);
+            assert_eq!(temps[0].label.as_deref(), Some(label));
         });
     }
 

@@ -259,7 +259,7 @@ async fn caps_to_hwmon_fans(
         let pwm_enable_at_init = current_pwm_enable(io, base_path, channel_number, None).await;
         let pwm_enable_default = adjusted_pwm_default(pwm_enable_at_init, device_name);
         let channel_name = get_fan_channel_name(channel_number);
-        let label = get_fan_channel_label(base_path, &channel_number).await;
+        let label = get_fan_channel_label(base_path, &channel_number, io).await;
         // The raw driver label, so neither sensors.conf nor a user label can lift the rpm guard.
         if label.as_deref().is_some_and(label_names_non_rpm_unit) {
             fan_cap.insert(HwmonChannelCapabilities::NON_RPM_UNIT);
@@ -883,8 +883,13 @@ fn adjusted_pwm_default(current_pwm_enable: Option<u8>, device_name: &str) -> Op
 /// Returns:
 ///
 /// an `Option<String>`.
-pub async fn get_fan_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
-    cc_fs::read_txt(base_path.join(format_fan_label!(channel_number)))
+pub async fn get_fan_channel_label(
+    base_path: &Path,
+    channel_number: &u8,
+    io: &DeviceIo,
+) -> Option<String> {
+    // On the device's thread: the label comes from the driver, which may have to ask the hardware.
+    io.read_text(&base_path.join(format_fan_label!(channel_number)))
         .await
         .ok()
         .and_then(|label| {

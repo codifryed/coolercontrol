@@ -47,7 +47,7 @@ pub async fn init_power(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonC
         preferred_powers.insert(channel_number, power_input);
     }
     for (channel_number, power_channel_name) in preferred_powers {
-        let label = get_power_channel_label(base_path, channel_number).await;
+        let label = get_power_channel_label(base_path, channel_number, io).await;
         powers.push(HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Power,
             number: channel_number,
@@ -242,8 +242,13 @@ fn check_parsing_64(value: cc_fs::SysfsValue) -> Result<f64> {
 }
 
 /// Read the power label
-async fn get_power_channel_label(base_path: &Path, channel_number: u8) -> Option<String> {
-    cc_fs::read_txt(base_path.join(format_power_label!(channel_number)))
+async fn get_power_channel_label(
+    base_path: &Path,
+    channel_number: u8,
+    io: &DeviceIo,
+) -> Option<String> {
+    // On the device's thread: the label comes from the driver, which may have to ask the hardware.
+    io.read_text(&base_path.join(format_power_label!(channel_number)))
         .await
         .ok()
         .and_then(|label| {
