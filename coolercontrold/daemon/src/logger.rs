@@ -430,10 +430,17 @@ fn drain_on_panic(drainer: Drainer, main_thread: ThreadId) {
 }
 
 fn drain_for_panic(drainer: &Drainer, main_thread: ThreadId) {
-    if std::thread::current().id() == main_thread {
-        drainer(MAIN_THREAD_PANIC_DRAIN_TIMEOUT);
+    drainer(panic_drain_timeout(
+        std::thread::current().id(),
+        main_thread,
+    ));
+}
+
+fn panic_drain_timeout(current: ThreadId, main_thread: ThreadId) -> Duration {
+    if current == main_thread {
+        MAIN_THREAD_PANIC_DRAIN_TIMEOUT
     } else {
-        drainer(DRAIN_TIMEOUT);
+        DRAIN_TIMEOUT
     }
 }
 
@@ -1135,6 +1142,25 @@ mod tests {
         drain_for_panic(&feed.drainer(), other_thread);
 
         assert_eq!(*messages.lock().unwrap(), vec!["before the panic"]);
+    }
+
+    // Goal: only the main thread gets the short panic drain bound; every other thread waits the
+    // full one. Method: ask for the bound as the main thread and as a spawned thread.
+    #[test]
+    fn only_the_main_thread_gets_the_short_panic_drain() {
+        let main_thread = std::thread::current().id();
+        let other_thread = std::thread::spawn(|| std::thread::current().id())
+            .join()
+            .unwrap();
+
+        assert_eq!(
+            panic_drain_timeout(main_thread, main_thread),
+            MAIN_THREAD_PANIC_DRAIN_TIMEOUT
+        );
+        assert_eq!(
+            panic_drain_timeout(other_thread, main_thread),
+            DRAIN_TIMEOUT
+        );
     }
 
     // Goal: a panic on the main runtime thread, which carries on afterwards, waits only briefly
