@@ -134,11 +134,6 @@ impl AppleSilicon {
         package_freqs(&readings)
     }
 
-    /// The cpufreq worker, which the CPU device reads through as well.
-    pub fn io(&self) -> &DeviceIo {
-        &self.io
-    }
-
     pub fn cluster_channels(&self) -> Vec<HwmonChannelInfo> {
         (FIRST_CLUSTER_CHANNEL_NUMBER..)
             .zip(&self.clusters)
@@ -161,6 +156,11 @@ impl AppleSilicon {
                 status.freq = cluster.freq;
             }
         }
+    }
+
+    /// The cpufreq worker, which the CPU device reads through as well.
+    pub fn io(&self) -> &DeviceIo {
+        &self.io
     }
 }
 
