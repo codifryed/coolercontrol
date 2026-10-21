@@ -903,6 +903,14 @@ impl GpuNVidia {
         nv_info: &NvidiaDeviceInfo,
         nvml_status: StatusNvidiaDeviceNvml,
     ) {
+        debug_assert!(
+            nv_info.hotspot_pci_bus.is_none()
+                || nv_info
+                    .temps
+                    .iter()
+                    .any(|name| name == GPU_TEMP_HOTSPOT_NAME),
+            "a hotspot bus implies a hotspot channel"
+        );
         {
             let mut statuses = self.nvidia_preloaded_statuses.borrow_mut();
             let mut temps = nvml_status.temps;
@@ -987,6 +995,23 @@ impl GpuNVidia {
     /// Puts the hotspot into `temps` at its place in the device's own order, as if every temp
     /// came from one source. A hotspot already there, from a late read, is overwritten.
     fn insert_hotspot(nv_info: &NvidiaDeviceInfo, temps: &mut Vec<TempStatus>, hotspot_temp: f64) {
+        debug_assert!(hotspot_temp.is_finite());
+        Self::insert_hotspot_unchecked(nv_info, temps, hotspot_temp);
+        debug_assert!(
+            temps
+                .iter()
+                .filter(|temp| temp.name == GPU_TEMP_HOTSPOT_NAME)
+                .count()
+                <= 1
+        );
+        debug_assert!(temps.len() <= nv_info.temps.len());
+    }
+
+    fn insert_hotspot_unchecked(
+        nv_info: &NvidiaDeviceInfo,
+        temps: &mut Vec<TempStatus>,
+        hotspot_temp: f64,
+    ) {
         if let Some(existing) = temps
             .iter_mut()
             .find(|temp| temp.name == GPU_TEMP_HOTSPOT_NAME)
