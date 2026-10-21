@@ -1005,14 +1005,20 @@ impl<'a> Owner<'a> {
     };
 
     fn resolve(name: &'a str) -> Self {
-        assert!(name.is_empty().not(), "ownership needs a user name");
-        if name == ROOT_USER {
-            return Self::ROOT;
-        }
-        Self {
+        Self::without_lookup(name).unwrap_or_else(|| Self {
             name,
             ids: owner_ids(name),
+        })
+    }
+
+    /// The owner when no lookup is needed, which is root's alone. `None` for any other user,
+    /// whose ids the caller looks up with `owner_ids`.
+    fn without_lookup(name: &'a str) -> Option<Self> {
+        assert!(name.is_empty().not(), "ownership needs a user name");
+        if name == ROOT_USER {
+            return Some(Self::ROOT);
         }
+        None
     }
 
     fn ids(&self) -> Result<OwnerIds> {
@@ -1040,9 +1046,8 @@ impl<'a> Owner<'a> {
 /// `Owner::resolve` with the lookup on the blocking pool: the user database can be sssd, LDAP or
 /// NIS, any of which can take seconds to answer.
 async fn resolve_owner(name: &str) -> Owner<'_> {
-    assert!(name.is_empty().not(), "ownership needs a user name");
-    if name == ROOT_USER {
-        return Owner::ROOT;
+    if let Some(owner) = Owner::without_lookup(name) {
+        return owner;
     }
     let lookup_name = name.to_owned();
     let ids = crate::rt::spawn_blocking(move || owner_ids(&lookup_name))
