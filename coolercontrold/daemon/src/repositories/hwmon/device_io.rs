@@ -17,6 +17,7 @@ use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -132,17 +133,25 @@ impl DeviceIo {
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
         let thread_name = worker_thread_name(device_name);
         debug!("device IO worker starting: {thread_name}");
+        let running = Arc::new(());
+        let liveness = WorkerLiveness(Arc::downgrade(&running));
         // Detached deliberately: a wedged worker never returns, so there is no handle worth
         // keeping. Holding one would only invite a `join` that cannot be bounded.
         std::thread::Builder::new()
             .name(thread_name)
             .stack_size(WORKER_STACK_BYTES)
-            .spawn(move || run_worker(rx))?;
+            .spawn(move || {
+                run_worker(rx);
+                // Held for the thread's whole life, so its exit can be seen once every handle is
+                // gone: see `WorkerLiveness`.
+                drop(running);
+            })?;
         Ok(Self::Threaded(Rc::new(Worker {
             state: HealthState::new(device_name.to_owned()),
             tx,
             reply_timeout,
             pending_registry: RefCell::new(None),
+            liveness,
         })))
     }
 
@@ -376,14 +385,38 @@ impl DeviceIo {
     #[cfg(test)]
     #[must_use]
     pub fn wedged_for_test(reply_timeout: Duration) -> (Self, mpsc::Receiver<Request>) {
+        let (io, rx, _running) = Self::wedged_running_for_test(reply_timeout);
+        (io, rx)
+    }
+
+    /// `wedged_for_test`, with the token that stands in for the worker's thread: its
+    /// `WorkerLiveness` reports it running until the token is dropped, which is what a worker
+    /// whose read finally returned does.
+    #[cfg(test)]
+    #[must_use]
+    pub fn wedged_running_for_test(
+        reply_timeout: Duration,
+    ) -> (Self, mpsc::Receiver<Request>, Arc<()>) {
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
+        let running = Arc::new(());
         let worker = Worker {
             state: HealthState::new("wedged".to_owned()),
             tx,
             reply_timeout,
             pending_registry: RefCell::new(None),
+            liveness: WorkerLiveness(Arc::downgrade(&running)),
         };
-        (Self::Threaded(Rc::new(worker)), rx)
+        (Self::Threaded(Rc::new(worker)), rx, running)
+    }
+
+    /// Whether this device's worker thread still runs, observable after every handle is
+    /// dropped. `None` when not isolated.
+    #[must_use]
+    pub fn liveness(&self) -> Option<WorkerLiveness> {
+        match self {
+            Self::Inline(_) => None,
+            Self::Threaded(worker) => Some(worker.liveness.clone()),
+        }
     }
 
     /// Lets the next dispatch through even if the device is currently unreachable.
@@ -592,6 +625,22 @@ pub struct Worker {
     /// such a device still reports timeouts and still goes unreachable, rather than failing every
     /// read as unregistered and looking healthy while doing it.
     pending_registry: RefCell<Option<Vec<PathBuf>>>,
+    liveness: WorkerLiveness,
+}
+
+/// Whether a worker thread still runs.
+///
+/// Dropping a worker's last handle closes its queue, and the thread exits once the request it is
+/// serving returns: at once for a healthy device, never for one parked in the kernel. This tells
+/// the two apart without keeping a handle, which would keep the thread alive.
+#[derive(Clone, Debug)]
+pub struct WorkerLiveness(std::sync::Weak<()>);
+
+impl WorkerLiveness {
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.0.strong_count() > 0
+    }
 }
 
 impl Worker {
@@ -1288,6 +1337,44 @@ mod tests {
             assert!(is_unanswered(&missing).not());
             assert!(is_unanswered(&wrapped), "context must not hide it");
         });
+    }
+
+    /// Goal: a worker's liveness outlives its handle and follows its thread alone, so an owner
+    /// can drop a stalled worker and still tell when its thread is gone. Method: drop the handle
+    /// of a wedged worker, then the token standing in for its thread; and ask an inline one.
+    #[test]
+    fn liveness_follows_the_thread_not_the_handle() {
+        let (io, _rx, running) = DeviceIo::wedged_running_for_test(TEST_TIMEOUT);
+        let liveness = io.liveness().unwrap();
+        assert!(liveness.is_running());
+
+        drop(io);
+        assert!(liveness.is_running(), "a parked thread outlives its handle");
+        drop(running);
+
+        assert!(liveness.is_running().not());
+        assert!(DeviceIo::default().liveness().is_none());
+    }
+
+    /// Goal: a real worker's thread ends once its last handle is dropped and it is idle, and its
+    /// liveness says so. Method: start a worker, drop it, and wait a bounded time for the thread.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn an_idle_worker_exits_once_its_last_handle_drops() {
+        let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
+        let liveness = io.liveness().unwrap();
+        assert!(liveness.is_running());
+
+        drop(io);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while liveness.is_running() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        assert!(
+            liveness.is_running().not(),
+            "the worker thread did not exit"
+        );
     }
 
     /// Goal: a device that answers with an error is alive, and must not be counted as wedged.

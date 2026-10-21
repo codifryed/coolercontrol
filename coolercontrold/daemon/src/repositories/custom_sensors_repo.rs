@@ -31,7 +31,8 @@ use crate::repositories::failsafe::{
 };
 use crate::repositories::hwmon::attributes::{MICROWATTS_MAX, MICROWATTS_PER_WATT};
 use crate::repositories::hwmon::device_io::{
-    self as device_io, reply_timeout_for, DeviceHealth, DeviceIo, UNREACHABLE_PROBE_INTERVAL,
+    self as device_io, reply_timeout_for, DeviceHealth, DeviceIo, WorkerLiveness,
+    UNREACHABLE_PROBE_INTERVAL,
 };
 use crate::repositories::hwmon::fans::pwm_value_to_duty;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -56,9 +57,10 @@ const _: () = assert!(MICROWATTS_MAX <= 1 << 53);
 /// Upper bound on window slots: the max `time_window_seconds` (300) at the fastest
 /// `poll_rate` (0.5 s).
 const SAMPLE_WINDOW_MAX_SLOTS: usize = 600;
-/// Check workers one repository starts, each stall leaving one parked in the kernel. Past this
-/// a check fails at once, so a client repeating a check of a file that blocks cannot park
-/// threads without bound.
+/// Retired check workers still running at once, each parked in the kernel on a file that has
+/// not answered. Past this a check fails at once, so a client repeating a check of a file that
+/// blocks cannot park threads without bound. A worker whose read returns exits and frees its
+/// place, so checks that were only slow never lock checks out.
 const CHECK_WORKERS_MAX: usize = 8;
 
 type CustomSensors = RefCell<Vec<CustomSensor>>;
@@ -129,8 +131,9 @@ pub struct CustomSensorsRepo {
     /// Where create and update checks read, apart from `io`. Started on the first check, and
     /// again after a check that got no answer.
     check_worker: RefCell<Option<DeviceIo>>,
-    /// Check workers started so far. At most `CHECK_WORKERS_MAX`.
-    check_workers_started: Cell<usize>,
+    /// Check workers retired after a check got no answer, kept until their threads exit. At most
+    /// `CHECK_WORKERS_MAX`.
+    retired_check_workers: RefCell<Vec<WorkerLiveness>>,
     /// Starts a check worker. A field so tests can count starts without a thread.
     start_check_worker: fn(&str, Duration) -> Result<DeviceIo>,
     /// Cancelled by `abort_pending`, so an in-flight read pass cannot hold the main loop's
@@ -203,7 +206,7 @@ impl CustomSensorsRepo {
             file_io_unreachable: Cell::new(false),
             file_pass_in_flight: Cell::new(false),
             check_worker: RefCell::new(None),
-            check_workers_started: Cell::new(0),
+            retired_check_workers: RefCell::new(Vec::with_capacity(CHECK_WORKERS_MAX)),
             start_check_worker: DeviceIo::threaded,
             abort_token: CancellationToken::new(),
             sample_windows: RefCell::new(HashMap::new()),
@@ -1273,8 +1276,8 @@ impl CustomSensorsRepo {
     ///
     /// # Errors
     ///
-    /// When `CHECK_WORKERS_MAX` workers have stalled, or the OS refuses the thread. A check never
-    /// falls back to reading on the main thread.
+    /// While `CHECK_WORKERS_MAX` retired workers are still parked, or when the OS refuses the
+    /// thread. A check never falls back to reading on the main thread.
     fn check_io(&self) -> Result<DeviceIo> {
         if matches!(self.io, DeviceIo::Inline(_)) {
             return Ok(DeviceIo::default());
@@ -1283,21 +1286,28 @@ impl CustomSensorsRepo {
         if let Some(io) = worker.as_ref() {
             return Ok(io.clone());
         }
-        let started = self.check_workers_started.get();
-        debug_assert!(started <= CHECK_WORKERS_MAX);
-        if started == CHECK_WORKERS_MAX {
+        let parked = self.parked_check_workers();
+        if parked >= CHECK_WORKERS_MAX {
             return Err(CCError::UserError {
-                msg: "File checks are paused until the daemon restarts: too many earlier checks \
-                      got no answer from their files"
-                    .to_string(),
+                msg: format!(
+                    "File checks are paused: {parked} earlier checks are still waiting on files \
+                     that have not answered. Checks resume as those reads return."
+                ),
             }
             .into());
         }
         let io =
             (self.start_check_worker)("custom-sensor-check", reply_timeout_for(self.poll_rate))?;
-        self.check_workers_started.set(started + 1);
         *worker = Some(io.clone());
         Ok(io)
+    }
+
+    /// Retired check workers still parked, after letting go of those whose read has returned.
+    fn parked_check_workers(&self) -> usize {
+        let mut retired = self.retired_check_workers.borrow_mut();
+        retired.retain(WorkerLiveness::is_running);
+        debug_assert!(retired.len() <= CHECK_WORKERS_MAX);
+        retired.len()
     }
 
     /// Drops `stalled` as the check worker. Checks that stalled together on one worker retire it
@@ -1310,8 +1320,15 @@ impl CustomSensorsRepo {
             }
             _ => false,
         };
-        if is_current {
-            *worker = None;
+        if is_current.not() {
+            return;
+        }
+        *worker = None;
+        if let Some(liveness) = stalled.liveness() {
+            let mut retired = self.retired_check_workers.borrow_mut();
+            // A worker starts only below the cap, and each one is retired at most once.
+            debug_assert!(retired.len() < CHECK_WORKERS_MAX);
+            retired.push(liveness);
         }
     }
 
@@ -2059,6 +2076,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::pin::{pin, Pin};
     use std::rc::Rc;
+    use std::sync::Arc;
     use std::task::Poll;
     use std::time::Duration;
     use tokio::sync::mpsc;
@@ -5917,14 +5935,15 @@ mod tests {
     }
 
     thread_local! {
-        /// The queues of the check workers `start_wedged_check_worker` started, kept alive so
-        /// each worker stays wedged rather than gone.
-        static CHECK_QUEUES: RefCell<Vec<mpsc::Receiver<Request>>> = const { RefCell::new(Vec::new()) };
+        /// The queue and the running token of each check worker `start_wedged_check_worker`
+        /// started, kept so each worker stays wedged and running rather than gone or exited.
+        static CHECK_QUEUES: RefCell<Vec<(mpsc::Receiver<Request>, Option<Arc<()>>)>> =
+            const { RefCell::new(Vec::new()) };
     }
 
     fn start_wedged_check_worker(_name: &str, _timeout: Duration) -> anyhow::Result<DeviceIo> {
-        let (io, rx) = DeviceIo::wedged_for_test(Duration::from_millis(10));
-        CHECK_QUEUES.with_borrow_mut(|queues| queues.push(rx));
+        let (io, rx, running) = DeviceIo::wedged_running_for_test(Duration::from_millis(10));
+        CHECK_QUEUES.with_borrow_mut(|queues| queues.push((rx, Some(running))));
         Ok(io)
     }
 
@@ -5933,9 +5952,14 @@ mod tests {
         CHECK_QUEUES.with_borrow_mut(|queues| {
             queues
                 .iter_mut()
-                .map(|rx| std::iter::from_fn(|| rx.try_recv().ok()).count())
+                .map(|(rx, _)| std::iter::from_fn(|| rx.try_recv().ok()).count())
                 .sum()
         })
+    }
+
+    /// Check workers `start_wedged_check_worker` started.
+    fn check_workers_started() -> usize {
+        CHECK_QUEUES.with_borrow(Vec::len)
     }
 
     /// A started repository whose File reads and check reads are both on wedged workers.
@@ -5968,9 +5992,45 @@ mod tests {
             let refused = repo.set_custom_sensor(file_sensor("file2", file)).await;
 
             assert!(refused.unwrap_err().to_string().contains("paused"));
-            assert_eq!(repo.check_workers_started.get(), CHECK_WORKERS_MAX);
+            assert_eq!(check_workers_started(), CHECK_WORKERS_MAX);
+            assert_eq!(repo.retired_check_workers.borrow().len(), CHECK_WORKERS_MAX);
             assert_eq!(check_reads_queued(), 0, "a check read past the cap");
-            CHECK_QUEUES.with_borrow(|queues| assert_eq!(queues.len(), CHECK_WORKERS_MAX));
+        });
+    }
+
+    // Goal: the cap counts workers still parked, not workers ever started, so checks that were
+    // only slow cannot lock checks out until a restart. Method: park workers up to the cap, let
+    // one of them exit as a worker whose read returned does, and check again.
+    #[test]
+    #[serial]
+    fn a_parked_check_worker_that_exits_frees_its_place() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_checks(dir.path()).await;
+            let file = dir.path().join("slow");
+            std::fs::write(&file, "46000").unwrap();
+            for _ in 0..CHECK_WORKERS_MAX {
+                let check = repo
+                    .set_custom_sensor(file_sensor("file2", file.clone()))
+                    .await;
+                assert!(check.is_err());
+            }
+            assert!(repo
+                .set_custom_sensor(file_sensor("file2", file.clone()))
+                .await
+                .is_err_and(|err| err.to_string().contains("paused")));
+            let _ = check_reads_queued();
+
+            CHECK_QUEUES.with_borrow_mut(|queues| queues[0].1 = None);
+            let resumed = repo.set_custom_sensor(file_sensor("file2", file)).await;
+
+            assert!(
+                resumed.is_err_and(|err| err.to_string().contains("paused").not()),
+                "the check must run again, here to time out on a wedged worker"
+            );
+            assert_eq!(check_workers_started(), CHECK_WORKERS_MAX + 1);
+            assert_eq!(check_reads_queued(), 1);
+            assert_eq!(repo.retired_check_workers.borrow().len(), CHECK_WORKERS_MAX);
         });
     }
 
@@ -5989,12 +6049,14 @@ mod tests {
 
             let results = futures_util::future::join_all(checks).await;
             assert!(results.iter().all(Result::is_err));
-            assert_eq!(repo.check_workers_started.get(), 1);
+            assert_eq!(check_workers_started(), 1);
+            assert_eq!(repo.retired_check_workers.borrow().len(), 1);
             assert!(repo.check_worker.borrow().is_none());
             let next = repo.set_custom_sensor(file_sensor("c4", file)).await;
 
             assert!(next.is_err());
-            assert_eq!(repo.check_workers_started.get(), 2);
+            assert_eq!(check_workers_started(), 2);
+            assert_eq!(repo.retired_check_workers.borrow().len(), 2);
         });
     }
 
@@ -6018,7 +6080,7 @@ mod tests {
             let create = repo.set_custom_sensor(file_sensor("file2", valid)).await;
 
             assert!(create.is_err(), "{create:?}");
-            assert_eq!(repo.check_workers_started.get(), 0);
+            assert!(repo.retired_check_workers.borrow().is_empty());
             assert!(repo.check_worker.borrow().is_none());
             assert_eq!(repo.get_custom_sensors().len(), 1);
         });
