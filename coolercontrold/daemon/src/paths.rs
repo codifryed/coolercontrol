@@ -318,7 +318,7 @@ pub async fn migrate_plugins_dir(canonical: &Path, legacy: &Path) -> anyhow::Res
         prepare_legacy_path_for_symlink(&canonical_owned, &legacy_owned)
     })
     .await??;
-    if !prepared {
+    if prepared.not() {
         return Ok(());
     }
 
