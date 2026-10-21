@@ -11,7 +11,7 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::string::ToString;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
 use futures_util::future::join_all;
@@ -31,7 +31,7 @@ use crate::repositories::failsafe::{
 };
 use crate::repositories::hwmon::attributes::{MICROWATTS_MAX, MICROWATTS_PER_WATT};
 use crate::repositories::hwmon::device_io::{
-    reply_timeout_for, DeviceHealth, DeviceIo, UNREACHABLE_PROBE_INTERVAL,
+    self as device_io, reply_timeout_for, DeviceHealth, DeviceIo, UNREACHABLE_PROBE_INTERVAL,
 };
 use crate::repositories::hwmon::fans::pwm_value_to_duty;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -56,6 +56,10 @@ const _: () = assert!(MICROWATTS_MAX <= 1 << 53);
 /// Upper bound on window slots: the max `time_window_seconds` (300) at the fastest
 /// `poll_rate` (0.5 s).
 const SAMPLE_WINDOW_MAX_SLOTS: usize = 600;
+/// Check workers one repository starts, each stall leaving one parked in the kernel. Past this
+/// a check fails at once, so a client repeating a check of a file that blocks cannot park
+/// threads without bound.
+const CHECK_WORKERS_MAX: usize = 8;
 
 type CustomSensors = RefCell<Vec<CustomSensor>>;
 type Relationships = RefCell<HashMap<ChildId, Vec<ParentId>>>;
@@ -122,6 +126,13 @@ pub struct CustomSensorsRepo {
     /// Set while a read pass is in flight, so a file that has not answered skips the next pass
     /// instead of queueing a second read behind the first.
     file_pass_in_flight: Cell<bool>,
+    /// Where create and update checks read, apart from `io`. Started on the first check, and
+    /// again after a check that got no answer.
+    check_worker: RefCell<Option<DeviceIo>>,
+    /// Check workers started so far. At most `CHECK_WORKERS_MAX`.
+    check_workers_started: Cell<usize>,
+    /// Starts a check worker. A field so tests can count starts without a thread.
+    start_check_worker: fn(&str, Duration) -> Result<DeviceIo>,
     /// Cancelled by `abort_pending`, so an in-flight read pass cannot hold the main loop's
     /// scope open at shutdown.
     abort_token: CancellationToken,
@@ -191,6 +202,9 @@ impl CustomSensorsRepo {
             io: DeviceIo::default(),
             file_io_unreachable: Cell::new(false),
             file_pass_in_flight: Cell::new(false),
+            check_worker: RefCell::new(None),
+            check_workers_started: Cell::new(0),
+            start_check_worker: DeviceIo::threaded,
             abort_token: CancellationToken::new(),
             sample_windows: RefCell::new(HashMap::new()),
         })
@@ -260,7 +274,8 @@ impl CustomSensorsRepo {
         let file_value = match &custom_sensor.kind {
             // Make sure the file exists and its value is properly formatted
             CustomSensorKind::File { file_path } => Some(
-                Self::read_file_value(&self.check_io(), custom_sensor.metric, file_path).await?,
+                self.check_file_value(custom_sensor.metric, file_path)
+                    .await?,
             ),
             _ => None,
         };
@@ -457,7 +472,7 @@ impl CustomSensorsRepo {
         // failsafe substitution).
         let file_value = match &sensor.kind {
             CustomSensorKind::File { file_path } => {
-                Some(Self::read_file_value(&self.check_io(), sensor.metric, file_path).await?)
+                Some(self.check_file_value(sensor.metric, file_path).await?)
             }
             _ => None,
         };
@@ -1067,7 +1082,7 @@ impl CustomSensorsRepo {
     /// `MISSING_STATUS_THRESHOLD` consecutive failures, then emits the metric's failsafe (and a
     /// once-per-occurrence warn log): a fan curve rides out a writer caught mid-truncate, or a
     /// slow read, but still reacts to a genuinely lost source. Live-tick path only; backfill
-    /// reads `read_file_value` directly so it does not interact with the failsafing-state set.
+    /// reads `check_file_value` directly so it does not interact with the failsafing-state set.
     fn process_file_current(&self, id: &CustomSensorId, metric: CustomSensorMetric) -> SensorValue {
         let fresh = self
             .file_read_state
@@ -1240,24 +1255,69 @@ impl CustomSensorsRepo {
         states.insert(id.clone(), state);
     }
 
-    /// A worker of its own for one create or update check read, ended when dropped. The File
-    /// worker serves every File sensor's tick read, so a new file that blocks (a FIFO with no
-    /// writer) would fail them all; on its own worker it costs only the request. Inline when File
-    /// reads are, as in tests.
-    fn check_io(&self) -> DeviceIo {
-        match self.io {
-            DeviceIo::Inline(_) => DeviceIo::default(),
-            DeviceIo::Threaded(_) => DeviceIo::isolated_or_inline(
-                "custom-sensor-check",
-                reply_timeout_for(self.poll_rate),
-            ),
+    /// Reads a File sensor's value for a create or update check, on the check worker.
+    ///
+    /// The File worker serves every File sensor's tick read, so a new file that blocks (a FIFO
+    /// with no writer) would fail them all; on the check worker it costs only the request. A
+    /// check that gets no answer retires the worker, parked in the kernel, for a fresh one.
+    async fn check_file_value(&self, metric: CustomSensorMetric, file_path: &Path) -> Result<f64> {
+        let io = self.check_io()?;
+        let read = io.read_value(file_path).await;
+        if read.as_ref().is_err_and(device_io::is_unanswered) {
+            self.retire_check_worker(&io);
+        }
+        Self::parse_file_value(metric, read)
+    }
+
+    /// The check worker, started if there is none. Inline when File reads are, as in tests.
+    ///
+    /// # Errors
+    ///
+    /// When `CHECK_WORKERS_MAX` workers have stalled, or the OS refuses the thread. A check never
+    /// falls back to reading on the main thread.
+    fn check_io(&self) -> Result<DeviceIo> {
+        if matches!(self.io, DeviceIo::Inline(_)) {
+            return Ok(DeviceIo::default());
+        }
+        let mut worker = self.check_worker.borrow_mut();
+        if let Some(io) = worker.as_ref() {
+            return Ok(io.clone());
+        }
+        let started = self.check_workers_started.get();
+        debug_assert!(started <= CHECK_WORKERS_MAX);
+        if started == CHECK_WORKERS_MAX {
+            return Err(CCError::UserError {
+                msg: "File checks are paused until the daemon restarts: too many earlier checks \
+                      got no answer from their files"
+                    .to_string(),
+            }
+            .into());
+        }
+        let io =
+            (self.start_check_worker)("custom-sensor-check", reply_timeout_for(self.poll_rate))?;
+        self.check_workers_started.set(started + 1);
+        *worker = Some(io.clone());
+        Ok(io)
+    }
+
+    /// Drops `stalled` as the check worker. Checks that stalled together on one worker retire it
+    /// once, so the next check starts one worker, not one per stall.
+    fn retire_check_worker(&self, stalled: &DeviceIo) {
+        let mut worker = self.check_worker.borrow_mut();
+        let is_current = match (worker.as_ref(), stalled) {
+            (Some(DeviceIo::Threaded(current)), DeviceIo::Threaded(stalled)) => {
+                Rc::ptr_eq(current, stalled)
+            }
+            _ => false,
+        };
+        if is_current {
+            *worker = None;
         }
     }
 
-    /// Reads a File sensor's value: a whole number in the hwmon unit of the sensor's metric.
-    ///
-    /// The check reads on create and update go through a worker too: the file can be a FIFO or a
-    /// driver attribute, and a request must not park the main thread on it.
+    /// Reads a File sensor's value through `io`: a whole number in the hwmon unit of the sensor's
+    /// metric.
+    #[cfg(test)]
     async fn read_file_value(
         io: &DeviceIo,
         metric: CustomSensorMetric,
@@ -1978,7 +2038,8 @@ mod tests {
     };
     use crate::overrides::OverridesController;
     use crate::repositories::custom_sensors_repo::{
-        CustomSensorsRepo, FileReadState, SampleWindow, SourceData, SAMPLE_WINDOW_MAX_SLOTS,
+        CustomSensorsRepo, FileReadState, SampleWindow, SourceData, CHECK_WORKERS_MAX,
+        SAMPLE_WINDOW_MAX_SLOTS,
     };
     use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILSAFE};
     #[cfg(feature = "gated-tests")]
@@ -5852,6 +5913,88 @@ mod tests {
                 "a check read reached the File worker"
             );
             assert_eq!(repo.get_custom_sensors().len(), 2);
+        });
+    }
+
+    thread_local! {
+        /// The queues of the check workers `start_wedged_check_worker` started, kept alive so
+        /// each worker stays wedged rather than gone.
+        static CHECK_QUEUES: RefCell<Vec<mpsc::Receiver<Request>>> = const { RefCell::new(Vec::new()) };
+    }
+
+    fn start_wedged_check_worker(_name: &str, _timeout: Duration) -> anyhow::Result<DeviceIo> {
+        let (io, rx) = DeviceIo::wedged_for_test(Duration::from_millis(10));
+        CHECK_QUEUES.with_borrow_mut(|queues| queues.push(rx));
+        Ok(io)
+    }
+
+    /// The check reads that reached any wedged check worker, drained.
+    fn check_reads_queued() -> usize {
+        CHECK_QUEUES.with_borrow_mut(|queues| {
+            queues
+                .iter_mut()
+                .map(|rx| std::iter::from_fn(|| rx.try_recv().ok()).count())
+                .sum()
+        })
+    }
+
+    /// A started repository whose File reads and check reads are both on wedged workers.
+    async fn repo_with_wedged_checks(dir: &Path) -> (CustomSensorsRepo, mpsc::Receiver<Request>) {
+        CHECK_QUEUES.with_borrow_mut(Vec::clear);
+        let (mut repo, rx) = repo_with_wedged_file(dir, "45000").await;
+        repo.start_check_worker = start_wedged_check_worker;
+        (repo, rx)
+    }
+
+    // Goal: repeated checks of a file that never answers park at most `CHECK_WORKERS_MAX`
+    // workers, and past that a check fails without a read. Method: wedge every check worker,
+    // run checks past the cap, and count the workers started and the reads queued.
+    #[test]
+    #[serial]
+    fn stalled_checks_start_at_most_the_cap_of_workers() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_checks(dir.path()).await;
+            let file = dir.path().join("blocking");
+            std::fs::write(&file, "46000").unwrap();
+
+            for _ in 0..CHECK_WORKERS_MAX {
+                let check = repo
+                    .set_custom_sensor(file_sensor("file2", file.clone()))
+                    .await;
+                assert!(check.is_err());
+            }
+            assert_eq!(check_reads_queued(), CHECK_WORKERS_MAX);
+            let refused = repo.set_custom_sensor(file_sensor("file2", file)).await;
+
+            assert!(refused.unwrap_err().to_string().contains("paused"));
+            assert_eq!(repo.check_workers_started.get(), CHECK_WORKERS_MAX);
+            assert_eq!(check_reads_queued(), 0, "a check read past the cap");
+            CHECK_QUEUES.with_borrow(|queues| assert_eq!(queues.len(), CHECK_WORKERS_MAX));
+        });
+    }
+
+    // Goal: checks that stall together on one worker replace it once, not once each. Method:
+    // run several checks at once on a wedged check worker, then one more, and count starts.
+    #[test]
+    #[serial]
+    fn concurrent_stalled_checks_replace_the_worker_once() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_checks(dir.path()).await;
+            let file = dir.path().join("blocking");
+            std::fs::write(&file, "46000").unwrap();
+            let checks =
+                (0..4).map(|n| repo.set_custom_sensor(file_sensor(&format!("c{n}"), file.clone())));
+
+            let results = futures_util::future::join_all(checks).await;
+            assert!(results.iter().all(Result::is_err));
+            assert_eq!(repo.check_workers_started.get(), 1);
+            assert!(repo.check_worker.borrow().is_none());
+            let next = repo.set_custom_sensor(file_sensor("c4", file)).await;
+
+            assert!(next.is_err());
+            assert_eq!(repo.check_workers_started.get(), 2);
         });
     }
 
