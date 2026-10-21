@@ -78,7 +78,6 @@ fn board_model_from(compatible: &[u8], model: &[u8]) -> Option<String> {
     model.is_empty().not().then(|| model.to_owned())
 }
 
-///
 /// On the cpufreq worker, `io`: the attribute waits on the policy lock like the clocks do.
 pub async fn scaling_driver(io: &DeviceIo) -> Option<String> {
     io.read_text(&Path::new(CPU_SYSFS_PATH).join(SCALING_DRIVER_FILE))
