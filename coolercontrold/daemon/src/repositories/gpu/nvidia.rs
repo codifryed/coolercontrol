@@ -895,31 +895,48 @@ impl GpuNVidia {
     }
 
     /// Stores one GPU's answered NVML status, then patches in its hotspot if nvapi answers.
-    /// Stored first so a stalled nvapi never holds back this tick's NVML temps and fans.
+    /// Stored first so a stalled nvapi never holds back this tick's NVML temps and fans. The
+    /// last hotspot is carried over until this tick's read settles, so one that answers after
+    /// the snapshot still shows a tick late. A failed read removes it.
     pub async fn store_nvml_status(
         &self,
         type_index: TypeIndex,
         nv_info: &NvidiaDeviceInfo,
         nvml_status: StatusNvidiaDeviceNvml,
     ) {
-        self.nvidia_preloaded_statuses.borrow_mut().insert(
-            type_index,
-            StatusNvidiaDeviceSMI {
-                temps: nvml_status.temps,
-                channels: nvml_status.channels,
-                ..Default::default()
-            },
-        );
+        {
+            let mut statuses = self.nvidia_preloaded_statuses.borrow_mut();
+            let mut temps = nvml_status.temps;
+            let carried_hotspot = statuses.get(&type_index).and_then(|status| {
+                status
+                    .temps
+                    .iter()
+                    .find(|temp| temp.name == GPU_TEMP_HOTSPOT_NAME)
+                    .map(|temp| temp.temp)
+            });
+            if let Some(hotspot_temp) = carried_hotspot {
+                Self::insert_hotspot(nv_info, &mut temps, hotspot_temp);
+            }
+            statuses.insert(
+                type_index,
+                StatusNvidiaDeviceSMI {
+                    temps,
+                    channels: nvml_status.channels,
+                    ..Default::default()
+                },
+            );
+        }
         self.record_nvml_answer(type_index);
-        let Some(hotspot_temp) = self.read_hotspot(nv_info).await else {
+        let hotspot_temp = self.read_hotspot(nv_info).await;
+        let mut statuses = self.nvidia_preloaded_statuses.borrow_mut();
+        let Some(status) = statuses.get_mut(&type_index) else {
             return;
         };
-        if let Some(status) = self
-            .nvidia_preloaded_statuses
-            .borrow_mut()
-            .get_mut(&type_index)
-        {
-            Self::insert_hotspot(nv_info, &mut status.temps, hotspot_temp);
+        match hotspot_temp {
+            Some(hotspot_temp) => Self::insert_hotspot(nv_info, &mut status.temps, hotspot_temp),
+            None => status
+                .temps
+                .retain(|temp| temp.name != GPU_TEMP_HOTSPOT_NAME),
         }
     }
 
@@ -2077,6 +2094,17 @@ mod tests {
         }
     }
 
+    /// Answers each hotspot read with the next scripted reply, blocking until it is sent.
+    struct ScriptedHotspot {
+        replies: std::sync::mpsc::Receiver<Option<f64>>,
+    }
+
+    impl HotspotReader for ScriptedHotspot {
+        fn hotspot_temp(&self, _pci_bus: u32) -> Option<f64> {
+            self.replies.recv().ok().flatten()
+        }
+    }
+
     /// Answers every hotspot at once, at 70 plus the PCI bus.
     struct FixedHotspot;
 
@@ -2183,6 +2211,74 @@ mod tests {
                 .map(|temp| temp.name.as_str())
                 .collect();
             assert_eq!(names, [GPU_TEMP_NAME, GPU_TEMP_HOTSPOT_NAME]);
+        });
+    }
+
+    /// Goal: a hotspot that answers after the snapshot still shows a tick late, and a failed
+    /// read removes it rather than keeping a stale value. Method: store with a hotspot answer,
+    /// store again while that tick's read is blocked and check the hotspot is carried over, then
+    /// fail the read and check it is gone.
+    #[test]
+    fn the_last_hotspot_is_carried_until_a_read_fails() {
+        crate::rt::test_runtime(async {
+            let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+            let mut gpus = GpuNVidia::new(Rc::new(Config::init_default_config().unwrap()));
+            gpus.nvapi_io = NvApiIo::start_for_test(
+                ScriptedHotspot { replies: reply_rx },
+                Duration::from_secs(30),
+            )
+            .await;
+            assert!(gpus.nvapi_io.is_some());
+            let nv_info = NvidiaDeviceInfo {
+                temps: vec![
+                    GPU_TEMP_NAME.to_string(),
+                    GPU_TEMP_HOTSPOT_NAME.to_string(),
+                    GPU_TEMP_MEMORY_NAME.to_string(),
+                ],
+                hotspot_pci_bus: Some(1),
+                ..nv_info_for(0)
+            };
+            let nvml_status = || StatusNvidiaDeviceNvml {
+                temps: vec![
+                    TempStatus {
+                        name: GPU_TEMP_NAME.to_string(),
+                        temp: 61.0,
+                    },
+                    TempStatus {
+                        name: GPU_TEMP_MEMORY_NAME.to_string(),
+                        temp: 70.0,
+                    },
+                ],
+                channels: Vec::new(),
+            };
+            let temp_names = |gpus: &GpuNVidia| -> Vec<String> {
+                gpus.nvidia_preloaded_statuses.borrow()[&1]
+                    .temps
+                    .iter()
+                    .map(|temp| temp.name.clone())
+                    .collect()
+            };
+
+            reply_tx.send(Some(80.0)).unwrap();
+            gpus.store_nvml_status(1, &nv_info, nvml_status()).await;
+            assert_eq!(
+                temp_names(&gpus),
+                [GPU_TEMP_NAME, GPU_TEMP_HOTSPOT_NAME, GPU_TEMP_MEMORY_NAME]
+            );
+
+            let check_then_fail = async {
+                assert_eq!(
+                    temp_names(&gpus),
+                    [GPU_TEMP_NAME, GPU_TEMP_HOTSPOT_NAME, GPU_TEMP_MEMORY_NAME]
+                );
+                reply_tx.send(None).unwrap();
+            };
+            tokio::join!(
+                gpus.store_nvml_status(1, &nv_info, nvml_status()),
+                check_then_fail
+            );
+
+            assert_eq!(temp_names(&gpus), [GPU_TEMP_NAME, GPU_TEMP_MEMORY_NAME]);
         });
     }
 
