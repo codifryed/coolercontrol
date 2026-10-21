@@ -18,7 +18,7 @@ use serde::de::{DeserializeOwned, IgnoredAny};
 use serde::Serialize;
 use tokio::sync::{mpsc, oneshot};
 
-#[cfg(all(test, feature = "gated-tests"))]
+#[cfg(test)]
 use crate::repositories::hwmon::device_io::DeviceHealth;
 use crate::repositories::hwmon::device_io::{HealthState, QUEUE_DEPTH};
 use crate::repositories::liquidctl::liqctld_client::{
@@ -288,10 +288,20 @@ impl LiqctldIo {
     }
 
     /// Whether this device is answering.
-    #[cfg(all(test, feature = "gated-tests"))]
+    #[cfg(test)]
     #[must_use]
     pub fn health(&self) -> DeviceHealth {
         self.state.health()
+    }
+
+    /// Puts the device out of rotation with its probe not yet due.
+    #[cfg(test)]
+    pub fn force_unreachable(&self) {
+        let probe_after = std::time::Instant::now() + Duration::from_secs(3600);
+        self.state.force_unreachable_at(
+            crate::repositories::hwmon::device_io::UNREACHABLE_AFTER_TIMEOUTS,
+            probe_after,
+        );
     }
 
     /// Lets the next request through even if the device is currently unreachable, for when the

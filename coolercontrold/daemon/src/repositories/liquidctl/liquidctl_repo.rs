@@ -991,9 +991,7 @@ impl LiquidctlRepo {
         self.start_service().await?;
         // A device that went unreachable did so against the old service, so each gets a fresh
         // probe against the new one.
-        for io in self.liqctld_devices.values() {
-            io.allow_probe_now();
-        }
+        rearm_device_probes(&self.liqctld_devices);
         let fresh_devices = self.liqctld_control.get_all_devices().await?.devices;
         let matched_devices = self.match_devices_after_restart(&fresh_devices);
         let mut still_failed = HashSet::new();
@@ -1884,6 +1882,9 @@ impl Repository for LiquidctlRepo {
         if no_init {
             return;
         }
+        // A device that went unreachable before the suspend must still get its reinit and
+        // reconnect, or a probe gate left over from before would escalate to a restart.
+        rearm_device_probes(&self.liqctld_devices);
         let failed_devices = self.call_reinitialize_concurrently().await;
         if failed_devices.is_empty() {
             return;
@@ -1895,6 +1896,13 @@ impl Repository for LiquidctlRepo {
         // configured startup delay, and the devices that hit this fail every init retry on every
         // resume: a backoff before the first restart would only leave them dead for longer.
         self.poll_recovery().await;
+    }
+}
+
+/// Lets the next request to every device through, whatever its probe gate says.
+fn rearm_device_probes(liqctld_devices: &HashMap<TypeIndex, LiqctldIo>) {
+    for io in liqctld_devices.values() {
+        io.allow_probe_now();
     }
 }
 
@@ -2075,6 +2083,7 @@ fn find_duplicate_names<'a>(
 mod tests {
     use super::*;
     use crate::device::{ChannelInfo, LcdInfo, LcdMode, LcdModeType};
+    use crate::repositories::hwmon::device_io::DeviceHealth;
     use crate::repositories::liquidctl::liqctld_client::{DeviceProperties, LCStatus};
 
     const DEV_PROPS: DeviceProperties = DeviceProperties {
@@ -2086,6 +2095,35 @@ mod tests {
         led_count: None,
         lcd_resolution: None,
     };
+
+    fn unused_worker(device_index: TypeIndex) -> LiqctldIo {
+        LiqctldIo::spawn(
+            device_index,
+            format!("Test Cooler {device_index}"),
+            Endpoint::liqctld(1),
+            Duration::from_secs(1),
+        )
+        .unwrap()
+    }
+
+    /// Goal: re-arming the probes, as resume and restart both do, lets an unreachable device's
+    /// next request through. Method: force two workers unreachable, re-arm, then check neither is
+    /// still gated. No request is sent, so the socket is never touched.
+    #[test]
+    fn rearming_probes_clears_every_unreachable_gate() {
+        let devices: HashMap<TypeIndex, LiqctldIo> =
+            [(1, unused_worker(1)), (2, unused_worker(2))].into();
+        for io in devices.values() {
+            io.force_unreachable();
+            assert!(matches!(io.health(), DeviceHealth::Unreachable { .. }));
+        }
+
+        rearm_device_probes(&devices);
+
+        for io in devices.values() {
+            assert!(matches!(io.health(), DeviceHealth::Unreachable { .. }).not());
+        }
+    }
 
     #[test]
     fn test_no_devices() {
