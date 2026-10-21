@@ -40,6 +40,15 @@ pub fn log_skipped(device: &dyn Display, path: &Path) {
     );
 }
 
+/// As `log_skipped`, for every device of one driver, when a read they all depend on, named by
+/// `what`, got no answer.
+pub fn log_driver_skipped(driver: &str, what: &str) {
+    warn!(
+        "Skipping every {driver} device for this start: reading {what} got no answer. It is read \
+         again at the next start."
+    );
+}
+
 /// Reads identity attributes for one init, or for the hotplug listener, on a worker of its own.
 ///
 /// The worker starts on the first read, so an init whose attributes are all cached already (the

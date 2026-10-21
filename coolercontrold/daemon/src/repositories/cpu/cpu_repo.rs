@@ -36,7 +36,7 @@ use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, log, trace, warn};
+use log::{debug, error, info, log, trace};
 use std::time::Instant;
 
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
@@ -662,10 +662,7 @@ impl CpuRepo {
             let Ok(census) =
                 Self::driver_census(cpu_device_name, &potential_cpu_paths, identity).await
             else {
-                warn!(
-                    "Skipping every {cpu_device_name} device for this start: reading which die \
-                     each CPU is on got no answer. It is read again at the next start."
-                );
+                identity::log_driver_skipped(cpu_device_name, "which die each CPU is on");
                 continue;
             };
             if census.all_zones_online.not() {
