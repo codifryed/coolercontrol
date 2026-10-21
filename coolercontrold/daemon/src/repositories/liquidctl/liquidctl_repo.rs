@@ -69,7 +69,7 @@ const LIQCTLD_REAP_TIMEOUT: Duration = Duration::from_secs(1);
 /// no longer the only recovery: the repository escalates a failure to reconnecting the device, and
 /// then to restarting liqctld, both of which actually reopen it. Retrying a dead handle four more
 /// times at 1s each just delays whichever of those works.
-const LIQCTLD_MAX_INIT_RETRIES: usize = 2;
+const LIQCTLD_INIT_ATTEMPTS_MAX: usize = 2;
 const LIQCTLD_INIT_PAUSE_MS: u64 = 1_000;
 
 /// Delay before each restart after the first. The first failure escalates with no wait, so this is
@@ -1107,7 +1107,7 @@ impl LiquidctlRepo {
         if response.is_ok() {
             return response;
         }
-        for _ in 1..LIQCTLD_MAX_INIT_RETRIES {
+        for _ in 1..LIQCTLD_INIT_ATTEMPTS_MAX {
             // Do not retry while shutting down: the device is already failing, and each retry
             // only adds a 1s delay plus log spam to the shutdown path (e.g. the LCD shutdown
             // image). One failed attempt is enough.
@@ -1122,7 +1122,7 @@ impl LiquidctlRepo {
             }
         }
         warn!(
-            "Failed to successfully initialize liquidctl device after {LIQCTLD_MAX_INIT_RETRIES} \
+            "Failed to successfully initialize liquidctl device after {LIQCTLD_INIT_ATTEMPTS_MAX} \
              tries."
         );
         response
