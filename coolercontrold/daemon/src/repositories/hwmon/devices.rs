@@ -1334,6 +1334,24 @@ mod tests {
         });
     }
 
+    // Goal: the driver name comes from the `driver` link, which auto curves rely on to skip
+    // disabled drivers, and a device with no link has none. Method: a tempdir hwmon entry whose
+    // `device/driver` links into a drivers directory, then one with no link.
+    #[test]
+    fn the_driver_name_resolves_from_the_driver_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let driver_dir = dir.path().join("bus/platform/drivers/nct6775");
+        let hwmon = dir.path().join("hwmon/hwmon1");
+        let unbound = dir.path().join("hwmon/hwmon2");
+        std::fs::create_dir_all(&driver_dir).unwrap();
+        std::fs::create_dir_all(hwmon.join("device")).unwrap();
+        std::fs::create_dir_all(unbound.join("device")).unwrap();
+        std::os::unix::fs::symlink(&driver_dir, hwmon.join("device/driver")).unwrap();
+
+        assert_eq!(get_device_driver_name(&hwmon), Some("nct6775".to_owned()));
+        assert_eq!(get_device_driver_name(&unbound), None);
+    }
+
     // Goal: the real page 0x80 layout from a Seagate ST2000LX001, whose `serial` attribute is
     // absent while the page holds the serial. Left-padded with spaces. This is the sample that
     // motivated the whole fallback, so it is pinned byte for byte.
