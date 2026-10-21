@@ -44,7 +44,7 @@ enum Message<E> {
 /// The queue to the `cc-log` thread. Clones share the queue and its drop count.
 pub struct LogWriter<E> {
     tx: SyncSender<Message<E>>,
-    dropped: Arc<AtomicUsize>,
+    dropped_count: Arc<AtomicUsize>,
 }
 
 impl<E: Send + 'static> LogWriter<E> {
@@ -58,18 +58,18 @@ impl<E: Send + 'static> LogWriter<E> {
     ) -> io::Result<Self> {
         assert!(sink.is_empty().not());
         let (tx, rx) = mpsc::sync_channel(QUEUE_DEPTH);
-        let dropped = Arc::new(AtomicUsize::new(0));
+        let dropped_count = Arc::new(AtomicUsize::new(0));
         let mut thread = WriterThread {
             write,
             report,
-            dropped: Arc::clone(&dropped),
+            dropped_count: Arc::clone(&dropped_count),
             sink,
             entry: PhantomData,
         };
         std::thread::Builder::new()
             .name(THREAD_NAME.to_owned())
             .spawn(move || thread.run(&rx))?;
-        Ok(Self { tx, dropped })
+        Ok(Self { tx, dropped_count })
     }
 
     /// Queues `entry` without waiting. A full queue drops it and counts it.
@@ -78,7 +78,7 @@ impl<E: Send + 'static> LogWriter<E> {
             // Disconnected: the thread is gone, so nothing is left to write this or report it.
             Ok(()) | Err(TrySendError::Disconnected(_)) => {}
             Err(TrySendError::Full(_)) => {
-                self.dropped.fetch_add(1, Ordering::Relaxed);
+                self.dropped_count.fetch_add(1, Ordering::Relaxed);
             }
         }
     }
@@ -113,8 +113,8 @@ impl<E: Send + 'static> LogWriter<E> {
     }
 
     #[cfg(test)]
-    fn dropped(&self) -> usize {
-        self.dropped.load(Ordering::Relaxed)
+    fn dropped_count(&self) -> usize {
+        self.dropped_count.load(Ordering::Relaxed)
     }
 }
 
@@ -122,7 +122,7 @@ impl<E> Clone for LogWriter<E> {
     fn clone(&self) -> Self {
         Self {
             tx: self.tx.clone(),
-            dropped: Arc::clone(&self.dropped),
+            dropped_count: Arc::clone(&self.dropped_count),
         }
     }
 }
@@ -144,7 +144,7 @@ impl io::Write for LogWriter<Vec<u8>> {
 struct WriterThread<E, W, R> {
     write: W,
     report: R,
-    dropped: Arc<AtomicUsize>,
+    dropped_count: Arc<AtomicUsize>,
     sink: &'static str,
     entry: PhantomData<fn(E)>,
 }
@@ -182,7 +182,7 @@ impl<E, W: FnMut(E), R: FnMut(&Record) -> E> WriterThread<E, W, R> {
     /// Written straight to the sink: queued, it would be dropped by the full queue it reports,
     /// or land behind a drain already answered.
     fn report_dropped(&mut self) {
-        let count = self.dropped.swap(0, Ordering::Relaxed);
+        let count = self.dropped_count.swap(0, Ordering::Relaxed);
         if count == 0 {
             return;
         }
@@ -310,7 +310,7 @@ mod tests {
         held.writer.drain();
 
         assert_eq!(*held.written.lock().unwrap(), lines(0..10));
-        assert_eq!(held.writer.dropped(), 0);
+        assert_eq!(held.writer.dropped_count(), 0);
     }
 
     // Goal: a sink that stops reading never blocks the logging thread; lines past the queue are
@@ -329,14 +329,14 @@ mod tests {
             held.writer.push(entry);
         }
 
-        assert_eq!(held.writer.dropped(), 3);
+        assert_eq!(held.writer.dropped_count(), 3);
         held.gate = None;
         held.writer.drain();
         let mut expected = lines(0..QUEUE_DEPTH);
         expected.push(dropped_report(3));
         expected.push(QUEUE_DEPTH.to_string());
         assert_eq!(*held.written.lock().unwrap(), expected);
-        assert_eq!(held.writer.dropped(), 0);
+        assert_eq!(held.writer.dropped_count(), 0);
     }
 
     // Goal: the drop count reaches the sink before a drain is answered, since an exit follows
@@ -352,7 +352,7 @@ mod tests {
         for entry in lines(1..QUEUE_DEPTH + 3) {
             held.writer.push(entry);
         }
-        assert_eq!(held.writer.dropped(), 3);
+        assert_eq!(held.writer.dropped_count(), 3);
 
         held.gate = None;
         done_rx.recv().unwrap();
@@ -361,7 +361,7 @@ mod tests {
             held.written.lock().unwrap()[..2],
             [0.to_string(), dropped_report(3)]
         );
-        assert_eq!(held.writer.dropped(), 0);
+        assert_eq!(held.writer.dropped_count(), 0);
     }
 
     // Goal: env_logger's pipe writes become one entry per write, bytes intact. Method: two
