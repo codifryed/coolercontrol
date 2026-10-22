@@ -23,6 +23,7 @@ use anyhow::Result;
 use log::{debug, warn};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::affinity;
 use crate::cc_fs::{self, ReadIndex, SysfsValue};
 use crate::config::Config;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
@@ -136,15 +137,15 @@ impl DeviceIo {
         let liveness = WorkerLiveness(Arc::downgrade(&running));
         // Detached deliberately: a wedged worker never returns, so there is no handle worth
         // keeping. Holding one would only invite a `join` that cannot be bounded.
-        std::thread::Builder::new()
+        let builder = std::thread::Builder::new()
             .name(thread_name)
-            .stack_size(WORKER_STACK_BYTES)
-            .spawn(move || {
-                run_worker(rx);
-                // Held for the thread's whole life, so its exit can be seen once every handle is
-                // gone: see `WorkerLiveness`.
-                drop(running);
-            })?;
+            .stack_size(WORKER_STACK_BYTES);
+        affinity::spawn(builder, move || {
+            run_worker(rx);
+            // Held for the thread's whole life, so its exit can be seen once every handle is
+            // gone: see `WorkerLiveness`.
+            drop(running);
+        })?;
         Ok(Self::Threaded(Rc::new(Worker {
             state: HealthState::new(device_name.to_owned()),
             tx,

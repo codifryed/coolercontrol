@@ -18,6 +18,7 @@ use serde::de::{DeserializeOwned, IgnoredAny};
 use serde::Serialize;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::affinity;
 #[cfg(test)]
 use crate::repositories::hwmon::device_io::DeviceHealth;
 use crate::repositories::hwmon::device_io::{HealthState, QUEUE_DEPTH};
@@ -449,10 +450,10 @@ fn spawn_worker(thread_name: String, body: impl FnOnce() + Send + 'static) -> Re
     debug!("liqctld worker starting: {thread_name}");
     // Detached deliberately: a worker stuck in a socket read only returns at its timeout, so a
     // handle would only invite a `join` that cannot be bounded.
-    thread::Builder::new()
+    let builder = thread::Builder::new()
         .name(thread_name)
-        .stack_size(WORKER_STACK_BYTES)
-        .spawn(body)?;
+        .stack_size(WORKER_STACK_BYTES);
+    affinity::spawn(builder, body)?;
     Ok(())
 }
 

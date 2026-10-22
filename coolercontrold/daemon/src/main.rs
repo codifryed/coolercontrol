@@ -25,12 +25,12 @@ use clap::Parser;
 #[cfg(target_arch = "x86_64")]
 use log::debug;
 use log::{error, info, warn};
-use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
-use nix::unistd::{Pid, Uid};
+use nix::unistd::Uid;
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use repositories::repository::Repository;
 use tokio_util::sync::CancellationToken;
 
+mod affinity;
 mod alerts;
 // Gated: allocation counts depend on the toolchain and optimizer.
 #[cfg(all(test, feature = "gated-tests"))]
@@ -508,7 +508,7 @@ fn main() -> Result<()> {
 
                 // give concurrent services a moment to finish initializing:
                 rt::sleep(Duration::from_millis(10)).await;
-                set_cpu_affinity()?;
+                affinity::pin_main_thread()?;
                 info!("Initialization Complete");
                 // Only now is the daemon serving, so this is what releases
                 // systemd's start job.
@@ -1137,22 +1137,6 @@ async fn create_devices_map(repos: &Repos) -> AllDevices {
         }
     }
     Rc::new(all_devices)
-}
-
-/// Pin our main runtime thread to the CPU it is currently running on, reducing unnecessary
-/// context switching.
-///
-/// Deferred until after runtime startup and initialization complete, never at build time.
-/// Linux threads inherit the creating thread's affinity mask, so pinning before the blocking
-/// IO pool has warmed up would trap every later-spawned blocking thread on this one CPU.
-/// Running it now lets those threads spawn while affinity is still all-CPUs and stay spread
-/// across cores.
-fn set_cpu_affinity() -> Result<()> {
-    let current_cpu = sched_getcpu()?;
-    let mut cpu_set = CpuSet::new();
-    cpu_set.set(current_cpu)?;
-    sched_setaffinity(Pid::from_raw(0), &cpu_set)?;
-    Ok(())
 }
 
 async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {

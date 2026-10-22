@@ -47,6 +47,8 @@ fn build_runtime() -> std::io::Result<Runtime> {
         .max_blocking_threads(BLOCKING_THREADS_MAX)
         .thread_keep_alive(BLOCKING_THREAD_KEEP_ALIVE)
         .thread_name("cc-main-wrk")
+        // The pool starts its threads from the pinned main thread.
+        .on_thread_start(crate::affinity::release_inherited_pin)
         .build()
 }
 

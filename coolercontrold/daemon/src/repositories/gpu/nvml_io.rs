@@ -16,6 +16,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, error};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::affinity;
 use crate::repositories::hwmon::device_io::{DeviceHealth, HealthState, QUEUE_DEPTH};
 use crate::rt;
 
@@ -48,9 +49,8 @@ impl NvmlIo {
         debug!("NVML worker starting: {thread_name}");
         // Detached deliberately: a wedged worker never returns, so a handle would only invite a
         // `join` that cannot be bounded.
-        thread::Builder::new()
-            .name(thread_name)
-            .spawn(move || run_worker(device, rx))?;
+        let builder = thread::Builder::new().name(thread_name);
+        affinity::spawn(builder, move || run_worker(device, rx))?;
         Ok(Self {
             tx,
             reply_timeout,
