@@ -1573,9 +1573,10 @@ mod tests {
     fn gpu_stress_runs_without_an_async_runtime() {
         // The daemon calls this outside any runtime, and an earlier version
         // panicked there because it called `tokio::spawn`. Calling from a
-        // plain test thread reproduces that environment. A zero timeout exercises setup and teardown without
-        // heating anything. Either outcome is fine on a machine with no GPU;
-        // what must not happen is a panic.
+        // plain test thread reproduces that environment. A zero timeout
+        // exercises setup and teardown without heating anything. Either
+        // outcome is fine on a machine with no GPU; what must not happen is
+        // a panic.
         let result = run_gpu_stress(0, None);
         if let Err(e) = result {
             let msg = e.to_string();
