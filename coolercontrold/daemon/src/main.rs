@@ -307,6 +307,8 @@ impl Args {
 fn main() -> Result<()> {
     malloc_threshold::pin();
     let cmd_args: Args = Args::parse();
+    // Outside the runtime: GPU stress builds its own, which tokio refuses to nest.
+    handle_non_root_commands(&cmd_args)?;
     let result = rt::runtime(async {
         let run_token = setup_termination_signals();
         // The Tokio sidecar hosts everything that needs a Tokio reactor (REST/gRPC servers, the dbus
@@ -318,7 +320,6 @@ fn main() -> Result<()> {
         // Publish the sidecar handle process-wide so reactor-bound work (process spawning, the
         // auth/token/liqctld/service-plugin transports) can reach it without threading a handle.
         sidecar::install_global(sidecar.handle());
-        handle_non_root_commands(&cmd_args)?;
         // Read ahead of the full config load so the level applies from the first log line.
         let debug_logging_setting = Config::read_debug_logging_setting().await;
         let log_buf_handle =
@@ -662,7 +663,7 @@ enum SubCommands {
 }
 
 /// The stress subcommands run synchronously on plain threads, so this needs
-/// no runtime of its own.
+/// no runtime of its own and must run outside the daemon's.
 fn handle_non_root_commands(args: &Args) -> Result<()> {
     if let Some(SubCommands::OpenApi) = &args.command {
         // Pretty-printed: the file is checked in, so a merge request diff has to be
