@@ -1637,12 +1637,12 @@ impl Repository for LiquidctlRepo {
             return;
         }
         let start_update = Instant::now();
+        let overrides = &self.overrides;
         moro_local::async_scope!(|scope| {
             for (uid, device_lock) in &self.devices {
                 let device_id = device_lock.borrow().type_index;
-                let device_name = self
-                    .overrides
-                    .log_device_name(uid, &device_lock.borrow().name);
+                // Formatting the name allocates, so it waits for a line that logs it.
+                let device_name = || overrides.log_device_name(uid, &device_lock.borrow().name);
                 let delay = self.device_delay(uid);
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
@@ -1656,8 +1656,8 @@ impl Repository for LiquidctlRepo {
                                 if fsd.record_success() {
                                     info!(
                                         "Recovered from failsafe for liquidctl \
-                                         device: {device_name}. Resuming normal \
-                                         status reads."
+                                         device: {}. Resuming normal status reads.",
+                                        device_name()
                                     );
                                 }
                             }
@@ -1679,9 +1679,10 @@ impl Repository for LiquidctlRepo {
                                 FailureLogAction::FailsafeLatch => {
                                     error!(
                                         "Significant issue retrieving status for \
-                                         liquidctl device: {device_name}. \
+                                         liquidctl device: {}. \
                                          Setting failsafe values. Suppressing further \
-                                         status errors until recovery."
+                                         status errors until recovery.",
+                                        device_name()
                                     );
                                 }
                                 FailureLogAction::Silent => {}
