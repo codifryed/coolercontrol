@@ -342,7 +342,7 @@ pub async fn read_fan_statuses(
                 let raw = take_result(&mut results, index)
                     .and_then(check_parsing_32)
                     .map(|rpm| guard_fan_rpm(rpm, &channel.caps));
-                interpret_fan_rpm(&rpm_path_for(driver, channel), raw, log_error)
+                interpret_fan_rpm(|| rpm_path_for(driver, channel), raw, log_error)
             }
             None => None,
         };
@@ -364,7 +364,7 @@ pub async fn read_fan_statuses(
                     &driver.io,
                     &driver.path,
                     &channel.number,
-                    &pwm_path_for(driver, channel),
+                    || pwm_path_for(driver, channel),
                     channel.read_slot.pwm_enable,
                     raw,
                     log_error,
@@ -669,7 +669,7 @@ async fn get_pwm_duty(
         io,
         base_path,
         channel_number,
-        pwm_path,
+        || pwm_path.to_path_buf(),
         enable_slot,
         result,
         log_error,
@@ -678,7 +678,7 @@ async fn get_pwm_duty(
 }
 
 /// Turns one raw pwm read into a duty, including the auto-mode carve-out. Shared by the batched
-/// pass and the single-channel path.
+/// pass and the single-channel path. `pwm_path` is built only for a log line.
 ///
 /// The refusal fallback costs a second read, but only on a channel that already failed, so it
 /// stays off the batched happy path.
@@ -686,14 +686,14 @@ async fn interpret_pwm_duty(
     io: &DeviceIo,
     base_path: &Path,
     channel_number: &u8,
-    pwm_path: &Path,
+    pwm_path: impl Fn() -> PathBuf,
     enable_slot: Option<ReadIndex>,
     result: Result<f64>,
     log_error: bool,
 ) -> Option<f64> {
     match result {
         Ok(duty) => {
-            debug!("hwmon read {}: {duty}% duty", pwm_path.display());
+            debug!("hwmon read {}: {duty}% duty", pwm_path().display());
             Some(duty)
         }
         Err(err) => {
@@ -705,7 +705,7 @@ async fn interpret_pwm_duty(
                         debug!(
                             "pwmX read refused by kernel driver in auto mode \
                              (pwm_enable={pwm_enable}) at {}; returning 100% duty",
-                            pwm_path.display()
+                            pwm_path().display()
                         );
                         return Some(100.0);
                     }
@@ -714,7 +714,7 @@ async fn interpret_pwm_duty(
             if log_error {
                 warn!(
                     "Could not read fan pwm value at {} ; {err}",
-                    pwm_path.display()
+                    pwm_path().display()
                 );
             }
             None
@@ -736,19 +736,24 @@ pub async fn get_fan_rpm(
         None => &base_path.join(format_fan_input!(channel_number)),
     };
     let result = try_read_fan_rpm(io, slot, fan_input_path, caps).await;
-    interpret_fan_rpm(fan_input_path, result, log_error)
+    interpret_fan_rpm(|| fan_input_path.to_path_buf(), result, log_error)
 }
 
 /// Turns one raw fan-input read into an rpm. Shared by the batched pass and the single-channel
-/// path so both log and discard failures identically.
-fn interpret_fan_rpm(fan_input_path: &Path, result: Result<u32>, log_error: bool) -> Option<u32> {
+/// path so both log and discard failures identically. `fan_input_path` is built only for a log
+/// line.
+fn interpret_fan_rpm(
+    fan_input_path: impl Fn() -> PathBuf,
+    result: Result<u32>,
+    log_error: bool,
+) -> Option<u32> {
     result
-        .inspect(|rpm| debug!("hwmon read {}: {rpm} RPM", fan_input_path.display()))
+        .inspect(|rpm| debug!("hwmon read {}: {rpm} RPM", fan_input_path().display()))
         .inspect_err(|err| {
             if log_error {
                 warn!(
                     "Could not read fan rpm value at {}: {err}",
-                    fan_input_path.display()
+                    fan_input_path().display()
                 );
             }
         })
@@ -2443,6 +2448,24 @@ mod tests {
 
         assert_eq!(diagnosis.verdict, ChannelVerdict::NoPwm);
         assert!(diagnosis.evidence.is_some());
+    }
+
+    /// Goal: a fan read builds its path only for a log line, since every tick reads every fan and
+    /// the path is a heap allocation. Method: interpret a failed read that is not logged with a
+    /// path builder that counts its calls, then a good read for its value.
+    #[test]
+    fn a_fan_read_builds_its_path_only_to_log() {
+        let built = std::cell::Cell::new(0);
+        let path = || {
+            built.set(built.get() + 1);
+            PathBuf::from("/sys/class/hwmon/hwmon1/fan1_input")
+        };
+
+        let failed = interpret_fan_rpm(path, Err(anyhow!("no such device")), false);
+
+        assert_eq!(failed, None);
+        assert_eq!(built.get(), 0);
+        assert_eq!(interpret_fan_rpm(path, Ok(1200), false), Some(1200));
     }
 
     /// Goal: taking a fan's values out of a batch reply allocates nothing, and a slot taken twice
