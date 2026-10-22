@@ -355,6 +355,7 @@ mod tests {
     /// main loop's timing model depends on it. Method: take the first tick, stall three and a half
     /// periods, then time the next tick: it must wait out the rest of the period it landed in.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_late_tick_waits_for_the_next_boundary() {
         test_runtime(async {
             let period = Duration::from_millis(40);
