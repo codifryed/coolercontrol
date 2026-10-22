@@ -364,6 +364,8 @@ fn main() -> Result<()> {
                 .await
                 .with_sensors_conf(sensors_conf),
         );
+        // Before the device workers start, which go beside the main thread's CPU.
+        affinity::pin_main_thread().await?;
         let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
             initialize_device_repos(
                 &config,
@@ -508,7 +510,6 @@ fn main() -> Result<()> {
 
                 // give concurrent services a moment to finish initializing:
                 rt::sleep(Duration::from_millis(10)).await;
-                affinity::pin_main_thread()?;
                 info!("Initialization Complete");
                 // Only now is the daemon serving, so this is what releases
                 // systemd's start job.

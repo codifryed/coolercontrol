@@ -140,7 +140,7 @@ impl DeviceIo {
         let builder = std::thread::Builder::new()
             .name(thread_name)
             .stack_size(WORKER_STACK_BYTES);
-        affinity::spawn(builder, move || {
+        affinity::spawn_worker(builder, move || {
             run_worker(rx);
             // Held for the thread's whole life, so its exit can be seen once every handle is
             // gone: see `WorkerLiveness`.

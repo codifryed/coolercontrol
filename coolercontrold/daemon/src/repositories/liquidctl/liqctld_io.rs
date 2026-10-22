@@ -453,7 +453,7 @@ fn spawn_worker(thread_name: String, body: impl FnOnce() + Send + 'static) -> Re
     let builder = thread::Builder::new()
         .name(thread_name)
         .stack_size(WORKER_STACK_BYTES);
-    affinity::spawn(builder, body)?;
+    affinity::spawn_worker(builder, body)?;
     Ok(())
 }
 
