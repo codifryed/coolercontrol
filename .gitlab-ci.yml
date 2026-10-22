@@ -297,9 +297,9 @@ test_msrv:
     - rustup toolchain install "$MSRV" --profile minimal
     - rustup run "$MSRV" rustc --version
   script:
-    # No UI build is needed: resources/app ships a tracked
-    # .gitignore, so include_dir! still resolves the directory. Every target: distros also compile
-    # the tests, for %check and dh_auto_test.
+    # No UI build is needed: resources/app ships a tracked .gitignore, so include_dir! still
+    # resolves the directory. Every target: distros also compile the tests, for %check and
+    # dh_auto_test.
     - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml --workspace
       --all-targets
 

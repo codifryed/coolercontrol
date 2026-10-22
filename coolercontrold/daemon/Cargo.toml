@@ -3,7 +3,6 @@ name = "coolercontrold"
 version = "5.1.1"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2024"
-# MSRV.
 rust-version = "1.95"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://coolercontrol.org"
