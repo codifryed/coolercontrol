@@ -161,7 +161,11 @@ impl Interval {
         // Below the period, so far under `u64::MAX` nanoseconds for any poll rate. The zero
         // fallback would only wait one whole period.
         let into_period = Duration::from_nanos(u64::try_from(into_period_nanos).unwrap_or(0));
-        let next = now + self.period - into_period;
+        let until_next = self
+            .period
+            .checked_sub(into_period)
+            .expect("the remainder of a period is below the period");
+        let next = now + until_next;
         debug_assert!(next > now);
         sleep_until(next).await;
         next
