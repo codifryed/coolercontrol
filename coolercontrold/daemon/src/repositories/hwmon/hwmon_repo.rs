@@ -6175,10 +6175,10 @@ mod prepare_for_sleep_tests {
             // open() for the rest of the run. A blocking read-open
             // would itself hang if the timed-out write never reached
             // open(2), so open O_NONBLOCK (never blocks): a parked
-            // write-open pairs the instant this fd opens. The release
-            // is not readable from this side (a timed-out write
-            // closes its fd without writing), so hold the fd for a
-            // grace period to also catch a late write-open, then
+            // write-open pairs the instant this fd opens. The write
+            // cannot be cancelled: once paired it completes on its
+            // own thread, into the pipe or with EPIPE. Hold the fd
+            // for a grace period so it can pair and finish, then
             // close.
             let fifo_for_reader = fifo_path.clone();
             let _ = crate::rt::spawn_blocking(move || {
