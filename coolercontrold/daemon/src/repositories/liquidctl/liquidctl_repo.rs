@@ -2119,7 +2119,7 @@ mod tests {
     use super::*;
     use crate::device::{ChannelInfo, DeviceInfo, DeviceType, LcdInfo, LcdMode, LcdModeType};
     use crate::repositories::hwmon::device_io::DeviceHealth;
-    use crate::repositories::liquidctl::liqctld_client::{DeviceProperties, LCStatus};
+    use crate::repositories::liquidctl::liqctld_client::{DeviceProperties, LCStatus, SkippedUnit};
 
     const DEV_PROPS: DeviceProperties = DeviceProperties {
         speed_channels: Vec::new(),
@@ -2772,7 +2772,7 @@ mod tests {
     fn status_map_of(entries: &[(&str, &str)]) -> StatusMap {
         let statuses: LCStatus = entries
             .iter()
-            .map(|(key, value)| ((*key).to_string(), (*value).to_string(), String::new()))
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string(), SkippedUnit))
             .collect();
         LiquidctlRepo::create_status_map(&statuses)
     }
