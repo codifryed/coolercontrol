@@ -665,6 +665,12 @@ enum SubCommands {
 /// The stress subcommands run synchronously on plain threads, so this needs
 /// no runtime of its own and must run outside the daemon's.
 fn handle_non_root_commands(args: &Args) -> Result<()> {
+    // GPU stress builds a tokio runtime of its own, which tokio refuses inside another. Checked on
+    // every start, so a call moved into `rt::runtime` fails at once rather than only on stress-gpu.
+    assert!(
+        tokio::runtime::Handle::try_current().is_err(),
+        "non-root commands must run before the daemon's runtime starts"
+    );
     if let Some(SubCommands::OpenApi) = &args.command {
         // Pretty-printed: the file is checked in, so a merge request diff has to be
         // readable. Whitespace compresses away to a couple of KB on the wire.
@@ -1176,6 +1182,25 @@ mod tests {
             reset_plugin_user: false,
             command: None,
         }
+    }
+
+    /// Goal: the non-root commands refuse to run inside a tokio runtime, where GPU stress cannot
+    /// build its own, and they refuse on a bare start too, so a call moved into `rt::runtime` shows
+    /// on every run. Method: call the handler with no command inside the test runtime.
+    #[test]
+    #[should_panic(expected = "non-root commands must run before the daemon's runtime starts")]
+    fn non_root_commands_refuse_to_run_inside_the_runtime() {
+        let args = base_args();
+        rt::test_runtime(async move {
+            let _ = handle_non_root_commands(&args);
+        });
+    }
+
+    /// Goal: outside a runtime, where `main` calls it, a bare start has nothing to run and goes on.
+    /// Method: call the handler with no command on a plain test thread.
+    #[test]
+    fn non_root_commands_pass_through_outside_the_runtime() {
+        assert!(handle_non_root_commands(&base_args()).is_ok());
     }
 
     /// Goal: the System Info banner logs for a real daemon start and for the
