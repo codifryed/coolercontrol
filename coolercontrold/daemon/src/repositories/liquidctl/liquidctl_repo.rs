@@ -183,6 +183,9 @@ pub struct LiquidctlRepo {
     /// Registry the channel verdicts are published to.
     hardware_support: Option<Rc<HardwareSupportController>>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
+    /// Each device's status map, kept across ticks and refreshed in place from its preloaded
+    /// lines, so a tick costs no map or key allocations: see `refresh_status_map`.
+    status_maps: RefCell<HashMap<TypeIndex, StatusMap>>,
     failsafe_statuses: RefCell<HashMap<TypeIndex, FailsafeStatusData>>,
     disabled_channels: RefCell<HashMap<UID, Vec<ChannelName>>>,
     /// Cached per-device command delay in milliseconds. Loaded at startup from config.
@@ -329,6 +332,7 @@ impl LiquidctlRepo {
             devices: HashMap::new(),
             hardware_support: None,
             preloaded_statuses: RefCell::new(HashMap::new()),
+            status_maps: RefCell::new(HashMap::new()),
             failsafe_statuses: RefCell::new(HashMap::new()),
             disabled_channels: RefCell::new(HashMap::new()),
             device_delays: HashMap::new(),
@@ -772,6 +776,35 @@ impl LiquidctlRepo {
         status_map
     }
 
+    /// Lowercases each line's name in place, as status maps are keyed. liquidctl's names are
+    /// ASCII, which changes in place without allocating.
+    fn lowercase_names(lc_statuses: &mut LCStatus) {
+        for (name, _, _) in lc_statuses {
+            if name.is_ascii() {
+                name.make_ascii_lowercase();
+            } else {
+                *name = name.to_lowercase();
+            }
+        }
+    }
+
+    /// Brings a status map up to date with a device's latest lines, whose names are lowercased
+    /// (`lowercase_names`), leaving what `create_status_map` would build. Values overwrite the
+    /// strings already there and lines that are gone leave, so a device reporting the same lines
+    /// costs no allocation.
+    fn refresh_status_map(status_map: &mut StatusMap, lc_statuses: &LCStatus) {
+        status_map.retain(|key, _| lc_statuses.iter().any(|(name, _, _)| name == key));
+        for (name, value, _) in lc_statuses {
+            debug_assert!(name.bytes().all(|byte| byte.is_ascii_uppercase().not()));
+            match status_map.get_mut(name) {
+                Some(current) => current.clone_from(value),
+                None => {
+                    status_map.insert(name.clone(), value.clone());
+                }
+            }
+        }
+    }
+
     /// Builds a normal status from preloaded data for the given device.
     fn build_normal_status(&self, device: &Device) -> Result<Status> {
         let preloaded_statuses = self.preloaded_statuses.borrow();
@@ -798,10 +831,13 @@ impl LiquidctlRepo {
         lc_statuses: &LCStatus,
         device_index: u8,
     ) -> Status {
-        let status_map = Self::create_status_map(lc_statuses);
-        let mut status = self
-            .device_mapper
-            .extract_status(driver_type, &status_map, device_index);
+        let mut status = {
+            let mut status_maps = self.status_maps.borrow_mut();
+            let status_map = status_maps.entry(device_index).or_default();
+            Self::refresh_status_map(status_map, lc_statuses);
+            self.device_mapper
+                .extract_status(driver_type, status_map, device_index)
+        };
         // Due to how liquidctl statuses work, we have to remove disabled channels every status update:
         let disabled_channels_lock = self.disabled_channels.borrow();
         let disabled_channels = disabled_channels_lock.get(device_uid).unwrap();
@@ -1647,7 +1683,8 @@ impl Repository for LiquidctlRepo {
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
                     match self.call_status(&device_id, delay).await {
-                        Ok(status) => {
+                        Ok(mut status) => {
+                            Self::lowercase_names(&mut status);
                             self.preloaded_statuses
                                 .borrow_mut()
                                 .insert(device_id, status);
@@ -2770,11 +2807,79 @@ mod tests {
     }
 
     fn status_map_of(entries: &[(&str, &str)]) -> StatusMap {
-        let statuses: LCStatus = entries
+        LiquidctlRepo::create_status_map(&lines_of(entries))
+    }
+
+    fn lines_of(entries: &[(&str, &str)]) -> LCStatus {
+        entries
             .iter()
             .map(|(key, value)| ((*key).to_string(), (*value).to_string(), SkippedUnit))
-            .collect();
-        LiquidctlRepo::create_status_map(&statuses)
+            .collect()
+    }
+
+    /// Goal: a status map kept across ticks and refreshed in place holds exactly what a fresh
+    /// build from the same lines would, through changed values, lines that come and go, and a
+    /// name repeated in one reply, so every driver reads the status it always did. Method:
+    /// refresh one map through three ticks and compare it with a fresh build after each.
+    #[test]
+    fn a_refreshed_status_map_matches_a_fresh_build() {
+        let ticks = [
+            lines_of(&[
+                ("Liquid temperature", "31.5"),
+                ("Pump speed", "2000"),
+                ("Fan 1 speed", "800"),
+            ]),
+            lines_of(&[
+                ("Liquid temperature", "31.25"),
+                ("Fan 1 speed", "810"),
+                ("Fan 2 speed", "790"),
+            ]),
+            lines_of(&[("Pump speed", "1900"), ("Pump speed", "1950")]),
+        ];
+        let mut status_map = StatusMap::new();
+
+        for tick in ticks {
+            let fresh = LiquidctlRepo::create_status_map(&tick);
+            let mut lines = tick;
+            LiquidctlRepo::lowercase_names(&mut lines);
+            LiquidctlRepo::refresh_status_map(&mut status_map, &lines);
+
+            assert_eq!(status_map, fresh);
+        }
+    }
+
+    /// Goal: names lowercase exactly as `to_lowercase` would, the ASCII ones liquidctl sends in
+    /// place and anything else as well. Method: lowercase an ASCII and a non-ASCII name.
+    #[test]
+    fn status_names_lowercase_like_to_lowercase() {
+        let mut lines = lines_of(&[("Liquid Temperature", "31"), ("ÄUSSERE TEMP", "20")]);
+
+        LiquidctlRepo::lowercase_names(&mut lines);
+
+        assert_eq!(lines[0].0, "liquid temperature");
+        assert_eq!(lines[1].0, "äussere temp");
+    }
+
+    /// Goal: once warm, a device's status update costs no allocation for its names or its map.
+    /// Method: refresh a map with one tick's lines, then count the allocations of lowercasing
+    /// and refreshing with the next tick's values for the same names.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_status_map_refresh_allocates_nothing() {
+        let mut first = lines_of(&[("Liquid temperature", "31.50"), ("Pump speed", "2000")]);
+        let mut next = lines_of(&[("Liquid temperature", "31.25"), ("Pump speed", "1990")]);
+        LiquidctlRepo::lowercase_names(&mut first);
+        let mut status_map = StatusMap::new();
+        LiquidctlRepo::refresh_status_map(&mut status_map, &first);
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            LiquidctlRepo::lowercase_names(&mut next);
+            LiquidctlRepo::refresh_status_map(&mut status_map, &next);
+        });
+
+        assert_eq!(allocations, 0);
+        assert_eq!(status_map["pump speed"], "1990");
+        assert_eq!(status_map["liquid temperature"], "31.25");
     }
 
     fn lcd_device_info() -> DeviceInfo {
