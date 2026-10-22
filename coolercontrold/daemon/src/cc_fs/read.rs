@@ -107,6 +107,15 @@ impl SysfsValue {
         self.len == 0
     }
 
+    /// A value of no bytes. It fails to parse, so as a placeholder it cannot pass for a reading.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            buf: [0; SYSFS_VALUE_MAX_BYTES],
+            len: 0,
+        }
+    }
+
     /// Wraps a filled read buffer. `len` is the byte count the read reported.
     #[must_use]
     pub fn from_read(buf: [u8; SYSFS_VALUE_MAX_BYTES], len: usize) -> Self {

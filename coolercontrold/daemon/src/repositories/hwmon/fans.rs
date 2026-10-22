@@ -415,17 +415,15 @@ fn batch_slots(
     (batch, positions)
 }
 
-/// Takes one positional result out of a batch, leaving a placeholder behind. The batch is consumed
-/// exactly once per slot, so the placeholder is never read.
+/// Takes one positional result out of a batch, leaving an empty value behind, which costs no heap
+/// the way an error would. The batch is consumed exactly once per slot, so the placeholder is
+/// never read; read anyway, it fails to parse.
 fn take_result(
     results: &mut [Result<cc_fs::SysfsValue>],
     index: usize,
 ) -> Result<cc_fs::SysfsValue> {
     debug_assert!(index < results.len());
-    std::mem::replace(
-        &mut results[index],
-        Err(anyhow!("batched sysfs result already taken")),
-    )
+    std::mem::replace(&mut results[index], Ok(cc_fs::SysfsValue::empty()))
 }
 
 /// Where one channel's pwm value lives.
@@ -2445,5 +2443,27 @@ mod tests {
 
         assert_eq!(diagnosis.verdict, ChannelVerdict::NoPwm);
         assert!(diagnosis.evidence.is_some());
+    }
+
+    /// Goal: taking a fan's values out of a batch reply allocates nothing, and a slot taken twice
+    /// still reads as an error, never as a number. Method: count the allocations of two takes,
+    /// then parse what a second take of the same slot returns.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn taking_a_batched_result_allocates_nothing() {
+        let mut results = vec![
+            Ok(cc_fs::SysfsValue::from_bytes(b"1200\n")),
+            Ok(cc_fs::SysfsValue::from_bytes(b"128\n")),
+        ];
+
+        let ((pwm, rpm), allocations) = crate::alloc_count::count_allocations(|| {
+            (take_result(&mut results, 1), take_result(&mut results, 0))
+        });
+
+        assert_eq!(allocations, 0);
+        assert_eq!(pwm.unwrap().parse::<u8>().unwrap(), 128);
+        assert_eq!(rpm.unwrap().parse::<u32>().unwrap(), 1200);
+        let again = take_result(&mut results, 0).and_then(|value| value.parse::<u32>());
+        assert!(again.is_err());
     }
 }
