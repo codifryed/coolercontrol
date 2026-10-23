@@ -17,7 +17,10 @@ use crate::setting::STARTUP_DELAY_SECONDS_MAX;
 use log::{debug, info, warn};
 use sd_notify::NotifyState;
 use std::cell::Cell;
+use std::ffi::{OsStr, OsString};
+use std::io;
 use std::ops::Not;
+use std::os::unix::net::UnixDatagram;
 use std::time::{Duration, Instant};
 
 /// Half the supervisor's interval, as systemd documents. That leaves half the
@@ -36,6 +39,16 @@ const HEARTBEAT_SLEEP_MAX: Duration = Duration::from_secs(STARTUP_DELAY_SECONDS_
 /// cut short. `setting.rs` owns the bound; this fails the build if it grows.
 const _: () = assert!(HEARTBEAT_SLEEP_MAX.as_secs() >= STARTUP_DELAY_SECONDS_MAX as u64);
 
+/// Where the service manager listens, as systemd names it.
+const NOTIFY_SOCKET: &str = "NOTIFY_SOCKET";
+
+const HEARTBEAT: &[u8] = b"WATCHDOG=1\n";
+
+/// How long READY or STOPPING may hold up startup or shutdown. Past it the send carries on, on
+/// the blocking pool, and the daemon goes on without waiting for it.
+const NOTIFY_WAIT: Duration = Duration::from_secs(2);
+const _: () = assert!(NOTIFY_WAIT.as_millis() > 0);
+
 /// Single-threaded like the rest of the main-thread daemon, so `ping` takes
 /// `&self` and keeps its rate limit in a `Cell`.
 pub struct Watchdog {
@@ -43,6 +56,8 @@ pub struct Watchdog {
     /// The ping interval is derived from it rather than stored beside it, so
     /// the two cannot drift apart.
     supervisor_interval: Option<Duration>,
+    /// Read once at init. `None` outside a service manager, where a heartbeat goes nowhere.
+    notify_socket: Option<OsString>,
     /// `None` until the first ping, so the first one is always due.
     last_ping: Cell<Option<Instant>>,
     /// The datagram needs a service manager to observe, so tests count the
@@ -54,7 +69,8 @@ pub struct Watchdog {
 impl Watchdog {
     /// Reads the supervisor's watchdog interval from the environment.
     pub fn init() -> Self {
-        let watchdog = Self::with_supervisor_interval(sd_notify::watchdog_enabled());
+        let watchdog = Self::with_supervisor_interval(sd_notify::watchdog_enabled())
+            .with_notify_socket(std::env::var_os(NOTIFY_SOCKET));
         match watchdog.ping_interval() {
             Some(interval) => info!(
                 "Service manager watchdog enabled, sending a heartbeat every {:.1}s",
@@ -68,10 +84,16 @@ impl Watchdog {
     fn with_supervisor_interval(supervisor_interval: Option<Duration>) -> Self {
         Self {
             supervisor_interval,
+            notify_socket: None,
             last_ping: Cell::new(None),
             #[cfg(test)]
             ping_count: Cell::new(0),
         }
+    }
+
+    fn with_notify_socket(mut self, notify_socket: Option<OsString>) -> Self {
+        self.notify_socket = notify_socket;
+        self
     }
 
     /// A watchdog that never pings, matching a run with no supervisor.
@@ -121,7 +143,8 @@ impl Watchdog {
         );
     }
 
-    /// Sends a heartbeat if one is due. Cheap to call on every tick.
+    /// Sends a heartbeat if one is due. Cheap to call on every tick, and never waits: a
+    /// heartbeat the service manager has no room for stays due, so the next tick sends it.
     pub fn ping(&self) {
         let Some(ping_interval) = self.ping_interval() else {
             return;
@@ -131,12 +154,22 @@ impl Watchdog {
         if ping_is_due(self.last_ping.get(), ping_interval, now).not() {
             return;
         }
+        if let Some(socket) = &self.notify_socket {
+            if let Err(err) = send_now(socket, HEARTBEAT) {
+                if err.kind() == io::ErrorKind::WouldBlock {
+                    // Not stamped: one more whole interval would land past the deadline.
+                    debug!("The service manager has no room for a heartbeat yet, retrying");
+                    return;
+                }
+                // A lost heartbeat costs a restart, which is visible; panicking would not help.
+                warn!("Could not send watchdog heartbeat to the service manager: {err}");
+            }
+        }
         self.last_ping.set(Some(now));
         #[cfg(test)]
         self.ping_count.set(self.ping_count.get() + 1);
         // The rate limit must now hold, or every tick sends a datagram.
         debug_assert!(ping_is_due(self.last_ping.get(), ping_interval, now).not());
-        notify(&[NotifyState::Watchdog], "watchdog heartbeat");
     }
 
     /// Sleeps for `total`, pinging throughout. For waits the daemon takes on
@@ -163,20 +196,65 @@ impl Watchdog {
 /// Tells the service manager initialization is complete. Free-standing rather
 /// than a method: readiness is a one-shot signal that carries no state, so it
 /// must not look like it needs the heartbeat's instance.
-pub fn notify_ready() {
-    notify(&[NotifyState::Ready], "ready");
+pub async fn notify_ready() {
+    notify_from_pool(NotifyState::Ready, "ready").await;
 }
 
 /// Tells the service manager a clean shutdown has begun.
-pub fn notify_stopping() {
-    notify(&[NotifyState::Stopping], "stopping");
+pub async fn notify_stopping() {
+    notify_from_pool(NotifyState::Stopping, "stopping").await;
 }
 
-fn notify(state: &[NotifyState], description: &str) {
-    if let Err(err) = sd_notify::notify(state) {
-        // A lost heartbeat costs a restart, a lost readiness a start timeout.
-        // Both are visible; neither is improved by panicking.
-        warn!("Could not send {description} to the service manager: {err}");
+/// Sends `state` from the blocking pool, where a service manager that is not reading parks a
+/// pool thread rather than the main thread. Unlike a heartbeat it must not be lost, so it waits
+/// for room, but the daemon waits on it for at most `NOTIFY_WAIT`.
+async fn notify_from_pool(state: NotifyState<'static>, description: &'static str) {
+    send_from_pool_within(
+        move || sd_notify::notify(&[state]),
+        description,
+        NOTIFY_WAIT,
+    )
+    .await;
+}
+
+/// Runs the blocking `send` on the blocking pool, and waits on it for at most `wait`.
+async fn send_from_pool_within(
+    send: impl FnOnce() -> io::Result<()> + Send + 'static,
+    description: &'static str,
+    wait: Duration,
+) {
+    debug_assert!(wait.is_zero().not());
+    let send = async {
+        rt::spawn_blocking(send)
+            .await
+            .unwrap_or_else(|err| Err(io::Error::other(err)))
+    };
+    match rt::timeout(wait, send).await {
+        Ok(Ok(())) => {}
+        // A lost readiness costs a start timeout, which is visible; panicking would not help.
+        Ok(Err(err)) => warn!("Could not send {description} to the service manager: {err}"),
+        Err(_) => info!(
+            "The service manager has not taken {description} after {}s, still sending it",
+            wait.as_secs()
+        ),
+    }
+}
+
+/// Sends `message` to the service manager without waiting: a full queue fails with `WouldBlock`
+/// rather than parking the caller, which for a heartbeat is the main thread. A fresh socket per
+/// send, as `sd_notify` makes, follows the service manager across a restart of its own.
+fn send_now(socket: &OsStr, message: &[u8]) -> io::Result<()> {
+    debug_assert!(message.is_empty().not());
+    // sd_notify ends each assignment with a newline.
+    debug_assert!(message.ends_with(b"\n"));
+    let datagram = UnixDatagram::unbound()?;
+    datagram.set_nonblocking(true)?;
+    datagram.connect(socket)?;
+    let sent = datagram.send(message)?;
+    if sent == message.len() {
+        Ok(())
+    } else {
+        Err(io::Error::new(io::ErrorKind::WriteZero, "incomplete write"))
     }
 }
 
@@ -302,6 +380,106 @@ mod tests {
         let first = watchdog.last_ping().expect("first ping is always due");
         watchdog.ping();
         assert_eq!(watchdog.last_ping(), Some(first));
+    }
+
+    /// A busy service manager's queue fills, and the heartbeat must neither wait on it nor be
+    /// given up for a whole interval, which would land past the deadline. Fill a stand-in
+    /// socket's queue, ping, then empty the queue and ping again.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_full_service_manager_queue_leaves_the_heartbeat_due() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notify");
+        let manager = UnixDatagram::bind(&path).unwrap();
+        manager.set_nonblocking(true).unwrap();
+        let filled = fill_queue(path.as_os_str());
+        let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL))
+            .with_notify_socket(Some(path.clone().into_os_string()));
+
+        let start = Instant::now();
+        watchdog.ping();
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "{:?}",
+            start.elapsed()
+        );
+        assert_eq!(
+            watchdog.last_ping(),
+            None,
+            "a heartbeat with no room must stay due"
+        );
+
+        let mut datagram = [0_u8; 64];
+        for _ in 0..filled {
+            manager.recv(&mut datagram).unwrap();
+        }
+        watchdog.ping();
+
+        assert!(watchdog.last_ping().is_some());
+        let len = manager.recv(&mut datagram).unwrap();
+        assert_eq!(&datagram[..len], HEARTBEAT);
+    }
+
+    /// Sends from fresh sockets, as `ping` does, until the stand-in has no room. Returns how
+    /// many it took.
+    #[cfg(feature = "gated-tests")]
+    fn fill_queue(socket: &OsStr) -> usize {
+        for sent in 0..100_000 {
+            match send_now(socket, b"FILL=1\n") {
+                Ok(()) => {}
+                Err(err) if err.kind() == io::ErrorKind::WouldBlock => return sent,
+                Err(err) => panic!("filling the queue failed: {err}"),
+            }
+        }
+        panic!("the queue never filled");
+    }
+
+    /// READY or STOPPING to a service manager that has stopped reading must not hold up startup
+    /// or shutdown past the wait. Fill a stand-in socket's queue, send to it blocking, as
+    /// `sd_notify` does, from the pool, and time the wait.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_stalled_service_manager_holds_up_ready_only_briefly() {
+        rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("notify");
+            let manager = UnixDatagram::bind(&path).unwrap();
+            fill_queue(path.as_os_str());
+            let wait = Duration::from_millis(50);
+            let socket = path.clone();
+            let start = Instant::now();
+
+            send_from_pool_within(
+                move || {
+                    let datagram = UnixDatagram::unbound()?;
+                    datagram.connect(&socket)?;
+                    datagram.send(b"READY=1\n").map(|_| ())
+                },
+                "ready",
+                wait,
+            )
+            .await;
+
+            let elapsed = start.elapsed();
+            assert!(elapsed >= wait, "{elapsed:?}");
+            assert!(elapsed < NOTIFY_WAIT, "{elapsed:?}");
+            // Closing the stand-in fails the parked send, which frees its pool thread.
+            drop(manager);
+        });
+    }
+
+    /// A socket that is not there is not a full queue: retrying it every tick would only warn
+    /// every tick. Point the heartbeat at a missing socket and check it counts as sent.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_missing_service_manager_waits_a_whole_interval() {
+        let dir = tempfile::tempdir().unwrap();
+        let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL))
+            .with_notify_socket(Some(dir.path().join("absent").into_os_string()));
+
+        watchdog.ping();
+
+        assert!(watchdog.last_ping().is_some());
     }
 
     /// A clock that appears to move backwards must not wedge the heartbeat

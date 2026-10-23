@@ -154,6 +154,7 @@ impl Sidecar {
             // `kill_on_drop` never fires). Kill the liqctld process group directly first so systemd
             // is never left to reap (and SIGABRT) an orphan. A no-op if it already exited.
             crate::repositories::liquidctl::liqctld_service::force_kill_liqctld();
+            log::logger().flush();
             std::process::exit(0);
         }
     }

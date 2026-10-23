@@ -45,6 +45,9 @@ compio = { version = "=0.19.2", default-features = false, features = [
 compio-buf = { version = "=0.8.3", default-features = false }
 log = "0.4"
 env_logger = "0.11"
+# The colour check env_logger makes for its own stderr target, which the log writer thread's pipe
+# target skips. Already in the tree through env_logger 0.11, with the same features.
+anstream = "1.0"
 systemd-journal-logger = "2.2"
 clap = { version = "4.6", features = [
   "derive",

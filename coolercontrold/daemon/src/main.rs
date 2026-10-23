@@ -50,6 +50,7 @@ mod events;
 mod grpc_api;
 mod hashutil;
 mod listeners;
+mod log_writer;
 mod logger;
 mod main_loop;
 mod malloc_threshold;
@@ -306,7 +307,7 @@ impl Args {
 fn main() -> Result<()> {
     malloc_threshold::pin();
     let cmd_args: Args = Args::parse();
-    rt::runtime(async {
+    let result = rt::runtime(async {
         let run_token = setup_termination_signals();
         // The Tokio sidecar hosts everything that needs a Tokio reactor (REST/gRPC servers, the dbus
         // sleep listener, the service-plugin tonic transport). Started early so it exists before
@@ -511,7 +512,7 @@ fn main() -> Result<()> {
                 info!("Initialization Complete");
                 // Only now is the daemon serving, so this is what releases
                 // systemd's start job.
-                watchdog::notify_ready();
+                watchdog::notify_ready().await;
                 main_loop::run(
                     Rc::clone(&config),
                     Rc::clone(&repos),
@@ -535,14 +536,17 @@ fn main() -> Result<()> {
             error!("Main scope failed to start: {err}");
         });
         // all tasks from the main scope must have completed by this point.
-        watchdog::notify_stopping();
+        watchdog::notify_stopping().await;
         let shutdown_result = shutdown(repos, config).await;
         // Repos have finished their shutdown (incl. any sidecar round-trips like the service-plugin
         // gRPC shutdown), so the sidecar can now be torn down and joined (bounded, force-exit).
         sidecar_token.cancel();
         sidecar.join();
         shutdown_result
-    })
+    });
+    // Lines still queued for the journal or stderr would go with the process.
+    log::logger().flush();
+    result
 }
 
 fn verify_is_root() -> Result<()> {
@@ -797,6 +801,7 @@ fn finish_check(all_valid: bool) -> ! {
         exit_successfully();
     }
     error!("One or more configuration files are invalid");
+    log::logger().flush();
     std::process::exit(1);
 }
 
@@ -815,10 +820,12 @@ fn finish_backup(result: Result<backup::BackupOutput>) -> ! {
 
 fn exit_with_error(err: &Error) -> ! {
     error!("{err}");
+    log::logger().flush();
     std::process::exit(1);
 }
 
 fn exit_successfully() -> ! {
+    log::logger().flush();
     std::process::exit(0)
 }
 

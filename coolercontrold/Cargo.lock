@@ -964,6 +964,7 @@ name = "coolercontrold"
 version = "5.1.1"
 dependencies = [
  "aide",
+ "anstream",
  "anyhow",
  "argon2",
  "async-trait",
