@@ -105,7 +105,8 @@ pub async fn read_temp_statuses<'a>(
         .clone()
         .filter_map(|channel| channel.read_slot.value);
     let mut batch = driver.io.read_many(slots).await;
-    // A temperature from the wrong sensor drives the wrong fan curve.
+    // Paired, not zipped: an unslotted channel would take the next sensor's reading, and drive the
+    // wrong fan curve.
     let has_slot = |channel: &&HwmonChannelInfo| channel.read_slot.value.is_some();
     for (channel, result) in pair_with_results(channels, has_slot, batch.take_all()) {
         on_status(result.and_then(|result| temp_status_from(driver, channel, result)));
