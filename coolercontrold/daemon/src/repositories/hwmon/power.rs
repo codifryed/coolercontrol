@@ -180,7 +180,7 @@ pub async fn read_one_power_status(
     // In the Power case, channel.name is the real name of the sysfs file.
     let result = driver
         .io
-        .read_one(channel.read_slot.value, &driver.path.join(&channel.name))
+        .read_one(channel.read_slot.value, || driver.path.join(&channel.name))
         .await;
     power_status_from(driver, channel, result)
 }

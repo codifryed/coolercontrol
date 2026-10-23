@@ -633,7 +633,7 @@ async fn try_read_fan_rpm(
     fan_input_path: &Path,
     caps: &HwmonChannelCapabilities,
 ) -> Result<u32> {
-    io.read_one(slot, fan_input_path)
+    io.read_one(slot, || fan_input_path.to_path_buf())
         .await
         .and_then(check_parsing_32)
         .map(|rpm| guard_fan_rpm(rpm, caps))
@@ -778,7 +778,7 @@ async fn current_pwm_enable(
 ) -> Option<u8> {
     let pwm_enable_path = base_path.join(format_pwm_enable!(channel_number));
     let current_pwm_enable = io
-        .read_one(slot, &pwm_enable_path)
+        .read_one(slot, || pwm_enable_path.clone())
         .await
         .and_then(check_parsing_8)
         .ok();

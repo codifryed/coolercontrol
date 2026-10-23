@@ -893,14 +893,13 @@ impl GpuAMD {
                 continue;
             }
             // `gpu_busy_percent` has a slot like every other per-tick attribute, so it keeps its
-            // descriptor across ticks. The path is only rebuilt if detection never registered one.
+            // descriptor across ticks. The path is only built if detection never registered one.
             let result = driver
                 .hwmon
                 .io
-                .read_one(
-                    channel.read_slot.value,
-                    &driver.device_path.join("gpu_busy_percent"),
-                )
+                .read_one(channel.read_slot.value, || {
+                    driver.device_path.join("gpu_busy_percent")
+                })
                 .await
                 .and_then(fans::check_parsing_8);
             if let Ok(load) = result {

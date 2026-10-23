@@ -230,11 +230,16 @@ impl DeviceIo {
     /// Reads one attribute through its slot when the registry gave it one, by path otherwise.
     ///
     /// The per-tick single reads all want this: the slot keeps the descriptor across ticks, and
-    /// the path is the honest fallback for a device whose table never installed.
-    pub async fn read_one(&self, slot: Option<ReadIndex>, path: &Path) -> Result<SysfsValue> {
+    /// the path is the honest fallback for a device whose table never installed. The path is
+    /// built only for that fallback, so a slotted read allocates none.
+    pub async fn read_one(
+        &self,
+        slot: Option<ReadIndex>,
+        path: impl FnOnce() -> PathBuf,
+    ) -> Result<SysfsValue> {
         match slot {
             Some(slot) => self.read_many(&[slot]).await.remove(0),
-            None => self.read_value(path).await,
+            None => self.read_value(&path()).await,
         }
     }
 
@@ -991,6 +996,33 @@ mod tests {
             vec![None, Some("value-for-7"), None, Some("value-for-3"), None],
             "each value must land on the channel that asked for it"
         );
+    }
+
+    /// Goal: a per-tick single read through its slot must not build the fallback path, which
+    /// costs a heap allocation per read. Method: read once with a slot and once without, counting
+    /// how often each builds its path, and check both read the file.
+    #[test]
+    fn only_an_unslotted_read_builds_its_path() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("temp1_input");
+            std::fs::write(&path, "45000\n").unwrap();
+            let io = DeviceIo::default();
+            io.install_registry(vec![path.clone()]).await.unwrap();
+            let built = Cell::new(0);
+            let path_for = || {
+                built.set(built.get() + 1);
+                path.clone()
+            };
+
+            let slotted = io.read_one(Some(0), path_for).await.unwrap();
+            assert_eq!(built.get(), 0, "a slotted read must not build its path");
+            let unslotted = io.read_one(None, path_for).await.unwrap();
+
+            assert_eq!(built.get(), 1);
+            assert_eq!(slotted.trimmed_str().unwrap(), "45000");
+            assert_eq!(unslotted.trimmed_str().unwrap(), "45000");
+        });
     }
 
     // --- HealthState: the rules both workers share ---
