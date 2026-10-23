@@ -9,9 +9,9 @@ use std::ops::{Not, RangeInclusive};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use super::amd_fdinfo::{self, FdInfoLoad, FdInfoLoadState};
+use super::amd_fdinfo::{self, FdInfoLoad, FdInfoTracker};
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
@@ -61,9 +61,9 @@ pub struct GpuAMD {
     pub amd_devices: HashMap<UID, DeviceLock>,
     pub amd_driver_infos: HashMap<UID, Rc<AMDDriverInfo>>,
     pub amd_preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
-    /// Per-device fdinfo delta state, keyed by PCI slot, for GPUs that source
+    /// Per-device fdinfo clients and delta state, keyed by PCI slot, for GPUs that source
     /// load from DRM fdinfo instead of `gpu_busy_percent`.
-    amd_fdinfo_state: RefCell<HashMap<String, FdInfoLoadState>>,
+    amd_fdinfo_state: RefCell<HashMap<String, FdInfoTracker>>,
     /// Holds the fdinfo reads of a scan, kept so scans do not allocate one per client.
     amd_fdinfo_read_buf: RefCell<Vec<u8>>,
 }
@@ -399,17 +399,19 @@ impl GpuAMD {
     /// Load `ChannelStatus` (0 on the first sample and while idle), since once
     /// fdinfo is the chosen source we report a value every tick.
     async fn extract_fdinfo_load_status(&self, fdinfo: &FdInfoLoad) -> Vec<ChannelStatus> {
-        // Taken out rather than borrowed, as the scan yields. Two GPUs scanning at once leaves
-        // the second with a buffer of its own, which then replaces this one.
+        // Both taken out rather than borrowed, as the scan yields. Two GPUs scanning at once
+        // leaves the second with a buffer of its own, which then replaces this one. The tracker
+        // goes back under the key it came out with, so only the first tick builds one.
         let mut read_buf = self.amd_fdinfo_read_buf.take();
-        let clients = amd_fdinfo::scan_clients(fdinfo.pci_slot(), &mut read_buf).await;
-        self.amd_fdinfo_read_buf.replace(read_buf);
-        let percent = self
+        let taken = self
             .amd_fdinfo_state
             .borrow_mut()
-            .entry(fdinfo.pci_slot().to_string())
-            .or_default()
-            .update(clients, Instant::now());
+            .remove_entry(fdinfo.pci_slot());
+        let (pci_slot, mut tracker) =
+            taken.unwrap_or_else(|| (fdinfo.pci_slot().to_owned(), FdInfoTracker::default()));
+        let percent = tracker.sample(&pci_slot, &mut read_buf).await;
+        self.amd_fdinfo_state.borrow_mut().insert(pci_slot, tracker);
+        self.amd_fdinfo_read_buf.replace(read_buf);
         vec![ChannelStatus {
             name: GPU_LOAD_NAME.to_string(),
             duty: Some(percent.round()),

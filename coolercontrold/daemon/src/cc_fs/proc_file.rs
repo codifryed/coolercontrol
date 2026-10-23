@@ -96,26 +96,25 @@ impl ProcFile {
     }
 }
 
-/// Reads a file the kernel generates from memory, opened for this one read, and hands its text to
-/// `parse`. Yields to the runtime after each positional read, as `ProcFile` does.
+/// Reads an open file the kernel generates from memory into the caller's `buf`, and hands its text
+/// to `parse`. Yields to the runtime after each positional read, as `ProcFile` does.
 ///
-/// For files whose path is not known ahead, such as another process's fdinfo, so there is no
-/// descriptor to hold. `buf` is the caller's and keeps its room between reads, so a read allocates
-/// only when a file outgrows every one before it.
+/// For a caller holding many such files, such as other processes' fdinfo, that shares one buffer
+/// between them rather than keeping one per file. `buf` keeps its room between reads, so a read
+/// allocates only when a file outgrows every one before it.
 ///
 /// # Errors
 ///
-/// When the file cannot be opened or read, is larger than `max_bytes`, or is not UTF-8.
-pub async fn read_proc_once<T>(
-    path: &Path,
+/// When the file cannot be read, is larger than `max_bytes`, or is not UTF-8.
+pub async fn read_proc_held<T>(
+    file: &File,
     buf: &mut Vec<u8>,
     max_bytes: usize,
     parse: impl FnOnce(&str) -> T,
 ) -> Result<T> {
     assert!(max_bytes > 0);
     debug_assert!(buf.len() <= max_bytes);
-    let file = File::open(path)?;
-    let filled = read_all(&file, buf, max_bytes).await?;
+    let filled = read_all(file, buf, max_bytes).await?;
     debug_assert!(filled <= buf.len());
     let parsed = std::str::from_utf8(&buf[..filled]).map(parse);
     Ok(parsed?)
@@ -234,47 +233,64 @@ mod tests {
         assert_eq!(allocations, 0);
     }
 
-    /// Goal: one-shot reads through a reused buffer allocate nothing once it has room, and each
+    /// Goal: held reads through a shared buffer allocate nothing once it has room, and each
     /// returns only its own file. Method: read a longer file to size the buffer, then count the
     /// allocations of reading a shorter, different file through it.
     #[test]
     #[cfg(feature = "gated-tests")]
-    fn a_one_shot_read_through_a_sized_buffer_allocates_nothing() {
+    fn a_held_read_through_a_sized_buffer_allocates_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let long_path = dir.path().join("long");
         let short_path = dir.path().join("short");
         std::fs::write(&long_path, "drm-client-id:\t1\n".repeat(200)).unwrap();
         std::fs::write(&short_path, "drm-client-id:\t2\n").unwrap();
+        let long = File::open(&long_path).unwrap();
+        let short = File::open(&short_path).unwrap();
         let mut buf = Vec::new();
-        let (sized, _) = poll_to_end(read_proc_once(&long_path, &mut buf, 64 * 1024, str::len));
+        let (sized, _) = poll_to_end(read_proc_held(&long, &mut buf, 64 * 1024, str::len));
         assert!(sized.is_ok());
 
-        let ((short, _), allocations) = crate::alloc_count::count_allocations(|| {
-            poll_to_end(read_proc_once(&short_path, &mut buf, 64 * 1024, |text| {
+        let ((matched, _), allocations) = crate::alloc_count::count_allocations(|| {
+            poll_to_end(read_proc_held(&short, &mut buf, 64 * 1024, |text| {
                 text == "drm-client-id:\t2\n"
             }))
         });
 
-        assert!(short.unwrap());
+        assert!(matched.unwrap());
         assert_eq!(allocations, 0);
     }
 
-    /// Goal: a one-shot read of a missing file is an error, and the buffer survives it. Method:
-    /// read a path that does not exist through a buffer with room.
+    /// Goal: a held read that fails is an error, and the shared buffer survives it. Method: read a
+    /// directory, which opens but cannot be read, through a buffer with room.
     #[test]
-    fn a_one_shot_read_of_a_missing_file_is_an_error() {
+    fn a_held_read_that_fails_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
+        let unreadable = File::open(dir.path()).unwrap();
         let mut buf = vec![0; 1024];
 
-        let (read, _) = poll_to_end(read_proc_once(
-            &dir.path().join("gone"),
-            &mut buf,
-            64 * 1024,
-            str::len,
-        ));
+        let (read, _) = poll_to_end(read_proc_held(&unreadable, &mut buf, 64 * 1024, str::len));
 
         assert!(read.is_err());
         assert_eq!(buf.len(), 1024);
+    }
+
+    /// Goal: a held file is read afresh each time, which is what lets a caller keep it open
+    /// across ticks. Method: read, rewrite the file in place, and read again through the same
+    /// descriptor.
+    #[test]
+    fn a_held_read_sees_the_files_current_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fdinfo");
+        std::fs::write(&path, "drm-engine-gfx:\t1 ns\n").unwrap();
+        let file = File::open(&path).unwrap();
+        let mut buf = Vec::new();
+        let (first, _) = poll_to_end(read_proc_held(&file, &mut buf, 64 * 1024, str::to_owned));
+
+        std::fs::write(&path, "drm-engine-gfx:\t22 ns\n").unwrap();
+        let (second, _) = poll_to_end(read_proc_held(&file, &mut buf, 64 * 1024, str::to_owned));
+
+        assert_eq!(first.unwrap(), "drm-engine-gfx:\t1 ns\n");
+        assert_eq!(second.unwrap(), "drm-engine-gfx:\t22 ns\n");
     }
 
     /// Goal: a file larger than its bound is an error, not an unbounded buffer. Method: a 4 KiB
