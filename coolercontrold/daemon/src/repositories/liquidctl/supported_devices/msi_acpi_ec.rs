@@ -85,28 +85,24 @@ impl DeviceSupport for MsiAcpiEcSupport {
         self.convert_to_channel_lighting_modes(color_modes)
     }
 
-    fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_temp_probes(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let cpu_temp = status_map.get("cpu temp").and_then(parse_float);
         if let Some(temp) = cpu_temp {
-            temps.temp("cpu temp", temp);
+            refill.temp("cpu temp", temp);
         }
         let gpu_temp = status_map.get("gpu temp").and_then(parse_float);
         if let Some(temp) = gpu_temp {
-            temps.temp("gpu temp", temp);
+            refill.temp("gpu temp", temp);
         }
     }
 
-    fn add_single_fan_status(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
-    ) {
+    fn add_single_fan_status(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let cpu_fan_rpm = status_map.get("cpu fan speed").and_then(parse_u32);
         let cpu_fan_duty = status_map.get("cpu fan duty").and_then(parse_float);
         let gpu_fan_rpm = status_map.get("gpu fan speed").and_then(parse_u32);
         let gpu_fan_duty = status_map.get("gpu fan duty").and_then(parse_float);
         if cpu_fan_rpm.is_some() || cpu_fan_duty.is_some() {
-            channel_statuses.channel(
+            refill.channel(
                 "cpu fan",
                 ChannelSample {
                     rpm: cpu_fan_rpm,
@@ -116,7 +112,7 @@ impl DeviceSupport for MsiAcpiEcSupport {
             );
         }
         if gpu_fan_rpm.is_some() || gpu_fan_duty.is_some() {
-            channel_statuses.channel(
+            refill.channel(
                 "gpu fan",
                 ChannelSample {
                     rpm: gpu_fan_rpm,

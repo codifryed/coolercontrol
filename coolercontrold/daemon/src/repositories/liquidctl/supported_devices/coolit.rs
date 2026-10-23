@@ -83,19 +83,19 @@ impl DeviceSupport for CoolitSupport {
         Vec::new()
     }
 
-    fn refill_temperatures(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
-        self.add_liquid_temp(status_map, temps);
+    fn refill_temperatures(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
+        self.add_liquid_temp(status_map, refill);
     }
 
     fn refill_channel_statuses(
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-        channel_statuses: &mut StatusRefill<'_>,
+        refill: &mut StatusRefill<'_>,
     ) {
-        self.add_single_pump_status(status_map, channel_statuses);
-        self.add_multiple_fans_status(status_map, channel_statuses);
-        channel_statuses
+        self.add_single_pump_status(status_map, refill);
+        self.add_multiple_fans_status(status_map, refill);
+        refill
             .channels_mut()
             .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }

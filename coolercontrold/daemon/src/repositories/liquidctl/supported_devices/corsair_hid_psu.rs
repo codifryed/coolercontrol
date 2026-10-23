@@ -107,11 +107,11 @@ impl DeviceSupport for CorsairHidPsuSupport {
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-        channel_statuses: &mut StatusRefill<'_>,
+        refill: &mut StatusRefill<'_>,
     ) {
-        self.add_single_fan_status(status_map, channel_statuses);
-        self.add_psu_power_statuses(status_map, channel_statuses);
-        channel_statuses
+        self.add_single_fan_status(status_map, refill);
+        self.add_psu_power_statuses(status_map, refill);
+        refill
             .channels_mut()
             .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }

@@ -66,14 +66,14 @@ impl DeviceSupport for AquaComputerSupport {
         Vec::new()
     }
 
-    fn refill_temperatures(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn refill_temperatures(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         // D5
-        self.add_liquid_temp(status_map, temps);
+        self.add_liquid_temp(status_map, refill);
         // Farbwerk, Farbwerk 360, Octo, Quadro
-        self.add_temp_sensors(status_map, temps);
+        self.add_temp_sensors(status_map, refill);
         // D5, Farbwerk 360, Octo, Quadro
-        self.add_software_temp_sensors(status_map, temps);
-        temps
+        self.add_software_temp_sensors(status_map, refill);
+        refill
             .temps_mut()
             .sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
@@ -82,16 +82,16 @@ impl DeviceSupport for AquaComputerSupport {
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-        channel_statuses: &mut StatusRefill<'_>,
+        refill: &mut StatusRefill<'_>,
     ) {
         // D5
-        self.add_single_fan_status(status_map, channel_statuses);
-        self.add_single_pump_status(status_map, channel_statuses);
+        self.add_single_fan_status(status_map, refill);
+        self.add_single_pump_status(status_map, refill);
         // Octo, Quadro
-        self.add_multiple_fans_status(status_map, channel_statuses);
+        self.add_multiple_fans_status(status_map, refill);
         // Quadro
-        self.add_flow_sensor_status(status_map, channel_statuses);
-        channel_statuses
+        self.add_flow_sensor_status(status_map, refill);
+        refill
             .channels_mut()
             .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }

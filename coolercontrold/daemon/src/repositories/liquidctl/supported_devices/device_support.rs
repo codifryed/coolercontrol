@@ -178,53 +178,53 @@ pub trait DeviceSupport: Debug {
     }
 
     /// It's possible to override this method and use only the needed sub-functions per device
-    fn refill_temperatures(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
-        self.add_liquid_temp(status_map, temps);
-        self.add_water_temp(status_map, temps);
-        self.add_temp(status_map, temps);
-        self.add_temp_probes(status_map, temps);
-        self.add_vrm_temp(status_map, temps);
-        self.add_case_temp(status_map, temps);
-        self.add_temp_sensors(status_map, temps);
-        // self.add_software_temp_sensors(status_map, temps);
+    fn refill_temperatures(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
+        self.add_liquid_temp(status_map, refill);
+        self.add_water_temp(status_map, refill);
+        self.add_temp(status_map, refill);
+        self.add_temp_probes(status_map, refill);
+        self.add_vrm_temp(status_map, refill);
+        self.add_case_temp(status_map, refill);
+        self.add_temp_sensors(status_map, refill);
+        // self.add_software_temp_sensors(status_map, refill);
         // ...for a future feature (needs testing and is in dB)
-        // self.add_noise_level(status_map, &mut temps, device_index);
-        temps
+        // self.add_noise_level(status_map, &mut refill, device_index);
+        refill
             .temps_mut()
             .sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
 
-    fn add_liquid_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_liquid_temp(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let liquid_temp = status_map
             .get("liquid temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = liquid_temp {
-            temps.temp("liquid", temp);
+            refill.temp("liquid", temp);
         }
     }
 
-    fn add_water_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_water_temp(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let water_temp = status_map
             .get("water temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = water_temp {
-            temps.temp("water", temp);
+            refill.temp("water", temp);
         }
     }
 
-    fn add_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_temp(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let plain_temp = status_map
             .get("temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = plain_temp {
-            temps.temp("temp", temp);
+            refill.temp("temp", temp);
         }
     }
 
-    fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_temp_probes(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         static TEMP_PROBE_PATTERN: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"temperature \d+").unwrap());
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
@@ -234,7 +234,7 @@ pub trait DeviceSupport: Debug {
                     if let Some(probe_number) =
                         NUMBER_PATTERN.find_at(probe_name, probe_name.len() - 2)
                     {
-                        temps.temp_fmt(format_args!("temp{}", probe_number.as_str()), temp);
+                        refill.temp_fmt(format_args!("temp{}", probe_number.as_str()), temp);
                     }
                 }
             }
@@ -242,27 +242,27 @@ pub trait DeviceSupport: Debug {
     }
 
     /// Voltage Regulator temp for PSUs
-    fn add_vrm_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_vrm_temp(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let vrm_temp = status_map
             .get("vrm temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = vrm_temp {
-            temps.temp("vrm", temp);
+            refill.temp("vrm", temp);
         }
     }
 
-    fn add_case_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_case_temp(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let case_temp = status_map
             .get("case temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = case_temp {
-            temps.temp("case", temp);
+            refill.temp("case", temp);
         }
     }
 
-    fn add_temp_sensors(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_temp_sensors(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         static TEMP_SENSOR_PATTERN: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"sensor \d+").unwrap());
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
@@ -272,14 +272,14 @@ pub trait DeviceSupport: Debug {
                     if let Some(sensor_number) =
                         NUMBER_PATTERN.find_at(sensor_name, sensor_name.len() - 2)
                     {
-                        temps.temp_fmt(format_args!("sensor{}", sensor_number.as_str()), temp);
+                        refill.temp_fmt(format_args!("sensor{}", sensor_number.as_str()), temp);
                     }
                 }
             }
         }
     }
 
-    fn add_software_temp_sensors(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_software_temp_sensors(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         static SOFT_TEMP_SENSOR_PATTERN: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"soft. sensor \d+").unwrap());
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
@@ -290,7 +290,7 @@ pub trait DeviceSupport: Debug {
                         NUMBER_PATTERN.find_at(sensor_name, sensor_name.len() - 2)
                     {
                         let name = format_args!("soft-sensor{}", sensor_number.as_str());
-                        temps.temp_fmt(name, temp);
+                        refill.temp_fmt(name, temp);
                     }
                 }
             }
@@ -298,10 +298,10 @@ pub trait DeviceSupport: Debug {
     }
 
     #[allow(dead_code)]
-    fn add_noise_level(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+    fn add_noise_level(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let noise_lvl = status_map.get("noise level").and_then(parse_float);
         if let Some(noise) = noise_lvl {
-            temps.temp("noise", noise);
+            refill.temp("noise", noise);
         }
     }
 
@@ -310,27 +310,23 @@ pub trait DeviceSupport: Debug {
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-        channel_statuses: &mut StatusRefill<'_>,
+        refill: &mut StatusRefill<'_>,
     ) {
-        self.add_single_fan_status(status_map, channel_statuses);
-        self.add_single_external_fans_status(status_map, channel_statuses);
-        self.add_single_pump_status(status_map, channel_statuses);
-        self.add_single_pump_fan_status(status_map, channel_statuses);
-        self.add_multiple_fans_status(status_map, channel_statuses);
-        self.add_multiple_external_fans_status(status_map, channel_statuses);
-        self.add_single_water_block_status(status_map, channel_statuses);
+        self.add_single_fan_status(status_map, refill);
+        self.add_single_external_fans_status(status_map, refill);
+        self.add_single_pump_status(status_map, refill);
+        self.add_single_pump_fan_status(status_map, refill);
+        self.add_multiple_fans_status(status_map, refill);
+        self.add_multiple_external_fans_status(status_map, refill);
+        self.add_single_water_block_status(status_map, refill);
         // only applicable for a single device so far:
-        // self.add_psu_power_statuses(status_map, channel_statuses);
-        channel_statuses
+        // self.add_psu_power_statuses(status_map, refill);
+        refill
             .channels_mut()
             .sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
 
-    fn add_single_fan_status(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
-    ) {
+    fn add_single_fan_status(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let fan_rpm = status_map
             .get("fan speed")
             .and_then(parse_u32)
@@ -340,7 +336,7 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if fan_rpm.is_some() || fan_duty.is_some() {
-            channel_statuses.channel(
+            refill.channel(
                 "fan",
                 ChannelSample {
                     rpm: fan_rpm,
@@ -354,7 +350,7 @@ pub trait DeviceSupport: Debug {
     fn add_single_external_fans_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
+        refill: &mut StatusRefill<'_>,
     ) {
         // asus_ryujin: where the status comes in singular, but the control channel is plural
         let fan_duty = status_map
@@ -362,7 +358,7 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if fan_duty.is_some() {
-            channel_statuses.channel(
+            refill.channel(
                 "external-fans",
                 ChannelSample {
                     duty: fan_duty,
@@ -372,11 +368,7 @@ pub trait DeviceSupport: Debug {
         }
     }
 
-    fn add_single_pump_status(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
-    ) {
+    fn add_single_pump_status(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let pump_rpm = status_map
             .get("pump speed")
             .and_then(parse_u32)
@@ -386,7 +378,7 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if pump_rpm.is_some() || pump_duty.is_some() {
-            channel_statuses.channel(
+            refill.channel(
                 "pump",
                 ChannelSample {
                     rpm: pump_rpm,
@@ -397,11 +389,7 @@ pub trait DeviceSupport: Debug {
         }
     }
 
-    fn add_single_pump_fan_status(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
-    ) {
+    fn add_single_pump_fan_status(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let pump_rpm = status_map
             .get("pump fan speed")
             .and_then(parse_u32)
@@ -411,7 +399,7 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if pump_rpm.is_some() || pump_duty.is_some() {
-            channel_statuses.channel(
+            refill.channel(
                 "pump-fan",
                 ChannelSample {
                     rpm: pump_rpm,
@@ -422,11 +410,7 @@ pub trait DeviceSupport: Debug {
         }
     }
 
-    fn add_single_water_block_status(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
-    ) {
+    fn add_single_water_block_status(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let water_block_rpm = status_map
             .get("water block speed")
             .and_then(parse_u32)
@@ -436,7 +420,7 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if water_block_rpm.is_some() || water_block_duty.is_some() {
-            channel_statuses.channel(
+            refill.channel(
                 "waterblock-fan",
                 ChannelSample {
                     rpm: water_block_rpm,
@@ -447,13 +431,9 @@ pub trait DeviceSupport: Debug {
         }
     }
 
-    fn add_psu_power_statuses(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
-    ) {
+    fn add_psu_power_statuses(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         if let Some(watts) = status_map.get("total power output").and_then(parse_float) {
-            channel_statuses.channel(
+            refill.channel(
                 "total-power",
                 ChannelSample {
                     watts: Some(watts),
@@ -465,7 +445,7 @@ pub trait DeviceSupport: Debug {
             .get("estimated input power")
             .and_then(parse_float)
         {
-            channel_statuses.channel(
+            refill.channel(
                 "estimated-input-power",
                 ChannelSample {
                     watts: Some(watts),
@@ -474,7 +454,7 @@ pub trait DeviceSupport: Debug {
             );
         }
         if let Some(watts) = status_map.get("+12v output power").and_then(parse_float) {
-            channel_statuses.channel(
+            refill.channel(
                 "12v-power",
                 ChannelSample {
                     watts: Some(watts),
@@ -483,7 +463,7 @@ pub trait DeviceSupport: Debug {
             );
         }
         if let Some(watts) = status_map.get("+5v output power").and_then(parse_float) {
-            channel_statuses.channel(
+            refill.channel(
                 "5v-power",
                 ChannelSample {
                     watts: Some(watts),
@@ -492,7 +472,7 @@ pub trait DeviceSupport: Debug {
             );
         }
         if let Some(watts) = status_map.get("+3.3v output power").and_then(parse_float) {
-            channel_statuses.channel(
+            refill.channel(
                 "3.3v-power",
                 ChannelSample {
                     watts: Some(watts),
@@ -508,11 +488,7 @@ pub trait DeviceSupport: Debug {
         status_map.get("pump mode").cloned()
     }
 
-    fn add_multiple_fans_status(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
-    ) {
+    fn add_multiple_fans_status(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
         static MULTIPLE_FAN_SPEED: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"^fan \d+ speed").unwrap());
@@ -552,7 +528,7 @@ pub trait DeviceSupport: Debug {
                     duty,
                     ..Default::default()
                 };
-                channel_statuses.channel_fmt(format_args!("fan{fan_number}"), sample);
+                refill.channel_fmt(format_args!("fan{fan_number}"), sample);
             }
         }
     }
@@ -585,7 +561,7 @@ pub trait DeviceSupport: Debug {
     fn add_multiple_external_fans_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
+        refill: &mut StatusRefill<'_>,
     ) {
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
         static MULTIPLE_FAN_SPEED: LazyLock<Regex> =
@@ -611,23 +587,19 @@ pub trait DeviceSupport: Debug {
                     rpm,
                     ..Default::default()
                 };
-                channel_statuses.channel_fmt(format_args!("external-fan{fan_number}"), sample);
+                refill.channel_fmt(format_args!("external-fan{fan_number}"), sample);
             }
         }
     }
 
-    fn add_flow_sensor_status(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut StatusRefill<'_>,
-    ) {
+    fn add_flow_sensor_status(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         // We use rpm speed as a proxy for flow speed
         let flow_speed = status_map
             .get("flow sensor")
             .and_then(parse_u32)
             .map(valid_rpm);
         if flow_speed.is_some() {
-            channel_statuses.channel(
+            refill.channel(
                 FLOW_CHANNEL_NAME,
                 ChannelSample {
                     rpm: flow_speed,

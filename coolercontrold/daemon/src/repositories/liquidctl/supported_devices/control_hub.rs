@@ -96,10 +96,10 @@ impl DeviceSupport for ControlHubSupport {
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-        channel_statuses: &mut StatusRefill<'_>,
+        refill: &mut StatusRefill<'_>,
     ) {
-        self.add_multiple_fans_status(status_map, channel_statuses);
-        channel_statuses
+        self.add_multiple_fans_status(status_map, refill);
+        refill
             .channels_mut()
             .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }

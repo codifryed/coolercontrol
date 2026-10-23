@@ -87,7 +87,7 @@ impl DeviceSupport for AuraLedSupport {
         &self,
         _status_map: &StatusMap,
         _device_index: u8,
-        _channel_statuses: &mut StatusRefill<'_>,
+        _refill: &mut StatusRefill<'_>,
     ) {
         // no standard statuses for AuraLed (RGB only)
     }

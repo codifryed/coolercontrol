@@ -80,17 +80,17 @@ impl DeviceSupport for H1V2Support {
         &self,
         status_map: &StatusMap,
         device_index: u8,
-        channel_statuses: &mut StatusRefill<'_>,
+        refill: &mut StatusRefill<'_>,
     ) {
-        self.add_multiple_fans_status(status_map, channel_statuses);
+        self.add_multiple_fans_status(status_map, refill);
         // Same workaround as the SmartDevice2, since it uses the same base implementation:
         // fan speeds set to 0 will make it disappear from liquidctl status for this driver,
         // (non-0 check) unfortunately that also happens when no fan is attached.
         // caveat: not an issue if hwmon driver is present
         if let Some(speed_channel_names) = self.init_speed_channel_map.borrow().get(&device_index) {
-            self.add_missing_speed_channels(speed_channel_names, channel_statuses);
+            self.add_missing_speed_channels(speed_channel_names, refill);
         }
-        channel_statuses
+        refill
             .channels_mut()
             .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }
