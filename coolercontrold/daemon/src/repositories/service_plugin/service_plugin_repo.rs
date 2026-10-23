@@ -1395,22 +1395,30 @@ mod tests {
     use std::path::Path;
 
     /// Goal: a tick with no failsafe transition never formats the device's name, since every
-    /// tick passes through here and the name allocates. Method: report a tick with neither
-    /// transition through a name builder that counts its calls.
+    /// tick passes through here and the name allocates, while each transition still names it.
+    /// Method: with info logs enabled, report a tick with neither transition, then one with
+    /// each, through a name builder that counts its calls.
     #[test]
-    fn a_tick_without_a_transition_never_names_the_device() {
+    #[serial_test::serial]
+    fn a_device_is_named_only_on_a_failsafe_transition() {
+        let level = log::max_level();
+        log::set_max_level(log::LevelFilter::Info);
         let built = std::cell::Cell::new(0);
+        let name = || {
+            built.set(built.get() + 1);
+            "Remote Device".to_string()
+        };
 
-        log_failsafe_transition(
-            || {
-                built.set(built.get() + 1);
-                "Remote Device".to_string()
-            },
-            false,
-            false,
-        );
+        log_failsafe_transition(name, false, false);
+        let built_quiet = built.get();
+        log_failsafe_transition(name, true, false);
+        let built_failsafing = built.get();
+        log_failsafe_transition(name, false, true);
+        log::set_max_level(level);
 
-        assert_eq!(built.get(), 0);
+        assert_eq!(built_quiet, 0);
+        assert_eq!(built_failsafing, 1);
+        assert_eq!(built.get(), 2);
     }
 
     #[test]

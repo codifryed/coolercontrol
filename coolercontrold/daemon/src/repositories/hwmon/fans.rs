@@ -2451,10 +2451,14 @@ mod tests {
     }
 
     /// Goal: a fan read builds its path only for a log line, since every tick reads every fan and
-    /// the path is a heap allocation. Method: interpret a failed read that is not logged with a
-    /// path builder that counts its calls, then a good read for its value.
+    /// the path is a heap allocation. Method: with warnings enabled, interpret a failed read that
+    /// is not logged, a good read, then a failed read that is logged, through a path builder that
+    /// counts its calls.
     #[test]
+    #[serial]
     fn a_fan_read_builds_its_path_only_to_log() {
+        let level = log::max_level();
+        log::set_max_level(log::LevelFilter::Warn);
         let built = std::cell::Cell::new(0);
         let path = || {
             built.set(built.get() + 1);
@@ -2462,10 +2466,16 @@ mod tests {
         };
 
         let failed = interpret_fan_rpm(path, Err(anyhow!("no such device")), false);
+        let read = interpret_fan_rpm(path, Ok(1200), false);
+        let built_unlogged = built.get();
+        let logged = interpret_fan_rpm(path, Err(anyhow!("no such device")), true);
+        log::set_max_level(level);
 
         assert_eq!(failed, None);
-        assert_eq!(built.get(), 0);
-        assert_eq!(interpret_fan_rpm(path, Ok(1200), false), Some(1200));
+        assert_eq!(read, Some(1200));
+        assert_eq!(built_unlogged, 0);
+        assert_eq!(logged, None);
+        assert_eq!(built.get(), 1);
     }
 
     /// Goal: taking a fan's values out of a batch reply allocates nothing, and a slot taken twice
