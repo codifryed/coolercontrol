@@ -1401,8 +1401,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn a_device_is_named_only_on_a_failsafe_transition() {
-        let level = log::max_level();
-        log::set_max_level(log::LevelFilter::Info);
+        let level = crate::logger::MaxLevelGuard::set(log::LevelFilter::Info);
         let built = std::cell::Cell::new(0);
         let name = || {
             built.set(built.get() + 1);
@@ -1414,7 +1413,7 @@ mod tests {
         log_failsafe_transition(name, true, false);
         let built_failsafing = built.get();
         log_failsafe_transition(name, false, true);
-        log::set_max_level(level);
+        drop(level);
 
         assert_eq!(built_quiet, 0);
         assert_eq!(built_failsafing, 1);

@@ -2457,8 +2457,7 @@ mod tests {
     #[test]
     #[serial]
     fn a_fan_read_builds_its_path_only_to_log() {
-        let level = log::max_level();
-        log::set_max_level(log::LevelFilter::Warn);
+        let level = crate::logger::MaxLevelGuard::set(log::LevelFilter::Warn);
         let built = std::cell::Cell::new(0);
         let path = || {
             built.set(built.get() + 1);
@@ -2469,7 +2468,7 @@ mod tests {
         let read = interpret_fan_rpm(path, Ok(1200), false);
         let built_unlogged = built.get();
         let logged = interpret_fan_rpm(path, Err(anyhow!("no such device")), true);
-        log::set_max_level(level);
+        drop(level);
 
         assert_eq!(failed, None);
         assert_eq!(read, Some(1200));
