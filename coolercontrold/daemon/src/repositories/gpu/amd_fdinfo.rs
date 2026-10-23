@@ -9,9 +9,12 @@
 //! over the poll interval into a 0..=100 percentage.
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::ops::Not;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+use log::debug;
 
 use crate::cc_fs;
 use crate::rt;
@@ -25,6 +28,16 @@ const KEY_CLIENT_ID: &str = "drm-client-id";
 const KEY_ENGINE_GFX: &str = "drm-engine-gfx";
 const KEY_ENGINE_COMPUTE: &str = "drm-engine-compute";
 const ENGINE_NS_SUFFIX: &str = " ns";
+
+/// How often `/proc` is walked for DRM clients. A walk reads every fd link on the system, about
+/// 25 ms of CPU on a desktop with 17,000 fds, while a tick needs only the dozen that are DRM
+/// clients. Between walks only the clients already found are read, so one that appears in between
+/// counts from the walk after it.
+const CLIENT_WALK_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Bound on the fdinfo files held per GPU. A desktop holds a few dozen DRM fds; past this a walk
+/// stops collecting rather than holding descriptors without limit.
+const DRM_FDS_MAX: usize = 1024;
 
 /// Marks a GPU whose load is derived from DRM fdinfo. Held in `AMDDriverInfo`.
 /// `pci_slot` is the `drm-pdev` value (e.g. `0000:01:00.0`) used to match
@@ -56,16 +69,19 @@ impl FdInfoLoadState {
     /// Folds a fresh scan into the state and returns the device busy percentage.
     /// The first sample has no baseline so it reports 0 rather than omitting:
     /// once fdinfo is the chosen source we always emit a value.
-    pub fn update(&mut self, clients: HashMap<u64, u64>, now: Instant) -> f64 {
+    ///
+    /// `clients` comes back holding the previous scan, for the caller to clear and refill, so
+    /// neither map reallocates once both have room.
+    pub fn update(&mut self, clients: &mut HashMap<u64, u64>, now: Instant) -> f64 {
         let percent = match self.last_sample {
             Some(last) => {
                 let elapsed_ns = u64::try_from(now.saturating_duration_since(last).as_nanos())
                     .unwrap_or(u64::MAX);
-                busy_percent(&self.last_clients, &clients, elapsed_ns)
+                busy_percent(&self.last_clients, clients, elapsed_ns)
             }
             None => 0.0,
         };
-        self.last_clients = clients;
+        std::mem::swap(&mut self.last_clients, clients);
         self.last_sample = Some(now);
         percent
     }
@@ -95,21 +111,109 @@ fn busy_percent(last: &HashMap<u64, u64>, cur: &HashMap<u64, u64>, elapsed_ns: u
     percent
 }
 
-/// Scans `/proc` for DRM clients of `pci_slot` and returns client-id ->
-/// cumulative gfx+compute busy ns.
-///
-/// Every read is of `/proc`, with no device behind it, so the scan runs on the
-/// runtime thread under the `ProcFile` rule: each fdinfo is read with plain
-/// positional reads into `buf`, and the scan yields after each read and after
-/// each process's fds. `buf` keeps its room between scans.
-pub async fn scan_clients(pci_slot: &str, buf: &mut Vec<u8>) -> HashMap<u64, u64> {
-    scan_clients_in(Path::new(PROC_ROOT), pci_slot, buf).await
+/// One GPU's fdinfo load: the DRM clients found by walking `/proc`, their busy counters this tick,
+/// and the delta state.
+#[derive(Default)]
+pub struct FdInfoTracker {
+    clients: DrmClients,
+    /// Client-id to cumulative gfx+compute busy ns, refilled each tick.
+    scanned: HashMap<u64, u64>,
+    load: FdInfoLoadState,
 }
 
-async fn scan_clients_in(proc_root: &Path, pci_slot: &str, buf: &mut Vec<u8>) -> HashMap<u64, u64> {
-    let mut clients = HashMap::new();
+impl FdInfoTracker {
+    /// One tick: reads this GPU's DRM clients, walking `/proc` first when a walk is due, and
+    /// returns the device busy percentage.
+    pub async fn sample(&mut self, pci_slot: &str, buf: &mut Vec<u8>, now: Instant) -> f64 {
+        self.sample_in(Path::new(PROC_ROOT), pci_slot, buf, now)
+            .await
+    }
+
+    async fn sample_in(
+        &mut self,
+        proc_root: &Path,
+        pci_slot: &str,
+        buf: &mut Vec<u8>,
+        now: Instant,
+    ) -> f64 {
+        self.clients
+            .scan_in(proc_root, pci_slot, buf, now, &mut self.scanned)
+            .await;
+        self.load.update(&mut self.scanned, now)
+    }
+}
+
+/// The DRM client fds of one GPU, found by an occasional walk of `/proc` and held open between
+/// walks.
+///
+/// Every read is of `/proc`, with no device behind it, so this runs on the runtime thread under
+/// the `ProcFile` rule: positional reads into the caller's buffer, yielding after each read and
+/// after each process a walk covers.
+#[derive(Default)]
+struct DrmClients {
+    /// The fdinfo of each DRM fd the last walk found, so a tick costs one read per client.
+    fdinfos: Vec<File>,
+    /// When `/proc` was last walked. `None` until the first tick.
+    walked_at: Option<Instant>,
+}
+
+impl DrmClients {
+    /// Fills `scanned` with this tick's client-id to busy ns for `pci_slot`.
+    async fn scan_in(
+        &mut self,
+        proc_root: &Path,
+        pci_slot: &str,
+        buf: &mut Vec<u8>,
+        now: Instant,
+        scanned: &mut HashMap<u64, u64>,
+    ) {
+        if walk_due(self.walked_at, now) {
+            self.fdinfos.clear();
+            walk_drm_fds(proc_root, &mut self.fdinfos).await;
+            self.walked_at = Some(now);
+        }
+        debug_assert!(self.fdinfos.len() <= DRM_FDS_MAX);
+        scanned.clear();
+        read_clients(&mut self.fdinfos, pci_slot, buf, scanned).await;
+    }
+}
+
+/// Whether `/proc` is due another walk: on the first tick, then once the interval has passed.
+fn walk_due(walked_at: Option<Instant>, now: Instant) -> bool {
+    walked_at.is_none_or(|walked| now.saturating_duration_since(walked) >= CLIENT_WALK_INTERVAL)
+}
+
+/// Reads each held fdinfo into `scanned`, dropping any that no longer belongs to a DRM client:
+/// the process closed the fd or exited, or reused the fd number for another file.
+async fn read_clients(
+    fdinfos: &mut Vec<File>,
+    pci_slot: &str,
+    buf: &mut Vec<u8>,
+    scanned: &mut HashMap<u64, u64>,
+) {
+    let held_count = fdinfos.len();
+    let mut index = 0;
+    // Bounded: each pass either moves past one file or drops one.
+    while index < fdinfos.len() {
+        let read = cc_fs::read_proc_held(&fdinfos[index], buf, FDINFO_BYTES_MAX, |content| {
+            accumulate_fdinfo(content, pci_slot, scanned)
+        })
+        .await;
+        if matches!(read, Ok(true)) {
+            index += 1;
+        } else {
+            // Order does not matter: each file is read on its own.
+            fdinfos.swap_remove(index);
+        }
+    }
+    debug_assert!(fdinfos.len() <= held_count);
+}
+
+/// Walks `/proc` for every fd that points at a DRM node and opens its fdinfo into `fdinfos`.
+async fn walk_drm_fds(proc_root: &Path, fdinfos: &mut Vec<File>) {
+    debug_assert!(fdinfos.is_empty());
     let Ok(entries) = cc_fs::read_dir(proc_root) else {
-        return clients;
+        return;
     };
     for proc_entry in entries.flatten() {
         let pid = proc_entry.file_name();
@@ -117,26 +221,22 @@ async fn scan_clients_in(proc_root: &Path, pci_slot: &str, buf: &mut Vec<u8>) ->
         if pid.is_empty() || pid.bytes().all(|b| b.is_ascii_digit()).not() {
             continue;
         }
-        accumulate_pid_clients(proc_root, pid, pci_slot, buf, &mut clients).await;
+        if collect_pid_drm_fds(proc_root, pid, fdinfos).not() {
+            debug!("Holding {DRM_FDS_MAX} DRM fds, the most kept; the rest are not read");
+            return;
+        }
         // A process's fd walk is one readlink per fd, so the runtime gets a turn between
         // processes even when none of them is a DRM client.
         rt::yield_now().await;
     }
-    clients
 }
 
-/// Walks one process's open fds, parsing the fdinfo of any that point at a DRM
-/// node (`/dev/dri/...`). Read errors (process exited, no permission) are
-/// skipped rather than propagated.
-async fn accumulate_pid_clients(
-    proc_root: &Path,
-    pid: &str,
-    pci_slot: &str,
-    buf: &mut Vec<u8>,
-    clients: &mut HashMap<u64, u64>,
-) {
+/// Opens the fdinfo of each of one process's fds that points at a DRM node (`/dev/dri/...`).
+/// Errors (process exited, no permission) skip the fd rather than propagate. Returns false once
+/// `DRM_FDS_MAX` files are held.
+fn collect_pid_drm_fds(proc_root: &Path, pid: &str, fdinfos: &mut Vec<File>) -> bool {
     let Ok(fds) = cc_fs::read_dir(proc_root.join(pid).join("fd")) else {
-        return;
+        return true;
     };
     for fd_entry in fds.flatten() {
         let Ok(target) = cc_fs::read_link(fd_entry.path()) else {
@@ -153,22 +253,24 @@ async fn accumulate_pid_clients(
         let Some(fd_name) = fd_name.to_str() else {
             continue;
         };
-        let fdinfo_path = proc_root.join(pid).join("fdinfo").join(fd_name);
-        // The process can close the fd or exit between the readlink and this read.
-        let Ok(fdinfo) = std::fs::File::open(&fdinfo_path) else {
-            continue;
-        };
-        let _ = cc_fs::read_proc_held(&fdinfo, buf, FDINFO_BYTES_MAX, |content| {
-            accumulate_fdinfo(content, pci_slot, clients);
-        })
-        .await;
+        if fdinfos.len() >= DRM_FDS_MAX {
+            return false;
+        }
+        // The process can close the fd or exit between the readlink and this open.
+        if let Ok(fdinfo) = File::open(proc_root.join(pid).join("fdinfo").join(fd_name)) {
+            fdinfos.push(fdinfo);
+        }
     }
+    true
 }
 
 /// Parses one fdinfo file; if it is an amdgpu DRM client for `pci_slot` that
 /// exposes engine accounting, records its cumulative gfx+compute ns keyed by
 /// `drm-client-id` (deduping a client opened via multiple fds).
-fn accumulate_fdinfo(content: &str, pci_slot: &str, clients: &mut HashMap<u64, u64>) {
+///
+/// Returns whether the file belongs to a DRM client at all, which an idle client or one of
+/// another GPU still does.
+fn accumulate_fdinfo(content: &str, pci_slot: &str, clients: &mut HashMap<u64, u64>) -> bool {
     let mut pdev_matches = false;
     let mut client_id: Option<u64> = None;
     let mut busy_ns: u64 = 0;
@@ -194,6 +296,7 @@ fn accumulate_fdinfo(content: &str, pci_slot: &str, clients: &mut HashMap<u64, u
             clients.insert(client_id, busy_ns);
         }
     }
+    client_id.is_some()
 }
 
 /// True if `fdinfo_content` comes from the standard DRM fdinfo framework,
@@ -304,9 +407,9 @@ mod tests {
         // the next update reports the delta-derived percentage.
         let mut state = FdInfoLoadState::default();
         let t0 = Instant::now();
-        assert_eq!(state.update(HashMap::from([(1u64, 0u64)]), t0), 0.0);
+        assert_eq!(state.update(&mut HashMap::from([(1u64, 0u64)]), t0), 0.0);
         let t1 = t0 + std::time::Duration::from_secs(1);
-        let pct = state.update(HashMap::from([(1u64, 250_000_000u64)]), t1);
+        let pct = state.update(&mut HashMap::from([(1u64, 250_000_000u64)]), t1);
         assert!((pct - 25.0).abs() < 0.5, "expected ~25%, got {pct}");
     }
 
@@ -342,7 +445,7 @@ mod tests {
             // non-numeric dir ignored.
             std::fs::create_dir_all(proc_root.join("self")).unwrap();
 
-            let clients = scan_clients_in(&proc_root, PDEV, &mut Vec::new()).await;
+            let clients = scan_once(&proc_root, Instant::now()).await;
             std::fs::remove_dir_all(&proc_root).ok();
 
             assert_eq!(clients.len(), 1);
@@ -361,10 +464,17 @@ mod tests {
             std::fs::create_dir_all(&fd_dir).unwrap();
             std::os::unix::fs::symlink("/dev/null", fd_dir.join("0")).unwrap();
         }
+        let mut drm_clients = DrmClients::default();
         let mut buf = Vec::new();
+        let mut clients = HashMap::new();
 
-        let (clients, polls) =
-            crate::rt::poll_to_end(scan_clients_in(proc_root.path(), PDEV, &mut buf));
+        let ((), polls) = crate::rt::poll_to_end(drm_clients.scan_in(
+            proc_root.path(),
+            PDEV,
+            &mut buf,
+            Instant::now(),
+            &mut clients,
+        ));
 
         assert!(clients.is_empty());
         // One yield per process, then the poll that finds the scan done.
@@ -373,5 +483,219 @@ mod tests {
             buf.is_empty(),
             "no fdinfo was read, so the buffer never grew"
         );
+    }
+
+    /// One scan against a fresh client cache, as the first tick does.
+    async fn scan_once(proc_root: &Path, now: Instant) -> HashMap<u64, u64> {
+        let mut clients = HashMap::new();
+        DrmClients::default()
+            .scan_in(proc_root, PDEV, &mut Vec::new(), now, &mut clients)
+            .await;
+        clients
+    }
+
+    fn drm_fdinfo(client_id: u64, busy_ns: u64) -> String {
+        format!("drm-pdev:\t{PDEV}\ndrm-client-id:\t{client_id}\ndrm-engine-gfx:\t{busy_ns} ns\n")
+    }
+
+    #[test]
+    fn a_walk_is_due_on_the_first_tick_and_after_the_interval() {
+        // Goal: the walk runs on the first tick and once the interval has passed, and not in
+        // between. Method: a table of last-walk times against one tick time.
+        let now = Instant::now();
+        let cases = [
+            (None, true),
+            (Some(now), false),
+            (Some(now - Duration::from_secs(1)), false),
+            (Some(now - CLIENT_WALK_INTERVAL), true),
+            (Some(now - CLIENT_WALK_INTERVAL * 3), true),
+        ];
+        for (walked_at, due) in cases {
+            assert_eq!(walk_due(walked_at, now), due, "walked at {walked_at:?}");
+        }
+        // A clock that reads earlier than the last walk is not a reason to walk.
+        assert!(walk_due(Some(now + Duration::from_secs(1)), now).not());
+    }
+
+    #[test]
+    fn a_client_appearing_between_walks_counts_from_the_next_walk() {
+        // Goal: between walks only the clients already found are read, and the next walk picks
+        // up the rest. Method: one client at the first tick, a second added, then ticks before
+        // and after the walk interval.
+        cc_fs::test_runtime(async {
+            let proc_root = tempfile::tempdir().unwrap();
+            let root = proc_root.path();
+            write_client(root, "10", "3", "/dev/dri/renderD128", &drm_fdinfo(1, 100));
+            let mut drm_clients = DrmClients::default();
+            let mut buf = Vec::new();
+            let mut clients = HashMap::new();
+            let t0 = Instant::now();
+            drm_clients
+                .scan_in(root, PDEV, &mut buf, t0, &mut clients)
+                .await;
+            assert_eq!(clients, HashMap::from([(1, 100)]));
+
+            write_client(root, "20", "4", "/dev/dri/renderD128", &drm_fdinfo(2, 200));
+            let before_walk = t0 + Duration::from_secs(1);
+            drm_clients
+                .scan_in(root, PDEV, &mut buf, before_walk, &mut clients)
+                .await;
+            assert_eq!(clients, HashMap::from([(1, 100)]), "no walk yet");
+
+            let at_walk = t0 + CLIENT_WALK_INTERVAL;
+            drm_clients
+                .scan_in(root, PDEV, &mut buf, at_walk, &mut clients)
+                .await;
+            assert_eq!(clients, HashMap::from([(1, 100), (2, 200)]));
+        });
+    }
+
+    #[test]
+    fn a_held_client_reports_its_current_counter() {
+        // Goal: a held client is read afresh each tick, so its counter advances without a walk.
+        // Method: rewrite a cached client's fdinfo in place between two ticks.
+        cc_fs::test_runtime(async {
+            let proc_root = tempfile::tempdir().unwrap();
+            let root = proc_root.path();
+            write_client(root, "10", "3", "/dev/dri/renderD128", &drm_fdinfo(1, 100));
+            let mut drm_clients = DrmClients::default();
+            let mut buf = Vec::new();
+            let mut clients = HashMap::new();
+            let t0 = Instant::now();
+            drm_clients
+                .scan_in(root, PDEV, &mut buf, t0, &mut clients)
+                .await;
+
+            std::fs::write(root.join("10/fdinfo/3"), drm_fdinfo(1, 900)).unwrap();
+            let t1 = t0 + Duration::from_secs(1);
+            drm_clients
+                .scan_in(root, PDEV, &mut buf, t1, &mut clients)
+                .await;
+
+            assert_eq!(clients, HashMap::from([(1, 900)]));
+        });
+    }
+
+    #[test]
+    fn a_held_file_that_stops_being_a_drm_client_is_dropped() {
+        // Goal: a cached fd whose number the process reused for another file stops being read,
+        // and is not read again even if it turns back into a client before the next walk.
+        // An idle client (no engine lines) and one of another GPU stay held. Method: three
+        // cached files, one rewritten as an ordinary fdinfo, then as a client again.
+        cc_fs::test_runtime(async {
+            let proc_root = tempfile::tempdir().unwrap();
+            let root = proc_root.path();
+            write_client(root, "10", "3", "/dev/dri/renderD128", &drm_fdinfo(1, 100));
+            let idle = format!("drm-pdev:\t{PDEV}\ndrm-client-id:\t2\n");
+            write_client(root, "20", "4", "/dev/dri/renderD128", &idle);
+            let other_gpu = "drm-pdev:\t0000:09:00.0\ndrm-client-id:\t3\n";
+            write_client(root, "30", "5", "/dev/dri/renderD129", other_gpu);
+            let mut drm_clients = DrmClients::default();
+            let mut buf = Vec::new();
+            let mut clients = HashMap::new();
+            let t0 = Instant::now();
+            drm_clients
+                .scan_in(root, PDEV, &mut buf, t0, &mut clients)
+                .await;
+            assert_eq!(drm_clients.fdinfos.len(), 3);
+
+            std::fs::write(root.join("10/fdinfo/3"), "pos:\t0\nflags:\t02\n").unwrap();
+            let t1 = t0 + Duration::from_secs(1);
+            drm_clients
+                .scan_in(root, PDEV, &mut buf, t1, &mut clients)
+                .await;
+            assert!(clients.is_empty());
+            assert_eq!(
+                drm_clients.fdinfos.len(),
+                2,
+                "the idle and other-GPU clients stay"
+            );
+
+            std::fs::write(root.join("10/fdinfo/3"), drm_fdinfo(1, 500)).unwrap();
+            let t2 = t0 + Duration::from_secs(2);
+            drm_clients
+                .scan_in(root, PDEV, &mut buf, t2, &mut clients)
+                .await;
+            assert!(clients.is_empty(), "a dropped file waits for the next walk");
+        });
+    }
+
+    #[test]
+    fn a_held_file_that_fails_to_read_is_dropped() {
+        // Goal: a cached fd the process closed, or a process that exited, stops being read.
+        // Method: a fake fdinfo that opens but cannot be read (a directory), as a closed fd's
+        // fdinfo fails its read.
+        cc_fs::test_runtime(async {
+            let proc_root = tempfile::tempdir().unwrap();
+            let root = proc_root.path();
+            write_client(root, "10", "3", "/dev/dri/renderD128", &drm_fdinfo(1, 100));
+            let fd_dir = root.join("20/fd");
+            std::fs::create_dir_all(&fd_dir).unwrap();
+            std::os::unix::fs::symlink("/dev/dri/renderD128", fd_dir.join("4")).unwrap();
+            std::fs::create_dir_all(root.join("20/fdinfo/4")).unwrap();
+            let mut drm_clients = DrmClients::default();
+            let mut clients = HashMap::new();
+
+            drm_clients
+                .scan_in(root, PDEV, &mut Vec::new(), Instant::now(), &mut clients)
+                .await;
+
+            assert_eq!(clients, HashMap::from([(1, 100)]));
+            assert_eq!(
+                drm_clients.fdinfos.len(),
+                1,
+                "the unreadable file is dropped"
+            );
+        });
+    }
+
+    #[test]
+    fn a_walk_holds_at_most_the_bound() {
+        // Goal: a walk never holds more fdinfo files than its bound, however many DRM fds the
+        // system has. Method: one process with one DRM fd past the bound.
+        cc_fs::test_runtime(async {
+            let proc_root = tempfile::tempdir().unwrap();
+            let root = proc_root.path();
+            let fd_dir = root.join("10/fd");
+            let fdinfo_dir = root.join("10/fdinfo");
+            std::fs::create_dir_all(&fd_dir).unwrap();
+            std::fs::create_dir_all(&fdinfo_dir).unwrap();
+            for fd in 0..=DRM_FDS_MAX {
+                std::os::unix::fs::symlink("/dev/dri/renderD128", fd_dir.join(fd.to_string()))
+                    .unwrap();
+                std::fs::write(fdinfo_dir.join(fd.to_string()), drm_fdinfo(1, 100)).unwrap();
+            }
+            let mut fdinfos = Vec::new();
+
+            walk_drm_fds(root, &mut fdinfos).await;
+
+            assert_eq!(fdinfos.len(), DRM_FDS_MAX);
+        });
+    }
+
+    /// Goal: a tick between walks allocates nothing, which is what the cache is for. Method: warm
+    /// the cache and both client maps with a walk and one more tick, then count the allocations
+    /// of the next tick.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_tick_between_walks_allocates_nothing() {
+        let proc_root = tempfile::tempdir().unwrap();
+        let root = proc_root.path();
+        write_client(root, "10", "3", "/dev/dri/renderD128", &drm_fdinfo(1, 100));
+        write_client(root, "20", "4", "/dev/dri/renderD128", &drm_fdinfo(2, 200));
+        let mut tracker = FdInfoTracker::default();
+        let mut buf = Vec::new();
+        let t0 = Instant::now();
+        crate::rt::poll_to_end(tracker.sample_in(root, PDEV, &mut buf, t0));
+        let t1 = t0 + Duration::from_secs(1);
+        crate::rt::poll_to_end(tracker.sample_in(root, PDEV, &mut buf, t1));
+        let t2 = t0 + Duration::from_secs(2);
+
+        let ((percent, _), allocations) = crate::alloc_count::count_allocations(|| {
+            crate::rt::poll_to_end(tracker.sample_in(root, PDEV, &mut buf, t2))
+        });
+
+        assert_eq!(allocations, 0);
+        assert!((0.0..=100.0).contains(&percent));
     }
 }
