@@ -54,6 +54,11 @@ impl<'a> StatusRefill<'a> {
         self.channel_count += 1;
         debug_assert_eq!(self.channels[self.channel_count - 1].name, name);
     }
+
+    /// This tick's channels, for a caller that must change them before they are kept.
+    pub fn channels_mut(&mut self) -> &mut [ChannelStatus] {
+        &mut self.channels[..self.channel_count]
+    }
 }
 
 impl Drop for StatusRefill<'_> {
@@ -162,6 +167,25 @@ mod tests {
         refill_with(&mut channels, &mut temps, &[("fan1", 950)], &[]);
 
         assert_eq!(channels, vec![rpm(950).to_status("fan1")]);
+    }
+
+    #[test]
+    fn channels_mut_covers_only_this_tick() {
+        // Goal: a caller adjusting this tick's channels cannot reach the ones about to be cut.
+        // Method: refill two of three kept channels and look at the slice.
+        let mut channels = vec![
+            rpm(1).to_status("fan1"),
+            rpm(2).to_status("fan2"),
+            rpm(3).to_status("fan3"),
+        ];
+        let mut temps = Vec::new();
+        let mut refill = StatusRefill::new(&mut channels, &mut temps);
+        refill.channel("fan1", rpm(10));
+        refill.channel("fan2", rpm(20));
+
+        assert_eq!(refill.channels_mut().len(), 2);
+        drop(refill);
+        assert_eq!(channels.len(), 2);
     }
 
     #[cfg(feature = "gated-tests")]
