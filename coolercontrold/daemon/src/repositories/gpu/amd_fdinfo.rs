@@ -14,8 +14,11 @@ use std::path::Path;
 use std::time::Instant;
 
 use crate::cc_fs;
+use crate::rt;
 
 const PROC_ROOT: &str = "/proc";
+/// Bound on one fdinfo read. amdgpu's is well under a page; this only stops a runaway file.
+const FDINFO_BYTES_MAX: usize = 64 * 1024;
 const DRM_NODE_PREFIX: &str = "/dev/dri/";
 const KEY_PDEV: &str = "drm-pdev";
 const KEY_CLIENT_ID: &str = "drm-client-id";
@@ -93,14 +96,17 @@ fn busy_percent(last: &HashMap<u64, u64>, cur: &HashMap<u64, u64>, elapsed_ns: u
 }
 
 /// Scans `/proc` for DRM clients of `pci_slot` and returns client-id ->
-/// cumulative gfx+compute busy ns. Small `/proc` reads (no hardware ioctl):
-/// fdinfo content via async `cc_fs::read_txt`, enumeration via the sync `cc_fs`
-/// dir/link helpers (compio has no async equivalent).
-pub async fn scan_clients(pci_slot: &str) -> HashMap<u64, u64> {
-    scan_clients_in(Path::new(PROC_ROOT), pci_slot).await
+/// cumulative gfx+compute busy ns.
+///
+/// Every read is of `/proc`, with no device behind it, so the scan runs on the
+/// runtime thread under the `ProcFile` rule: each fdinfo is read with plain
+/// positional reads into `buf`, and the scan yields after each read and after
+/// each process's fds. `buf` keeps its room between scans.
+pub async fn scan_clients(pci_slot: &str, buf: &mut Vec<u8>) -> HashMap<u64, u64> {
+    scan_clients_in(Path::new(PROC_ROOT), pci_slot, buf).await
 }
 
-async fn scan_clients_in(proc_root: &Path, pci_slot: &str) -> HashMap<u64, u64> {
+async fn scan_clients_in(proc_root: &Path, pci_slot: &str, buf: &mut Vec<u8>) -> HashMap<u64, u64> {
     let mut clients = HashMap::new();
     let Ok(entries) = cc_fs::read_dir(proc_root) else {
         return clients;
@@ -111,7 +117,10 @@ async fn scan_clients_in(proc_root: &Path, pci_slot: &str) -> HashMap<u64, u64> 
         if pid.is_empty() || pid.bytes().all(|b| b.is_ascii_digit()).not() {
             continue;
         }
-        accumulate_pid_clients(proc_root, pid, pci_slot, &mut clients).await;
+        accumulate_pid_clients(proc_root, pid, pci_slot, buf, &mut clients).await;
+        // A process's fd walk is one readlink per fd, so the runtime gets a turn between
+        // processes even when none of them is a DRM client.
+        rt::yield_now().await;
     }
     clients
 }
@@ -123,6 +132,7 @@ async fn accumulate_pid_clients(
     proc_root: &Path,
     pid: &str,
     pci_slot: &str,
+    buf: &mut Vec<u8>,
     clients: &mut HashMap<u64, u64>,
 ) {
     let Ok(fds) = cc_fs::read_dir(proc_root.join(pid).join("fd")) else {
@@ -144,9 +154,11 @@ async fn accumulate_pid_clients(
             continue;
         };
         let fdinfo_path = proc_root.join(pid).join("fdinfo").join(fd_name);
-        if let Ok(content) = cc_fs::read_txt(&fdinfo_path).await {
-            accumulate_fdinfo(&content, pci_slot, clients);
-        }
+        // The process can close the fd or exit between the readlink and this read.
+        let _ = cc_fs::read_proc_once(&fdinfo_path, buf, FDINFO_BYTES_MAX, |content| {
+            accumulate_fdinfo(content, pci_slot, clients);
+        })
+        .await;
     }
 }
 
@@ -327,11 +339,36 @@ mod tests {
             // non-numeric dir ignored.
             std::fs::create_dir_all(proc_root.join("self")).unwrap();
 
-            let clients = scan_clients_in(&proc_root, PDEV).await;
+            let clients = scan_clients_in(&proc_root, PDEV, &mut Vec::new()).await;
             std::fs::remove_dir_all(&proc_root).ok();
 
             assert_eq!(clients.len(), 1);
             assert_eq!(clients.get(&100), Some(&2000));
         });
+    }
+
+    #[test]
+    fn a_scan_yields_after_each_process() {
+        // Goal: a busy /proc never holds the runtime for the whole scan. Each process's fd walk
+        // ends in a yield, even when it reads no fdinfo. Method: three processes with only
+        // non-DRM fds, polled to the end with a waker that does nothing, counting the polls.
+        let proc_root = tempfile::tempdir().unwrap();
+        for pid in ["11", "12", "13"] {
+            let fd_dir = proc_root.path().join(pid).join("fd");
+            std::fs::create_dir_all(&fd_dir).unwrap();
+            std::os::unix::fs::symlink("/dev/null", fd_dir.join("0")).unwrap();
+        }
+        let mut buf = Vec::new();
+
+        let (clients, polls) =
+            crate::rt::poll_to_end(scan_clients_in(proc_root.path(), PDEV, &mut buf));
+
+        assert!(clients.is_empty());
+        // One yield per process, then the poll that finds the scan done.
+        assert_eq!(polls, 4);
+        assert!(
+            buf.is_empty(),
+            "no fdinfo was read, so the buffer never grew"
+        );
     }
 }

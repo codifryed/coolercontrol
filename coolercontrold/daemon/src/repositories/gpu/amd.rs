@@ -63,6 +63,8 @@ pub struct GpuAMD {
     /// Per-device fdinfo delta state, keyed by PCI slot, for GPUs that source
     /// load from DRM fdinfo instead of `gpu_busy_percent`.
     amd_fdinfo_state: RefCell<HashMap<String, FdInfoLoadState>>,
+    /// Holds the fdinfo reads of a scan, kept so scans do not allocate one per client.
+    amd_fdinfo_read_buf: RefCell<Vec<u8>>,
 }
 
 impl GpuAMD {
@@ -73,6 +75,7 @@ impl GpuAMD {
             amd_driver_infos: HashMap::new(),
             amd_preloaded_statuses: RefCell::new(HashMap::new()),
             amd_fdinfo_state: RefCell::new(HashMap::new()),
+            amd_fdinfo_read_buf: RefCell::new(Vec::new()),
         }
     }
 
@@ -86,8 +89,7 @@ impl GpuAMD {
         // Guards against two GPUs resolving to the same UID (e.g. serial-less duplicates that both
         // hash blank). base_paths is path-sorted, so the assignment is stable across boots.
         let mut assigned_uids: HashSet<UID> = HashSet::new();
-        let io_reply_timeout =
-            device_io::reply_timeout_for(self.config.get_settings().map_or(1.0, |s| s.poll_rate));
+        let io_reply_timeout = device_io::reply_timeout_from(&self.config);
         for path in base_paths {
             let device_name = devices::get_device_name(&path).await;
             if device_name != AMD_HWMON_NAME {
@@ -304,7 +306,11 @@ impl GpuAMD {
     /// Load `ChannelStatus` (0 on the first sample and while idle), since once
     /// fdinfo is the chosen source we report a value every tick.
     async fn extract_fdinfo_load_status(&self, fdinfo: &FdInfoLoad) -> Vec<ChannelStatus> {
-        let clients = amd_fdinfo::scan_clients(fdinfo.pci_slot()).await;
+        // Taken out rather than borrowed, as the scan yields. Two GPUs scanning at once leaves
+        // the second with a buffer of its own, which then replaces this one.
+        let mut read_buf = self.amd_fdinfo_read_buf.take();
+        let clients = amd_fdinfo::scan_clients(fdinfo.pci_slot(), &mut read_buf).await;
+        self.amd_fdinfo_read_buf.replace(read_buf);
         let percent = self
             .amd_fdinfo_state
             .borrow_mut()
@@ -526,11 +532,22 @@ impl GpuAMD {
         Ok((zero_rpm_stop_temp, zero_rpm_stop_temp_range))
     }
 
+    /// Builds a device for each GPU `init_devices` detected.
+    ///
+    /// Takes the detection result rather than detecting again: detection reads every init
+    /// attribute and starts each GPU's `ccio-amdgpu` thread, so a second pass would double both.
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
-    pub async fn initialize_amd_devices(&mut self) -> Result<HashMap<UID, DeviceLock>> {
-        let mut devices = HashMap::new();
+    pub async fn initialize_amd_devices(
+        &mut self,
+        amd_drivers: Vec<AMDDriverInfo>,
+    ) -> Result<HashMap<UID, DeviceLock>> {
+        assert!(
+            amd_drivers.len() < usize::from(u8::MAX),
+            "AMD GPU type indexes fit in a u8"
+        );
+        let mut devices = HashMap::with_capacity(amd_drivers.len());
         let poll_rate = self.config.get_settings()?.poll_rate;
-        for (index, amd_driver) in self.init_devices().await.into_iter().enumerate() {
+        for (index, amd_driver) in amd_drivers.into_iter().enumerate() {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
             let (min_duty, max_duty) = Self::get_min_max_duty(amd_driver.fan_curve_info.as_ref());
@@ -653,7 +670,7 @@ impl GpuAMD {
             };
             device.initialize_status_history_with(status, poll_rate);
             self.amd_driver_infos
-                .insert(device.uid.clone(), Rc::new(amd_driver.clone()));
+                .insert(device.uid.clone(), Rc::new(amd_driver));
             devices.insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }
         if log::max_level() >= log::LevelFilter::Debug {
@@ -1459,6 +1476,40 @@ mod tests {
         assert_eq!(device.latest_timestamp(), Some(tick));
         assert_eq!(device.latest_temp("temp1"), Some(50.0));
         assert_eq!(device.latest_channel("fan1").unwrap().rpm, Some(900));
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    #[serial_test::serial]
+    fn initialization_builds_only_the_detected_gpus() {
+        // Goal: AMD GPUs are detected once. Initialization builds a device for each GPU the
+        // detection step handed it and detects nothing itself. Method: initialize from one
+        // hand-made GPU on a temp dir; a second detection on a host with an AMD GPU would add
+        // more. Gated: the device's driver info reads the host's kernel version.
+        use crate::config::Config;
+        use std::rc::Rc;
+
+        crate::cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let hwmon = HwmonDriverInfo {
+                name: "amdgpu".to_string(),
+                path: dir.path().to_path_buf(),
+                u_id: "amd-test-gpu".to_string(),
+                ..Default::default()
+            };
+            let mut gpus = GpuAMD::new(Rc::new(Config::init_default_config().unwrap()));
+
+            let devices = gpus
+                .initialize_amd_devices(vec![AMDDriverInfo::for_test(hwmon)])
+                .await
+                .unwrap();
+
+            assert_eq!(devices.len(), 1);
+            assert_eq!(gpus.amd_driver_infos.len(), 1);
+            let device = devices.values().next().unwrap().borrow();
+            assert_eq!(device.type_index, 1);
+            assert!(gpus.amd_driver_infos.contains_key(&device.uid));
+        });
     }
 
     fn basic_test_fan_curve_info() -> FanCurveInfo {

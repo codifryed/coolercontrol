@@ -36,6 +36,7 @@ use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
     GPU_TEMP_NAME,
 };
+use crate::repositories::gpu::nvapi_io::{self, NvApiIo};
 use crate::repositories::gpu::nvml_io::{self, NvmlIo};
 use crate::repositories::hwmon::device_io;
 use crate::repositories::repository::DeviceLock;
@@ -85,7 +86,8 @@ pub struct GpuNVidia {
     xauthority_path: RefCell<Option<String>>,
     nvidia_smi_disabled_channels: RefCell<HashMap<GpuIndex, Vec<ChannelName>>>,
     nvidia_nvml_load_enabled: Cell<bool>,
-    nvapi: Option<super::nvapi::NvApi>,
+    /// Reads every GPU's hotspot on one thread. None when nvapi is unavailable.
+    nvapi_io: Option<NvApiIo>,
 }
 
 impl GpuNVidia {
@@ -101,7 +103,7 @@ impl GpuNVidia {
             xauthority_path: RefCell::new(None),
             nvidia_smi_disabled_channels: RefCell::new(HashMap::new()),
             nvidia_nvml_load_enabled: Cell::new(false),
-            nvapi: None,
+            nvapi_io: None,
         }
     }
 
@@ -112,9 +114,34 @@ impl GpuNVidia {
         let nvidia_devices = if self.nvml_handles_pending_workers.is_empty() {
             self.init_nvidia_smi_devices(starting_nvidia_index).await?
         } else {
-            self.retrieve_nvml_devices(starting_nvidia_index)?
+            self.start_nvapi().await;
+            let init_hotspots = self.read_init_hotspots().await;
+            self.retrieve_nvml_devices(starting_nvidia_index, &init_hotspots)?
         };
         Ok(nvidia_devices)
+    }
+
+    /// Starts nvapi on its own thread, for the hotspot of each NVML GPU.
+    async fn start_nvapi(&mut self) {
+        debug_assert!(self.nvml_handles_pending_workers.is_empty().not());
+        let register_hotspot_buses = self.collect_register_hotspot_buses();
+        let reply_timeout = device_io::reply_timeout_from(&self.config);
+        self.nvapi_io = NvApiIo::start(register_hotspot_buses, reply_timeout).await;
+    }
+
+    /// Each GPU's hotspot at init, by GPU index. Only a GPU found here gets a hotspot channel.
+    async fn read_init_hotspots(&self) -> HashMap<GpuIndex, f64> {
+        let Some(nvapi_io) = self.nvapi_io.as_ref() else {
+            return HashMap::new();
+        };
+        let buses: Vec<(GpuIndex, u32)> = self
+            .nvml_handles_pending_workers
+            .iter()
+            .filter_map(|(gpu_index, nvml_device)| {
+                Some((*gpu_index, nvml_device.pci_info().ok()?.bus))
+            })
+            .collect();
+        read_hotspots_within(nvapi_io, &buses, nvapi_io::INIT_TIMEOUT).await
     }
 
     pub fn update_all_statuses(&self, timestamp: DateTime<Local>) {
@@ -288,8 +315,6 @@ impl GpuNVidia {
             warn!("No NVML accessible devices found, falling back to CLI tools");
             return NvmlInitResult::Unavailable;
         }
-        let register_hotspot_buses = self.collect_register_hotspot_buses();
-        self.nvapi = super::nvapi::NvApi::try_init(&register_hotspot_buses);
         NvmlInitResult::Active(self.nvml_handles_pending_workers.len() as u8)
     }
 
@@ -367,10 +392,12 @@ impl GpuNVidia {
             .all(|device_uid| self.is_nvml_device_disabled(device_uid))
     }
 
+    /// `init_hotspots` holds the hotspot nvapi read for each GPU that has one.
     #[allow(clippy::too_many_lines)]
     pub fn retrieve_nvml_devices(
         &mut self,
         starting_nvidia_index: u8,
+        init_hotspots: &HashMap<GpuIndex, f64>,
     ) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
         let poll_rate = self.config.get_settings()?.poll_rate;
@@ -427,8 +454,13 @@ impl GpuNVidia {
                 }
             }
             let hotspot_temp_name = GPU_TEMP_HOTSPOT_NAME.to_string();
+            let mut hotspot_pci_bus = None;
             if disabled_channels.contains(&hotspot_temp_name).not() {
-                if let Some(hotspot_temp) = self.get_hotspot_temp(device_lock) {
+                if let (Some(hotspot_temp), Ok(pci_info)) = (
+                    init_hotspots.get(gpu_index).copied(),
+                    device_lock.pci_info(),
+                ) {
+                    hotspot_pci_bus = Some(pci_info.bus);
                     temp_infos.insert(
                         hotspot_temp_name.clone(),
                         TempInfo {
@@ -651,7 +683,7 @@ impl GpuNVidia {
                     freqs: nvidia_freq_infos,
                     power: nvidia_power_supported,
                     fan_ranges,
-                    pci_bus: device_lock.pci_info().ok().map(|info| info.bus),
+                    hotspot_pci_bus,
                     read_plan_parts: std::cell::OnceCell::new(),
                 }),
             );
@@ -751,12 +783,6 @@ impl GpuNVidia {
 
     fn convert_milliwatts_to_watts(milli_watts: u32) -> f64 {
         f64::from(milli_watts / 1_000)
-    }
-
-    fn get_hotspot_temp(&self, nvml_device: &nvml_wrapper::Device) -> Option<f64> {
-        let nvapi = self.nvapi.as_ref()?;
-        let pci_bus = nvml_device.pci_info().ok()?.bus;
-        nvapi.get_hotspot_temp(pci_bus)
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -862,9 +888,72 @@ impl GpuNVidia {
         let plan = self.read_plan(nv_info);
         let readings = self.read_nvml_bounded(nv_info.gpu_index, plan).await?;
         Some(StatusNvidiaDeviceNvml {
-            temps: self.assemble_temps(nv_info, &readings),
+            temps: Self::assemble_temps(nv_info, &readings),
             channels: Self::assemble_channels(&readings),
         })
+    }
+
+    /// Stores one GPU's answered NVML status, then patches in its hotspot if nvapi answers.
+    /// Stored first so a stalled nvapi never holds back this tick's NVML temps and fans. The
+    /// last hotspot is carried over until this tick's read settles, so one that answers after
+    /// the snapshot still shows a tick late. A failed read removes it.
+    pub async fn store_nvml_status(
+        &self,
+        type_index: TypeIndex,
+        nv_info: &NvidiaDeviceInfo,
+        nvml_status: StatusNvidiaDeviceNvml,
+    ) {
+        debug_assert!(
+            nv_info.hotspot_pci_bus.is_none()
+                || nv_info
+                    .temps
+                    .iter()
+                    .any(|name| name == GPU_TEMP_HOTSPOT_NAME),
+            "a hotspot bus implies a hotspot channel"
+        );
+        {
+            let mut statuses = self.nvidia_preloaded_statuses.borrow_mut();
+            let mut temps = nvml_status.temps;
+            let carried_hotspot = statuses.get(&type_index).and_then(|status| {
+                status
+                    .temps
+                    .iter()
+                    .find(|temp| temp.name == GPU_TEMP_HOTSPOT_NAME)
+                    .map(|temp| temp.temp)
+            });
+            if let Some(hotspot_temp) = carried_hotspot {
+                Self::insert_hotspot(nv_info, &mut temps, hotspot_temp);
+            }
+            statuses.insert(
+                type_index,
+                StatusNvidiaDeviceSMI {
+                    temps,
+                    channels: nvml_status.channels,
+                    ..Default::default()
+                },
+            );
+        }
+        self.record_nvml_answer(type_index);
+        let hotspot_temp = self.read_hotspot(nv_info).await;
+        let mut statuses = self.nvidia_preloaded_statuses.borrow_mut();
+        let Some(status) = statuses.get_mut(&type_index) else {
+            return;
+        };
+        match hotspot_temp {
+            Some(hotspot_temp) => Self::insert_hotspot(nv_info, &mut status.temps, hotspot_temp),
+            None => status
+                .temps
+                .retain(|temp| temp.name != GPU_TEMP_HOTSPOT_NAME),
+        }
+    }
+
+    /// This tick's hotspot, read through nvapi once NVML has answered. None when the GPU has no
+    /// hotspot channel or the read failed or timed out, which omits it for this tick.
+    async fn read_hotspot(&self, nv_info: &NvidiaDeviceInfo) -> Option<f64> {
+        self.nvapi_io
+            .as_ref()?
+            .hotspot_temp(nv_info.hotspot_pci_bus?)
+            .await
     }
 
     /// What this tick's read pass gathers. The per-device parts are shared, not copied.
@@ -879,24 +968,15 @@ impl GpuNVidia {
         }
     }
 
-    /// Rebuilds the temp list in the device's own order. Hotspot comes from nvapi rather than
-    /// NVML, so it is filled in here on the main thread; interleaving it by name keeps the order
-    /// the same as when every temp came from one place.
-    fn assemble_temps(
-        &self,
-        nv_info: &Rc<NvidiaDeviceInfo>,
-        readings: &NvmlReadings,
-    ) -> Vec<TempStatus> {
+    /// Rebuilds the NVML temps in the device's own order. Hotspot comes from nvapi rather than
+    /// NVML, so `insert_hotspot` adds it later.
+    fn assemble_temps(nv_info: &NvidiaDeviceInfo, readings: &NvmlReadings) -> Vec<TempStatus> {
         let mut temps = Vec::with_capacity(nv_info.temps.len());
         for name in &nv_info.temps {
             let temp = match name.as_str() {
                 GPU_TEMP_NAME => readings.gpu_temp.map(f64::from),
                 GPU_TEMP_MEMORY_NAME => readings.memory_temp,
-                GPU_TEMP_HOTSPOT_NAME => nv_info.pci_bus.and_then(|bus| {
-                    self.nvapi
-                        .as_ref()
-                        .and_then(|api| api.get_hotspot_temp(bus))
-                }),
+                GPU_TEMP_HOTSPOT_NAME => None,
                 other => {
                     error!("Unexpected Nvidia temp name: {other}");
                     None
@@ -910,6 +990,50 @@ impl GpuNVidia {
             }
         }
         temps
+    }
+
+    /// Puts the hotspot into `temps` at its place in the device's own order, as if every temp
+    /// came from one source. A hotspot already there, from a late read, is overwritten.
+    fn insert_hotspot(nv_info: &NvidiaDeviceInfo, temps: &mut Vec<TempStatus>, hotspot_temp: f64) {
+        debug_assert!(hotspot_temp.is_finite());
+        Self::insert_hotspot_unchecked(nv_info, temps, hotspot_temp);
+        debug_assert!(
+            temps
+                .iter()
+                .filter(|temp| temp.name == GPU_TEMP_HOTSPOT_NAME)
+                .count()
+                <= 1
+        );
+        debug_assert!(temps.len() <= nv_info.temps.len());
+    }
+
+    fn insert_hotspot_unchecked(
+        nv_info: &NvidiaDeviceInfo,
+        temps: &mut Vec<TempStatus>,
+        hotspot_temp: f64,
+    ) {
+        if let Some(existing) = temps
+            .iter_mut()
+            .find(|temp| temp.name == GPU_TEMP_HOTSPOT_NAME)
+        {
+            existing.temp = hotspot_temp;
+            return;
+        }
+        let rank = |name: &str| nv_info.temps.iter().position(|known| known == name);
+        let Some(hotspot_rank) = rank(GPU_TEMP_HOTSPOT_NAME) else {
+            return;
+        };
+        let at = temps
+            .iter()
+            .position(|temp| rank(&temp.name).is_some_and(|r| r > hotspot_rank))
+            .unwrap_or(temps.len());
+        temps.insert(
+            at,
+            TempStatus {
+                name: GPU_TEMP_HOTSPOT_NAME.to_string(),
+                temp: hotspot_temp,
+            },
+        );
     }
 
     fn assemble_channels(readings: &NvmlReadings) -> Vec<ChannelStatus> {
@@ -1220,7 +1344,7 @@ impl GpuNVidia {
                             freqs: Vec::new(),
                             power: false,
                             fan_ranges,
-                            pci_bus: None,
+                            hotspot_pci_bus: None,
                             read_plan_parts: std::cell::OnceCell::new(),
                         }),
                     );
@@ -1572,9 +1696,8 @@ pub struct NvidiaDeviceInfo {
     pub freqs: Vec<Clock>,
     /// Whether power is supported
     pub power: bool,
-    /// Cached PCI bus, read once at init, for the per-tick nvapi hotspot lookup
-    /// so it does not call `pci_info()` on every poll.
-    pub pci_bus: Option<u32>,
+    /// PCI bus for the per-tick nvapi hotspot read. Some only when the GPU has a hotspot channel.
+    pub hotspot_pci_bus: Option<u32>,
     read_plan_parts: std::cell::OnceCell<NvmlReadPlanParts>,
 }
 
@@ -1588,7 +1711,7 @@ impl NvidiaDeviceInfo {
                 .filter_map(|name| match name.as_str() {
                     GPU_TEMP_NAME => Some(NvmlTemp::Gpu),
                     GPU_TEMP_MEMORY_NAME => Some(NvmlTemp::Memory),
-                    // Hotspot comes from nvapi and is filled in on the main thread.
+                    // Hotspot comes from nvapi, read on its own thread.
                     _ => None,
                 })
                 .collect(),
@@ -1607,7 +1730,7 @@ impl NvidiaDeviceInfo {
             temps: Vec::new(),
             freqs: Vec::new(),
             power: false,
-            pci_bus: None,
+            hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
         }
     }
@@ -1734,6 +1857,34 @@ fn collect_nvml_device_uids(
     device_uids
 }
 
+/// Each GPU's hotspot by GPU index, read in turn within one shared `budget`, so a wedged nvapi
+/// cannot hold startup for a full reply timeout per GPU. A GPU not reached in time gets none.
+async fn read_hotspots_within(
+    nvapi_io: &NvApiIo,
+    buses: &[(GpuIndex, u32)],
+    budget: Duration,
+) -> HashMap<GpuIndex, f64> {
+    debug_assert!(budget > Duration::ZERO);
+    let deadline = Instant::now() + budget;
+    let mut hotspots = HashMap::with_capacity(buses.len());
+    for &(gpu_index, pci_bus) in buses {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            warn!(
+                "nvapi did not read every GPU hotspot within {budget:?}. The rest have no \
+                 hotspot temperature."
+            );
+            break;
+        }
+        if let Ok(Some(hotspot_temp)) = rt::timeout(remaining, nvapi_io.hotspot_temp(pci_bus)).await
+        {
+            hotspots.insert(gpu_index, hotspot_temp);
+        }
+    }
+    debug_assert!(hotspots.len() <= buses.len());
+    hotspots
+}
+
 /// True for Blackwell and newer, where nvapi thermals no longer exposes hotspot.
 /// `Unknown` and unmapped raw variants sort above Blackwell too; guessing wrong there
 /// only costs one register probe, since nvapi falls back to thermals on failure.
@@ -1750,6 +1901,7 @@ fn needs_hotspot_register(architecture: Result<DeviceArchitecture, NvmlError>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::gpu::nvapi_io::HotspotReader;
     use crate::setting::CCDeviceSettings;
 
     #[test]
@@ -1842,7 +1994,7 @@ mod tests {
             temps: Vec::new(),
             freqs: Vec::new(),
             power: false,
-            pci_bus: None,
+            hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
         }
     }
@@ -1895,7 +2047,6 @@ mod tests {
     /// requested order rather than the order the worker happened to gather them in.
     #[test]
     fn assembled_temps_follow_the_devices_own_order() {
-        let repo = repo_with_disabled(&[]);
         let nv_info = Rc::new(NvidiaDeviceInfo {
             gpu_index: 0,
             display_id: 0,
@@ -1904,7 +2055,7 @@ mod tests {
             temps: vec![GPU_TEMP_MEMORY_NAME.to_string(), GPU_TEMP_NAME.to_string()],
             freqs: vec![],
             power: false,
-            pci_bus: None,
+            hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
         });
         let readings = NvmlReadings {
@@ -1913,7 +2064,7 @@ mod tests {
             ..Default::default()
         };
 
-        let temps = repo.assemble_temps(&nv_info, &readings);
+        let temps = GpuNVidia::assemble_temps(&nv_info, &readings);
 
         assert_eq!(temps.len(), 2);
         assert_eq!(temps[0].name, GPU_TEMP_MEMORY_NAME);
@@ -1922,12 +2073,244 @@ mod tests {
         assert_eq!(temps[1].temp, 61.0);
     }
 
+    /// Goal: the hotspot nvapi read takes its place in the device's order, a late second read
+    /// overwrites rather than duplicates it, and a tick without one omits it rather than reporting
+    /// zero. Method: a device with hotspot between gpu and memory, assembled, then patched twice.
+    #[test]
+    fn the_hotspot_keeps_its_place_or_is_omitted() {
+        let nv_info = NvidiaDeviceInfo {
+            temps: vec![
+                GPU_TEMP_NAME.to_string(),
+                GPU_TEMP_HOTSPOT_NAME.to_string(),
+                GPU_TEMP_MEMORY_NAME.to_string(),
+            ],
+            ..nv_info_for(0)
+        };
+        let readings = NvmlReadings {
+            gpu_temp: Some(61),
+            memory_temp: Some(74.0),
+            ..Default::default()
+        };
+
+        let mut temps = GpuNVidia::assemble_temps(&nv_info, &readings);
+        assert_eq!(temps.len(), 2);
+        assert!(temps.iter().all(|temp| temp.name != GPU_TEMP_HOTSPOT_NAME));
+        GpuNVidia::insert_hotspot(&nv_info, &mut temps, 80.0);
+        GpuNVidia::insert_hotspot(&nv_info, &mut temps, 81.0);
+
+        let names: Vec<&str> = temps.iter().map(|temp| temp.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [GPU_TEMP_NAME, GPU_TEMP_HOTSPOT_NAME, GPU_TEMP_MEMORY_NAME]
+        );
+        assert_eq!(temps[1].temp, 81.0);
+    }
+
+    /// Blocks every hotspot read until the test lets it go, like a wedged nvapi.
+    struct StalledHotspot {
+        release: std::sync::mpsc::Receiver<()>,
+    }
+
+    impl HotspotReader for StalledHotspot {
+        fn hotspot_temp(&self, _pci_bus: u32) -> Option<f64> {
+            let _ = self.release.recv();
+            Some(80.0)
+        }
+    }
+
+    /// Answers each hotspot read with the next scripted reply, blocking until it is sent.
+    struct ScriptedHotspot {
+        replies: std::sync::mpsc::Receiver<Option<f64>>,
+    }
+
+    impl HotspotReader for ScriptedHotspot {
+        fn hotspot_temp(&self, _pci_bus: u32) -> Option<f64> {
+            self.replies.recv().ok().flatten()
+        }
+    }
+
+    /// Answers every hotspot at once, at 70 plus the PCI bus.
+    struct FixedHotspot;
+
+    impl HotspotReader for FixedHotspot {
+        fn hotspot_temp(&self, pci_bus: u32) -> Option<f64> {
+            Some(70.0 + f64::from(pci_bus))
+        }
+    }
+
+    /// Goal: an answering nvapi gives every GPU its init hotspot, keyed by GPU index. Method: a
+    /// fake that answers at once, asked for three GPUs.
+    #[test]
+    fn init_hotspots_are_read_for_every_gpu() {
+        crate::rt::test_runtime(async {
+            let nvapi_io = NvApiIo::start_for_test(FixedHotspot, Duration::from_secs(30))
+                .await
+                .expect("the fake initializes");
+
+            let hotspots = read_hotspots_within(
+                &nvapi_io,
+                &[(0, 1), (1, 2), (2, 3)],
+                Duration::from_secs(30),
+            )
+            .await;
+
+            assert_eq!(hotspots.len(), 3);
+            assert_eq!(hotspots[&0], 71.0);
+            assert_eq!(hotspots[&2], 73.0);
+        });
+    }
+
+    /// Goal: a wedged nvapi holds startup for one shared budget, not a reply timeout per GPU.
+    /// Method: a fake that never answers, a long reply timeout, three GPUs and a short budget.
+    /// Gated: it bounds a real-time wait from above.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn init_hotspot_reads_share_one_budget() {
+        crate::rt::test_runtime(async {
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let nvapi_io = NvApiIo::start_for_test(
+                StalledHotspot {
+                    release: release_rx,
+                },
+                Duration::from_secs(30),
+            )
+            .await
+            .expect("the fake initializes");
+            let budget = Duration::from_millis(100);
+
+            let started = Instant::now();
+            let hotspots = read_hotspots_within(&nvapi_io, &[(0, 1), (1, 2), (2, 3)], budget).await;
+
+            assert!(started.elapsed() < Duration::from_secs(5));
+            assert!(hotspots.is_empty());
+            drop(release_tx);
+        });
+    }
+
+    /// Goal: a stalled nvapi never holds back a GPU's NVML status, and a hotspot that does answer
+    /// is patched into it. Method: store a status while the hotspot read is blocked, check the
+    /// status is already there, then release the read and check the hotspot landed.
+    #[test]
+    fn the_nvml_status_lands_before_a_stalled_hotspot() {
+        crate::rt::test_runtime(async {
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let mut gpus = GpuNVidia::new(Rc::new(Config::init_default_config().unwrap()));
+            gpus.nvapi_io = NvApiIo::start_for_test(
+                StalledHotspot {
+                    release: release_rx,
+                },
+                Duration::from_secs(30),
+            )
+            .await;
+            assert!(gpus.nvapi_io.is_some());
+            let nv_info = NvidiaDeviceInfo {
+                temps: vec![GPU_TEMP_NAME.to_string(), GPU_TEMP_HOTSPOT_NAME.to_string()],
+                hotspot_pci_bus: Some(1),
+                ..nv_info_for(0)
+            };
+            let nvml_status = StatusNvidiaDeviceNvml {
+                temps: vec![TempStatus {
+                    name: GPU_TEMP_NAME.to_string(),
+                    temp: 61.0,
+                }],
+                channels: Vec::new(),
+            };
+
+            let check_then_release = async {
+                let statuses = gpus.nvidia_preloaded_statuses.borrow();
+                let stored = statuses.get(&1).expect("stored before the hotspot read");
+                assert_eq!(stored.temps.len(), 1);
+                drop(statuses);
+                release_tx.send(()).unwrap();
+            };
+            tokio::join!(
+                gpus.store_nvml_status(1, &nv_info, nvml_status),
+                check_then_release
+            );
+
+            let statuses = gpus.nvidia_preloaded_statuses.borrow();
+            let names: Vec<&str> = statuses[&1]
+                .temps
+                .iter()
+                .map(|temp| temp.name.as_str())
+                .collect();
+            assert_eq!(names, [GPU_TEMP_NAME, GPU_TEMP_HOTSPOT_NAME]);
+        });
+    }
+
+    /// Goal: a hotspot that answers after the snapshot still shows a tick late, and a failed
+    /// read removes it rather than keeping a stale value. Method: store with a hotspot answer,
+    /// store again while that tick's read is blocked and check the hotspot is carried over, then
+    /// fail the read and check it is gone.
+    #[test]
+    fn the_last_hotspot_is_carried_until_a_read_fails() {
+        crate::rt::test_runtime(async {
+            let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+            let mut gpus = GpuNVidia::new(Rc::new(Config::init_default_config().unwrap()));
+            gpus.nvapi_io = NvApiIo::start_for_test(
+                ScriptedHotspot { replies: reply_rx },
+                Duration::from_secs(30),
+            )
+            .await;
+            assert!(gpus.nvapi_io.is_some());
+            let nv_info = NvidiaDeviceInfo {
+                temps: vec![
+                    GPU_TEMP_NAME.to_string(),
+                    GPU_TEMP_HOTSPOT_NAME.to_string(),
+                    GPU_TEMP_MEMORY_NAME.to_string(),
+                ],
+                hotspot_pci_bus: Some(1),
+                ..nv_info_for(0)
+            };
+            let nvml_status = || StatusNvidiaDeviceNvml {
+                temps: vec![
+                    TempStatus {
+                        name: GPU_TEMP_NAME.to_string(),
+                        temp: 61.0,
+                    },
+                    TempStatus {
+                        name: GPU_TEMP_MEMORY_NAME.to_string(),
+                        temp: 70.0,
+                    },
+                ],
+                channels: Vec::new(),
+            };
+            let temp_names = |gpus: &GpuNVidia| -> Vec<String> {
+                gpus.nvidia_preloaded_statuses.borrow()[&1]
+                    .temps
+                    .iter()
+                    .map(|temp| temp.name.clone())
+                    .collect()
+            };
+
+            reply_tx.send(Some(80.0)).unwrap();
+            gpus.store_nvml_status(1, &nv_info, nvml_status()).await;
+            assert_eq!(
+                temp_names(&gpus),
+                [GPU_TEMP_NAME, GPU_TEMP_HOTSPOT_NAME, GPU_TEMP_MEMORY_NAME]
+            );
+
+            let check_then_fail = async {
+                assert_eq!(
+                    temp_names(&gpus),
+                    [GPU_TEMP_NAME, GPU_TEMP_HOTSPOT_NAME, GPU_TEMP_MEMORY_NAME]
+                );
+                reply_tx.send(None).unwrap();
+            };
+            tokio::join!(
+                gpus.store_nvml_status(1, &nv_info, nvml_status()),
+                check_then_fail
+            );
+
+            assert_eq!(temp_names(&gpus), [GPU_TEMP_NAME, GPU_TEMP_MEMORY_NAME]);
+        });
+    }
+
     /// Goal: a temp the device asked for but the driver did not answer must be omitted, not
     /// reported as zero. A fabricated reading would drive a fan curve from a value the hardware
     /// never produced.
     #[test]
     fn an_unanswered_temp_is_omitted_rather_than_zeroed() {
-        let repo = repo_with_disabled(&[]);
         let nv_info = Rc::new(NvidiaDeviceInfo {
             gpu_index: 0,
             display_id: 0,
@@ -1936,7 +2319,7 @@ mod tests {
             temps: vec![GPU_TEMP_NAME.to_string(), GPU_TEMP_MEMORY_NAME.to_string()],
             freqs: vec![],
             power: false,
-            pci_bus: None,
+            hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
         });
         // Memory temp unsupported on this card, so the worker reports nothing for it.
@@ -1946,7 +2329,7 @@ mod tests {
             ..Default::default()
         };
 
-        let temps = repo.assemble_temps(&nv_info, &readings);
+        let temps = GpuNVidia::assemble_temps(&nv_info, &readings);
 
         assert_eq!(temps.len(), 1, "only the answered temp is reported");
         assert_eq!(temps[0].name, GPU_TEMP_NAME);

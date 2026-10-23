@@ -25,8 +25,8 @@ use crate::config::Config;
 use crate::device::{ChannelAttribute, DeviceType, Duty, MAX_CHANNEL_ATTRIBUTES, UID};
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
-use crate::repositories::gpu::amd::{GpuAMD, TEMP_FOR_FAN_CURVE};
-use crate::repositories::gpu::nvidia::{GpuNVidia, NvmlInitResult, StatusNvidiaDeviceSMI};
+use crate::repositories::gpu::amd::{AMDDriverInfo, GpuAMD, TEMP_FOR_FAN_CURVE};
+use crate::repositories::gpu::nvidia::{GpuNVidia, NvmlInitResult};
 use crate::repositories::hwmon::attributes;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
@@ -108,7 +108,7 @@ impl GpuRepo {
         // `poll_rate` is captured at daemon startup and cannot change
         // without a restart, so the derived permit timeouts are frozen
         // here for the repo's lifetime.
-        let poll_rate = config.get_settings().map_or(1.0, |s| s.poll_rate);
+        let poll_rate = config.poll_rate_or_default();
         let device_read_permit_timeout = device_read_permit_timeout_for(poll_rate);
         let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
         Self {
@@ -202,13 +202,15 @@ impl GpuRepo {
         self.gpu_type_count.get(&GpuType::AMD).unwrap_or(&0) + 1
     }
 
+    /// Returns the detected AMD GPUs, which initialization builds its devices from.
     #[allow(clippy::cast_possible_truncation)]
-    async fn detect_gpu_types(&mut self) {
+    async fn detect_gpu_types(&mut self) -> Vec<AMDDriverInfo> {
         // Count AMD GPUs first so the NVIDIA type-index offset is known: init_nvml_devices
         // derives each device UID from gpu_index plus this offset to check the disabled
         // flag, and a wrong offset would silently miss it and keep NVML attached.
-        let amd_count = self.gpus_amd.init_devices().await.len() as u8;
-        self.gpu_type_count.insert(GpuType::AMD, amd_count);
+        let amd_drivers = self.gpus_amd.init_devices().await;
+        self.gpu_type_count
+            .insert(GpuType::AMD, amd_drivers.len() as u8);
         let starting_nvidia_index = self.starting_nvidia_index();
         let nvml_enabled = env::var(ENV_NVML)
             .ok()
@@ -241,6 +243,7 @@ impl GpuRepo {
         };
         self.gpu_type_count
             .insert(GpuType::Nvidia, nvidia_dev_count);
+        amd_drivers
     }
 
     pub fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
@@ -286,17 +289,8 @@ impl GpuRepo {
                     match self.gpus_nvidia.request_nvml_status(nv_info).await {
                         Some(nvml_status) => {
                             self.gpus_nvidia
-                                .nvidia_preloaded_statuses
-                                .borrow_mut()
-                                .insert(
-                                    type_index,
-                                    StatusNvidiaDeviceSMI {
-                                        temps: nvml_status.temps,
-                                        channels: nvml_status.channels,
-                                        ..Default::default()
-                                    },
-                                );
-                            self.gpus_nvidia.record_nvml_answer(type_index);
+                                .store_nvml_status(type_index, nv_info, nvml_status)
+                                .await;
                         }
                         None => self.gpus_nvidia.record_nvml_no_answer(type_index),
                     }
@@ -343,8 +337,8 @@ impl Repository for GpuRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
-        self.detect_gpu_types().await;
-        let amd_devices = self.gpus_amd.initialize_amd_devices().await?;
+        let amd_drivers = self.detect_gpu_types().await;
+        let amd_devices = self.gpus_amd.initialize_amd_devices(amd_drivers).await?;
         for uid in amd_devices.keys() {
             self.device_permits
                 .insert(uid.clone(), Semaphore::const_new(1));
