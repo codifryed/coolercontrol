@@ -315,7 +315,7 @@ pub fn is_writable(path: &Path) -> bool {
 }
 
 pub async fn read_rpm(path: &Path, io: &DeviceIo) -> Option<RPM> {
-    io.read_one(None, path)
+    io.read_value(path)
         .await
         .and_then(fans::check_parsing_32)
         .ok()

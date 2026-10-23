@@ -1125,12 +1125,13 @@ impl HwmonRepo {
             HwmonChannelType::Temp,
             HwmonChannelType::Fan,
         ] {
-            let mut typed_channels: Vec<&HwmonChannelInfo> = driver
-                .channels
-                .iter()
-                .filter(|c| c.hwmon_type == ch_type)
-                .collect();
-            let channel_count = typed_channels.len();
+            let typed = || {
+                driver
+                    .channels
+                    .iter()
+                    .filter(|channel| channel.hwmon_type == ch_type)
+            };
+            let channel_count = typed().count();
             if channel_count == 0 {
                 continue;
             }
@@ -1140,13 +1141,13 @@ impl HwmonRepo {
             let start = (tick as usize) % channel_count;
             // Rotated so the upsert order still varies per tick, as it did when the pass was read
             // one channel at a time.
-            typed_channels.rotate_left(start);
+            let typed_channels = typed().skip(start).chain(typed().take(start));
             if self.shutdown_token.is_cancelled() {
                 return;
             }
             // Apple SMC reads through its own driver quirks, so it stays one channel at a time.
             if driver.apple_fans.is_some() {
-                for &channel in &typed_channels {
+                for channel in typed_channels {
                     if self.shutdown_token.is_cancelled() {
                         return;
                     }
@@ -1164,7 +1165,7 @@ impl HwmonRepo {
             self.read_channels_batched(
                 type_index,
                 driver,
-                &typed_channels,
+                typed_channels,
                 &ch_type,
                 drivetemp_suspended,
             )
@@ -1221,36 +1222,36 @@ impl HwmonRepo {
     /// Same reads, order and decisions as the per-channel path; only the number of round trips to
     /// the worker changes. It cannot be abandoned part-way, which is what the round-robin start
     /// index exists to make fair.
-    async fn read_channels_batched(
+    async fn read_channels_batched<'a>(
         &self,
         type_index: TypeIndex,
-        driver: &Rc<HwmonDriverInfo>,
-        channels: &[&HwmonChannelInfo],
+        driver: &'a Rc<HwmonDriverInfo>,
+        channels: impl Iterator<Item = &'a HwmonChannelInfo> + Clone,
         ch_type: &HwmonChannelType,
         drivetemp_suspended: bool,
     ) {
+        let upsert_channel = |status: Option<ChannelStatus>| {
+            let Some(status) = status else { return };
+            self.mark_channel_fresh(type_index, &status.name);
+            self.upsert_single_channel(type_index, status);
+        };
+        let upsert_temp = |status: Option<TempStatus>| {
+            let Some(status) = status else { return };
+            self.mark_temp_fresh(type_index, &status.name);
+            self.upsert_single_temp(type_index, status);
+        };
         match ch_type {
             HwmonChannelType::Power => {
-                for status in power::read_power_statuses(driver, channels).await {
-                    let Some(status) = status else { continue };
-                    self.mark_channel_fresh(type_index, &status.name);
-                    self.upsert_single_channel(type_index, status);
-                }
+                power::read_power_statuses(driver, channels, upsert_channel).await;
             }
             HwmonChannelType::Temp => {
                 // A suspended drive must not be read at all, so it never enters the batch.
-                let statuses = if drivetemp_suspended {
+                if drivetemp_suspended {
                     channels
-                        .iter()
                         .map(|channel| Some(drivetemp::default_suspended_temp_for(channel)))
-                        .collect()
+                        .for_each(upsert_temp);
                 } else {
-                    temps::read_temp_statuses(driver, channels).await
-                };
-                for status in statuses {
-                    let Some(status) = status else { continue };
-                    self.mark_temp_fresh(type_index, &status.name);
-                    self.upsert_single_temp(type_index, status);
+                    temps::read_temp_statuses(driver, channels, upsert_temp).await;
                 }
             }
             HwmonChannelType::Fan => self.read_fan_channels(type_index, driver, channels).await,
@@ -1263,36 +1264,25 @@ impl HwmonRepo {
     /// The decision is made first, for every channel, and only then are the chosen attributes
     /// read. A slow device with a fresh cache therefore still pays rpm reads alone, and at most
     /// one channel's pwm verify falls due per tick, exactly as before.
-    async fn read_fan_channels(
+    async fn read_fan_channels<'a>(
         &self,
         type_index: TypeIndex,
-        driver: &Rc<HwmonDriverInfo>,
-        channels: &[&HwmonChannelInfo],
+        driver: &'a Rc<HwmonDriverInfo>,
+        channels: impl Iterator<Item = &'a HwmonChannelInfo> + Clone,
     ) {
-        let mut plan: Vec<(&HwmonChannelInfo, fans::FanRead)> = Vec::with_capacity(channels.len());
-        let mut cached_duties: Vec<Option<Duty>> = Vec::with_capacity(channels.len());
-        for channel in channels {
-            let cached = self.reusable_duty(type_index, &channel.name);
-            plan.push((
-                channel,
-                if cached.is_some() {
-                    fans::FanRead::RpmOnly
-                } else {
-                    fans::FanRead::Full
-                },
-            ));
-            cached_duties.push(cached);
-        }
-
-        let readings = fans::read_fan_statuses(driver, &plan).await;
-        debug_assert_eq!(readings.len(), channels.len());
-        for ((channel, cached_duty), reading) in channels.iter().zip(cached_duties).zip(readings) {
+        // One instant for the whole pass, so every channel is decided against the same clock.
+        let now = Instant::now();
+        let want = |channel: &HwmonChannelInfo| {
+            self.reusable_duty(type_index, &channel.name, now)
+                .map_or(fans::FanRead::Full, fans::FanRead::RpmOnly)
+        };
+        let on_reading = |channel: &HwmonChannelInfo, reading| {
             let status = match reading {
-                fans::FanReading::Failed => continue,
-                fans::FanReading::Rpm(rpm) => ChannelStatus {
+                fans::FanReading::Failed => return,
+                fans::FanReading::Rpm { rpm, duty } => ChannelStatus {
                     name: channel.name.clone(),
                     rpm,
-                    duty: cached_duty.map(f64::from),
+                    duty: Some(f64::from(duty)),
                     ..Default::default()
                 },
                 fans::FanReading::Full(status) => {
@@ -1302,7 +1292,8 @@ impl HwmonRepo {
             };
             self.mark_channel_fresh(type_index, &status.name);
             self.upsert_single_channel(type_index, status);
-        }
+        };
+        fans::read_fan_statuses(driver, channels, want, on_reading).await;
     }
 
     /// Fast device: real PWM + RPM read. Slow device: cached duty +
@@ -1318,7 +1309,7 @@ impl HwmonRepo {
         if self.slow_devices.contains(&type_index).not() {
             return read_one_fan_status_for(driver, channel).await;
         }
-        if let Some(duty) = self.reusable_duty(type_index, &channel.name) {
+        if let Some(duty) = self.reusable_duty(type_index, &channel.name, Instant::now()) {
             // Outer None: RPM read failed (omit so failsafe engages).
             // Inner None: no RPM cap.
             let rpm = read_one_fan_rpm_only_for(driver, channel).await?;
@@ -1336,7 +1327,12 @@ impl HwmonRepo {
     }
 
     /// The duty a slow device's channel may reuse this tick, or `None` when a real read is due.
-    fn reusable_duty(&self, type_index: TypeIndex, channel_name: &str) -> Option<Duty> {
+    fn reusable_duty(
+        &self,
+        type_index: TypeIndex,
+        channel_name: &str,
+        now: Instant,
+    ) -> Option<Duty> {
         if self.slow_devices.contains(&type_index).not() {
             return None;
         }
@@ -1344,7 +1340,7 @@ impl HwmonRepo {
             cache
                 .borrow()
                 .get(channel_name)
-                .filter(|entry| Instant::now() < entry.next_verify_at)
+                .filter(|entry| now < entry.next_verify_at)
                 .map(|entry| entry.last_known)
         })
     }
@@ -6014,6 +6010,110 @@ mod slow_device_tests {
                 );
             }
 
+            repo.shutdown_token.cancel();
+        });
+    }
+
+    /// Polls `future` once, leaving it where it stopped.
+    #[cfg(feature = "gated-tests")]
+    async fn poll_once<F: Future>(future: std::pin::Pin<&mut F>) -> std::task::Poll<F::Output> {
+        let mut future = Some(future);
+        std::future::poll_fn(|cx| std::task::Poll::Ready(future.take().unwrap().poll(cx))).await
+    }
+
+    /// A slow device with three fans whose worker is served by hand, fan1 and fan2 cached and
+    /// fan3 due. Returns the raw value each read slot answers with.
+    #[cfg(feature = "gated-tests")]
+    async fn mid_read_setup(
+        dir: &Path,
+    ) -> (
+        HwmonRepo,
+        Rc<HwmonDriverInfo>,
+        tokio::sync::mpsc::Receiver<crate::repositories::hwmon::device_io::Request>,
+        HashMap<ReadIndex, String>,
+    ) {
+        seed_fan_files(dir, &[1, 2, 3], 255).await;
+        let mut driver = HwmonDriverInfo {
+            name: "dev".to_string(),
+            path: dir.to_path_buf(),
+            channels: (1..=3)
+                .map(|n| fan_channel(n, &format!("fan{n}"), dir))
+                .collect(),
+            u_id: "test-uid-mid-read".to_string(),
+            ..Default::default()
+        }
+        .with_read_registry()
+        .await;
+        let (wedged_io, rx) = DeviceIo::wedged_for_test(Duration::from_secs(60));
+        driver.io = wedged_io;
+        let mut values = HashMap::new();
+        let raw = [(255, 1100), (128, 2200), (51, 3300)];
+        for (channel, (pwm, rpm)) in driver.channels.iter().zip(raw) {
+            values.insert(channel.read_slot.pwm.unwrap(), pwm.to_string());
+            values.insert(channel.read_slot.rpm.unwrap(), rpm.to_string());
+        }
+        let fresh = Instant::now() + Duration::from_secs(60);
+        let mut repo = empty_repo();
+        install_driver(
+            &mut repo,
+            TEST_TYPE_INDEX,
+            driver,
+            true,
+            vec![("fan1", 40, fresh), ("fan2", 60, fresh)],
+        );
+        seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
+        let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
+        (repo, driver, rx, values)
+    }
+
+    /// Goal: a duty-cache entry dropped while a batched fan read is in flight must not change
+    /// how the reply is walked. A walk that decides again takes more slots than the batch holds,
+    /// shifting every later channel's values and running off the end of the batch. Method: a
+    /// slow device whose worker is served by hand, two cached channels and one due; drop the
+    /// first channel's entry between dispatch and reply, then check each channel's values.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn fan_decisions_survive_a_cache_drop_mid_read() {
+        use crate::repositories::hwmon::device_io::Request;
+        use std::pin::pin;
+
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let (repo, driver, mut rx, values) = mid_read_setup(&tmp.path().join("dev")).await;
+
+            let mut pass =
+                pin!(repo.read_fan_channels(TEST_TYPE_INDEX, &driver, driver.channels.iter()));
+            assert!(poll_once(pass.as_mut()).await.is_pending());
+            let Ok(Request::ReadMany { mut buffers, reply }) = rx.try_recv() else {
+                panic!("the pass must send one batch");
+            };
+            assert_eq!(
+                buffers.indices.len(),
+                4,
+                "two rpm-only channels and one full"
+            );
+            repo.invalidate_duty_cache_entry(TEST_TYPE_INDEX, "fan1");
+            buffers.values.clear();
+            for index in &buffers.indices {
+                let value = cc_fs::SysfsValue::from_bytes(values[index].as_bytes());
+                buffers.values.push(Ok(value));
+            }
+            reply.send(Ok(buffers)).unwrap();
+            pass.await;
+
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+                let read = |name: &str| {
+                    let status = channels.iter().find(|c| c.name == name).unwrap();
+                    (status.duty, status.rpm)
+                };
+                assert_eq!(channels.len(), 3);
+                assert_eq!(read("fan1"), (Some(40.0), Some(1100)));
+                assert_eq!(read("fan2"), (Some(60.0), Some(2200)));
+                assert_eq!(read("fan3"), (Some(20.0), Some(3300)));
+            }
             repo.shutdown_token.cancel();
         });
     }

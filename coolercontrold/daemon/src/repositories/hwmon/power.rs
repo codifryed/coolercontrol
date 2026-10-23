@@ -3,7 +3,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
-use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
+use crate::repositories::hwmon::device_io::{pair_with_results, DeviceIo};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
@@ -104,37 +104,35 @@ pub fn is_power_attribute(file_name: &str) -> bool {
 }
 
 /// Reads a set of power channels in one hop. See `temps::read_temp_statuses` for why the per-tick
-/// path batches.
-pub async fn read_power_statuses(
-    driver: &HwmonDriverInfo,
-    channels: &[&HwmonChannelInfo],
-) -> Vec<Option<ChannelStatus>> {
-    if channels.is_empty() {
-        return Vec::new();
-    }
-    // See `temps::read_temp_statuses` for why the reply is not zipped straight onto `channels`.
-    let (slots, slotted) = slots_for(channels, |channel| channel.read_slot.value);
-    debug_assert_eq!(
-        slots.len(),
-        channels.len(),
+/// path batches, and for the callback.
+pub async fn read_power_statuses<'a>(
+    driver: &'a HwmonDriverInfo,
+    channels: impl Iterator<Item = &'a HwmonChannelInfo> + Clone,
+    mut on_status: impl FnMut(Option<ChannelStatus>),
+) {
+    debug_assert!(
+        channels
+            .clone()
+            .all(|channel| channel.read_slot.value.is_some()),
         "every power channel needs a read slot; was the registry installed?"
     );
     if cfg!(debug_assertions) {
-        for (channel, slot) in channels.iter().zip(&slots) {
-            driver
-                .io
-                .debug_assert_slot(*slot, &driver.path.join(&channel.name));
+        for channel in channels.clone() {
+            if let Some(slot) = channel.read_slot.value {
+                driver
+                    .io
+                    .debug_assert_slot(slot, &driver.path.join(&channel.name));
+            }
         }
     }
-    let mut results = driver.io.read_many(&slots).await.into_iter();
-    channels
-        .iter()
-        .zip(slotted)
-        .map(|(channel, has_slot)| {
-            let result = has_slot.then(|| results.next()).flatten()?;
-            power_status_from(driver, channel, result)
-        })
-        .collect()
+    let slots = channels
+        .clone()
+        .filter_map(|channel| channel.read_slot.value);
+    let mut batch = driver.io.read_many(slots).await;
+    let has_slot = |channel: &&HwmonChannelInfo| channel.read_slot.value.is_some();
+    for (channel, result) in pair_with_results(channels, has_slot, batch.take_all()) {
+        on_status(result.and_then(|result| power_status_from(driver, channel, result)));
+    }
 }
 
 /// Turns one raw power read into a `ChannelStatus`. Shared by the batched pass and the
@@ -180,26 +178,24 @@ pub async fn read_one_power_status(
     // In the Power case, channel.name is the real name of the sysfs file.
     let result = driver
         .io
-        .read_one(channel.read_slot.value, &driver.path.join(&channel.name))
+        .read_one(channel.read_slot.value, || driver.path.join(&channel.name))
         .await;
     power_status_from(driver, channel, result)
 }
 
 /// Every power channel in one hop, for callers that want an owned `Vec` (the reinit path).
 pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
-    let channels: Vec<&HwmonChannelInfo> = driver
+    let channels = driver
         .channels
         .iter()
-        .filter(|channel| channel.hwmon_type == HwmonChannelType::Power)
-        .collect();
-    let mut powers = Vec::with_capacity(channels.len());
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Power);
+    let mut powers = Vec::with_capacity(channels.clone().count());
     let mut any_failure = false;
-    for status in read_power_statuses(driver, &channels).await {
-        match status {
-            Some(status) => powers.push(status),
-            None => any_failure = true,
-        }
-    }
+    read_power_statuses(driver, channels, |status| match status {
+        Some(status) => powers.push(status),
+        None => any_failure = true,
+    })
+    .await;
     (powers, any_failure)
 }
 

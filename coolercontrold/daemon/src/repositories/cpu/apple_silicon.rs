@@ -123,10 +123,10 @@ impl AppleSilicon {
     /// runs at the cluster's clock. Each cluster's clock is kept until the next poll.
     pub async fn read_freqs(&self) -> HashMap<PhysicalID, CpuFreqs> {
         debug_assert_eq!(self.freq_slots.len(), self.clusters.len());
-        let results = self.io.read_many(&self.freq_slots).await;
+        let mut results = self.io.read_many(self.freq_slots.iter().copied()).await;
         debug_assert_eq!(results.len(), self.clusters.len());
         let mut readings = Vec::with_capacity(self.clusters.len());
-        for (cluster, result) in self.clusters.iter().zip(results) {
+        for (cluster, result) in self.clusters.iter().zip(results.take_all()) {
             if let Ok(khz) = result.and_then(|value| value.parse::<u32>()) {
                 readings.push((cluster, khz));
             }

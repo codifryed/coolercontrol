@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
+use crate::repositories::hwmon::device_io::{pair_with_results, DeviceIo};
 use std::io::Error;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -78,39 +78,39 @@ pub async fn init_temps(
 /// Reads a set of temp channels in one hop.
 ///
 /// The device permit is held across the whole pass anyway, so the reads were going to happen back
-/// to back; one round trip is cheaper than one per channel. Results are positional.
-pub async fn read_temp_statuses(
-    driver: &HwmonDriverInfo,
-    channels: &[&HwmonChannelInfo],
-) -> Vec<Option<TempStatus>> {
-    if channels.is_empty() {
-        return Vec::new();
-    }
-    // `slotted` keeps the reply aligned to the channels. Zipping the reply straight onto
-    // `channels` would silently pair a channel with another sensor's reading the moment one of
-    // them had no slot, and a temperature from the wrong sensor drives the wrong fan curve.
-    let (slots, slotted) = slots_for(channels, |channel| channel.read_slot.value);
-    debug_assert_eq!(
-        slots.len(),
-        channels.len(),
+/// to back; one round trip is cheaper than one per channel. `on_status` is called once per channel,
+/// in order, with `None` for a channel that has nothing usable. A callback rather than a returned
+/// `Vec`, because the per-tick caller consumes each status as it comes.
+pub async fn read_temp_statuses<'a>(
+    driver: &'a HwmonDriverInfo,
+    channels: impl Iterator<Item = &'a HwmonChannelInfo> + Clone,
+    mut on_status: impl FnMut(Option<TempStatus>),
+) {
+    debug_assert!(
+        channels
+            .clone()
+            .all(|channel| channel.read_slot.value.is_some()),
         "every temp channel needs a read slot; was the registry installed?"
     );
     if cfg!(debug_assertions) {
-        for (channel, slot) in channels.iter().zip(&slots) {
-            driver
-                .io
-                .debug_assert_slot(*slot, &temp_path_for(driver, channel));
+        for channel in channels.clone() {
+            if let Some(slot) = channel.read_slot.value {
+                driver
+                    .io
+                    .debug_assert_slot(slot, &temp_path_for(driver, channel));
+            }
         }
     }
-    let mut results = driver.io.read_many(&slots).await.into_iter();
-    channels
-        .iter()
-        .zip(slotted)
-        .map(|(channel, has_slot)| {
-            let result = has_slot.then(|| results.next()).flatten()?;
-            temp_status_from(driver, channel, result)
-        })
-        .collect()
+    let slots = channels
+        .clone()
+        .filter_map(|channel| channel.read_slot.value);
+    let mut batch = driver.io.read_many(slots).await;
+    // Paired, not zipped: an unslotted channel would take the next sensor's reading, and drive the
+    // wrong fan curve.
+    let has_slot = |channel: &&HwmonChannelInfo| channel.read_slot.value.is_some();
+    for (channel, result) in pair_with_results(channels, has_slot, batch.take_all()) {
+        on_status(result.and_then(|result| temp_status_from(driver, channel, result)));
+    }
 }
 
 /// Where one channel's temp value lives.
@@ -132,7 +132,7 @@ pub async fn read_one_temp_status(
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Temp);
     let result = driver
         .io
-        .read_one(channel.read_slot.value, &temp_path_for(driver, channel))
+        .read_one(channel.read_slot.value, || temp_path_for(driver, channel))
         .await;
     temp_status_from(driver, channel, result)
 }
@@ -192,19 +192,17 @@ fn temp_status_from(
 
 /// Every temp channel in one hop, for callers that want an owned `Vec` (the reinit path).
 pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>, bool) {
-    let channels: Vec<&HwmonChannelInfo> = driver
+    let channels = driver
         .channels
         .iter()
-        .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
-        .collect();
-    let mut temps = Vec::with_capacity(channels.len());
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp);
+    let mut temps = Vec::with_capacity(channels.clone().count());
     let mut any_failure = false;
-    for status in read_temp_statuses(driver, &channels).await {
-        match status {
-            Some(status) => temps.push(status),
-            None => any_failure = true,
-        }
-    }
+    read_temp_statuses(driver, channels, |status| match status {
+        Some(status) => temps.push(status),
+        None => any_failure = true,
+    })
+    .await;
     (temps, any_failure)
 }
 

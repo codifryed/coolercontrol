@@ -76,14 +76,13 @@ pub async fn find_power_cap_paths(io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>
 /// a legitimate 0-joule counter.
 pub async fn extract_power_joule_counter(io: &DeviceIo, channel: &HwmonChannelInfo) -> Option<f64> {
     // Through its slot, so the counter keeps its descriptor across ticks like every other per-tick
-    // attribute. The path is only rebuilt if detection never registered one.
-    io.read_one(
-        channel.read_slot.value,
-        Path::new(&format!(
+    // attribute. The path is only built if detection never registered one.
+    io.read_one(channel.read_slot.value, || {
+        PathBuf::from(format!(
             "/sys/class/powercap/intel-rapl:{}/energy_uj",
             channel.number
-        )),
-    )
+        ))
+    })
     .await
     .and_then(check_parsing_f64)
     .map(microjoules_to_joules)

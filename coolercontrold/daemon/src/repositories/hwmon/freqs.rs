@@ -3,7 +3,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Mhz};
-use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
+use crate::repositories::hwmon::device_io::{pair_with_results, DeviceIo};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
@@ -56,31 +56,25 @@ pub async fn init_freqs(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonC
 /// returned vector rather than reported as 0 MHz so downstream does not
 /// see a fabricated frequency.
 pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
-    let freq_channel_count = driver
+    let channels = driver
         .channels
         .iter()
-        .filter(|c| c.hwmon_type == HwmonChannelType::Freq)
-        .count();
-    let mut freqs = Vec::with_capacity(freq_channel_count);
-    let channels: Vec<&HwmonChannelInfo> = driver
-        .channels
-        .iter()
-        .filter(|channel| channel.hwmon_type == HwmonChannelType::Freq)
-        .collect();
-    if channels.is_empty() {
-        return freqs;
-    }
-    // One hop for the device's whole frequency set.
-    // See `temps::read_temp_statuses` for why the reply is not zipped straight onto `channels`.
-    let (slots, slotted) = slots_for(&channels, |channel| channel.read_slot.value);
-    debug_assert_eq!(
-        slots.len(),
-        channels.len(),
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Freq);
+    let mut freqs = Vec::with_capacity(channels.clone().count());
+    debug_assert!(
+        channels
+            .clone()
+            .all(|channel| channel.read_slot.value.is_some()),
         "every freq channel needs a read slot; was the registry installed?"
     );
-    let mut results = driver.io.read_many(&slots).await.into_iter();
-    for (channel, has_slot) in channels.iter().zip(slotted) {
-        let Some(result) = has_slot.then(|| results.next()).flatten() else {
+    // One hop for the device's whole frequency set.
+    let slots = channels
+        .clone()
+        .filter_map(|channel| channel.read_slot.value);
+    let mut batch = driver.io.read_many(slots).await;
+    let has_slot = |channel: &&HwmonChannelInfo| channel.read_slot.value.is_some();
+    for (channel, result) in pair_with_results(channels, has_slot, batch.take_all()) {
+        let Some(result) = result else {
             continue;
         };
         if let Ok(freq) = result.and_then(check_parsing_64).map(hertz_to_megahertz) {

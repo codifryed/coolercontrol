@@ -869,14 +869,7 @@ impl GpuAMD {
         status_channels.extend(freqs::extract_freq_statuses(&amd_driver.hwmon).await);
         let (power_statuses, _) = power::extract_power_status(&amd_driver.hwmon).await;
         status_channels.extend(power_statuses);
-        let (extracted_temps, _) = temps::extract_temp_statuses(&amd_driver.hwmon).await;
-        let temps = extracted_temps
-            .iter()
-            .map(|temp| TempStatus {
-                name: temp.name.clone(),
-                temp: temp.temp,
-            })
-            .collect();
+        let (temps, _) = temps::extract_temp_statuses(&amd_driver.hwmon).await;
         (status_channels, temps)
     }
 
@@ -893,14 +886,13 @@ impl GpuAMD {
                 continue;
             }
             // `gpu_busy_percent` has a slot like every other per-tick attribute, so it keeps its
-            // descriptor across ticks. The path is only rebuilt if detection never registered one.
+            // descriptor across ticks. The path is only built if detection never registered one.
             let result = driver
                 .hwmon
                 .io
-                .read_one(
-                    channel.read_slot.value,
-                    &driver.device_path.join("gpu_busy_percent"),
-                )
+                .read_one(channel.read_slot.value, || {
+                    driver.device_path.join("gpu_busy_percent")
+                })
                 .await
                 .and_then(fans::check_parsing_8);
             if let Ok(load) = result {
@@ -1646,6 +1638,54 @@ mod tests {
             let device = devices.values().next().unwrap().borrow();
             assert_eq!(device.type_index, 1);
             assert!(gpus.amd_driver_infos.contains_key(&device.uid));
+        });
+    }
+
+    /// Goal: the per-tick AMD status hands back the temps it read, each under its own name and in
+    /// channel order. Method: two temp channels on a temp dir, then read the status once.
+    #[test]
+    fn the_amd_status_reports_each_temp_it_read() {
+        use crate::config::Config;
+        use crate::repositories::hwmon::hwmon_repo::{
+            AutoCurveInfo, ChannelReadSlots, HwmonChannelCapabilities, HwmonChannelInfo,
+            HwmonChannelType,
+        };
+        use std::rc::Rc;
+
+        crate::cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("temp1_input"), "45000\n").unwrap();
+            std::fs::write(dir.path().join("temp2_input"), "61500\n").unwrap();
+            let temp_channel = |number: u8| HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Temp,
+                number,
+                pwm_enable_default: None,
+                name: format!("temp{number}"),
+                label: None,
+                auto_curve: AutoCurveInfo::None,
+                caps: HwmonChannelCapabilities::empty(),
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
+                read_slot: ChannelReadSlots::default(),
+            };
+            let hwmon = HwmonDriverInfo {
+                name: "amdgpu".to_string(),
+                path: dir.path().to_path_buf(),
+                channels: vec![temp_channel(1), temp_channel(2)],
+                ..Default::default()
+            }
+            .with_read_registry()
+            .await;
+            let gpus = GpuAMD::new(Rc::new(Config::init_default_config().unwrap()));
+
+            let (_, temps) = gpus.get_amd_status(&AMDDriverInfo::for_test(hwmon)).await;
+
+            let read: Vec<(&str, f64)> = temps
+                .iter()
+                .map(|temp| (temp.name.as_str(), temp.temp))
+                .collect();
+            assert_eq!(read, vec![("temp1", 45.0), ("temp2", 61.5)]);
         });
     }
 
