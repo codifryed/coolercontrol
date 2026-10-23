@@ -7,9 +7,15 @@
 //! the process's CPUs: the sidecar, so an API flood cannot slow device reads, and the runtime's
 //! blocking pool, whose jobs (LCD frames, one-shot reads) would otherwise crowd the main loop.
 //!
+//! Workers share a core only on a kernel that preempts code spinning in a driver (full or lazy
+//! preemption). Elsewhere a driver that busy-waits, as amdgpu does for a firmware that stops
+//! answering, would hold the shared CPU for seconds and stall every device's reads with it; the
+//! workers then keep every CPU, so only that device stalls.
+//!
 //! Linux copies the creating thread's mask into each thread it starts, so a thread started from the
 //! pinned main thread would share its one CPU. The pool takes the process's mask back
 //! (`release_inherited_pin`) and the workers take theirs (`spawn_worker`).
+use std::ops::Not;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::thread::{Builder, JoinHandle};
@@ -24,14 +30,26 @@ use crate::cc_fs;
 /// The main thread's mask before its pin, which threads started later take back.
 static PROCESS_MASK: OnceLock<CpuSet> = OnceLock::new();
 
-/// The CPUs device workers start on. Unset when the main thread's core has no other hardware
-/// thread the process may use; the workers then keep the process's CPUs.
+/// The CPUs device workers start on. Unset when the kernel may not preempt a spinning driver, or
+/// the main thread's core has no other hardware thread the process may use; the workers then keep
+/// the process's CPUs.
 static WORKER_MASK: OnceLock<CpuSet> = OnceLock::new();
+
+/// The active preemption model of a `PREEMPT_DYNAMIC` kernel, in parentheses among the ones it
+/// offers: "none voluntary (full) lazy". Needs debugfs.
+const PREEMPT_MODE_PATH: &str = "/sys/kernel/debug/sched/preempt";
+
+/// The kernel's build flags, which name a fixed preemption model: "#1 SMP PREEMPT ...".
+const KERNEL_VERSION_PATH: &str = "/proc/sys/kernel/version";
 
 /// Pin the calling thread, the main one, to the CPU it is running on, and place the device workers
 /// started from now on beside it. Call before the device workers start.
 pub async fn pin_main_thread() -> Result<()> {
     let (main_cpu, process_mask) = pin_to_current_cpu()?;
+    if kernel_preempts_spinning_drivers().await.not() {
+        debug!("Device workers keep every CPU: the kernel may not preempt a driver that spins");
+        return Ok(());
+    }
     // Read on the blocking pool, whose new threads already take the process's mask back.
     let siblings = match cc_fs::read_txt(siblings_path(main_cpu)).await {
         Ok(siblings) => siblings,
@@ -61,6 +79,36 @@ fn pin_to_current_cpu() -> Result<(usize, CpuSet)> {
     main_mask.set(main_cpu)?;
     sched_setaffinity(Pid::from_raw(0), &main_mask)?;
     Ok((main_cpu, process_mask))
+}
+
+/// Whether the kernel says it preempts code spinning in a driver. A dynamic kernel's active mode
+/// decides; without it, only a fixed model the build flags name counts. Unknown is no.
+async fn kernel_preempts_spinning_drivers() -> bool {
+    if let Ok(modes) = cc_fs::read_txt(PREEMPT_MODE_PATH).await {
+        return active_mode_preempts(&modes);
+    }
+    match cc_fs::read_txt(KERNEL_VERSION_PATH).await {
+        Ok(version) => fixed_model_preempts(&version),
+        Err(_) => false,
+    }
+}
+
+/// Full and lazy preemption both preempt kernel code within a tick; none and voluntary wait for
+/// the code to give up the CPU, which a busy-wait never does.
+fn active_mode_preempts(modes: &str) -> bool {
+    let active = modes
+        .split_whitespace()
+        .find_map(|mode| mode.strip_prefix('(')?.strip_suffix(')'));
+    matches!(active, Some("full" | "lazy"))
+}
+
+/// A kernel built with one fixed model names it in its flags: `PREEMPT` for full preemption and
+/// `PREEMPT_RT` for real-time. A dynamic kernel names only `PREEMPT_DYNAMIC`, which says nothing
+/// about the mode it runs.
+fn fixed_model_preempts(version: &str) -> bool {
+    version
+        .split_whitespace()
+        .any(|flag| flag == "PREEMPT" || flag == "PREEMPT_RT")
 }
 
 fn siblings_path(cpu: usize) -> PathBuf {
@@ -170,6 +218,36 @@ mod tests {
         for malformed in ["", "a", "3-1", "1,", "-1", "4096", "0-1023,0"] {
             assert_eq!(parse_cpu_list(malformed), None, "{malformed:?}");
         }
+    }
+
+    /// Goal: workers share a core only when a dynamic kernel's active mode preempts spinning
+    /// kernel code, full or lazy; none and voluntary, and anything unreadable, keep them spread.
+    /// Method: read the modes file in the shapes kernels write it, with each mode active.
+    #[test]
+    fn only_full_and_lazy_preemption_confine_the_workers() {
+        assert!(active_mode_preempts("(full) lazy\n"));
+        assert!(active_mode_preempts("none voluntary (full) lazy"));
+        assert!(active_mode_preempts("none voluntary full (lazy)"));
+        assert!(active_mode_preempts("none (voluntary) full lazy").not());
+        assert!(active_mode_preempts("(none) voluntary full lazy").not());
+        assert!(active_mode_preempts("none voluntary full lazy").not());
+        assert!(active_mode_preempts("").not());
+    }
+
+    /// Goal: without the modes file, only a kernel built with a fixed preemptible model confines
+    /// the workers; a dynamic one, whose mode the flags do not show, keeps them spread. Method:
+    /// read version strings of each build kind.
+    #[test]
+    fn only_fixed_preemptible_builds_confine_without_the_modes_file() {
+        assert!(fixed_model_preempts(
+            "#1 SMP PREEMPT Tue Oct  1 10:00:00 UTC 2024"
+        ));
+        assert!(fixed_model_preempts(
+            "#1 SMP PREEMPT_RT Wed Oct  2 10:00:00 UTC 2024"
+        ));
+        let dynamic = "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 19:55:01 +0000";
+        assert!(fixed_model_preempts(dynamic).not());
+        assert!(fixed_model_preempts("#38-Ubuntu SMP Thu Oct  3 10:00:00 UTC 2024").not());
     }
 
     /// Goal: workers go on the other hardware threads of the main thread's core, never on the main
