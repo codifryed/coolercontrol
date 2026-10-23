@@ -126,22 +126,27 @@ pub struct FdInfoTracker {
 impl FdInfoTracker {
     /// One tick: reads this GPU's DRM clients, walking `/proc` first when a walk is due, and
     /// returns the device busy percentage.
-    pub async fn sample(&mut self, pci_slot: &str, buf: &mut Vec<u8>, now: Instant) -> f64 {
-        self.sample_in(Path::new(PROC_ROOT), pci_slot, buf, now)
+    pub async fn sample(&mut self, pci_slot: &str, buf: &mut Vec<u8>) -> f64 {
+        self.sample_in(Path::new(PROC_ROOT), pci_slot, buf, Instant::now)
             .await
     }
 
+    /// `clock` is read before the scan, to decide on a walk, and again after it, to stamp the
+    /// counters: a walk takes long enough that its start would skew the load.
     async fn sample_in(
         &mut self,
         proc_root: &Path,
         pci_slot: &str,
         buf: &mut Vec<u8>,
-        now: Instant,
+        mut clock: impl FnMut() -> Instant,
     ) -> f64 {
+        let started = clock();
         self.clients
-            .scan_in(proc_root, pci_slot, buf, now, &mut self.scanned)
+            .scan_in(proc_root, pci_slot, buf, started, &mut self.scanned)
             .await;
-        self.load.update(&mut self.scanned, now)
+        let scanned_at = clock();
+        debug_assert!(scanned_at >= started);
+        self.load.update(&mut self.scanned, scanned_at)
     }
 }
 
@@ -798,6 +803,30 @@ mod tests {
         });
     }
 
+    #[test]
+    fn load_is_stamped_after_the_scan() {
+        // Goal: the counters are stamped when the scan has read them, not when it started, so a
+        // slow walk does not skew the load. The walk decision still uses the start. Method: a
+        // clock that reads later on its second call.
+        cc_fs::test_runtime(async {
+            let proc_root = tempfile::tempdir().unwrap();
+            let root = proc_root.path();
+            write_client(root, "10", "3", "/dev/dri/renderD128", &drm_fdinfo(1, 100));
+            let mut tracker = FdInfoTracker::default();
+            let started = Instant::now();
+            let scanned_at = started + Duration::from_millis(50);
+            let mut reads = [started, scanned_at].into_iter();
+
+            tracker
+                .sample_in(root, PDEV, &mut Vec::new(), || reads.next().unwrap())
+                .await;
+
+            assert_eq!(tracker.clients.walked_at, Some(started));
+            assert_eq!(tracker.load.last_sample, Some(scanned_at));
+            assert!(reads.next().is_none(), "the clock is read twice");
+        });
+    }
+
     /// Goal: a tick between walks allocates nothing, which is what the cache is for. Method: warm
     /// the cache and both client maps with a walk and one more tick, then count the allocations
     /// of the next tick.
@@ -811,13 +840,13 @@ mod tests {
         let mut tracker = FdInfoTracker::default();
         let mut buf = Vec::new();
         let t0 = Instant::now();
-        crate::rt::poll_to_end(tracker.sample_in(root, PDEV, &mut buf, t0));
+        crate::rt::poll_to_end(tracker.sample_in(root, PDEV, &mut buf, || t0));
         let t1 = t0 + Duration::from_secs(1);
-        crate::rt::poll_to_end(tracker.sample_in(root, PDEV, &mut buf, t1));
+        crate::rt::poll_to_end(tracker.sample_in(root, PDEV, &mut buf, || t1));
         let t2 = t0 + Duration::from_secs(2);
 
         let ((percent, _), allocations) = crate::alloc_count::count_allocations(|| {
-            crate::rt::poll_to_end(tracker.sample_in(root, PDEV, &mut buf, t2))
+            crate::rt::poll_to_end(tracker.sample_in(root, PDEV, &mut buf, || t2))
         });
 
         assert_eq!(allocations, 0);

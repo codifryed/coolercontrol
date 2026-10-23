@@ -9,7 +9,7 @@ use std::ops::{Not, RangeInclusive};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::amd_fdinfo::{self, FdInfoLoad, FdInfoTracker};
 use crate::cc_fs;
@@ -409,9 +409,7 @@ impl GpuAMD {
             .remove_entry(fdinfo.pci_slot());
         let (pci_slot, mut tracker) =
             taken.unwrap_or_else(|| (fdinfo.pci_slot().to_owned(), FdInfoTracker::default()));
-        let percent = tracker
-            .sample(&pci_slot, &mut read_buf, Instant::now())
-            .await;
+        let percent = tracker.sample(&pci_slot, &mut read_buf).await;
         self.amd_fdinfo_state.borrow_mut().insert(pci_slot, tracker);
         self.amd_fdinfo_read_buf.replace(read_buf);
         vec![ChannelStatus {
