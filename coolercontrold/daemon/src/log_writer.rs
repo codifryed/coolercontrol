@@ -22,7 +22,9 @@ use std::time::{Duration, Instant};
 pub const THREAD_NAME: &str = "cc-log";
 
 /// Lines held while the sink is not reading. Running normally the queue is close to empty: the
-/// thread writes each line as it comes, and journald's socket holds hundreds more on top.
+/// thread writes each line as it comes. 512 matches journald's own socket queue
+/// (`net.unix.max_dgram_qlen`), so a stall must fill both before a line drops. It holds a
+/// startup's burst of about 100 lines five times over.
 const QUEUE_DEPTH: usize = 512;
 
 /// The longest `drain` waits, so an exit or a panic never hangs on a sink that stopped reading.
