@@ -1052,6 +1052,9 @@ impl LiquidctlRepo {
         // The supervisor counts a restart before the new service listens. This first request's
         // connection retries wait for it.
         let fresh_devices = self.liqctld_control.get_all_devices().await?.devices;
+        // A device that went unreachable did so against the old service, so each gets a fresh
+        // probe against the new one.
+        rearm_device_probes(&self.liqctld_devices);
         let matched_devices = self.match_devices_after_restart(&fresh_devices);
         let mut failed_devices = HashSet::new();
         // Reads stay off the driver objects being changed. Up to here they ran, so a service that
