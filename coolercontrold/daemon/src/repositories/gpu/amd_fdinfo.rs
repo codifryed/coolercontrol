@@ -394,8 +394,6 @@ fn parse_engine_ns(value: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-    use uuid::Uuid;
 
     const PDEV: &str = "0000:01:00.0";
 
@@ -481,12 +479,6 @@ mod tests {
         assert!((pct - 25.0).abs() < 0.5, "expected ~25%, got {pct}");
     }
 
-    fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("cc-fdinfo-{}", Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
     fn write_client(proc_root: &Path, pid: &str, fd: &str, target: &str, fdinfo: &str) {
         let fd_dir = proc_root.join(pid).join("fd");
         let fdinfo_dir = proc_root.join(pid).join("fdinfo");
@@ -497,24 +489,24 @@ mod tests {
     }
 
     #[test]
-    fn scan_clients_in_collects_matching_drm_clients() {
+    fn a_walk_collects_this_gpus_drm_clients() {
         // Goal: end-to-end scan over a fake /proc picks up only DRM fds for the
         // target pdev and dedups a client opened via two fds (same client-id).
         cc_fs::test_runtime(async {
-            let proc_root = temp_dir();
+            let dir = tempfile::tempdir().unwrap();
+            let proc_root = dir.path();
             let drm = format!("drm-pdev:\t{PDEV}\ndrm-client-id:\t100\ndrm-engine-gfx:\t2000 ns\n");
             // pid 123: one DRM fd (client 100) and one non-DRM fd (ignored).
-            write_client(&proc_root, "123", "3", "/dev/dri/renderD128", &drm);
+            write_client(proc_root, "123", "3", "/dev/dri/renderD128", &drm);
             std::os::unix::fs::symlink("/dev/null", proc_root.join("123").join("fd").join("4"))
                 .unwrap();
             std::fs::write(proc_root.join("123").join("fdinfo").join("4"), "pos:\t0\n").unwrap();
             // pid 456: same client-id 100 via a second fd -> deduped, counted once.
-            write_client(&proc_root, "456", "5", "/dev/dri/renderD128", &drm);
+            write_client(proc_root, "456", "5", "/dev/dri/renderD128", &drm);
             // non-numeric dir ignored.
             std::fs::create_dir_all(proc_root.join("self")).unwrap();
 
-            let clients = scan_once(&proc_root, Instant::now()).await;
-            std::fs::remove_dir_all(&proc_root).ok();
+            let clients = scan_once(proc_root, Instant::now()).await;
 
             assert_eq!(clients.len(), 1);
             assert_eq!(clients.get(&100), Some(&2000));
