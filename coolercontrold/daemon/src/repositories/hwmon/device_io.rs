@@ -17,6 +17,7 @@ use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -132,17 +133,25 @@ impl DeviceIo {
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
         let thread_name = worker_thread_name(device_name);
         debug!("device IO worker starting: {thread_name}");
+        let running = Arc::new(());
+        let liveness = WorkerLiveness(Arc::downgrade(&running));
         // Detached deliberately: a wedged worker never returns, so there is no handle worth
         // keeping. Holding one would only invite a `join` that cannot be bounded.
         std::thread::Builder::new()
             .name(thread_name)
             .stack_size(WORKER_STACK_BYTES)
-            .spawn(move || run_worker(rx))?;
+            .spawn(move || {
+                run_worker(rx);
+                // Held for the thread's whole life, so its exit can be seen once every handle is
+                // gone: see `WorkerLiveness`.
+                drop(running);
+            })?;
         Ok(Self::Threaded(Rc::new(Worker {
             state: HealthState::new(device_name.to_owned()),
             tx,
             reply_timeout,
             pending_registry: RefCell::new(None),
+            liveness,
         })))
     }
 
@@ -192,6 +201,30 @@ impl DeviceIo {
                     .await
             }
         }
+    }
+
+    /// Reads one whole attribute by path, for what does not fit a `SysfsValue`: labels, multi-line
+    /// attributes such as `uevent` and the PMFW tables, and binary pages such as SCSI VPD.
+    ///
+    /// One-shot like `read_value`, and bounded by `cc_fs::ATTRIBUTE_MAX_BYTES` on the worker.
+    pub async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+        match self {
+            Self::Inline(_) => cc_fs::read_bytes(path).await,
+            Self::Threaded(worker) => {
+                worker
+                    .dispatch("reading", &path.display(), |reply| Request::ReadBytes {
+                        path: path.to_path_buf(),
+                        reply,
+                    })
+                    .await
+            }
+        }
+    }
+
+    /// `read_bytes` as UTF-8 text.
+    pub async fn read_text(&self, path: &Path) -> Result<String> {
+        let bytes = self.read_bytes(path).await?;
+        Ok(String::from_utf8(bytes)?)
     }
 
     /// Reads one attribute through its slot when the registry gave it one, by path otherwise.
@@ -352,14 +385,38 @@ impl DeviceIo {
     #[cfg(test)]
     #[must_use]
     pub fn wedged_for_test(reply_timeout: Duration) -> (Self, mpsc::Receiver<Request>) {
+        let (io, rx, _running) = Self::wedged_running_for_test(reply_timeout);
+        (io, rx)
+    }
+
+    /// `wedged_for_test`, with the token that stands in for the worker's thread: its
+    /// `WorkerLiveness` reports it running until the token is dropped, which is what a worker
+    /// whose read finally returned does.
+    #[cfg(test)]
+    #[must_use]
+    pub fn wedged_running_for_test(
+        reply_timeout: Duration,
+    ) -> (Self, mpsc::Receiver<Request>, Arc<()>) {
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
+        let running = Arc::new(());
         let worker = Worker {
             state: HealthState::new("wedged".to_owned()),
             tx,
             reply_timeout,
             pending_registry: RefCell::new(None),
+            liveness: WorkerLiveness(Arc::downgrade(&running)),
         };
-        (Self::Threaded(Rc::new(worker)), rx)
+        (Self::Threaded(Rc::new(worker)), rx, running)
+    }
+
+    /// Whether this device's worker thread still runs, observable after every handle is
+    /// dropped. `None` when not isolated.
+    #[must_use]
+    pub fn liveness(&self) -> Option<WorkerLiveness> {
+        match self {
+            Self::Inline(_) => None,
+            Self::Threaded(worker) => Some(worker.liveness.clone()),
+        }
     }
 
     /// Lets the next dispatch through even if the device is currently unreachable.
@@ -568,6 +625,22 @@ pub struct Worker {
     /// such a device still reports timeouts and still goes unreachable, rather than failing every
     /// read as unregistered and looking healthy while doing it.
     pending_registry: RefCell<Option<Vec<PathBuf>>>,
+    liveness: WorkerLiveness,
+}
+
+/// Whether a worker thread still runs.
+///
+/// Dropping a worker's last handle closes its queue, and the thread exits once the request it is
+/// serving returns: at once for a healthy device, never for one parked in the kernel. This tells
+/// the two apart without keeping a handle, which would keep the thread alive.
+#[derive(Clone, Debug)]
+pub struct WorkerLiveness(std::sync::Weak<()>);
+
+impl WorkerLiveness {
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.0.strong_count() > 0
+    }
 }
 
 impl Worker {
@@ -648,6 +721,10 @@ pub enum Request {
         path: PathBuf,
         reply: oneshot::Sender<Result<SysfsValue>>,
     },
+    ReadBytes {
+        path: PathBuf,
+        reply: oneshot::Sender<Result<Vec<u8>>>,
+    },
     ReadMany {
         indices: Vec<ReadIndex>,
         reply: oneshot::Sender<Result<Vec<Result<SysfsValue>>>>,
@@ -688,6 +765,9 @@ fn serve_one(fds: &cc_fs::SysfsFdCache, request: Request) {
             let result = cc_fs::read_sysfs_value_blocking(&path);
             // A dropped receiver means the caller already timed out. Expected, not an error.
             let _ = reply.send(result);
+        }
+        Request::ReadBytes { path, reply } => {
+            let _ = reply.send(cc_fs::read_bytes_blocking(&path));
         }
         Request::ReadMany { indices, reply } => {
             let mut values = Vec::with_capacity(indices.len());
@@ -739,28 +819,57 @@ fn unreachable_warning(device_name: &str, timeouts: u8) -> String {
     )
 }
 
+/// Whether `err` means the worker never answered, rather than answered with an error.
+///
+/// The kind alone cannot tell them apart: a driver that fails its own read with `ETIMEDOUT`
+/// answered. Callers that must not mistake a stall for a missing attribute ask here.
+#[must_use]
+pub fn is_unanswered(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<Error>()
+            .and_then(Error::get_ref)
+            .is_some_and(<dyn std::error::Error + Send + Sync>::is::<Unanswered>)
+    })
+}
+
+/// The payload of every error that means no answer came: a timeout, an unreachable device, or a
+/// worker that is gone. Carried inside the `io::Error`, so its kind and message stay as they were.
+#[derive(Debug)]
+struct Unanswered(String);
+
+impl Display for Unanswered {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Unanswered {}
+
+fn unanswered(kind: ErrorKind, message: String) -> anyhow::Error {
+    Error::new(kind, Unanswered(message)).into()
+}
+
 fn timed_out(
     device_name: &str,
     verb: &'static str,
     what: &dyn Display,
     budget: Duration,
 ) -> anyhow::Error {
-    Error::new(
+    unanswered(
         ErrorKind::TimedOut,
         format!(
             "device {device_name} did not answer within {} ms {verb} {what}",
             budget.as_millis()
         ),
     )
-    .into()
 }
 
 fn unreachable(device_name: &str, what: &dyn Display) -> anyhow::Error {
-    Error::new(
+    unanswered(
         ErrorKind::HostUnreachable,
         format!("device {device_name} is unreachable, skipping {what}"),
     )
-    .into()
 }
 
 /// Names a batch in a timeout message without carrying a path across the boundary.
@@ -773,11 +882,10 @@ impl Display for BatchLabel {
 }
 
 fn worker_gone(device_name: &str) -> anyhow::Error {
-    Error::new(
+    unanswered(
         ErrorKind::BrokenPipe,
         format!("device {device_name} IO worker is gone"),
     )
-    .into()
 }
 
 #[cfg(test)]
@@ -1164,6 +1272,109 @@ mod tests {
             assert_eq!(written, "128");
             assert_eq!(io.health(), DeviceHealth::Healthy);
         });
+    }
+
+    /// Goal: whole-attribute reads cross the thread boundary unchanged, past the 64 bytes of a
+    /// `SysfsValue`, so moving a label or `uevent` read onto the worker changes only where it runs.
+    /// Method: read a multi-line text file and a binary file through a real worker and inline, and
+    /// compare both with what was written.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn threaded_whole_attribute_reads_match_inline() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let uevent =
+                "OF_NAME=fan\nOF_FULLNAME=/soc/fan\nOF_COMPATIBLE_0=pwm-fan\nMODALIAS=of\n";
+            assert!(uevent.len() > cc_fs::SYSFS_VALUE_MAX_BYTES);
+            let text = dir.path().join("uevent");
+            std::fs::write(&text, uevent).unwrap();
+            let binary = dir.path().join("vpd_pg80");
+            std::fs::write(&binary, [0x80, 0x00, 0x01, b'S']).unwrap();
+            let threaded = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
+
+            for io in [&threaded, &DeviceIo::default()] {
+                assert_eq!(io.read_text(&text).await.unwrap(), uevent);
+                assert_eq!(
+                    io.read_bytes(&binary).await.unwrap(),
+                    [0x80, 0x00, 0x01, b'S']
+                );
+                assert!(io.read_text(&binary).await.is_err());
+            }
+            assert_eq!(threaded.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: a caller can tell a worker that never answered from a driver that answered with an
+    /// error, its own `ETIMEDOUT` included, without changing what either error says. Method: time
+    /// out, gate and lose a wedged worker, and compare with answered errors of every kind.
+    #[test]
+    fn only_a_missing_answer_reads_as_unanswered() {
+        crate::rt::test_runtime(async {
+            let path = Path::new("/sys/class/hwmon/hwmon0/temp1_input");
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let timed_out = io.read_text(path).await.unwrap_err();
+            worker_of(&io).state.force_unreachable_at(
+                UNREACHABLE_AFTER_TIMEOUTS,
+                Instant::now() + UNREACHABLE_PROBE_INTERVAL,
+            );
+            let gated = io.read_value(path).await.unwrap_err();
+            let (gone_io, gone_rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            drop(gone_rx);
+            let gone = gone_io.read_bytes(path).await.unwrap_err();
+
+            for err in [&timed_out, &gated, &gone] {
+                assert!(is_unanswered(err), "{err}");
+            }
+            assert!(timed_out.to_string().contains("did not answer within"));
+            let driver_timeout = anyhow::Error::from(Error::from(ErrorKind::TimedOut));
+            let dir = tempfile::tempdir().unwrap();
+            let missing = DeviceIo::default()
+                .read_text(&dir.path().join("temp1_label"))
+                .await
+                .unwrap_err();
+            let wrapped = gone.context("reading a label");
+            assert!(is_unanswered(&driver_timeout).not());
+            assert!(is_unanswered(&missing).not());
+            assert!(is_unanswered(&wrapped), "context must not hide it");
+        });
+    }
+
+    /// Goal: a worker's liveness outlives its handle and follows its thread alone, so an owner
+    /// can drop a stalled worker and still tell when its thread is gone. Method: drop the handle
+    /// of a wedged worker, then the token standing in for its thread; and ask an inline one.
+    #[test]
+    fn liveness_follows_the_thread_not_the_handle() {
+        let (io, _rx, running) = DeviceIo::wedged_running_for_test(TEST_TIMEOUT);
+        let liveness = io.liveness().unwrap();
+        assert!(liveness.is_running());
+
+        drop(io);
+        assert!(liveness.is_running(), "a parked thread outlives its handle");
+        drop(running);
+
+        assert!(liveness.is_running().not());
+        assert!(DeviceIo::default().liveness().is_none());
+    }
+
+    /// Goal: a real worker's thread ends once its last handle is dropped and it is idle, and its
+    /// liveness says so. Method: start a worker, drop it, and wait a bounded time for the thread.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn an_idle_worker_exits_once_its_last_handle_drops() {
+        let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
+        let liveness = io.liveness().unwrap();
+        assert!(liveness.is_running());
+
+        drop(io);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while liveness.is_running() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        assert!(
+            liveness.is_running().not(),
+            "the worker thread did not exit"
+        );
     }
 
     /// Goal: a device that answers with an error is alive, and must not be counted as wedged.

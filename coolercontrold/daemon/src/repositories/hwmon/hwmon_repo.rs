@@ -72,6 +72,7 @@ use crate::repositories::hwmon::chip_name::ChipName;
 use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
 use crate::repositories::hwmon::drivetemp::DrivetempState;
+use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{
     attributes, auto_curve, chip_name, devices, drivetemp, fans, power, temps, thinkpad,
 };
@@ -667,6 +668,7 @@ impl HwmonRepo {
         hwmon_drivers: Vec<HwmonDriverInfo>,
         chip_names: &HashMap<PathBuf, ChipName>,
         extract_timeout: Duration,
+        identity: &IdentityReader,
     ) -> Result<()> {
         debug_assert!(extract_timeout > Duration::ZERO);
         let poll_rate = self.config.get_settings()?.poll_rate;
@@ -755,9 +757,9 @@ impl HwmonRepo {
                 thinkpad_fan_control,
                 driver_info: DriverInfo {
                     drv_type: DriverType::Kernel,
-                    name: devices::get_device_driver_name(&driver.path).await,
+                    name: devices::get_device_driver_name(&driver.path),
                     version: sysinfo::System::kernel_version(),
-                    locations: Self::get_driver_locations(&driver.path).await,
+                    locations: Self::get_driver_locations(&driver.path, identity).await,
                 },
                 ..Default::default()
             };
@@ -857,6 +859,83 @@ impl HwmonRepo {
                 .insert(device.uid.clone(), (Rc::new(RefCell::new(device)), driver));
         }
         Ok(())
+    }
+
+    /// Leaves out a device whose identity read got no answer, for this start.
+    fn skip_unanswered(&self, path: &Path, device: &dyn std::fmt::Display) {
+        identity::log_skipped(device, path);
+        self.record_exclusion(path, HwmonExclusion::Unanswered);
+    }
+
+    /// What decides a device's UID, read through the init's identity reader.
+    async fn read_identity(
+        path: &Path,
+        device_name: &str,
+        identity: &IdentityReader,
+    ) -> Result<HwmonIdentity, Stalled> {
+        let raw_id = devices::get_device_unique_id(path, device_name, identity).await?;
+        // Tried before location on a collision. The wwid leads here even though the serial
+        // is the preferred primary: the primary is about not re-keying what already works,
+        // a tiebreak is about uniqueness, and only the wwid is vendor scoped.
+        let wwid_id = devices::get_scsi_device_wwid(path, identity)
+            .await?
+            .unwrap_or_default();
+        // The `serial` attribute is absent on many drives even when the data exists. Kept
+        // out of `get_device_serial_number`: that feeds the legacy chain too, so shifting it
+        // would make the migration below see no change and skip these drives.
+        let serial_id = match devices::get_device_serial_number(path, identity).await? {
+            Some(serial) => serial,
+            None => devices::get_scsi_vpd_serial(path, identity)
+                .await?
+                .unwrap_or_default(),
+        };
+        Ok(HwmonIdentity {
+            identifier: raw_id,
+            wwid: wwid_id,
+            serial: serial_id,
+        })
+    }
+
+    /// The device's UID from its identity, unique among `assigned_uids`, with any settings kept
+    /// under its legacy UID moved to it.
+    async fn resolve_device_uid(
+        &self,
+        path: &Path,
+        device_name: &str,
+        assigned_uids: &mut HashSet<UID>,
+        identity: &IdentityReader,
+    ) -> Result<(String, UID), Stalled> {
+        let HwmonIdentity {
+            identifier: raw_id,
+            wwid: wwid_id,
+            serial: serial_id,
+        } = Self::read_identity(path, device_name, identity).await?;
+        // Distinct per-device sysfs path. Last resort only: see the note on `assigned_uids`.
+        let path_id = devices::get_static_device_path_str(path)
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        let (u_id, device_uid) = Device::assign_unique(
+            assigned_uids,
+            DeviceType::Hwmon,
+            device_name,
+            &raw_id,
+            &[wwid_id.as_str(), serial_id.as_str(), path_id.as_str()],
+        );
+        debug!("Detected UID: {u_id}");
+        self.migrate_legacy_device_uid(path, device_name, &device_uid, assigned_uids, identity)
+            .await?;
+        debug_assert!(assigned_uids.contains(&device_uid));
+        Ok((u_id, device_uid))
+    }
+
+    /// The device's model, from its own attribute or its PCI ids.
+    async fn read_model(path: &Path, identity: &IdentityReader) -> Result<Option<String>, Stalled> {
+        let pci_device_names = devices::get_device_pci_names(path, identity).await?;
+        let model = devices::get_device_model_name(path, identity)
+            .await?
+            .or_else(|| {
+                pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
+            });
+        Ok(model)
     }
 
     /// Notes an hwmon device the daemon is dropping, so the report can say why
@@ -973,14 +1052,15 @@ impl HwmonRepo {
         Ok((hwmon_driver, channel_info, device_lock.borrow().type_index))
     }
 
-    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    /// For display only, read once the device is accepted: a stalled read leaves out its entry.
+    async fn get_driver_locations(base_path: &Path, identity: &IdentityReader) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
         let device_path = devices::get_static_device_path_str(base_path);
         let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+        if let Ok(Some(mod_alias)) = devices::get_device_mod_alias(base_path, identity).await {
             locations.push(mod_alias);
         }
-        if let Some(hid_phys) = devices::get_device_hid_phys(base_path).await {
+        if let Ok(Some(hid_phys)) = devices::get_device_hid_phys(base_path, identity).await {
             locations.push(hid_phys);
         }
         locations
@@ -1405,18 +1485,20 @@ impl HwmonRepo {
         device_name: &str,
         device_uid: &DeviceUID,
         assigned_uids: &HashSet<UID>,
-    ) {
-        let legacy_identifier = devices::get_legacy_device_unique_id(path, device_name).await;
+        identity: &IdentityReader,
+    ) -> Result<(), Stalled> {
+        let legacy_identifier =
+            devices::get_legacy_device_unique_id(path, device_name, identity).await?;
         let legacy_uid =
             Device::create_uid_from(device_name, DeviceType::Hwmon, 0, Some(&legacy_identifier));
         if legacy_uid == *device_uid {
-            return;
+            return Ok(());
         }
         // Another device in this batch answers to the legacy UID, so those settings are its
         // own. Reachable when two drives share a serial: the first keeps the serial-derived
         // UID while this one falls back to its wwid.
         if assigned_uids.contains(&legacy_uid) {
-            return;
+            return Ok(());
         }
         let mut rewrites = self.config.migrate_device_uid(&legacy_uid, device_uid);
         rewrites += usize::from(
@@ -1424,12 +1506,13 @@ impl HwmonRepo {
                 .await,
         );
         if rewrites == 0 {
-            return;
+            return Ok(());
         }
         info!(
             "Migrated {rewrites} saved setting(s) for {device_name} onto a stable identifier, \
              so they no longer depend on a sysfs path that can change between boots"
         );
+        Ok(())
     }
 
     /// Overrides are already in memory so they move through their controller; the JSON stores
@@ -1663,6 +1746,13 @@ impl HwmonRepo {
         debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
         Ok(attributes)
     }
+}
+
+/// What decides a hwmon device's UID: its identifier, and the tiebreakers tried on a collision.
+struct HwmonIdentity {
+    identifier: UID,
+    wwid: String,
+    serial: String,
 }
 
 /// Clears `preload_in_flight` on drop so a panic / cancellation
@@ -2156,9 +2246,14 @@ impl Repository for HwmonRepo {
         // SCSI/SAS/SATA: which device holds which UID can flip there. Kept as a last resort
         // because location is all that is left to tell two otherwise identical devices apart.
         let mut assigned_uids: HashSet<UID> = HashSet::new();
+        // Dropped at the end of init, which ends its thread.
+        let identity = IdentityReader::start("hwmon-init", self.device_io_reply_timeout);
         for path in base_paths {
             debug!("Processing HWMon device path: {}", path.display());
-            let device_name = devices::get_device_name(&path).await;
+            let Ok(device_name) = devices::get_device_name(&path, &identity).await else {
+                self.skip_unanswered(&path, &"a hwmon device");
+                continue;
+            };
             debug!("Detected Device Name: {device_name}");
             if HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim()) {
                 self.record_exclusion(&path, HwmonExclusion::ServedByGpuRepository);
@@ -2172,35 +2267,13 @@ impl Repository for HwmonRepo {
                 self.record_exclusion(&path, HwmonExclusion::DuplicateOfLiquidctl);
                 continue;
             }
-            let raw_id = devices::get_device_unique_id(&path, &device_name).await;
-            // Tried before location on a collision. The wwid leads here even though the serial
-            // is the preferred primary: the primary is about not re-keying what already works,
-            // a tiebreak is about uniqueness, and only the wwid is vendor scoped.
-            let wwid_id = devices::get_scsi_device_wwid(&path)
+            let Ok((u_id, device_uid)) = self
+                .resolve_device_uid(&path, &device_name, &mut assigned_uids, &identity)
                 .await
-                .unwrap_or_default();
-            // The `serial` attribute is absent on many drives even when the data exists. Kept
-            // out of `get_device_serial_number`: that feeds the legacy chain too, so shifting it
-            // would make the migration below see no change and skip these drives.
-            let serial_id = match devices::get_device_serial_number(&path).await {
-                Some(serial) => serial,
-                None => devices::get_scsi_vpd_serial(&path)
-                    .await
-                    .unwrap_or_default(),
+            else {
+                self.skip_unanswered(&path, &device_name);
+                continue;
             };
-            // Distinct per-device sysfs path. Last resort only: see the note on `assigned_uids`.
-            let path_id = devices::get_static_device_path_str(&path)
-                .unwrap_or_else(|| path.to_string_lossy().into_owned());
-            let (u_id, device_uid) = Device::assign_unique(
-                &mut assigned_uids,
-                DeviceType::Hwmon,
-                &device_name,
-                &raw_id,
-                &[wwid_id.as_str(), serial_id.as_str(), path_id.as_str()],
-            );
-            debug!("Detected UID: {u_id}");
-            self.migrate_legacy_device_uid(&path, &device_name, &device_uid, &assigned_uids)
-                .await;
             let cc_device_setting = self
                 .config
                 .get_cc_settings_for_device(&device_uid)
@@ -2214,9 +2287,20 @@ impl Repository for HwmonRepo {
             let disabled_channels = cc_device_setting
                 .as_ref()
                 .map_or_else(Vec::new, CCDeviceSettings::get_disabled_channels);
+            if temps::only_temps_of_another_repo(&path, &device_name) {
+                debug!(
+                    "No fans or power under {}, and its temps belong to the CPU repository, \
+                     skipping.",
+                    path.display()
+                );
+                continue;
+            }
             // The chip identity the lm-sensors configuration names, needed here to apply its
             // `ignore` statements, and reused below for the labels and the summary log.
-            let chip = chip_name::derive(&path).await;
+            let Ok(chip) = chip_name::derive(&path, &identity).await else {
+                self.skip_unanswered(&path, &device_name);
+                continue;
+            };
             // Before any value read: detection is exactly where a driver that sleeps inside its
             // sysfs read first bites (issue 609), so it belongs on the device's own thread.
             let io = DeviceIo::isolated_or_inline(&device_name, self.device_io_reply_timeout);
@@ -2308,10 +2392,8 @@ impl Repository for HwmonRepo {
             if let Err(err) = install_read_registry(&path, None, &mut channels, &io).await {
                 error!("Could not install the read table for {device_name}: {err}");
             }
-            let pci_device_names = devices::get_device_pci_names(&path).await;
-            let model = devices::get_device_model_name(&path).await.or_else(|| {
-                pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
-            });
+            // Display only, not in the UID: a stall leaves the device without a model.
+            let model = Self::read_model(&path, &identity).await.unwrap_or_default();
             debug!("Detected Device Model: {model:?}");
             let hwmon_driver_info = HwmonDriverInfo {
                 name: device_name,
@@ -2325,11 +2407,11 @@ impl Repository for HwmonRepo {
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
-        devices::handle_duplicate_device_names(&mut hwmon_drivers).await;
+        devices::handle_duplicate_device_names(&mut hwmon_drivers, &identity).await;
         // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
 
-        self.map_into_our_device_model(hwmon_drivers, &chip_names, INIT_EXTRACT_TIMEOUT)
+        self.map_into_our_device_model(hwmon_drivers, &chip_names, INIT_EXTRACT_TIMEOUT, &identity)
             .await?;
         self.load_device_delays();
         self.spawn_writer_tasks();
@@ -6826,7 +6908,12 @@ mod init_timeout_tests {
 
             let mut repo = empty_repo();
             let result = repo
-                .map_into_our_device_model(drivers, &HashMap::new(), Duration::from_secs(5))
+                .map_into_our_device_model(
+                    drivers,
+                    &HashMap::new(),
+                    Duration::from_secs(5),
+                    &IdentityReader::inline(),
+                )
                 .await;
 
             assert!(result.is_ok());
@@ -6873,7 +6960,12 @@ mod init_timeout_tests {
 
             let mut repo = empty_repo();
             let result = repo
-                .map_into_our_device_model(vec![driver], &HashMap::new(), Duration::from_secs(5))
+                .map_into_our_device_model(
+                    vec![driver],
+                    &HashMap::new(),
+                    Duration::from_secs(5),
+                    &IdentityReader::inline(),
+                )
                 .await;
 
             assert!(
@@ -6926,6 +7018,7 @@ mod init_timeout_tests {
                     vec![driver],
                     &HashMap::new(),
                     Duration::from_millis(200),
+                    &IdentityReader::inline(),
                 )
                 .await;
             let elapsed = start.elapsed();
@@ -6998,7 +7091,12 @@ mod init_timeout_tests {
 
             let mut repo = empty_repo();
             let result = repo
-                .map_into_our_device_model(vec![driver], &HashMap::new(), Duration::from_secs(2))
+                .map_into_our_device_model(
+                    vec![driver],
+                    &HashMap::new(),
+                    Duration::from_secs(2),
+                    &IdentityReader::inline(),
+                )
                 .await;
             assert!(result.is_ok(), "map should succeed even if reads failed");
             assert_eq!(repo.devices.len(), 1, "device should be registered");
@@ -7408,8 +7506,15 @@ mod uid_migration_tests {
             let assigned: HashSet<UID> =
                 [legacy_uid.clone(), our_uid.clone()].into_iter().collect();
 
-            repo.migrate_legacy_device_uid(&path, "drivetemp", &our_uid, &assigned)
-                .await;
+            repo.migrate_legacy_device_uid(
+                &path,
+                "drivetemp",
+                &our_uid,
+                &assigned,
+                &IdentityReader::inline(),
+            )
+            .await
+            .unwrap();
 
             assert_eq!(
                 repo.config.get_device_settings(&legacy_uid).unwrap().len(),
@@ -7449,8 +7554,15 @@ mod uid_migration_tests {
             let repo = repo_with_setting(&legacy_uid);
             let assigned: HashSet<UID> = [our_uid.clone()].into_iter().collect();
 
-            repo.migrate_legacy_device_uid(&path, "drivetemp", &our_uid, &assigned)
-                .await;
+            repo.migrate_legacy_device_uid(
+                &path,
+                "drivetemp",
+                &our_uid,
+                &assigned,
+                &IdentityReader::inline(),
+            )
+            .await
+            .unwrap();
 
             assert!(
                 repo.config
@@ -7485,16 +7597,28 @@ mod uid_migration_tests {
                 .await
                 .unwrap();
             std::os::unix::fs::symlink(&client, path.join("device")).unwrap();
-            let legacy_id = devices::get_legacy_device_unique_id(&path, "spd5118").await;
-            let our_id = devices::get_device_unique_id(&path, "spd5118").await;
+            let legacy_id =
+                devices::get_legacy_device_unique_id(&path, "spd5118", &IdentityReader::inline())
+                    .await
+                    .unwrap();
+            let our_id = devices::get_device_unique_id(&path, "spd5118", &IdentityReader::inline())
+                .await
+                .unwrap();
             let legacy_uid =
                 Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&legacy_id));
             let our_uid = Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&our_id));
             let repo = repo_with_setting(&legacy_uid);
             let assigned: HashSet<UID> = [our_uid.clone()].into_iter().collect();
 
-            repo.migrate_legacy_device_uid(&path, "spd5118", &our_uid, &assigned)
-                .await;
+            repo.migrate_legacy_device_uid(
+                &path,
+                "spd5118",
+                &our_uid,
+                &assigned,
+                &IdentityReader::inline(),
+            )
+            .await
+            .unwrap();
 
             assert!(legacy_id.contains("/i2c-15/"), "got {legacy_id}");
             assert!(our_id.contains("/i2c-15/").not(), "got {our_id}");
@@ -7530,8 +7654,13 @@ mod uid_migration_tests {
                 .await
                 .unwrap();
             std::os::unix::fs::symlink(&client, path.join("device")).unwrap();
-            let legacy_id = devices::get_legacy_device_unique_id(&path, "spd5118").await;
-            let our_id = devices::get_device_unique_id(&path, "spd5118").await;
+            let legacy_id =
+                devices::get_legacy_device_unique_id(&path, "spd5118", &IdentityReader::inline())
+                    .await
+                    .unwrap();
+            let our_id = devices::get_device_unique_id(&path, "spd5118", &IdentityReader::inline())
+                .await
+                .unwrap();
             let legacy_uid =
                 Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&legacy_id));
             let our_uid = Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&our_id));
@@ -7546,8 +7675,15 @@ mod uid_migration_tests {
             let repo = repo_with_setting(&legacy_uid).with_uid_side_stores(stores.clone());
             let assigned: HashSet<UID> = [our_uid.clone()].into_iter().collect();
 
-            repo.migrate_legacy_device_uid(&path, "spd5118", &our_uid, &assigned)
-                .await;
+            repo.migrate_legacy_device_uid(
+                &path,
+                "spd5118",
+                &our_uid,
+                &assigned,
+                &IdentityReader::inline(),
+            )
+            .await
+            .unwrap();
 
             for store in &stores {
                 let contents = cc_fs::read_txt(store).await.unwrap();

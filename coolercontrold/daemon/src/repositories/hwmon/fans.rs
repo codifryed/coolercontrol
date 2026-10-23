@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
@@ -155,6 +156,17 @@ fn unread_fan_inputs(base_path: &Path, fans: &[HwmonChannelInfo]) -> Vec<u8> {
     channel_numbers
 }
 
+/// Whether a directory entry names an attribute fan detection reads, `pwmN` or `fanN_input`, so a
+/// chip with neither can be ruled out from its listing alone.
+pub fn is_fan_attribute(file_name: &str) -> bool {
+    // Compiled once. The patterns are constants, so only a typo fails, and the tests catch that.
+    static PATTERNS: LazyLock<[Regex; 2]> = LazyLock::new(|| {
+        [PATTERN_PWM_FILE_NUMBER, PATTERN_FAN_INPUT_FILE_NUMBER]
+            .map(|pattern| Regex::new(pattern).expect("fan attribute patterns are valid"))
+    });
+    PATTERNS.iter().any(|regex| regex.is_match(file_name))
+}
+
 /// Detects if a fan has pwm capability and pwm-write capabilities.
 async fn detect_pwm(
     base_path: &Path,
@@ -247,7 +259,7 @@ async fn caps_to_hwmon_fans(
         let pwm_enable_at_init = current_pwm_enable(io, base_path, channel_number, None).await;
         let pwm_enable_default = adjusted_pwm_default(pwm_enable_at_init, device_name);
         let channel_name = get_fan_channel_name(channel_number);
-        let label = get_fan_channel_label(base_path, &channel_number).await;
+        let label = get_fan_channel_label(base_path, &channel_number, io).await;
         // The raw driver label, so neither sensors.conf nor a user label can lift the rpm guard.
         if label.as_deref().is_some_and(label_names_non_rpm_unit) {
             fan_cap.insert(HwmonChannelCapabilities::NON_RPM_UNIT);
@@ -871,8 +883,13 @@ fn adjusted_pwm_default(current_pwm_enable: Option<u8>, device_name: &str) -> Op
 /// Returns:
 ///
 /// an `Option<String>`.
-pub async fn get_fan_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
-    cc_fs::read_txt(base_path.join(format_fan_label!(channel_number)))
+pub async fn get_fan_channel_label(
+    base_path: &Path,
+    channel_number: &u8,
+    io: &DeviceIo,
+) -> Option<String> {
+    // On the device's thread: the label comes from the driver, which may have to ask the hardware.
+    io.read_text(&base_path.join(format_fan_label!(channel_number)))
         .await
         .ok()
         .and_then(|label| {

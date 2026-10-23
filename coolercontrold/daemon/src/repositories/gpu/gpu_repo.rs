@@ -228,7 +228,11 @@ impl GpuRepo {
                 .await
                 .len() as u8
         } else {
-            match self.gpus_nvidia.init_nvml_devices(starting_nvidia_index) {
+            match self
+                .gpus_nvidia
+                .init_nvml_devices(starting_nvidia_index)
+                .await
+            {
                 NvmlInitResult::Active(num_nvml_devices) => {
                     self.nvml_active = true;
                     num_nvml_devices

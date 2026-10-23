@@ -11,7 +11,7 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::string::ToString;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
 use futures_util::future::join_all;
@@ -31,7 +31,8 @@ use crate::repositories::failsafe::{
 };
 use crate::repositories::hwmon::attributes::{MICROWATTS_MAX, MICROWATTS_PER_WATT};
 use crate::repositories::hwmon::device_io::{
-    reply_timeout_for, DeviceHealth, DeviceIo, UNREACHABLE_PROBE_INTERVAL,
+    self as device_io, reply_timeout_for, DeviceHealth, DeviceIo, WorkerLiveness,
+    UNREACHABLE_PROBE_INTERVAL,
 };
 use crate::repositories::hwmon::fans::pwm_value_to_duty;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -56,6 +57,11 @@ const _: () = assert!(MICROWATTS_MAX <= 1 << 53);
 /// Upper bound on window slots: the max `time_window_seconds` (300) at the fastest
 /// `poll_rate` (0.5 s).
 const SAMPLE_WINDOW_MAX_SLOTS: usize = 600;
+/// Retired check workers still running at once, each parked in the kernel on a file that has
+/// not answered. Past this a check fails at once, so a client repeating a check of a file that
+/// blocks cannot park threads without bound. A worker whose read returns exits and frees its
+/// place, so checks that were only slow never lock checks out.
+const CHECK_WORKERS_MAX: usize = 8;
 
 type CustomSensors = RefCell<Vec<CustomSensor>>;
 type Relationships = RefCell<HashMap<ChildId, Vec<ParentId>>>;
@@ -122,6 +128,14 @@ pub struct CustomSensorsRepo {
     /// Set while a read pass is in flight, so a file that has not answered skips the next pass
     /// instead of queueing a second read behind the first.
     file_pass_in_flight: Cell<bool>,
+    /// Where create and update checks read, apart from `io`. Started on the first check, and
+    /// again after a check that got no answer.
+    check_worker: RefCell<Option<DeviceIo>>,
+    /// Check workers retired after a check got no answer, kept until their threads exit. At most
+    /// `CHECK_WORKERS_MAX`.
+    retired_check_workers: RefCell<Vec<WorkerLiveness>>,
+    /// Starts a check worker. A field so tests can count starts without a thread.
+    start_check_worker: fn(&str, Duration) -> Result<DeviceIo>,
     /// Cancelled by `abort_pending`, so an in-flight read pass cannot hold the main loop's
     /// scope open at shutdown.
     abort_token: CancellationToken,
@@ -191,6 +205,9 @@ impl CustomSensorsRepo {
             io: DeviceIo::default(),
             file_io_unreachable: Cell::new(false),
             file_pass_in_flight: Cell::new(false),
+            check_worker: RefCell::new(None),
+            retired_check_workers: RefCell::new(Vec::with_capacity(CHECK_WORKERS_MAX)),
+            start_check_worker: DeviceIo::threaded,
             abort_token: CancellationToken::new(),
             sample_windows: RefCell::new(HashMap::new()),
         })
@@ -259,9 +276,10 @@ impl CustomSensorsRepo {
         self.verify_sensor_relationships(&custom_sensor)?;
         let file_value = match &custom_sensor.kind {
             // Make sure the file exists and its value is properly formatted
-            CustomSensorKind::File { file_path } => {
-                Some(Self::read_file_value(custom_sensor.metric, file_path).await?)
-            }
+            CustomSensorKind::File { file_path } => Some(
+                self.check_file_value(custom_sensor.metric, file_path)
+                    .await?,
+            ),
             _ => None,
         };
         // A reconfigured sensor starts fresh: drop any prior failsafing state so the
@@ -457,7 +475,7 @@ impl CustomSensorsRepo {
         // failsafe substitution).
         let file_value = match &sensor.kind {
             CustomSensorKind::File { file_path } => {
-                Some(Self::read_file_value(sensor.metric, file_path).await?)
+                Some(self.check_file_value(sensor.metric, file_path).await?)
             }
             _ => None,
         };
@@ -1067,7 +1085,7 @@ impl CustomSensorsRepo {
     /// `MISSING_STATUS_THRESHOLD` consecutive failures, then emits the metric's failsafe (and a
     /// once-per-occurrence warn log): a fan curve rides out a writer caught mid-truncate, or a
     /// slow read, but still reacts to a genuinely lost source. Live-tick path only; backfill
-    /// reads `read_file_value` directly so it does not interact with the failsafing-state set.
+    /// reads `check_file_value` directly so it does not interact with the failsafing-state set.
     fn process_file_current(&self, id: &CustomSensorId, metric: CustomSensorMetric) -> SensorValue {
         let fresh = self
             .file_read_state
@@ -1240,9 +1258,89 @@ impl CustomSensorsRepo {
         states.insert(id.clone(), state);
     }
 
-    /// Reads a File sensor's value: a whole number in the hwmon unit of the sensor's metric.
-    async fn read_file_value(metric: CustomSensorMetric, file_path: &Path) -> Result<f64> {
-        Self::parse_file_value(metric, cc_fs::read_sysfs_value(file_path).await)
+    /// Reads a File sensor's value for a create or update check, on the check worker.
+    ///
+    /// The File worker serves every File sensor's tick read, so a new file that blocks (a FIFO
+    /// with no writer) would fail them all; on the check worker it costs only the request. A
+    /// check that gets no answer retires the worker, parked in the kernel, for a fresh one.
+    async fn check_file_value(&self, metric: CustomSensorMetric, file_path: &Path) -> Result<f64> {
+        let io = self.check_io()?;
+        let read = io.read_value(file_path).await;
+        if read.as_ref().is_err_and(device_io::is_unanswered) {
+            self.retire_check_worker(&io);
+        }
+        Self::parse_file_value(metric, read)
+    }
+
+    /// The check worker, started if there is none. Inline when File reads are, as in tests.
+    ///
+    /// # Errors
+    ///
+    /// While `CHECK_WORKERS_MAX` retired workers are still parked, or when the OS refuses the
+    /// thread. A check never falls back to reading on the main thread.
+    fn check_io(&self) -> Result<DeviceIo> {
+        if matches!(self.io, DeviceIo::Inline(_)) {
+            return Ok(DeviceIo::default());
+        }
+        let mut worker = self.check_worker.borrow_mut();
+        if let Some(io) = worker.as_ref() {
+            return Ok(io.clone());
+        }
+        let parked = self.parked_check_workers();
+        if parked >= CHECK_WORKERS_MAX {
+            return Err(CCError::UserError {
+                msg: format!(
+                    "File checks are paused: {parked} earlier checks are still waiting on files \
+                     that have not answered. Checks resume as those reads return."
+                ),
+            }
+            .into());
+        }
+        let io =
+            (self.start_check_worker)("custom-sensor-check", reply_timeout_for(self.poll_rate))?;
+        *worker = Some(io.clone());
+        Ok(io)
+    }
+
+    /// Retired check workers still parked, after letting go of those whose read has returned.
+    fn parked_check_workers(&self) -> usize {
+        let mut retired = self.retired_check_workers.borrow_mut();
+        retired.retain(WorkerLiveness::is_running);
+        debug_assert!(retired.len() <= CHECK_WORKERS_MAX);
+        retired.len()
+    }
+
+    /// Drops `stalled` as the check worker. Checks that stalled together on one worker retire it
+    /// once, so the next check starts one worker, not one per stall.
+    fn retire_check_worker(&self, stalled: &DeviceIo) {
+        let mut worker = self.check_worker.borrow_mut();
+        let is_current = match (worker.as_ref(), stalled) {
+            (Some(DeviceIo::Threaded(current)), DeviceIo::Threaded(stalled)) => {
+                Rc::ptr_eq(current, stalled)
+            }
+            _ => false,
+        };
+        if is_current.not() {
+            return;
+        }
+        *worker = None;
+        if let Some(liveness) = stalled.liveness() {
+            let mut retired = self.retired_check_workers.borrow_mut();
+            // A worker starts only below the cap, and each one is retired at most once.
+            debug_assert!(retired.len() < CHECK_WORKERS_MAX);
+            retired.push(liveness);
+        }
+    }
+
+    /// Reads a File sensor's value through `io`: a whole number in the hwmon unit of the sensor's
+    /// metric.
+    #[cfg(test)]
+    async fn read_file_value(
+        io: &DeviceIo,
+        metric: CustomSensorMetric,
+        file_path: &Path,
+    ) -> Result<f64> {
+        Self::parse_file_value(metric, io.read_value(file_path).await)
     }
 
     /// Checks a File sensor's read and converts it, whichever path read it.
@@ -1957,7 +2055,8 @@ mod tests {
     };
     use crate::overrides::OverridesController;
     use crate::repositories::custom_sensors_repo::{
-        CustomSensorsRepo, FileReadState, SampleWindow, SourceData, SAMPLE_WINDOW_MAX_SLOTS,
+        CustomSensorsRepo, FileReadState, SampleWindow, SourceData, CHECK_WORKERS_MAX,
+        SAMPLE_WINDOW_MAX_SLOTS,
     };
     use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILSAFE};
     #[cfg(feature = "gated-tests")]
@@ -1977,6 +2076,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::pin::{pin, Pin};
     use std::rc::Rc;
+    use std::sync::Arc;
     use std::task::Poll;
     use std::time::Duration;
     use tokio::sync::mpsc;
@@ -2571,8 +2671,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_ok());
@@ -2593,8 +2697,12 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_ok());
@@ -2612,8 +2720,12 @@ mod tests {
             let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
 
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2637,8 +2749,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2664,8 +2780,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2686,8 +2806,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2710,8 +2834,12 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2738,8 +2866,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             // println!("{temp_result:?}");
@@ -2759,8 +2891,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2779,8 +2915,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2799,8 +2939,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -5644,10 +5788,18 @@ mod tests {
                 .await
                 .unwrap();
 
-            let watts =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Watts, &test_file).await;
-            let as_temp =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let watts = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Watts,
+                &test_file,
+            )
+            .await;
+            let as_temp = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             assert_eq!(watts.unwrap(), 100_000.);
             assert!(as_temp.is_err());
@@ -5746,6 +5898,192 @@ mod tests {
         let (io, rx) = DeviceIo::wedged_for_test(Duration::from_secs(60));
         repo.io = io;
         (repo, rx)
+    }
+
+    // Goal: the check reads on create and update run on a worker of their own, not the shared
+    // File worker, so a file that blocks costs only that request and never the File sensors
+    // already ticking. Method: wedge the File worker, then repoint a sensor and create one, and
+    // require both to succeed with nothing reaching the wedged worker's queue. Gated: the check
+    // worker is a real thread.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn create_and_update_check_reads_skip_the_file_worker() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut repo, _first_rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            let (io, mut rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+            repo.io = io;
+            let repointed = dir.path().join("repointed");
+            let created = dir.path().join("created");
+            std::fs::write(&repointed, "46000").unwrap();
+            std::fs::write(&created, "47000").unwrap();
+
+            let update = repo
+                .update_custom_sensor(file_sensor("file1", repointed))
+                .await;
+            let create = repo.set_custom_sensor(file_sensor("file2", created)).await;
+
+            assert!(update.is_ok(), "{update:?}");
+            assert!(create.is_ok(), "{create:?}");
+            assert!(
+                rx.try_recv().is_err(),
+                "a check read reached the File worker"
+            );
+            assert_eq!(repo.get_custom_sensors().len(), 2);
+        });
+    }
+
+    thread_local! {
+        /// The queue and the running token of each check worker `start_wedged_check_worker`
+        /// started, kept so each worker stays wedged and running rather than gone or exited.
+        static CHECK_QUEUES: RefCell<Vec<(mpsc::Receiver<Request>, Option<Arc<()>>)>> =
+            const { RefCell::new(Vec::new()) };
+    }
+
+    fn start_wedged_check_worker(_name: &str, _timeout: Duration) -> anyhow::Result<DeviceIo> {
+        let (io, rx, running) = DeviceIo::wedged_running_for_test(Duration::from_millis(10));
+        CHECK_QUEUES.with_borrow_mut(|queues| queues.push((rx, Some(running))));
+        Ok(io)
+    }
+
+    /// The check reads that reached any wedged check worker, drained.
+    fn check_reads_queued() -> usize {
+        CHECK_QUEUES.with_borrow_mut(|queues| {
+            queues
+                .iter_mut()
+                .map(|(rx, _)| std::iter::from_fn(|| rx.try_recv().ok()).count())
+                .sum()
+        })
+    }
+
+    /// Check workers `start_wedged_check_worker` started.
+    fn check_workers_started() -> usize {
+        CHECK_QUEUES.with_borrow(Vec::len)
+    }
+
+    /// A started repository whose File reads and check reads are both on wedged workers.
+    async fn repo_with_wedged_checks(dir: &Path) -> (CustomSensorsRepo, mpsc::Receiver<Request>) {
+        CHECK_QUEUES.with_borrow_mut(Vec::clear);
+        let (mut repo, rx) = repo_with_wedged_file(dir, "45000").await;
+        repo.start_check_worker = start_wedged_check_worker;
+        (repo, rx)
+    }
+
+    // Goal: repeated checks of a file that never answers park at most `CHECK_WORKERS_MAX`
+    // workers, and past that a check fails without a read. Method: wedge every check worker,
+    // run checks past the cap, and count the workers started and the reads queued.
+    #[test]
+    #[serial]
+    fn stalled_checks_start_at_most_the_cap_of_workers() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_checks(dir.path()).await;
+            let file = dir.path().join("blocking");
+            std::fs::write(&file, "46000").unwrap();
+
+            for _ in 0..CHECK_WORKERS_MAX {
+                let check = repo
+                    .set_custom_sensor(file_sensor("file2", file.clone()))
+                    .await;
+                assert!(check.is_err());
+            }
+            assert_eq!(check_reads_queued(), CHECK_WORKERS_MAX);
+            let refused = repo.set_custom_sensor(file_sensor("file2", file)).await;
+
+            assert!(refused.unwrap_err().to_string().contains("paused"));
+            assert_eq!(check_workers_started(), CHECK_WORKERS_MAX);
+            assert_eq!(repo.retired_check_workers.borrow().len(), CHECK_WORKERS_MAX);
+            assert_eq!(check_reads_queued(), 0, "a check read past the cap");
+        });
+    }
+
+    // Goal: the cap counts workers still parked, not workers ever started, so checks that were
+    // only slow cannot lock checks out until a restart. Method: park workers up to the cap, let
+    // one of them exit as a worker whose read returned does, and check again.
+    #[test]
+    #[serial]
+    fn a_parked_check_worker_that_exits_frees_its_place() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_checks(dir.path()).await;
+            let file = dir.path().join("slow");
+            std::fs::write(&file, "46000").unwrap();
+            for _ in 0..CHECK_WORKERS_MAX {
+                let check = repo
+                    .set_custom_sensor(file_sensor("file2", file.clone()))
+                    .await;
+                assert!(check.is_err());
+            }
+            assert!(repo
+                .set_custom_sensor(file_sensor("file2", file.clone()))
+                .await
+                .is_err_and(|err| err.to_string().contains("paused")));
+            let _ = check_reads_queued();
+
+            CHECK_QUEUES.with_borrow_mut(|queues| queues[0].1 = None);
+            let resumed = repo.set_custom_sensor(file_sensor("file2", file)).await;
+
+            assert!(
+                resumed.is_err_and(|err| err.to_string().contains("paused").not()),
+                "the check must run again, here to time out on a wedged worker"
+            );
+            assert_eq!(check_workers_started(), CHECK_WORKERS_MAX + 1);
+            assert_eq!(check_reads_queued(), 1);
+            assert_eq!(repo.retired_check_workers.borrow().len(), CHECK_WORKERS_MAX);
+        });
+    }
+
+    // Goal: checks that stall together on one worker replace it once, not once each. Method:
+    // run several checks at once on a wedged check worker, then one more, and count starts.
+    #[test]
+    #[serial]
+    fn concurrent_stalled_checks_replace_the_worker_once() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_checks(dir.path()).await;
+            let file = dir.path().join("blocking");
+            std::fs::write(&file, "46000").unwrap();
+            let checks =
+                (0..4).map(|n| repo.set_custom_sensor(file_sensor(&format!("c{n}"), file.clone())));
+
+            let results = futures_util::future::join_all(checks).await;
+            assert!(results.iter().all(Result::is_err));
+            assert_eq!(check_workers_started(), 1);
+            assert_eq!(repo.retired_check_workers.borrow().len(), 1);
+            assert!(repo.check_worker.borrow().is_none());
+            let next = repo.set_custom_sensor(file_sensor("c4", file)).await;
+
+            assert!(next.is_err());
+            assert_eq!(check_workers_started(), 2);
+            assert_eq!(repo.retired_check_workers.borrow().len(), 2);
+        });
+    }
+
+    fn refuse_check_worker(_name: &str, _timeout: Duration) -> anyhow::Result<DeviceIo> {
+        Err(anyhow::anyhow!("thread refused"))
+    }
+
+    // Goal: when the check worker cannot start, the check fails rather than reading on the
+    // main thread. Method: refuse every check worker, create a File sensor over a readable,
+    // valid file, and require the create to fail with no worker counted or kept.
+    #[test]
+    #[serial]
+    fn a_refused_check_worker_fails_the_check() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut repo, _rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            repo.start_check_worker = refuse_check_worker;
+            let valid = dir.path().join("valid");
+            std::fs::write(&valid, "46000").unwrap();
+
+            let create = repo.set_custom_sensor(file_sensor("file2", valid)).await;
+
+            assert!(create.is_err(), "{create:?}");
+            assert!(repo.retired_check_workers.borrow().is_empty());
+            assert!(repo.check_worker.borrow().is_none());
+            assert_eq!(repo.get_custom_sensors().len(), 1);
+        });
     }
 
     // Goal: a read that has not landed by the snapshot is a miss like a failed read: held for

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::diagnostics::support::SystemInfo;
 use crate::repositories::liquidctl::liqctld_service;
 use crate::rt;
 use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
@@ -152,74 +153,82 @@ fn env_log_level() -> Option<LevelFilter> {
 }
 
 /// Logs the daemon/host banner (version, OS, board, BIOS, desktop) to the journal.
+///
+/// Read on the blocking pool: the desktop scan reads every process's environment, and each of
+/// those reads waits on that process's memory map lock, which a stuck process can hold.
 async fn log_system_info() {
-    info!("System Info:");
-    info!("  {}", "-".repeat(60));
-    info!("  {:<20} {}", "CoolerControlD", VERSION);
-    info!(
-        "  {:<20} {}",
-        "Name",
-        sysinfo::System::name().unwrap_or_default()
-    );
-    info!(
-        "  {:<20} {}",
-        "OS",
-        sysinfo::System::long_os_version().unwrap_or_default()
-    );
-    info!(
-        "  {:<20} {}",
-        "Host",
-        sysinfo::System::host_name().unwrap_or_default()
-    );
-    info!(
-        "  {:<20} {}",
-        "Kernel",
-        sysinfo::System::kernel_version().unwrap_or_default()
-    );
-    info!("  {:<20} {}", "Arch", sysinfo::System::cpu_arch());
-    info!(
-        "  {:<20} {}",
-        "Board Manufacturer",
-        get_dmi_system_info("board_vendor").await
-    );
-    info!(
-        "  {:<20} {}",
-        "Board Name",
-        get_dmi_system_info("board_name").await
-    );
-    info!(
-        "  {:<20} {}",
-        "Board Version",
-        get_dmi_system_info("board_version").await
-    );
-    info!(
-        "  {:<20} {}",
-        "BIOS Manufacturer",
-        get_dmi_system_info("bios_vendor").await
-    );
-    info!(
-        "  {:<20} {}",
-        "BIOS Version",
-        get_dmi_system_info("bios_release").await
-    );
-    match get_xdg_desktop_info().await {
-        Ok((desktops, sessions)) => {
-            info!("  {:<20} {}", "XDG Desktops", desktops);
-            info!("  {:<20} {}", "XDG Session Types", sessions);
-        }
-        Err(err) => debug!("Failed to get XDG desktop info: {err}"),
+    match rt::spawn_blocking(SystemBanner::read).await {
+        Ok(banner) => banner.log(),
+        Err(err) => debug!("Failed to read the system info: {err}"),
     }
 }
 
-pub async fn get_dmi_system_info(name: &str) -> String {
-    cc_fs::read_txt(format!("/sys/devices/virtual/dmi/id/{name}"))
-        .await
-        .unwrap_or_default()
-        .trim()
-        .to_owned()
+/// What the startup banner shows, read in one go off the runtime thread.
+struct SystemBanner {
+    name: String,
+    os: String,
+    host: String,
+    kernel: String,
+    arch: String,
+    board: SystemInfo,
+    desktops: Result<(String, String)>,
 }
 
-async fn get_xdg_desktop_info() -> Result<(String, String)> {
+impl SystemBanner {
+    /// Blocking calls, for the blocking pool.
+    fn read() -> Self {
+        Self {
+            name: sysinfo::System::name().unwrap_or_default(),
+            os: sysinfo::System::long_os_version().unwrap_or_default(),
+            host: sysinfo::System::host_name().unwrap_or_default(),
+            kernel: sysinfo::System::kernel_version().unwrap_or_default(),
+            arch: sysinfo::System::cpu_arch(),
+            board: SystemInfo::read_blocking(),
+            desktops: read_xdg_desktop_info(),
+        }
+    }
+
+    fn log(&self) {
+        info!("System Info:");
+        info!("  {}", "-".repeat(60));
+        info!("  {:<20} {}", "CoolerControlD", VERSION);
+        info!("  {:<20} {}", "Name", self.name);
+        info!("  {:<20} {}", "OS", self.os);
+        info!("  {:<20} {}", "Host", self.host);
+        info!("  {:<20} {}", "Kernel", self.kernel);
+        info!("  {:<20} {}", "Arch", self.arch);
+        info!("  {:<20} {}", "Board Manufacturer", self.board.board_vendor);
+        info!("  {:<20} {}", "Board Name", self.board.board_name);
+        info!("  {:<20} {}", "Board Version", self.board.board_version);
+        info!("  {:<20} {}", "BIOS Manufacturer", self.board.bios_vendor);
+        info!("  {:<20} {}", "BIOS Version", self.board.bios_release);
+        match &self.desktops {
+            Ok((desktops, sessions)) => {
+                info!("  {:<20} {}", "XDG Desktops", desktops);
+                info!("  {:<20} {}", "XDG Session Types", sessions);
+            }
+            Err(err) => debug!("Failed to get XDG desktop info: {err}"),
+        }
+    }
+}
+
+/// One DMI identity attribute, trimmed, or empty when it does not read as text.
+///
+/// Blocking calls: callers run it on the blocking pool.
+pub fn read_dmi_system_info(name: &str) -> String {
+    let path = PathBuf::from(format!("/sys/devices/virtual/dmi/id/{name}"));
+    cc_fs::read_bytes_blocking(&path)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .map(|text| text.trim().to_owned())
+        .unwrap_or_default()
+}
+
+/// The desktops and session types named in any process's environment.
+///
+/// Blocking calls, for the blocking pool. An environment past `cc_fs::ATTRIBUTE_MAX_BYTES` is
+/// skipped, as is one that is not text.
+fn read_xdg_desktop_info() -> Result<(String, String)> {
     let mut desktops = HashSet::new();
     let mut sessions_types = HashSet::new();
     let environ_paths = glob("/proc/*/environ", Uninterruptible)?
@@ -231,7 +240,10 @@ async fn get_xdg_desktop_info() -> Result<(String, String)> {
         if path.is_empty() {
             continue;
         }
-        let Ok(content) = cc_fs::read_txt(&path).await else {
+        let Some(content) = cc_fs::read_bytes_blocking(&path)
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+        else {
             continue;
         };
         if let Some(desktop_captures) = regex_desktop.captures(&content) {

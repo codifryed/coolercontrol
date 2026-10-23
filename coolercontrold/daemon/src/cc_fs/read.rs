@@ -206,6 +206,35 @@ pub fn read_sysfs_value_blocking(path: &Path) -> Result<SysfsValue> {
     Ok(SysfsValue { buf, len })
 }
 
+/// Most bytes a one-shot attribute read keeps. sysfs hands out at most one page per attribute, and
+/// the largest page size Linux runs with is 64 KiB.
+pub const ATTRIBUTE_MAX_BYTES: usize = 64 * 1024;
+
+/// Reads a whole attribute as blocking calls, for a device's IO thread, which has no runtime: text
+/// such as labels and `uevent`, or a binary page such as SCSI VPD.
+///
+/// # Errors
+///
+/// The open or read error, or `FileTooLarge` past `ATTRIBUTE_MAX_BYTES`.
+pub fn read_bytes_blocking(path: &Path) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let mut contents = Vec::new();
+    // One past the cap, so a file longer than it is told apart from one exactly at it. `read_to_end`
+    // re-issues an interrupted read itself.
+    let limit = u64::try_from(ATTRIBUTE_MAX_BYTES)? + 1;
+    let read = file.take(limit).read_to_end(&mut contents)?;
+    debug_assert_eq!(read, contents.len());
+    if read > ATTRIBUTE_MAX_BYTES {
+        return Err(Error::new(
+            ErrorKind::FileTooLarge,
+            format!("{} exceeds {ATTRIBUTE_MAX_BYTES} bytes", path.display()),
+        )
+        .into());
+    }
+    Ok(contents)
+}
+
 /// One blocking `pread`, re-issued while `should_reissue` allows, spending from `attempts`.
 ///
 /// An interrupted `pread` read nothing, so it is re-issued at once: the back-off the async readers
@@ -246,15 +275,14 @@ pub fn pread_reissuing(
 
 /// Reads the entire contents of a sysfs file into a UTF-8 encoded string.
 ///
-/// Tailored for sysfs files, which are typically small and contain few values. Returns an error if
-/// the file cannot be opened or read, or if the contents are not valid UTF-8. Numeric hot-path
-/// reads belong on `read_sysfs_value`; this remains for genuine text reads (names, labels,
-/// serials).
+/// Tests only, to check what a write left behind: the daemon's own text reads (names, labels,
+/// serials) go through a device worker, `DeviceIo::read_text`.
 ///
 /// The idle-CPU win comes from compio's completion-based IO. A managed buffer pool was tried here
 /// for registered buffers, but it corrupts/fails the per-tick concurrent fan-out (many reads share
 /// one pool over the `io_uring` buffer ring: cross-contaminated data or "flags are invalid"). The
 /// plain read is correct and still completion-based.
+#[cfg(test)]
 pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
     {
         Ok(String::from_utf8(compio::fs::read(path.as_ref()).await?)?)
@@ -370,6 +398,53 @@ mod tests {
                 "{kind:?} must not be re-issued"
             );
         }
+    }
+
+    /// Goal: a one-shot attribute read on a worker returns the whole file, past what a
+    /// `SysfsValue` holds, binary bytes included. Method: read back a multi-line text file longer
+    /// than `SYSFS_VALUE_MAX_BYTES`, a file holding a non-UTF-8 byte, and one exactly at the cap.
+    #[test]
+    fn a_blocking_attribute_read_returns_the_whole_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let uevent = "DRIVER=nvme\nPCI_ID=144D:A80A\nPCI_SUBSYS_ID=144D:A801\nMODALIAS=pci:v0\n";
+        assert!(uevent.len() > SYSFS_VALUE_MAX_BYTES);
+        let text = dir.path().join("uevent");
+        std::fs::write(&text, uevent).unwrap();
+        let binary = dir.path().join("vpd_pg80");
+        std::fs::write(&binary, [0x80, 0x00, 0x01, b'S']).unwrap();
+        let full = dir.path().join("full");
+        std::fs::write(&full, vec![b'x'; ATTRIBUTE_MAX_BYTES]).unwrap();
+
+        assert_eq!(read_bytes_blocking(&text).unwrap(), uevent.as_bytes());
+        assert_eq!(
+            read_bytes_blocking(&binary).unwrap(),
+            [0x80, 0x00, 0x01, b'S']
+        );
+        assert_eq!(
+            read_bytes_blocking(&full).unwrap().len(),
+            ATTRIBUTE_MAX_BYTES
+        );
+    }
+
+    /// Goal: the read is bounded, and a missing file is an error rather than empty contents.
+    /// Method: read a file one byte past the cap, and a path that does not exist.
+    #[test]
+    fn a_blocking_attribute_read_refuses_past_the_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let long = dir.path().join("long");
+        std::fs::write(&long, vec![b'x'; ATTRIBUTE_MAX_BYTES + 1]).unwrap();
+
+        let too_large = read_bytes_blocking(&long).unwrap_err();
+        let missing = read_bytes_blocking(&dir.path().join("absent")).unwrap_err();
+
+        assert_eq!(
+            too_large.downcast_ref::<Error>().unwrap().kind(),
+            ErrorKind::FileTooLarge
+        );
+        assert_eq!(
+            missing.downcast_ref::<Error>().unwrap().kind(),
+            ErrorKind::NotFound
+        );
     }
 
     /// Goal: `read_sysfs` must return EXACTLY the file's bytes, no stale/garbage tail. A wrong

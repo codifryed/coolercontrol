@@ -11,6 +11,7 @@
 //! Pure function of a sysfs tree, so it is testable against fixture directories.
 
 use crate::cc_fs;
+use crate::repositories::hwmon::identity::{IdentityReader, Stalled};
 use std::fmt;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -158,29 +159,39 @@ impl fmt::Display for ChipName {
 }
 
 /// Derives the chip name for an hwmon directory, or `None` if it has no `name` attribute.
-pub async fn derive(hwmon_path: &Path) -> Option<ChipName> {
-    derive_in(Path::new(SYSFS_ROOT), hwmon_path).await
+///
+/// # Errors
+///
+/// `Stalled` when one of its two attribute reads got no answer.
+pub async fn derive(
+    hwmon_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<ChipName>, Stalled> {
+    derive_in(Path::new(SYSFS_ROOT), hwmon_path, reader).await
 }
 
 /// `sysfs_root` is split out only for the i2c adapter lookup, which is an absolute path in
 /// libsensors. Everything else is reached relative to `hwmon_path`.
-async fn derive_in(sysfs_root: &Path, hwmon_path: &Path) -> Option<ChipName> {
-    let prefix = cc_fs::read_sysfs(hwmon_path.join("name"))
-        .await
-        .ok()?
-        .trim()
-        .to_owned();
+async fn derive_in(
+    sysfs_root: &Path,
+    hwmon_path: &Path,
+    reader: &IdentityReader,
+) -> Result<Option<ChipName>, Stalled> {
+    let Some(name) = reader.text(&hwmon_path.join("name")).await? else {
+        return Ok(None);
+    };
+    let prefix = name.trim().to_owned();
     if prefix.is_empty() {
-        return None;
+        return Ok(None);
     }
     // No device directory, or a chain we cannot classify, is a virtual device.
     let bus = match device_dir(hwmon_path) {
-        Some(device_dir) => find_bus(sysfs_root, device_dir)
-            .await
+        Some(device_dir) => find_bus(sysfs_root, device_dir, reader)
+            .await?
             .unwrap_or(Bus::Virtual),
         None => Bus::Virtual,
     };
-    Some(ChipName { prefix, bus })
+    Ok(Some(ChipName { prefix, bus }))
 }
 
 /// The device directory the hwmon directory belongs to.
@@ -196,18 +207,28 @@ fn device_dir(hwmon_path: &Path) -> Option<PathBuf> {
 }
 
 /// Walks up the `device` chain until a level classifies, as `find_bus_type` does.
-async fn find_bus(sysfs_root: &Path, device_dir: PathBuf) -> Option<Bus> {
+async fn find_bus(
+    sysfs_root: &Path,
+    device_dir: PathBuf,
+    reader: &IdentityReader,
+) -> Result<Option<Bus>, Stalled> {
     let mut current = device_dir;
     for _ in 0..MAX_PARENT_WALK {
-        let device_name = current.file_name()?.to_str()?.to_owned();
+        let Some(device_name) = current.file_name().and_then(|name| name.to_str()) else {
+            return Ok(None);
+        };
+        let device_name = device_name.to_owned();
         debug_assert!(device_name.is_empty().not());
         let subsystem = read_subsystem(&current);
-        if let Some(bus) = classify(sysfs_root, &device_name, subsystem.as_deref()).await {
-            return Some(bus);
+        if let Some(bus) = classify(sysfs_root, &device_name, subsystem.as_deref(), reader).await? {
+            return Ok(Some(bus));
         }
-        current = resolve_symlink(&current.join("device"))?;
+        let Some(parent) = resolve_symlink(&current.join("device")) else {
+            return Ok(None);
+        };
+        current = parent;
     }
-    None
+    Ok(None)
 }
 
 /// The subsystem a device belongs to, from the last element of the `subsystem` link target.
@@ -229,13 +250,24 @@ fn resolve_symlink(path: &Path) -> Option<PathBuf> {
 ///
 /// The if-chain mirrors `classify_device`: the first four branches also accept a missing subsystem,
 /// which is why a device with no subsystem link always lands on ISA rather than walking up.
-async fn classify(sysfs_root: &Path, device_name: &str, subsystem: Option<&str>) -> Option<Bus> {
+async fn classify(
+    sysfs_root: &Path,
+    device_name: &str,
+    subsystem: Option<&str>,
+    reader: &IdentityReader,
+) -> Result<Option<Bus>, Stalled> {
     let unknown_subsystem = subsystem.is_none();
     if unknown_subsystem || subsystem == Some("i2c") {
         if let Some((nr, addr)) = parse_i2c(device_name) {
-            return Some(classify_i2c(sysfs_root, nr, addr).await);
+            return Ok(Some(classify_i2c(sysfs_root, nr, addr, reader).await?));
         }
     }
+    Ok(classify_without_reads(device_name, subsystem))
+}
+
+/// Every branch of `classify` after i2c, none of which reads an attribute.
+fn classify_without_reads(device_name: &str, subsystem: Option<&str>) -> Option<Bus> {
+    let unknown_subsystem = subsystem.is_none();
     if unknown_subsystem || subsystem == Some("spi") {
         if let Some((nr, addr)) = parse_spi(device_name) {
             return Some(Bus::Spi { nr, addr });
@@ -287,18 +319,24 @@ fn classify_by_subsystem(device_name: &str, subsystem: &str) -> Option<Bus> {
 
 /// An i2c device is really on the ISA bus when the bus number is the legacy marker, or when the
 /// adapter it hangs off names itself an ISA adapter.
-async fn classify_i2c(sysfs_root: &Path, nr: i16, addr: u32) -> Bus {
+async fn classify_i2c(
+    sysfs_root: &Path,
+    nr: i16,
+    addr: u32,
+    reader: &IdentityReader,
+) -> Result<Bus, Stalled> {
     if nr == I2C_ISA_BUS_NR {
-        return Bus::Isa { addr };
+        return Ok(Bus::Isa { addr });
     }
     let adapter_name_path = sysfs_root.join(format!("class/i2c-adapter/i2c-{nr}/device/name"));
-    let is_isa_adapter = cc_fs::read_sysfs(adapter_name_path)
-        .await
-        .is_ok_and(|name| name.starts_with(I2C_ISA_ADAPTER_PREFIX));
+    let is_isa_adapter = reader
+        .text(&adapter_name_path)
+        .await?
+        .is_some_and(|name| name.starts_with(I2C_ISA_ADAPTER_PREFIX));
     if is_isa_adapter {
-        Bus::Isa { addr }
+        Ok(Bus::Isa { addr })
     } else {
-        Bus::I2c { nr, addr }
+        Ok(Bus::I2c { nr, addr })
     }
 }
 
@@ -490,8 +528,9 @@ mod tests {
         }
 
         async fn derive(&self, hwmon_path: &Path) -> Option<String> {
-            derive_in(self.path(), hwmon_path)
+            derive_in(self.path(), hwmon_path, &IdentityReader::inline())
                 .await
+                .expect("an inline read always answers")
                 .map(|chip| chip.to_string())
         }
     }

@@ -12,6 +12,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 const POWER_AVERAGE_SUFFIX: &str = "average";
 const PATTERN_POWER_FILE_NUMBER: &str = r"^power(?P<number>\d+)_(average|input)$";
@@ -46,7 +47,7 @@ pub async fn init_power(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonC
         preferred_powers.insert(channel_number, power_input);
     }
     for (channel_number, power_channel_name) in preferred_powers {
-        let label = get_power_channel_label(base_path, channel_number).await;
+        let label = get_power_channel_label(base_path, channel_number, io).await;
         powers.push(HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Power,
             number: channel_number,
@@ -90,6 +91,16 @@ async fn insert_power_metrics(
         power_inputs.push((channel_number, file_name.to_string()));
     }
     Ok(())
+}
+
+/// Whether a directory entry names an attribute power detection reads, `powerN_average` or
+/// `powerN_input`, so a chip with neither can be ruled out from its listing alone.
+pub fn is_power_attribute(file_name: &str) -> bool {
+    // Compiled once. The pattern is a constant, so only a typo fails, and the tests catch that.
+    static PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(PATTERN_POWER_FILE_NUMBER).expect("power attribute pattern is valid")
+    });
+    PATTERN.is_match(file_name)
 }
 
 /// Reads a set of power channels in one hop. See `temps::read_temp_statuses` for why the per-tick
@@ -231,8 +242,13 @@ fn check_parsing_64(value: cc_fs::SysfsValue) -> Result<f64> {
 }
 
 /// Read the power label
-async fn get_power_channel_label(base_path: &Path, channel_number: u8) -> Option<String> {
-    cc_fs::read_txt(base_path.join(format_power_label!(channel_number)))
+async fn get_power_channel_label(
+    base_path: &Path,
+    channel_number: u8,
+    io: &DeviceIo,
+) -> Option<String> {
+    // On the device's thread: the label comes from the driver, which may have to ask the hardware.
+    io.read_text(&base_path.join(format_power_label!(channel_number)))
         .await
         .ok()
         .and_then(|label| {

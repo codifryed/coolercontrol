@@ -346,7 +346,7 @@ fn main() -> Result<()> {
         // not start the watchdog until READY.
         let watchdog = Rc::new(watchdog::Watchdog::init());
         pause_before_startup(&config).await?;
-        let detection_results = run_sensors_detection(&config);
+        let detection_results = run_sensors_detection(&config).await;
         rt::log_active_backend();
         let hardware_support = Rc::new(
             diagnostics::support::HardwareSupportController::init(
@@ -827,7 +827,7 @@ fn exit_successfully() -> ! {
 /// `None` means no probe was made, which is not the same as a probe that found
 /// nothing and must not produce findings.
 #[cfg(target_arch = "x86_64")]
-fn run_sensors_detection(config: &Rc<Config>) -> Option<cc_detect::DetectionResults> {
+async fn run_sensors_detection(config: &Rc<Config>) -> Option<cc_detect::DetectionResults> {
     if is_env_disabled(ENV_SENSORS_DETECT) {
         info!("Super-I/O hardware detection disabled by environment variable");
         return None;
@@ -835,7 +835,18 @@ fn run_sensors_detection(config: &Rc<Config>) -> Option<cc_detect::DetectionResu
     match config.get_settings() {
         Ok(settings) if settings.sensors_auto_detect => {
             debug!("Running Super-I/O hardware detection");
-            let results = cc_detect::run_detection(true, Some(paths::detect_override_file()));
+            // Port probing, modprobe and `udevadm settle` all block, so they run on the blocking
+            // pool, as the detect API's do. Nothing else can probe yet: the API is not up.
+            let detection = rt::spawn_blocking(|| {
+                cc_detect::run_detection(true, Some(paths::detect_override_file()))
+            });
+            let results = match detection.await {
+                Ok(results) => results,
+                Err(err) => {
+                    warn!("Super-I/O hardware detection failed: {err}");
+                    return None;
+                }
+            };
             for chip in &results.detected_chips {
                 info!(
                     "{} (driver: {}, status: {})",
@@ -859,7 +870,8 @@ fn run_sensors_detection(config: &Rc<Config>) -> Option<cc_detect::DetectionResu
 }
 
 #[cfg(not(target_arch = "x86_64"))]
-fn run_sensors_detection(_config: &Rc<Config>) -> Option<cc_detect::DetectionResults> {
+#[allow(clippy::unused_async)] // The x86_64 signature, so the caller awaits either.
+async fn run_sensors_detection(_config: &Rc<Config>) -> Option<cc_detect::DetectionResults> {
     // Super-I/O detection is x86_64-only
     None
 }

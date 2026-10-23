@@ -95,6 +95,16 @@ struct ReportDevice {
     /// Set when the device ran out of read budget, which leaves `fans` empty
     /// for a reason that has nothing to do with the device having no fans.
     unresponsive: bool,
+    /// What this device's attributes are read through: the repository's own worker for a device
+    /// the daemon kept, a report worker otherwise.
+    io: DeviceIo,
+}
+
+/// A worker for a device the daemon keeps none for, one per device and report. A driver that
+/// stops answering then parks that worker alone, and the budget's timeout can fire, as it cannot
+/// while a read holds the runtime the timer lives on.
+fn report_io() -> DeviceIo {
+    DeviceIo::isolated_or_inline("report", DEVICE_READ_BUDGET)
 }
 
 /// The report's remaining time for sysfs reads.
@@ -131,9 +141,10 @@ impl ReadBudget {
 /// into a line naming it. A driver that stops answering must cost the report
 /// that one device and nothing else.
 ///
-/// Only the awaited value reads are bounded. `read_dir`, `exists` and
-/// `canonicalize` are synchronous and cannot be interrupted, but they are
-/// served by the VFS rather than by the device, so they do not wait on a bus.
+/// Only the awaited value reads are bounded, and they run on device workers
+/// so the timeout can fire. `read_dir`, `exists` and `canonicalize` are
+/// synchronous and cannot be interrupted, but they are served by the VFS rather
+/// than by the device, so they do not wait on a bus.
 async fn within_budget<T>(
     budget: ReadBudget,
     name: &str,
@@ -173,9 +184,9 @@ pub async fn generate(
     let budget = ReadBudget::starting_now();
     let system_info = SystemInfo::read().await;
     let devices = if full {
-        scan_hwmon(hidden, budget).await
+        scan_hwmon(hidden, retained, budget, report_io).await
     } else {
-        collect_retained(retained, hidden, budget).await
+        collect_retained(retained, hidden, budget, report_io).await
     };
     let mut report = String::with_capacity(if full { 8192 } else { COMPACT_CHARACTER_BUDGET });
     write_header(&mut report, &system_info);
@@ -609,7 +620,7 @@ async fn raw_state(device: &ReportDevice, number: u8) -> String {
     }
     let mut state = String::with_capacity(files.len() * 16);
     for (label, file_name) in &files {
-        let value = read_attribute(base_path, file_name).await;
+        let value = read_attribute(&device.io, base_path, file_name).await;
         let mark = if read_only.contains(file_name) {
             READ_ONLY_MARK
         } else {
@@ -623,8 +634,8 @@ async fn raw_state(device: &ReportDevice, number: u8) -> String {
 
 /// Reads one sysfs attribute for the full dump. A missing or unreadable file
 /// is reported as absent rather than failing the report.
-async fn read_attribute(base_path: &Path, file_name: &str) -> String {
-    cc_fs::read_sysfs(base_path.join(file_name))
+async fn read_attribute(io: &DeviceIo, base_path: &Path, file_name: &str) -> String {
+    io.read_text(&base_path.join(file_name))
         .await
         .map_or_else(|_| "-".to_string(), |value| value.trim().to_string())
 }
@@ -689,12 +700,58 @@ fn hidden_channel_suffix(count: usize) -> String {
 
 /// Whether the report may read this device's channels.
 ///
-/// Everything except a liquidctl duplicate: that is one piece of hardware with
-/// another process actively talking to it, and a read here can break its
-/// transfers. Every other exclusion is a device nothing else is using, so
-/// inspecting it is free and often the whole point.
+/// Everything except a liquidctl duplicate and a device that did not answer at
+/// startup. The first is one piece of hardware with another process actively
+/// talking to it, and a read here can break its transfers. The second may still
+/// be stuck in its driver, and each read would park another thread beside it.
+/// Every other exclusion is a device nothing else is using, so inspecting it is
+/// free and often the whole point.
 fn scan_is_safe(excluded: Option<HwmonExclusion>) -> bool {
-    excluded != Some(HwmonExclusion::DuplicateOfLiquidctl)
+    match excluded {
+        Some(HwmonExclusion::DuplicateOfLiquidctl | HwmonExclusion::Unanswered) => false,
+        Some(
+            HwmonExclusion::ServedByGpuRepository
+            | HwmonExclusion::UserDisabled
+            | HwmonExclusion::AllChannelsIgnored,
+        )
+        | None => true,
+    }
+}
+
+/// The recorded path of the hwmon entry at `hwmon_path` when the daemon left it out for not
+/// answering. Checked before any read, on the entry and on the `device` directory an old-style
+/// driver keeps its attributes in, matched canonically as the daemon recorded them.
+fn unanswered_entry(hidden: &HiddenHardware, hwmon_path: &Path) -> Option<PathBuf> {
+    [hwmon_path.to_path_buf(), hwmon_path.join("device")]
+        .into_iter()
+        .filter_map(|dir| cc_fs::canonicalize(dir).ok())
+        .find(|canonical| hidden.devices.get(canonical) == Some(&HwmonExclusion::Unanswered))
+}
+
+/// A device that did not answer at startup, listed as not answering without a read: no worker
+/// is started for it, as a driver still stuck would park that one too. Named by its sysfs entry,
+/// since its `name` is one of the reads it did not answer.
+fn unanswered_device(path: &Path, hidden: &HiddenHardware) -> ReportDevice {
+    let entry = if path.ends_with("device") {
+        path.parent().unwrap_or(path)
+    } else {
+        path
+    };
+    let name = entry.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    ReportDevice {
+        path: path.to_path_buf(),
+        name,
+        driver: resolve_driver(path),
+        fans: Vec::new(),
+        excluded: Some(HwmonExclusion::Unanswered),
+        excluded_channels: hidden_channels(hidden, path),
+        unresponsive: true,
+        // Never read: every stage skips an unresponsive device.
+        io: DeviceIo::default(),
+    }
 }
 
 /// The trailing "hidden: ..." note, or nothing for a device the app shows.
@@ -725,10 +782,13 @@ fn verdict_for(device: &ReportDevice, fan: &HwmonChannelInfo) -> ChannelVerdict 
 /// - devices with an individually hidden channel, because the repository
 ///   filtered those channels out before retaining them, so the retained copy
 ///   cannot show what went missing.
+///
+/// `new_io` starts the worker for a device the daemon left out: `report_io`.
 async fn collect_retained(
     retained: &[Rc<HwmonDriverInfo>],
     hidden: &HiddenHardware,
     budget: ReadBudget,
+    new_io: fn() -> DeviceIo,
 ) -> Vec<ReportDevice> {
     let mut devices = Vec::with_capacity(retained.len() + hidden.devices.len());
     for driver in retained {
@@ -745,12 +805,15 @@ async fn collect_retained(
                     .cloned()
                     .collect(),
             )
+        } else if driver.io.is_unreachable() {
+            // Its worker already gave up on it; asking again would only wait out the budget.
+            None
         } else {
             within_budget(
                 budget,
                 &driver.name,
                 &driver.path,
-                read_fans(&driver.path, &driver.name),
+                read_fans(&driver.path, &driver.name, &driver.io),
             )
             .await
         };
@@ -762,15 +825,21 @@ async fn collect_retained(
             fans: scanned.unwrap_or_default(),
             excluded: None,
             excluded_channels,
+            io: driver.io.clone(),
         });
     }
     for (path, reason) in &hidden.devices {
-        let Ok(name) = cc_fs::read_txt(path.join("name")).await else {
+        if *reason == HwmonExclusion::Unanswered {
+            devices.push(unanswered_device(path, hidden));
+            continue;
+        }
+        let io = new_io();
+        let Ok(name) = io.read_text(&path.join("name")).await else {
             continue;
         };
         let name = name.trim().to_string();
         let scanned = if scan_is_safe(Some(*reason)) {
-            within_budget(budget, &name, path, read_fans(path, &name)).await
+            within_budget(budget, &name, path, read_fans(path, &name, &io)).await
         } else {
             Some(Vec::new())
         };
@@ -782,6 +851,7 @@ async fn collect_retained(
             fans: scanned.unwrap_or_default(),
             excluded: Some(*reason),
             excluded_channels: hidden_channels(hidden, path),
+            io,
         });
     }
     devices.sort_by_key(|device| (hwmon_index(&device.path), device.path.clone()));
@@ -791,13 +861,13 @@ async fn collect_retained(
 /// Reads a device's fan channels with the exact same detection the daemon
 /// uses, an Apple driver's own included, so a scanned device and a retained
 /// one describe themselves alike.
-async fn read_fans(path: &Path, name: &str) -> Vec<HwmonChannelInfo> {
-    // Inline on purpose: the report is a one-shot scan with no tick to protect, so a device that
-    // stalls here delays only the report that asked for it.
-    let io = DeviceIo::default();
+///
+/// Through `io`, a device worker: inline, a stalled driver would hold the main thread, and with it
+/// every tick, until it answered.
+async fn read_fans(path: &Path, name: &str, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
     let fans = match apple::detect(name, path) {
-        Some(apple_driver) => apple_driver.init_fans(path, &io).await,
-        None => fans::init_fans(path, name, &io).await,
+        Some(apple_driver) => apple_driver.init_fans(path, io).await,
+        None => fans::init_fans(path, name, io).await,
     };
     // Quiet on an error: the daemon logged it when it started.
     fans.unwrap_or_default()
@@ -808,7 +878,14 @@ async fn read_fans(path: &Path, name: &str) -> Vec<HwmonChannelInfo> {
 
 /// Enumerates hwmon and builds each device's fan channels with the exact same
 /// `init_fans` the daemon uses.
-async fn scan_hwmon(hidden: &HiddenHardware, budget: ReadBudget) -> Vec<ReportDevice> {
+///
+/// A device the daemon kept is read through its own worker; `new_io` starts one for the rest.
+async fn scan_hwmon(
+    hidden: &HiddenHardware,
+    retained: &[Rc<HwmonDriverInfo>],
+    budget: ReadBudget,
+    new_io: fn() -> DeviceIo,
+) -> Vec<ReportDevice> {
     let mut devices = Vec::new();
     let Ok(entries) = cc_fs::read_dir(Path::new(HWMON_CLASS_PATH)) else {
         return devices;
@@ -821,7 +898,12 @@ async fn scan_hwmon(hidden: &HiddenHardware, budget: ReadBudget) -> Vec<ReportDe
     // which reads as a mistake in a report a human is scanning.
     paths.sort_by_key(|path| (hwmon_index(path), path.clone()));
     for hwmon_path in paths {
-        let Some((path, name)) = attribute_dir(&hwmon_path).await else {
+        if let Some(path) = unanswered_entry(hidden, &hwmon_path) {
+            devices.push(unanswered_device(&path, hidden));
+            continue;
+        }
+        let io = retained_io(retained, &hwmon_path).unwrap_or_else(new_io);
+        let Some((path, name)) = attribute_dir(&hwmon_path, &io).await else {
             continue;
         };
         let driver = resolve_driver(&path);
@@ -842,7 +924,11 @@ async fn scan_hwmon(hidden: &HiddenHardware, budget: ReadBudget) -> Vec<ReportDe
         // business overriding that, and the Liquidctl section already carries
         // its fan counts from the repository that actually drives it.
         let scanned = if scan_is_safe(excluded) {
-            within_budget(budget, &name, &path, read_fans(&path, &name)).await
+            if io.is_unreachable() {
+                None
+            } else {
+                within_budget(budget, &name, &path, read_fans(&path, &name, &io)).await
+            }
         } else {
             Some(Vec::new())
         };
@@ -854,9 +940,26 @@ async fn scan_hwmon(hidden: &HiddenHardware, budget: ReadBudget) -> Vec<ReportDe
             fans: scanned.unwrap_or_default(),
             excluded,
             excluded_channels,
+            io,
         });
     }
     devices
+}
+
+/// The worker of the retained device at `hwmon_path`, matched on the canonical path, as the
+/// entries here are symlinks into the bus tree. An old-style driver keeps its attributes on the
+/// parent device, which is the path the daemon kept for it.
+fn retained_io(retained: &[Rc<HwmonDriverInfo>], hwmon_path: &Path) -> Option<DeviceIo> {
+    let entry = cc_fs::canonicalize(hwmon_path).ok()?;
+    let parent = cc_fs::canonicalize(hwmon_path.join("device")).ok();
+    retained
+        .iter()
+        .find(|driver| {
+            cc_fs::canonicalize(&driver.path).is_ok_and(|kept| {
+                kept == entry || parent.as_ref().is_some_and(|parent| &kept == parent)
+            })
+        })
+        .map(|driver| driver.io.clone())
 }
 
 /// The directory holding a hwmon entry's attributes, with the device's name.
@@ -865,9 +968,9 @@ async fn scan_hwmon(hidden: &HiddenHardware, budget: ReadBudget) -> Vec<ReportDe
 /// before Linux 7.3 among them, keeps its name and attributes on the parent
 /// device, which is where the daemon reads them too. Without this such a
 /// device was missing from the full report.
-async fn attribute_dir(hwmon_path: &Path) -> Option<(PathBuf, String)> {
+async fn attribute_dir(hwmon_path: &Path, io: &DeviceIo) -> Option<(PathBuf, String)> {
     for dir in [hwmon_path.to_path_buf(), hwmon_path.join("device")] {
-        let Ok(name) = cc_fs::read_txt(dir.join("name")).await else {
+        let Ok(name) = io.read_text(&dir.join("name")).await else {
             continue;
         };
         let name = name.trim();
@@ -1002,6 +1105,7 @@ fn available_or_not(value: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::hwmon::device_io::UNREACHABLE_AFTER_TIMEOUTS;
     use serial_test::serial;
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt;
@@ -1057,6 +1161,7 @@ mod tests {
             excluded,
             excluded_channels: HashMap::new(),
             unresponsive: false,
+            io: DeviceIo::default(),
         }
     }
 
@@ -1144,6 +1249,7 @@ mod tests {
             HwmonExclusion::ServedByGpuRepository,
             HwmonExclusion::UserDisabled,
             HwmonExclusion::AllChannelsIgnored,
+            HwmonExclusion::Unanswered,
         ] {
             assert!(reason.label().is_empty().not(), "{reason:?} has no label");
         }
@@ -1242,6 +1348,7 @@ mod tests {
                 &retained,
                 &HiddenHardware::default(),
                 ReadBudget::starting_now(),
+                DeviceIo::default,
             )
             .await
         });
@@ -1269,9 +1376,105 @@ mod tests {
         // and the fan list comes back empty rather than silently reusing the
         // retained channels.
         let devices = crate::rt::test_runtime(async {
-            collect_retained(&retained, &hidden, ReadBudget::starting_now()).await
+            collect_retained(
+                &retained,
+                &hidden,
+                ReadBudget::starting_now(),
+                DeviceIo::default,
+            )
+            .await
         });
         assert_eq!(devices.len(), 1);
+    }
+
+    /// Goal: a kept device whose worker already went unreachable is reported as not answering,
+    /// at once, rather than as a device with no fans or after waiting out its budget. Method: a
+    /// retained device with a hidden channel, so it is re-read, behind a worker timed out to the
+    /// threshold.
+    #[test]
+    fn an_unreachable_kept_device_is_reported_as_not_answering() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let canonical = cc_fs::canonicalize(dir.path()).unwrap();
+            let (io, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(5));
+            for _ in 0..UNREACHABLE_AFTER_TIMEOUTS {
+                let _ = io.read_value(&dir.path().join("fan1_input")).await;
+            }
+            assert!(io.is_unreachable());
+            let retained = [Rc::new(HwmonDriverInfo {
+                name: "nct6687".to_string(),
+                path: dir.path().to_path_buf(),
+                io,
+                ..HwmonDriverInfo::default()
+            })];
+            let mut hidden = HiddenHardware::default();
+            hidden.channels.insert(
+                (canonical, "fan7".to_string()),
+                ChannelExclusion::UserDisabled,
+            );
+
+            let devices = collect_retained(
+                &retained,
+                &hidden,
+                ReadBudget::starting_now(),
+                DeviceIo::default,
+            )
+            .await;
+
+            assert_eq!(devices.len(), 1);
+            assert!(devices[0].unresponsive);
+            assert!(devices[0].fans.is_empty());
+        });
+    }
+
+    /// Goal: a device that did not answer at startup is listed as not answering without starting a
+    /// worker for it, so a driver still stuck cannot park one more thread per report. Method: the
+    /// compact path with such a device recorded, and a worker factory that panics if called.
+    #[test]
+    fn an_unanswered_device_is_listed_without_a_worker() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("hwmon3");
+        std::fs::create_dir(&entry).unwrap();
+        let canonical = cc_fs::canonicalize(&entry).unwrap();
+        let mut hidden = HiddenHardware::default();
+        hidden
+            .devices
+            .insert(canonical.clone(), HwmonExclusion::Unanswered);
+        let devices = crate::rt::test_runtime(async {
+            collect_retained(&[], &hidden, ReadBudget::starting_now(), || -> DeviceIo {
+                panic!("no worker may start for an unanswered device")
+            })
+            .await
+        });
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].name, "hwmon3");
+        assert_eq!(devices[0].path, canonical);
+        assert!(devices[0].unresponsive);
+        assert!(devices[0].fans.is_empty());
+        assert_eq!(devices[0].excluded, Some(HwmonExclusion::Unanswered));
+    }
+
+    /// Goal: the full scan spots an unanswered device before reading its name, on the entry and on
+    /// an old-style driver's `device` directory alike, and only for that exclusion. Method: a
+    /// tempdir entry recorded under each path in turn, then under another reason.
+    #[test]
+    fn the_full_scan_finds_an_unanswered_entry_before_reading() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("hwmon4");
+        std::fs::create_dir_all(entry.join("device")).unwrap();
+        for recorded in [entry.clone(), entry.join("device")] {
+            let canonical = cc_fs::canonicalize(&recorded).unwrap();
+            let mut hidden = HiddenHardware::default();
+            hidden
+                .devices
+                .insert(canonical.clone(), HwmonExclusion::Unanswered);
+            assert_eq!(unanswered_entry(&hidden, &entry), Some(canonical.clone()));
+            hidden
+                .devices
+                .insert(canonical, HwmonExclusion::UserDisabled);
+            assert_eq!(unanswered_entry(&hidden, &entry), None);
+        }
+        assert_eq!(unanswered_entry(&HiddenHardware::default(), &entry), None);
     }
 
     /// Goal: the report must not read a device liquidctl is talking to.
@@ -1284,6 +1487,7 @@ mod tests {
     #[test]
     fn a_device_liquidctl_owns_is_never_read() {
         assert!(scan_is_safe(Some(HwmonExclusion::DuplicateOfLiquidctl)).not());
+        assert!(scan_is_safe(Some(HwmonExclusion::Unanswered)).not());
         assert!(scan_is_safe(None));
         for reason in [
             HwmonExclusion::ServedByGpuRepository,
@@ -1420,9 +1624,9 @@ mod tests {
             seed_files(&old_style.join("device"), &[("name", "applesmc\n")]).await;
             seed_files(&nameless.join("device"), &[("fan1_input", "1200")]).await;
 
-            let found_modern = attribute_dir(&modern).await;
-            let found_old_style = attribute_dir(&old_style).await;
-            let found_nameless = attribute_dir(&nameless).await;
+            let found_modern = attribute_dir(&modern, &DeviceIo::default()).await;
+            let found_old_style = attribute_dir(&old_style, &DeviceIo::default()).await;
+            let found_nameless = attribute_dir(&nameless, &DeviceIo::default()).await;
 
             assert_eq!(found_modern, Some((modern, "nct6798".to_string())));
             assert_eq!(
@@ -1466,9 +1670,10 @@ mod tests {
             let tmp = tempfile::tempdir().unwrap();
             let missing = tmp.path().join("missing");
 
-            let apple_fans = read_fans(&missing, "applesmc").await;
-            let apple_silicon_fans = read_fans(&missing, "macsmc_hwmon").await;
-            let plain_fans = read_fans(&missing, "nct6798").await;
+            let apple_fans = read_fans(&missing, "applesmc", &DeviceIo::default()).await;
+            let apple_silicon_fans =
+                read_fans(&missing, "macsmc_hwmon", &DeviceIo::default()).await;
+            let plain_fans = read_fans(&missing, "nct6798", &DeviceIo::default()).await;
 
             assert!(apple_fans.is_empty());
             assert!(apple_silicon_fans.is_empty());
@@ -1529,7 +1734,7 @@ mod tests {
                 }
                 let device = ReportDevice {
                     path: dir.clone(),
-                    fans: read_fans(&dir, name).await,
+                    fans: read_fans(&dir, name, &DeviceIo::default()).await,
                     ..report_device(name, None)
                 };
                 notes.push(summary_notes(&device).await);
@@ -1585,7 +1790,7 @@ mod tests {
             ] {
                 let device = ReportDevice {
                     path: dir.clone(),
-                    fans: read_fans(dir, name).await,
+                    fans: read_fans(dir, name, &DeviceIo::default()).await,
                     ..report_device(name, None)
                 };
                 lines.push(channel_lines(&device).await);

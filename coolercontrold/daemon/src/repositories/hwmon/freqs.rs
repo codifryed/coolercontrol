@@ -34,7 +34,7 @@ pub async fn init_freqs(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonC
                 continue;
             }
             let channel_name = get_freq_channel_name(channel_number);
-            let label = get_freq_channel_label(base_path, &channel_number).await;
+            let label = get_freq_channel_label(base_path, &channel_number, io).await;
             freqs.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Freq,
                 number: channel_number,
@@ -161,8 +161,13 @@ fn check_parsing_64(value: cc_fs::SysfsValue) -> Result<u64> {
     value.parse()
 }
 
-async fn get_freq_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
-    cc_fs::read_txt(base_path.join(format!("freq{channel_number}_label")))
+async fn get_freq_channel_label(
+    base_path: &Path,
+    channel_number: &u8,
+    io: &DeviceIo,
+) -> Option<String> {
+    // On the device's thread: the label comes from the driver, which may have to ask the hardware.
+    io.read_text(&base_path.join(format!("freq{channel_number}_label")))
         .await
         .ok()
         .and_then(|label| {

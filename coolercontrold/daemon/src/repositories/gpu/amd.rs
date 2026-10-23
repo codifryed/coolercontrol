@@ -24,6 +24,7 @@ use crate::repositories::gpu::gpu_repo::{
 use crate::repositories::hwmon::hwmon_repo::{
     install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
+use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{devices, fans, freqs, power, temps};
 use crate::repositories::repository::DeviceLock;
 use anyhow::{anyhow, Context, Result};
@@ -90,24 +91,24 @@ impl GpuAMD {
         // hash blank). base_paths is path-sorted, so the assignment is stable across boots.
         let mut assigned_uids: HashSet<UID> = HashSet::new();
         let io_reply_timeout = device_io::reply_timeout_from(&self.config);
+        // Dropped at the end of detection, which ends its thread.
+        let identity = IdentityReader::start("gpu-init", io_reply_timeout);
         for path in base_paths {
-            let device_name = devices::get_device_name(&path).await;
+            let Ok(device_name) = devices::get_device_name(&path, &identity).await else {
+                identity::log_skipped(&"a hwmon device", &path);
+                continue;
+            };
             if device_name != AMD_HWMON_NAME {
                 continue;
             }
             // Before any value read, so detection is isolated too.
             let io = DeviceIo::isolated_or_inline(&device_name, io_reply_timeout);
-            let raw_id = devices::get_device_unique_id(&path, &device_name).await;
-            // Distinct per-device sysfs path, used only if raw_id collides (e.g. a blank serial).
-            let path_id = devices::get_static_device_path_str(&path)
-                .unwrap_or_else(|| path.to_string_lossy().into_owned());
-            let (u_id, device_uid) = Device::assign_unique(
-                &mut assigned_uids,
-                DeviceType::GPU,
-                &device_name,
-                &raw_id,
-                &[path_id.as_str()],
-            );
+            let Ok((u_id, device_uid)) =
+                Self::resolve_uid(&path, &device_name, &mut assigned_uids, &identity).await
+            else {
+                identity::log_skipped(&device_name, &path);
+                continue;
+            };
             let cc_device_setting = self
                 .config
                 .get_cc_settings_for_device(&device_uid)
@@ -140,27 +141,19 @@ impl GpuAMD {
                 .join("device")
                 .canonicalize()
                 .unwrap_or_else(|_| path.join("device"));
-            let mut fdinfo_load = None;
-            if let Some(load_channel) = Self::init_load(&device_path).await {
-                if disabled_channels.contains(&load_channel.name).not() {
-                    channels.push(load_channel);
-                }
-            } else {
-                // hwmon load sensor is unsupported (older ASICs): fall back to
-                // DRM fdinfo, the only load source these GPUs have.
-                let load_disabled = disabled_channels.iter().any(|c| c == GPU_LOAD_NAME);
-                if load_disabled.not() {
-                    if let Some(fd_load) = Self::init_fdinfo_load(&path).await {
-                        channels.push(HwmonChannelInfo {
-                            hwmon_type: HwmonChannelType::Load,
-                            name: GPU_LOAD_NAME.to_string(),
-                            label: Some(GPU_LOAD_NAME.to_string()),
-                            ..Default::default()
-                        });
-                        fdinfo_load = Some(fd_load);
-                    }
-                }
-            }
+            let Ok(fdinfo_load) = Self::init_load_channel(
+                &path,
+                &device_path,
+                &io,
+                &identity,
+                &disabled_channels,
+                &mut channels,
+            )
+            .await
+            else {
+                identity::log_skipped(&device_name, &path);
+                continue;
+            };
             match freqs::init_freqs(&path, &io).await {
                 Ok(freqs) => channels.extend(
                     freqs
@@ -179,7 +172,7 @@ impl GpuAMD {
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Power: {err}"),
             }
-            let fan_curve_info = Self::get_fan_curve_info(&device_path)
+            let fan_curve_info = Self::get_fan_curve_info(&device_path, &io)
                 .await
                 .inspect_err(|err| {
                     debug!("Could not get RDNA3/4 fan curve info: {err}");
@@ -187,7 +180,11 @@ impl GpuAMD {
                 .ok();
             let has_rdna_fan_ctrl = device_path.join("gpu_od/fan_ctrl").is_dir();
             let overdrive_enabled = super::amd_overdrive::is_overdrive_enabled().await;
-            let (drm_device_name, is_rdna3_or_newer) = match Self::get_drm_info(&path).await {
+            let Ok(drm_probe) = Self::get_drm_info(&path, &identity).await else {
+                identity::log_skipped(&device_name, &path);
+                continue;
+            };
+            let (drm_device_name, is_rdna3_or_newer) = match drm_probe {
                 DrmProbe::Info(info) => (info.device_name, info.is_rdna3_or_newer),
                 DrmProbe::LibUnavailable => {
                     libdrm_unavailable = true;
@@ -202,11 +199,10 @@ impl GpuAMD {
             {
                 error!("Could not install the read table for {device_name}: {err}");
             }
-            let pci_device_names = devices::get_device_pci_names(&path).await;
-            let model = devices::get_device_model_name(&path)
-                .await
-                .or(drm_device_name)
-                .or_else(|| pci_device_names.and_then(|names| names.device_name));
+            let Ok(model) = Self::read_model(&path, drm_device_name, &identity).await else {
+                identity::log_skipped(&device_name, &path);
+                continue;
+            };
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
                     name: device_name,
@@ -236,11 +232,81 @@ impl GpuAMD {
         amd_infos
     }
 
-    async fn init_load(device_path: &Path) -> Option<HwmonChannelInfo> {
+    /// The GPU's UID from its identity, unique among `assigned_uids`.
+    ///
+    /// # Errors
+    ///
+    /// `Stalled` when its identity did not read.
+    async fn resolve_uid(
+        path: &Path,
+        device_name: &str,
+        assigned_uids: &mut HashSet<UID>,
+        identity: &IdentityReader,
+    ) -> Result<(String, UID), Stalled> {
+        let raw_id = devices::get_device_unique_id(path, device_name, identity).await?;
+        // Distinct per-device sysfs path, used only if raw_id collides (e.g. a blank serial).
+        let path_id = devices::get_static_device_path_str(path)
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        let (u_id, device_uid) = Device::assign_unique(
+            assigned_uids,
+            DeviceType::GPU,
+            device_name,
+            &raw_id,
+            &[path_id.as_str()],
+        );
+        debug_assert!(assigned_uids.contains(&device_uid));
+        Ok((u_id, device_uid))
+    }
+
+    /// Adds the GPU's Load channel unless the user disabled it: from hwmon, or from DRM fdinfo,
+    /// whose source is returned, where the hwmon sensor is unsupported.
+    ///
+    /// # Errors
+    ///
+    /// `Stalled` when the fdinfo fallback's PCI slot did not read.
+    async fn init_load_channel(
+        base_path: &Path,
+        device_path: &Path,
+        io: &DeviceIo,
+        identity: &IdentityReader,
+        disabled_channels: &[String],
+        channels: &mut Vec<HwmonChannelInfo>,
+    ) -> Result<Option<FdInfoLoad>, Stalled> {
+        match Self::init_load(device_path, io).await {
+            HwmonLoad::Supported(load_channel) => {
+                if disabled_channels.contains(&load_channel.name).not() {
+                    channels.push(load_channel);
+                }
+                Ok(None)
+            }
+            HwmonLoad::Unsupported => {
+                // hwmon load sensor is unsupported (older ASICs): fall back to
+                // DRM fdinfo, the only load source these GPUs have.
+                let load_disabled = disabled_channels.iter().any(|c| c == GPU_LOAD_NAME);
+                if load_disabled {
+                    return Ok(None);
+                }
+                let fdinfo = Self::init_fdinfo_load(base_path, identity).await?;
+                if fdinfo.is_some() {
+                    channels.push(HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Load,
+                        name: GPU_LOAD_NAME.to_string(),
+                        label: Some(GPU_LOAD_NAME.to_string()),
+                        ..Default::default()
+                    });
+                }
+                Ok(fdinfo)
+            }
+            HwmonLoad::Unanswered => Ok(None),
+        }
+    }
+
+    /// On the GPU's thread: the read is an SMU message, which can wait on the firmware.
+    async fn init_load(device_path: &Path, io: &DeviceIo) -> HwmonLoad {
         let load_path = device_path.join("gpu_busy_percent");
-        match cc_fs::read_sysfs_value(&load_path).await {
+        match io.read_value(&load_path).await {
             Ok(load) => match fans::check_parsing_8(load) {
-                Ok(_) => Some(HwmonChannelInfo {
+                Ok(_) => HwmonLoad::Supported(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
                     name: GPU_LOAD_NAME.to_string(),
                     label: Some(GPU_LOAD_NAME.to_string()),
@@ -251,9 +317,18 @@ impl GpuAMD {
                         "Error parsing AMD GPU load from {}: {err}",
                         load_path.display()
                     );
-                    None
+                    HwmonLoad::Unsupported
                 }
             },
+            Err(err) if device_io::is_unanswered(&err) => {
+                // A GPU waking from D3cold can miss the timeout. Not a sign the sensor is
+                // unsupported, so fdinfo is not taken on for the whole boot.
+                warn!(
+                    "AMD GPU load at {} got no answer; GPU load is off for this start: {err}",
+                    load_path.display()
+                );
+                HwmonLoad::Unanswered
+            }
             Err(err) => {
                 // The file may be absent, or present but unsupported on this ASIC
                 // (older GPUs return an error rather than a value).
@@ -261,7 +336,7 @@ impl GpuAMD {
                     "AMD GPU load unavailable from hwmon at {}: {err}",
                     load_path.display()
                 );
-                None
+                HwmonLoad::Unsupported
             }
         }
     }
@@ -271,14 +346,30 @@ impl GpuAMD {
     /// present), so it works at boot before any GPU client exists yet is not
     /// enabled on kernels that lack `drm-engine-*` accounting. Load then always
     /// reports a value (0 while idle).
-    async fn init_fdinfo_load(base_path: &Path) -> Option<FdInfoLoad> {
-        let pci_slot = devices::get_pci_slot_name(base_path).await?;
-        if Self::fdinfo_engine_available(&pci_slot).await.not() {
+    ///
+    /// # Errors
+    ///
+    /// `Stalled` when the GPU's PCI slot did not read.
+    async fn init_fdinfo_load(
+        base_path: &Path,
+        identity: &IdentityReader,
+    ) -> Result<Option<FdInfoLoad>, Stalled> {
+        let Some(pci_slot) = devices::get_pci_slot_name(base_path, identity).await? else {
+            return Ok(None);
+        };
+        // Off the runtime thread and bounded: opening the render node resumes a GPU in D3cold.
+        let probe_slot = pci_slot.clone();
+        let probe = crate::rt::spawn_blocking(move || Self::fdinfo_engine_available(&probe_slot));
+        let available = matches!(
+            crate::rt::timeout(DRM_NAME_LOOKUP_TIMEOUT, probe).await,
+            Ok(Ok(true))
+        );
+        if available.not() {
             debug!("amdgpu DRM fdinfo engine accounting unavailable for {pci_slot}; GPU load off");
-            return None;
+            return Ok(None);
         }
         info!("AMD GPU load sourced from DRM fdinfo (hwmon sensor unsupported): {pci_slot}");
-        Some(FdInfoLoad::new(pci_slot))
+        Ok(Some(FdInfoLoad::new(pci_slot)))
     }
 
     /// Probes whether the amdgpu DRM driver exposes per-engine fdinfo accounting
@@ -287,7 +378,9 @@ impl GpuAMD {
     /// `/proc/self/fdinfo`: the standard framework that carries `drm-engine-*`
     /// always emits a `drm-client-id`, even when the engine lines are absent
     /// because our probe client has submitted no work.
-    async fn fdinfo_engine_available(pci_slot: &str) -> bool {
+    ///
+    /// Blocking calls, for the blocking pool.
+    fn fdinfo_engine_available(pci_slot: &str) -> bool {
         let render_path = format!("/dev/dri/by-path/pci-{pci_slot}-render");
         let Ok(render_node) = cc_fs::open_options()
             .read(true)
@@ -297,9 +390,9 @@ impl GpuAMD {
             return false;
         };
         let fdinfo_path = format!("/proc/self/fdinfo/{}", render_node.as_raw_fd());
-        cc_fs::read_txt(&fdinfo_path)
-            .await
-            .is_ok_and(|content| amd_fdinfo::engine_accounting_available(&content))
+        cc_fs::read_bytes_blocking(Path::new(&fdinfo_path)).is_ok_and(|content| {
+            std::str::from_utf8(&content).is_ok_and(amd_fdinfo::engine_accounting_available)
+        })
     }
 
     /// Computes GPU load from DRM fdinfo for a sensor-less GPU. Always returns a
@@ -327,9 +420,17 @@ impl GpuAMD {
     /// Queries libdrm for the device name and GPU generation. libdrm is loaded
     /// dynamically, so it may be absent; that case is reported distinctly via
     /// `DrmProbe::LibUnavailable` so the caller can warn the user to install it.
-    async fn get_drm_info(base_path: &Path) -> DrmProbe {
-        let render_path = devices::get_pci_slot_name(base_path)
-            .await
+    ///
+    /// # Errors
+    ///
+    /// `Stalled` when the GPU's PCI slot did not read: a guessed generation would pick the wrong
+    /// fan control path.
+    async fn get_drm_info(
+        base_path: &Path,
+        identity: &IdentityReader,
+    ) -> Result<DrmProbe, Stalled> {
+        let render_path = devices::get_pci_slot_name(base_path, identity)
+            .await?
             .map(|slot_name| format!("/dev/dri/by-path/pci-{slot_name}-render"));
         // libdrm performs synchronous DRM ioctls, so probe off the runtime thread
         // (the offload-blocking-FFI rule), bounded by a timeout so a wedged driver
@@ -345,9 +446,23 @@ impl GpuAMD {
             DrmProbe::Info(info)
         };
         match crate::rt::timeout(DRM_NAME_LOOKUP_TIMEOUT, crate::rt::spawn_blocking(probe)).await {
-            Ok(Ok(probe)) => probe,
-            _ => DrmProbe::Info(DrmGpuInfo::default()),
+            Ok(Ok(probe)) => Ok(probe),
+            _ => Ok(DrmProbe::Info(DrmGpuInfo::default())),
         }
+    }
+
+    /// The GPU's model: its own attribute, then libdrm's name for it, then its PCI ids.
+    async fn read_model(
+        path: &Path,
+        drm_device_name: Option<String>,
+        identity: &IdentityReader,
+    ) -> Result<Option<String>, Stalled> {
+        let pci_device_names = devices::get_device_pci_names(path, identity).await?;
+        let model = devices::get_device_model_name(path, identity)
+            .await?
+            .or(drm_device_name)
+            .or_else(|| pci_device_names.and_then(|names| names.device_name));
+        Ok(model)
     }
 
     /// Opens the GPU's DRM render node and reads its device info. Returns `None`
@@ -377,9 +492,11 @@ impl GpuAMD {
     /// See: <https://docs.kernel.org/gpu/amdgpu/thermal.html#fan-curve>
     ///
     /// Only available on Navi3x (RDNA 3) or newer devices.
-    async fn get_fan_curve_info(device_path: &Path) -> Result<FanCurveInfo> {
+    ///
+    /// The PMFW tables are read on the GPU's thread: each read takes the SMU mutex.
+    async fn get_fan_curve_info(device_path: &Path, io: &DeviceIo) -> Result<FanCurveInfo> {
         let (path, fan_curve, temperature_range, speed_range) =
-            Self::get_fan_curve_with_ranges(device_path).await?;
+            Self::get_fan_curve_with_ranges(device_path, io).await?;
         let changeable = super::amd_overdrive::is_overdrive_enabled().await;
         if changeable.not() {
             let fan_control_boot_option = super::amd_overdrive::get_fan_control_boot_option().await;
@@ -390,7 +507,7 @@ impl GpuAMD {
             );
         }
 
-        let zero_rpm = Self::get_zero_rpm_enable_path(device_path).await;
+        let zero_rpm = Self::get_zero_rpm_enable_path(device_path, io).await;
         if zero_rpm.is_none() {
             // Whether the firmware applies Zero RPM at all is a per-device pptable decision.
             // Some cards, such as the Radeon AI PRO R9700, never stop the fan. Do not claim
@@ -403,7 +520,7 @@ impl GpuAMD {
         }
 
         let (zero_rpm_stop_temp, zero_rpm_stop_temp_range) =
-            Self::get_zero_rpm_stop_temp_with_range(device_path).await?;
+            Self::get_zero_rpm_stop_temp_with_range(device_path, io).await?;
         Ok(FanCurveInfo {
             fan_curve,
             changeable,
@@ -418,6 +535,7 @@ impl GpuAMD {
 
     async fn get_fan_curve_with_ranges(
         device_path: &Path,
+        io: &DeviceIo,
     ) -> Result<(
         PathBuf,
         FanCurve,
@@ -425,7 +543,7 @@ impl GpuAMD {
         RangeInclusive<Duty>,
     )> {
         let path = device_path.join("gpu_od/fan_ctrl/fan_curve");
-        let fan_curve_file = cc_fs::read_txt(&path).await?;
+        let fan_curve_file = io.read_text(&path).await?;
         let mut points = Vec::new();
         let mut temp_min: CurveTemp = 0;
         let mut temp_max: CurveTemp = 0;
@@ -488,9 +606,9 @@ impl GpuAMD {
     }
 
     /// The Zero RPM Enable path, but only when the driver reports the feature as usable.
-    async fn get_zero_rpm_enable_path(device_path: &Path) -> Option<PathBuf> {
+    async fn get_zero_rpm_enable_path(device_path: &Path, io: &DeviceIo) -> Option<PathBuf> {
         let path = device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_enable");
-        cc_fs::read_txt(&path)
+        io.read_text(&path)
             .await
             .ok()
             .filter(|content| Self::feature_is_supported(content, HEADER_ZERO_RPM_ENABLE))
@@ -499,12 +617,14 @@ impl GpuAMD {
 
     async fn get_zero_rpm_stop_temp_with_range(
         device_path: &Path,
+        io: &DeviceIo,
     ) -> Result<(Option<PathBuf>, RangeInclusive<CurveTemp>)> {
         let mut zero_rpm_stop_temp_min: CurveTemp = 0;
         let mut zero_rpm_stop_temp_max: CurveTemp = 0;
         let zero_rpm_stop_temp_path =
             device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_stop_temperature");
-        let supported_content = cc_fs::read_txt(&zero_rpm_stop_temp_path)
+        let supported_content = io
+            .read_text(&zero_rpm_stop_temp_path)
             .await
             .ok()
             .filter(|content| Self::feature_is_supported(content, HEADER_ZERO_RPM_STOP_TEMP));
@@ -547,6 +667,9 @@ impl GpuAMD {
         );
         let mut devices = HashMap::with_capacity(amd_drivers.len());
         let poll_rate = self.config.get_settings()?.poll_rate;
+        // Detection cached each GPU's `uevent`, so this starts a thread only if one was not.
+        let identity =
+            IdentityReader::start("gpu-init", device_io::reply_timeout_from(&self.config));
         for (index, amd_driver) in amd_drivers.into_iter().enumerate() {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
@@ -654,9 +777,10 @@ impl GpuAMD {
                     },
                     driver_info: DriverInfo {
                         drv_type: DriverType::Kernel,
-                        name: devices::get_device_driver_name(&amd_driver.hwmon.path).await,
+                        name: devices::get_device_driver_name(&amd_driver.hwmon.path),
                         version: sysinfo::System::kernel_version(),
-                        locations: Self::get_driver_locations(&amd_driver.hwmon.path).await,
+                        locations: Self::get_driver_locations(&amd_driver.hwmon.path, &identity)
+                            .await,
                     },
                     ..Default::default()
                 },
@@ -721,11 +845,12 @@ impl GpuAMD {
         }
     }
 
-    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    /// For display only, read once the device is accepted: a stalled read leaves out its entry.
+    async fn get_driver_locations(base_path: &Path, identity: &IdentityReader) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
         let device_path = devices::get_static_device_path_str(base_path);
         let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+        if let Ok(Some(mod_alias)) = devices::get_device_mod_alias(base_path, identity).await {
             locations.push(mod_alias);
         }
         locations
@@ -1336,6 +1461,17 @@ impl AMDDriverInfo {
     }
 }
 
+/// Outcome of probing `gpu_busy_percent` for a GPU's Load channel.
+#[derive(Debug)]
+enum HwmonLoad {
+    /// It answered with a load: the channel.
+    Supported(HwmonChannelInfo),
+    /// It answered with an error or no load, as on older ASICs: DRM fdinfo stands in.
+    Unsupported,
+    /// It gave no answer in time, as a GPU waking from D3cold can: no Load channel this start.
+    Unanswered,
+}
+
 /// Outcome of probing libdrm for an amdgpu device.
 enum DrmProbe {
     /// libdrm could not be dynamically loaded (package not installed).
@@ -1404,11 +1540,12 @@ struct FanCurve {
 #[cfg(test)]
 mod tests {
     use crate::repositories::gpu::amd::{
-        AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HEADER_ZERO_RPM_ENABLE,
+        AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HwmonLoad, HEADER_ZERO_RPM_ENABLE,
         HEADER_ZERO_RPM_STOP_TEMP,
     };
     use crate::repositories::hwmon::device_io::DeviceIo;
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
+    use crate::repositories::hwmon::identity::IdentityReader;
     use nix::libc;
     use std::ops::Not;
     use std::ops::RangeInclusive;
@@ -1778,6 +1915,41 @@ mod tests {
     }
 
     #[test]
+    fn init_probes_and_pmfw_tables_are_read_on_the_gpu_thread() {
+        // Goal: the load probe and the PMFW tables, which wait on the SMU, are asked of the GPU's
+        // worker rather than read on the runtime thread. Method: probe through a wedged worker and
+        // look for each read on its queue.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup();
+            let (io, mut rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+
+            let load = GpuAMD::init_load(&ctx.test_base_path, &io).await;
+            let curve = GpuAMD::get_fan_curve_info(&ctx.test_base_path, &io).await;
+
+            assert!(matches!(load, HwmonLoad::Unanswered), "{load:?}");
+            assert!(curve.is_err());
+            let mut queued = Vec::new();
+            while let Ok(request) = rx.try_recv() {
+                match request {
+                    crate::repositories::hwmon::device_io::Request::Read { path, .. }
+                    | crate::repositories::hwmon::device_io::Request::ReadBytes { path, .. } => {
+                        queued.push(path);
+                    }
+                    _ => {}
+                }
+            }
+            let base = &ctx.test_base_path;
+            assert_eq!(
+                queued,
+                [
+                    base.join("gpu_busy_percent"),
+                    base.join("gpu_od/fan_ctrl/fan_curve")
+                ]
+            );
+        });
+    }
+
+    #[test]
     #[serial]
     fn extract_load_status_returns_value_on_success() {
         // Verifies a readable gpu_busy_percent results in a channel status
@@ -1951,7 +2123,8 @@ mod tests {
             .await;
 
             // when:
-            let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert!(result.is_err());
@@ -1969,7 +2142,8 @@ mod tests {
             write_fan_ctrl_file(&ctx, "fan_curve", "OD_FAN_CURVE:\n0: 40C 30%\n1: 60C 50%\n").await;
 
             // when:
-            let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert!(result.is_err());
@@ -1987,7 +2161,8 @@ mod tests {
                 write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_SUPPORTED).await;
 
             // when:
-            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, Some(expected));
@@ -2005,7 +2180,8 @@ mod tests {
             write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_UNSUPPORTED).await;
 
             // when:
-            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, None);
@@ -2021,7 +2197,8 @@ mod tests {
             // given: no gpu_od/fan_ctrl tree at all.
 
             // when:
-            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+            let result =
+                GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, None);
@@ -2043,9 +2220,12 @@ mod tests {
             .await;
 
             // when:
-            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(&ctx.test_base_path)
-                .await
-                .unwrap();
+            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(
+                &ctx.test_base_path,
+                &DeviceIo::default(),
+            )
+            .await
+            .unwrap();
 
             // then:
             assert_eq!(path, Some(expected));
@@ -2065,9 +2245,12 @@ mod tests {
             write_fan_ctrl_file(&ctx, "fan_zero_rpm_stop_temperature", "\n").await;
 
             // when:
-            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(&ctx.test_base_path)
-                .await
-                .unwrap();
+            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(
+                &ctx.test_base_path,
+                &DeviceIo::default(),
+            )
+            .await
+            .unwrap();
 
             // then:
             assert_eq!(path, None);
@@ -2246,6 +2429,71 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(curve, "r\n");
             assert_eq!(zero_rpm, "r\n");
+        });
+    }
+
+    #[test]
+    fn an_unanswered_load_channel_leaves_load_off_without_fdinfo() {
+        // Goal: a load read that got no answer adds no Load channel and never probes the fdinfo
+        // fallback. Method: init the channel through a GPU worker that never answers and an
+        // identity reader whose worker records every read, then require no channel and no read.
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("gpu_busy_percent"), "42\n").unwrap();
+            let (wedged, _gpu_rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+            let (identity_io, mut identity_rx) =
+                DeviceIo::wedged_for_test(Duration::from_millis(20));
+            let identity = IdentityReader::with_io(identity_io, |_, _| {
+                panic!("the fdinfo fallback restarted the identity worker")
+            });
+            let mut channels = Vec::new();
+
+            let fdinfo = GpuAMD::init_load_channel(
+                dir.path(),
+                dir.path(),
+                &wedged,
+                &identity,
+                &[],
+                &mut channels,
+            )
+            .await;
+
+            assert!(matches!(fdinfo, Ok(None)), "{fdinfo:?}");
+            assert!(channels.is_empty(), "{channels:?}");
+            assert!(
+                identity_rx.try_recv().is_err(),
+                "the fdinfo fallback read the GPU's identity"
+            );
+        });
+    }
+
+    #[test]
+    fn a_load_read_with_no_answer_takes_no_fallback() {
+        // Goal: only an answered error moves Load to DRM fdinfo; a read that got no answer, as from
+        // a GPU waking from D3cold, leaves Load off instead of committing the boot to fdinfo.
+        // Method: probe a readable load, an absent one and one through a worker that never answers.
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("gpu_busy_percent"), "42\n").unwrap();
+            let absent = dir.path().join("absent");
+            let (wedged, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+
+            let supported = GpuAMD::init_load(dir.path(), &DeviceIo::default()).await;
+            let unsupported = GpuAMD::init_load(&absent, &DeviceIo::default()).await;
+            let unanswered = GpuAMD::init_load(dir.path(), &wedged).await;
+
+            assert!(
+                matches!(supported, HwmonLoad::Supported(_)),
+                "{supported:?}"
+            );
+            assert!(
+                matches!(unsupported, HwmonLoad::Unsupported),
+                "{unsupported:?}"
+            );
+            assert!(
+                matches!(unanswered, HwmonLoad::Unanswered),
+                "{unanswered:?}"
+            );
         });
     }
 }
