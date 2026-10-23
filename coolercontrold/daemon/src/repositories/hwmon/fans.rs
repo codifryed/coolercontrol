@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::cc_fs;
 use crate::cc_fs::{ReadIndex, SysfsValue};
-use crate::device::ChannelStatus;
+use crate::device::{ChannelStatus, Duty};
 use crate::diagnostics::support::{self, ChannelDiagnosis, ChannelEvidence};
-use crate::repositories::hwmon::device_io::DeviceIo;
+use crate::repositories::hwmon::device_io::{DeviceIo, READ_BATCH_MAX};
 use crate::repositories::hwmon::hwmon_repo::{
     AutoCurveInfo, ChannelReadSlots, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType,
     HwmonDriverInfo,
@@ -25,6 +25,9 @@ const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
 pub const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
 pub const PWM_ENABLE_AUTO_VALUE: u8 = 2;
 pub const PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE: u8 = 5;
+/// Fan channels one batched pass can decide for. Channel numbers are `u8` and unique per device.
+const FAN_CHANNELS_MAX: usize = u8::MAX as usize + 1;
+const _: () = assert!(FAN_CHANNELS_MAX * 2 <= READ_BATCH_MAX);
 
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
@@ -300,8 +303,8 @@ async fn caps_to_hwmon_fans(
 pub enum FanRead {
     /// Real pwm duty and rpm.
     Full,
-    /// Rpm only; the caller supplies the duty from its cache.
-    RpmOnly,
+    /// Rpm only, reporting this duty, which the caller took from its cache.
+    RpmOnly(Duty),
 }
 
 /// One channel's outcome from a batched fan read.
@@ -309,8 +312,9 @@ pub enum FanRead {
 pub enum FanReading {
     /// A full read that produced everything expected of the channel.
     Full(ChannelStatus),
-    /// An rpm-only read. `None` means the channel has no rpm capability, which is not a failure.
-    Rpm(Option<u32>),
+    /// An rpm-only read, with the duty decided for it. `rpm` is `None` when the channel has no rpm
+    /// capability, which is not a failure.
+    Rpm { rpm: Option<u32>, duty: Duty },
     /// Something the channel was expected to report did not read, so the caller should treat this
     /// tick as a miss and let staleness accumulate.
     Failed,
@@ -322,23 +326,36 @@ pub enum FanReading {
 /// pays rpm reads alone. The saving is round trips, not attributes: the pass reads exactly what it
 /// would have read one channel at a time.
 ///
-/// `want` is asked twice per channel, once to gather the batch and once to walk the reply, so it
-/// must answer the same both times. `on_reading` is called once per channel, in order.
+/// `want` is asked once per channel, before any read, and the answers are kept on the stack, so the
+/// reply is walked exactly as the batch was laid out even if the caller's state changes while the
+/// read is in flight. `on_reading` is called once per channel, in order.
+///
+/// # Panics
+///
+/// If `channels` holds more than `FAN_CHANNELS_MAX` channels.
 pub async fn read_fan_statuses<'a>(
     driver: &'a HwmonDriverInfo,
     channels: impl Iterator<Item = &'a HwmonChannelInfo> + Clone,
-    want: impl Fn(&HwmonChannelInfo) -> FanRead,
+    mut want: impl FnMut(&HwmonChannelInfo) -> FanRead,
     mut on_reading: impl FnMut(&'a HwmonChannelInfo, FanReading),
 ) {
+    let mut decided = [FanRead::Full; FAN_CHANNELS_MAX];
+    let mut decided_len: usize = 0;
+    for channel in channels.clone() {
+        assert!(decided_len < FAN_CHANNELS_MAX, "too many fan channels");
+        decided[decided_len] = want(channel);
+        decided_len += 1;
+    }
+    let decided = &decided[..decided_len];
     let slots = channels
         .clone()
-        .flat_map(|channel| fan_slots(channel, want(channel)).into_iter().flatten());
+        .zip(decided)
+        .flat_map(|(channel, &read)| fan_slots(channel, read).into_iter().flatten());
     let mut batch = driver.io.read_many(slots).await;
     let mut taken: usize = 0;
 
     let log_error = log_enabled!(log::Level::Debug);
-    for channel in channels {
-        let channel_want = want(channel);
+    for (channel, &channel_want) in channels.zip(decided) {
         // A channel's slots sit together in the batch, pwm first, as `fan_slots` laid them out.
         let [pwm_slot, rpm_slot] = fan_slots(channel, channel_want);
         let mut take_next = || {
@@ -373,13 +390,13 @@ async fn fan_reading_from(
             .map(|rpm| guard_fan_rpm(rpm, &channel.caps));
         interpret_fan_rpm(|| rpm_path_for(driver, channel), raw, log_error)
     });
-    if want == FanRead::RpmOnly {
+    if let FanRead::RpmOnly(duty) = want {
         debug_assert!(pwm_raw.is_none());
         // An expected rpm that did not read is a miss; a channel with no rpm at all is not.
         return if channel.caps.has_rpm() && fan_rpm.is_none() {
             FanReading::Failed
         } else {
-            FanReading::Rpm(fan_rpm)
+            FanReading::Rpm { rpm: fan_rpm, duty }
         };
     }
     let fan_duty = match pwm_raw {
@@ -2504,7 +2521,7 @@ mod tests {
             .await;
             let want = |channel: &HwmonChannelInfo| {
                 if channel.number == 2 {
-                    FanRead::RpmOnly
+                    FanRead::RpmOnly(50)
                 } else {
                     FanRead::Full
                 }
@@ -2522,7 +2539,13 @@ mod tests {
             };
             assert_eq!((first.duty, first.rpm), (Some(100.0), Some(1100)));
             assert!(
-                matches!(readings[1].1, FanReading::Rpm(Some(2200))),
+                matches!(
+                    readings[1].1,
+                    FanReading::Rpm {
+                        rpm: Some(2200),
+                        duty: 50
+                    }
+                ),
                 "fan2 must read its rpm only, got {:?}",
                 readings[1].1
             );
