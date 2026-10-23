@@ -302,9 +302,9 @@ impl GpuRepo {
                     // A GPU that did not answer keeps its last-known-good values until its
                     // failsafe takes over.
                     match self.gpus_nvidia.request_nvml_status(nv_info).await {
-                        Some(nvml_status) => {
+                        Some(readings) => {
                             self.gpus_nvidia
-                                .store_nvml_status(type_index, nv_info, nvml_status)
+                                .store_nvml_status(type_index, nv_info, &readings)
                                 .await;
                         }
                         None => self.gpus_nvidia.record_nvml_no_answer(type_index),

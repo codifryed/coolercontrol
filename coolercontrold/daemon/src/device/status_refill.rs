@@ -3,6 +3,9 @@
 
 //! Refilling a device's per-tick status lists in place.
 
+use std::fmt::{self, Write};
+use std::ops::Not;
+
 use super::{ChannelSample, ChannelStatus, Temp, TempStatus};
 
 /// Refills a device's status lists in place, leaving them as a rebuild from this tick's reports
@@ -53,6 +56,24 @@ impl<'a> StatusRefill<'a> {
         }
         self.channel_count += 1;
         debug_assert_eq!(self.channels[self.channel_count - 1].name, name);
+    }
+
+    /// As `channel`, for a name formatted into the kept entry's own buffer, so a source that
+    /// builds its names allocates none once warm.
+    pub fn channel_fmt(&mut self, name: fmt::Arguments<'_>, sample: ChannelSample) {
+        debug_assert!(self.channel_count <= self.channels.len());
+        if let Some(entry) = self.channels.get_mut(self.channel_count) {
+            entry.name.clear();
+            entry
+                .name
+                .write_fmt(name)
+                .expect("formatting into a String does not fail");
+            sample.apply_to(entry);
+        } else {
+            self.channels.push(sample.to_status(&name.to_string()));
+        }
+        self.channel_count += 1;
+        debug_assert!(self.channels[self.channel_count - 1].name.is_empty().not());
     }
 
     /// This tick's channels, for a caller that must change them before they are kept.
@@ -186,6 +207,48 @@ mod tests {
         assert_eq!(refill.channels_mut().len(), 2);
         drop(refill);
         assert_eq!(channels.len(), 2);
+    }
+
+    #[test]
+    fn a_formatted_name_matches_a_plain_one() {
+        // Goal: a channel named through `channel_fmt` ends as one named through `channel`, both
+        // when it is new and when it is written over another name. Method: format two fan names
+        // into empty lists, then over different names.
+        let mut channels = Vec::new();
+        let mut temps = Vec::new();
+        for _ in 0..2 {
+            let mut refill = StatusRefill::new(&mut channels, &mut temps);
+            for number in 1..=2 {
+                refill.channel_fmt(format_args!("fan{number}"), rpm(number));
+            }
+            drop(refill);
+            assert_eq!(
+                channels,
+                vec![rpm(1).to_status("fan1"), rpm(2).to_status("fan2")]
+            );
+            channels[0].name = "pump".to_owned();
+        }
+    }
+
+    #[cfg(feature = "gated-tests")]
+    #[test]
+    fn a_warm_formatted_name_allocates_nothing() {
+        // Goal: formatting a name the entry already holds reuses its buffer. Method: refill a
+        // formatted name once to warm the list, then count a second refill.
+        let mut channels = Vec::new();
+        let mut temps = Vec::new();
+        let refill_fans = |channels: &mut Vec<ChannelStatus>, temps: &mut Vec<TempStatus>| {
+            let mut refill = StatusRefill::new(channels, temps);
+            for number in 1..=2 {
+                refill.channel_fmt(format_args!("fan{number}"), rpm(number));
+            }
+        };
+        refill_fans(&mut channels, &mut temps);
+
+        let ((), allocations) =
+            crate::alloc_count::count_allocations(|| refill_fans(&mut channels, &mut temps));
+
+        assert_eq!(allocations, 0);
     }
 
     #[cfg(feature = "gated-tests")]
