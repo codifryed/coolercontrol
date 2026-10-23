@@ -894,6 +894,34 @@ impl LiquidctlRepo {
 
     /// Lowercases each line's name in place, as status maps are keyed. liquidctl's names are
     /// ASCII, which changes in place without allocating.
+    /// Stores a read status, returning the one it replaces to the spares so the next read
+    /// reuses its lines, and records the read with the failsafe.
+    fn store_status(
+        &self,
+        device_id: u8,
+        mut status: LCStatus,
+        device_name: impl FnOnce() -> String,
+    ) {
+        Self::lowercase_names(&mut status);
+        let replaced = self
+            .preloaded_statuses
+            .borrow_mut()
+            .insert(device_id, status);
+        if let Some(replaced) = replaced {
+            self.spare_statuses.borrow_mut().insert(device_id, replaced);
+        }
+        let mut fsd_map = self.failsafe_statuses.borrow_mut();
+        if let Some(fsd) = fsd_map.get_mut(&device_id) {
+            if fsd.record_success() {
+                info!(
+                    "Recovered from failsafe for liquidctl device: {}. \
+                     Resuming normal status reads.",
+                    device_name()
+                );
+            }
+        }
+    }
+
     fn lowercase_names(lc_statuses: &mut LCStatus) {
         for (name, _, _) in lc_statuses {
             if name.is_ascii() {
@@ -1947,26 +1975,7 @@ impl Repository for LiquidctlRepo {
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
                     match self.call_status(&device_id, delay).await {
-                        Ok(mut status) => {
-                            Self::lowercase_names(&mut status);
-                            let replaced = self
-                                .preloaded_statuses
-                                .borrow_mut()
-                                .insert(device_id, status);
-                            if let Some(replaced) = replaced {
-                                self.spare_statuses.borrow_mut().insert(device_id, replaced);
-                            }
-                            let mut fsd_map = self.failsafe_statuses.borrow_mut();
-                            if let Some(fsd) = fsd_map.get_mut(&device_id) {
-                                if fsd.record_success() {
-                                    info!(
-                                        "Recovered from failsafe for liquidctl \
-                                         device: {}. Resuming normal status reads.",
-                                        device_name()
-                                    );
-                                }
-                            }
-                        }
+                        Ok(status) => self.store_status(device_id, status, device_name),
                         Err(err) => {
                             let mut fsd_map = self.failsafe_statuses.borrow_mut();
                             let Some(fsd) = fsd_map.get_mut(&device_id) else {
