@@ -26,6 +26,11 @@ pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
     }
 }
 
+/// `write` as a blocking call, for a device's IO thread, which has no runtime.
+pub fn write_blocking(path: &Path, data: &[u8]) -> Result<()> {
+    Ok(std::fs::write(path, data)?)
+}
+
 /// Atomically renames `from` to `to` on the same filesystem (a metadata-only
 /// operation). Used to publish a fully written temp file over its target so a
 /// crash mid-write cannot leave a partial file at `to`.

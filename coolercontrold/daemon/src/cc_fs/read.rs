@@ -20,7 +20,8 @@ pub const SYSFS_VALUE_MAX_BYTES: usize = 64;
 ///
 /// `io_uring` turns the kernel's `-ERESTARTSYS` into `EINTR` rather than restarting the read
 /// (`io_uring/rw.c:io_fixup_restart_res`), so the restart is ours to make. compio already
-/// re-issues inside `read_to_end_at` and friends; the fixed-buffer readers here do not.
+/// re-issues inside `read_to_end_at` and friends; the fixed-buffer readers here do not. A blocking
+/// `pread` can see `EINTR` too, from a signal handler without `SA_RESTART`.
 pub const INTERRUPTED_READ_ATTEMPTS: u8 = 3;
 const _: () = assert!(INTERRUPTED_READ_ATTEMPTS > 0);
 
@@ -186,6 +187,61 @@ pub async fn read_sysfs_value(path: impl AsRef<Path>) -> Result<SysfsValue> {
     }
     debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
     Ok(SysfsValue { buf, len })
+}
+
+/// `read_sysfs_value` as blocking calls, for a device's IO thread, which has no runtime.
+pub fn read_sysfs_value_blocking(path: &Path) -> Result<SysfsValue> {
+    let file = std::fs::File::open(path)?;
+    let mut buf = [0u8; SYSFS_VALUE_MAX_BYTES];
+    let mut len = 0;
+    let mut attempts = INTERRUPTED_READ_ATTEMPTS;
+    // Bounded on both axes, as in `read_sysfs_value`.
+    while len < SYSFS_VALUE_MAX_BYTES {
+        match pread_reissuing(path, &file, &mut buf[len..], len as u64, &mut attempts)? {
+            0 => break,
+            bytes_read => len += bytes_read,
+        }
+    }
+    debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
+    Ok(SysfsValue { buf, len })
+}
+
+/// One blocking `pread`, re-issued while `should_reissue` allows, spending from `attempts`.
+///
+/// An interrupted `pread` read nothing, so it is re-issued at once: the back-off the async readers
+/// take exists to let `io_uring` completions drain, which does not apply here.
+///
+/// # Errors
+///
+/// The read's error, once it is not worth re-issuing or `attempts` is spent.
+pub fn pread_reissuing(
+    path: &Path,
+    file: &std::fs::File,
+    buf: &mut [u8],
+    offset: u64,
+    attempts: &mut u8,
+) -> std::io::Result<usize> {
+    use std::os::unix::fs::FileExt;
+    // Bounded by `attempts`, which drops by one per failure and returns the error at zero.
+    loop {
+        match file.read_at(buf, offset) {
+            Ok(len) => {
+                debug_assert!(len <= buf.len());
+                return Ok(len);
+            }
+            Err(err) => {
+                debug_assert!(*attempts > 0);
+                *attempts -= 1;
+                if should_reissue(*attempts, &err).not() {
+                    if err.kind() == ErrorKind::Interrupted {
+                        log_reissue_exhausted(path);
+                    }
+                    return Err(err);
+                }
+                log_reissue(path, *attempts);
+            }
+        }
+    }
 }
 
 /// Reads the entire contents of a sysfs file into a UTF-8 encoded string.
@@ -513,6 +569,41 @@ mod tests {
                     "unexpected parse result for {name} ({digit_count} digits)"
                 );
             }
+        });
+    }
+
+    /// Goal: the blocking reader serves the device threads' one-shot reads, so it must return
+    /// exactly what `read_sysfs_value` returns, at the buffer boundary and for a missing file.
+    /// Method: read short, boundary and oversize files through both readers and compare bytes,
+    /// then read a missing path through both and compare error kinds.
+    #[test]
+    fn read_sysfs_value_blocking_matches_the_async_reader() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let cases = [
+                ("short", "42\n".to_owned()),
+                ("no_newline", "0".to_owned()),
+                ("fits", format!("{}\n", "7".repeat(62))),
+                ("exact", format!("{}\n", "7".repeat(SYSFS_VALUE_MAX_BYTES))),
+                ("over", format!("{}\n", "7".repeat(100))),
+            ];
+            for (name, contents) in &cases {
+                let path = dir.path().join(name);
+                std::fs::write(&path, contents).unwrap();
+                let blocking = read_sysfs_value_blocking(&path).unwrap();
+                let compio = read_sysfs_value(&path).await.unwrap();
+                assert_eq!(
+                    blocking.as_bytes(),
+                    compio.as_bytes(),
+                    "bytes differ for {name}"
+                );
+            }
+            let missing = dir.path().join("missing");
+            let blocking = read_sysfs_value_blocking(&missing).unwrap_err();
+            let compio = read_sysfs_value(&missing).await.unwrap_err();
+            let kind = |err: &anyhow::Error| err.downcast_ref::<Error>().map(Error::kind);
+            assert_eq!(kind(&blocking), Some(ErrorKind::NotFound));
+            assert_eq!(kind(&blocking), kind(&compio));
         });
     }
 

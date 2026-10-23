@@ -6886,12 +6886,14 @@ mod init_timeout_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn map_into_model_skips_device_on_hanging_temp_read() {
         // A wedged sysfs file at init must not stall startup. FIFO at
         // the temp path blocks open(2) until a writer connects, so
-        // the extract hangs and the per-channel-group timeout fires.
-        // The test pairs the FIFO afterward so the leaked blocking
-        // task completes cleanly.
+        // the device's IO thread parks and the per-channel-group
+        // timeout fires. Threaded, because an inline read would hold
+        // the runtime the timer lives on. The test pairs the FIFO
+        // afterward so the parked worker finishes.
         cc_fs::test_runtime(async {
             let tmp = tempfile::tempdir().unwrap();
             let base = tmp.path().to_path_buf();
@@ -6907,11 +6909,14 @@ mod init_timeout_tests {
                 std::io::Error::last_os_error()
             );
 
-            let driver = driver_for_test(
-                "test_slow",
-                &base,
-                vec![temp_channel(1, "temp1", fifo_path.clone())],
-            )
+            let driver = HwmonDriverInfo {
+                name: "test_slow".to_string(),
+                path: base.clone(),
+                channels: vec![temp_channel(1, "temp1", fifo_path.clone())],
+                io: DeviceIo::threaded("test_slow", Duration::from_secs(5)).unwrap(),
+                ..Default::default()
+            }
+            .with_read_registry()
             .await;
 
             let mut repo = empty_repo();
@@ -6935,15 +6940,12 @@ mod init_timeout_tests {
                 "device with hanging read should be skipped"
             );
 
-            // Pair the FIFO so the blocking reader thread can
-            // complete. Without this the runtime drop may wait on
-            // the leaked read-open syscall.
-            // A blocking write-open would itself hang if the timed-out
-            // read task never reached open(2). O_NONBLOCK write-open
-            // pairs (succeeds) only once a reader is parked and fails
-            // with ENXIO otherwise; retry until the deadline (read
-            // task cancelled before open, nothing leaked). Dropping
-            // the paired fd sends EOF and the leaked read completes.
+            // Pair the FIFO so the parked worker can complete.
+            // A blocking write-open would itself hang if the worker
+            // never reached open(2). O_NONBLOCK write-open pairs
+            // (succeeds) only once a reader is parked and fails with
+            // ENXIO otherwise; retry until the deadline. Dropping the
+            // paired fd sends EOF and the parked read completes.
             let fifo_for_writer = fifo_path.clone();
             let _ = crate::rt::spawn_blocking(move || {
                 use std::os::unix::fs::OpenOptionsExt;
