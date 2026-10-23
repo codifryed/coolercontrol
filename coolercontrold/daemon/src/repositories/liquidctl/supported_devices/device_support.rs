@@ -557,6 +557,31 @@ pub trait DeviceSupport: Debug {
         }
     }
 
+    /// Reports each of the device's init speed channels missing from this status as stopped,
+    /// for drivers that drop a fan set to 0 from their status, as they do one with no fan.
+    fn add_missing_speed_channels(
+        &self,
+        speed_channel_names: &[String],
+        refill: &mut StatusRefill<'_>,
+    ) {
+        if refill.channels().len() < speed_channel_names.len() {
+            for channel_name in speed_channel_names {
+                let reported = refill
+                    .channels()
+                    .iter()
+                    .any(|status| status.name == *channel_name);
+                if reported.not() {
+                    let sample = ChannelSample {
+                        rpm: Some(0),
+                        duty: Some(0.0),
+                        ..Default::default()
+                    };
+                    refill.channel(channel_name, sample);
+                }
+            }
+        }
+    }
+
     fn add_multiple_external_fans_status(
         &self,
         status_map: &StatusMap,

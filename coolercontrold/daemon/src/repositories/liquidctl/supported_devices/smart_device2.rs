@@ -3,11 +3,10 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::Not;
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelSample, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions, StatusRefill,
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -139,22 +138,7 @@ impl DeviceSupport for SmartDevice2Support {
         // (non-0 check) unfortunately that also happens when no fan is attached.
         // caveat: not an issue if hwmon driver is present
         if let Some(speed_channel_names) = self.init_speed_channel_map.borrow().get(&device_index) {
-            if channel_statuses.channels().len() < speed_channel_names.len() {
-                for channel_name in speed_channel_names {
-                    let reported = channel_statuses
-                        .channels()
-                        .iter()
-                        .any(|status| status.name == *channel_name);
-                    if reported.not() {
-                        let sample = ChannelSample {
-                            rpm: Some(0),
-                            duty: Some(0.0),
-                            ..Default::default()
-                        };
-                        channel_statuses.channel(channel_name, sample);
-                    }
-                }
-            }
+            self.add_missing_speed_channels(speed_channel_names, channel_statuses);
         }
         channel_statuses
             .channels_mut()
