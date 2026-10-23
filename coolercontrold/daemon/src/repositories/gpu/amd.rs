@@ -62,6 +62,8 @@ pub struct GpuAMD {
     pub amd_devices: HashMap<UID, DeviceLock>,
     pub amd_driver_infos: HashMap<UID, Rc<AMDDriverInfo>>,
     pub amd_preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    /// The buffers a preload reads into, so the stored status stays readable while it yields.
+    amd_spare_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     /// Per-device fdinfo clients and delta state, keyed by PCI slot, for GPUs that source
     /// load from DRM fdinfo instead of `gpu_busy_percent`.
     amd_fdinfo_state: RefCell<HashMap<String, FdInfoTracker>>,
@@ -76,6 +78,7 @@ impl GpuAMD {
             amd_devices: HashMap::new(),
             amd_driver_infos: HashMap::new(),
             amd_preloaded_statuses: RefCell::new(HashMap::new()),
+            amd_spare_statuses: RefCell::new(HashMap::new()),
             amd_fdinfo_state: RefCell::new(HashMap::new()),
             amd_fdinfo_read_buf: RefCell::new(Vec::new()),
         }
@@ -866,6 +869,28 @@ impl GpuAMD {
         self.read_amd_status(amd_driver, &mut channels, &mut temps)
             .await;
         (channels, temps)
+    }
+
+    /// Reads one GPU's status into its spare buffers, then swaps them with last tick's, which
+    /// become the spare. So a snapshot taken during the read sees last tick's status, and a tick
+    /// reading the same channels as the one before last keeps every name.
+    pub async fn preload_amd_status(&self, type_index: TypeIndex, amd_driver: &AMDDriverInfo) {
+        let (mut channels, mut temps) = std::mem::take(
+            self.amd_spare_statuses
+                .borrow_mut()
+                .entry(type_index)
+                .or_default(),
+        );
+        self.read_amd_status(amd_driver, &mut channels, &mut temps)
+            .await;
+        let spare = self
+            .amd_preloaded_statuses
+            .borrow_mut()
+            .insert(type_index, (channels, temps))
+            .unwrap_or_default();
+        self.amd_spare_statuses
+            .borrow_mut()
+            .insert(type_index, spare);
     }
 
     /// Reads one GPU's status into `channels` and `temps` in place, leaving them as
@@ -1678,6 +1703,72 @@ mod tests {
         assert_eq!(device.latest_timestamp(), Some(tick));
         assert_eq!(device.latest_temp("temp1"), Some(50.0));
         assert_eq!(device.latest_channel("fan1").unwrap().rpm, Some(900));
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    #[serial_test::serial]
+    fn a_snapshot_during_a_preload_writes_last_ticks_status() {
+        // Goal: a preload reads into spare buffers, so a snapshot taken while its read is
+        // pending still writes last tick's status. Method: preload a one-temp GPU on a temp dir,
+        // change the temp, poll a second preload once so its read is in flight, update the
+        // device, then finish the preload. Gated: the read runs on a real IO thread.
+        use crate::config::Config;
+        use crate::device::{Device, DeviceInfo, DeviceType};
+        use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
+        use chrono::Local;
+        use std::cell::RefCell;
+        use std::pin::pin;
+        use std::rc::Rc;
+        use std::task::Poll;
+
+        crate::cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let write = |value: &str| std::fs::write(dir.path().join("temp1_input"), value);
+            write("40000").unwrap();
+            let hwmon = HwmonDriverInfo {
+                name: "amdgpu".to_string(),
+                path: dir.path().to_path_buf(),
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Temp,
+                    number: 1,
+                    name: "temp1".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }
+            .with_read_registry()
+            .await;
+            let driver = Rc::new(AMDDriverInfo::for_test(hwmon));
+            let mut gpus = GpuAMD::new(Rc::new(Config::init_default_config().unwrap()));
+            let device = Device::new(
+                "Test AMD GPU".to_string(),
+                DeviceType::GPU,
+                1,
+                None,
+                DeviceInfo::default(),
+                None,
+                1.0,
+            );
+            let uid = device.uid.clone();
+            let device = Rc::new(RefCell::new(device));
+            gpus.amd_devices.insert(uid.clone(), Rc::clone(&device));
+            gpus.amd_driver_infos.insert(uid, Rc::clone(&driver));
+            gpus.preload_amd_status(1, &driver).await;
+            write("41000").unwrap();
+
+            let mut preload = pin!(gpus.preload_amd_status(1, &driver));
+            let first_poll =
+                std::future::poll_fn(|cx| Poll::Ready(preload.as_mut().poll(cx))).await;
+            assert!(first_poll.is_pending(), "the read is in flight");
+            gpus.update_all_statuses(Local::now());
+            assert_eq!(device.borrow().latest_temp("temp1"), Some(40.0));
+            preload.await;
+
+            let stored = &gpus.amd_preloaded_statuses.borrow()[&1].1;
+            assert_eq!(stored.len(), 1);
+            assert_eq!(stored[0].temp, 41.0);
+        });
     }
 
     #[test]
