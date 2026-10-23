@@ -6,7 +6,6 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
 use crate::api::actor::{CalibrationBatchEntry, CalibrationBatchStatus, CalibrationStatus};
@@ -19,15 +18,15 @@ use crate::calibration::{
 };
 use crate::config::Config;
 use crate::device::{
-    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelName, ChannelStatus, DeviceType,
-    DeviceUID, Duty, Status, TempStatus, MAX_CHANNEL_ATTRIBUTES, RPM, UID,
+    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelName, DeviceType, DeviceUID, Duty,
+    MAX_CHANNEL_ATTRIBUTES, RPM, UID,
 };
 use crate::engine::commanders::graph::GraphProfileCommander;
 use crate::engine::commanders::lcd::{LcdCommander, DEFAULT_LCD_SHUTDOWN_IMAGE};
 use crate::engine::commanders::mix::MixProfileCommander;
 use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
-use crate::notifier::{self, NotificationHandle, NotificationIcon};
+use crate::events::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::overrides::OverridesController;
 use crate::paths;
 use crate::repositories::custom_sensor_attributes::{attribute_forward, forward_attributes};
@@ -1234,28 +1233,10 @@ impl Engine {
     pub fn reinitialize_all_status_histories(&self) -> Result<()> {
         let poll_rate = self.config.get_settings()?.poll_rate;
         for device in self.all_devices.values() {
-            let most_recent_status = device.borrow().status_current().unwrap();
-            let adjusted_recent_status = Status {
-                // The next snapshot will most likely be after another loop interval:
-                timestamp: Local::now(),
-                temps: most_recent_status
-                    .temps
-                    .into_iter()
-                    .map(|t| TempStatus { temp: 0.0, ..t })
-                    .collect::<Vec<TempStatus>>(),
-                channels: most_recent_status
-                    .channels
-                    .into_iter()
-                    .map(|c| ChannelStatus {
-                        rpm: if c.rpm.is_some() { Some(0) } else { None },
-                        duty: if c.duty.is_some() { Some(0.0) } else { None },
-                        ..c
-                    })
-                    .collect::<Vec<ChannelStatus>>(),
-            };
+            // The next snapshot will most likely be after another loop interval:
             device
                 .borrow_mut()
-                .zero_status_history(&adjusted_recent_status, poll_rate);
+                .zero_status_history(Local::now(), poll_rate);
         }
         Ok(())
     }
@@ -1775,28 +1756,11 @@ impl Engine {
         let Some(device_lock) = self.all_devices.get(&key.0) else {
             return false;
         };
-        let mut device = device_lock.borrow_mut();
-        let history = Arc::make_mut(&mut device.status_history);
-        let mut filled_any = false;
-        for status in history.iter_mut() {
-            for channel in &mut status.channels {
-                if channel.name != key.1 {
-                    continue;
-                }
-                if channel.duty.is_some() {
-                    continue;
-                }
-                let Some(rpm) = channel.rpm else {
-                    continue;
-                };
-                let Some(true_duty) = calibration.rpm_to_true_duty(rpm) else {
-                    continue;
-                };
-                channel.duty = Some(f64::from(true_duty));
-                filled_any = true;
-            }
-        }
-        filled_any
+        device_lock
+            .borrow_mut()
+            .backfill_channel_duty(&key.1, |rpm| {
+                calibration.rpm_to_true_duty(rpm).map(f64::from)
+            })
     }
 
     /// Used on delete for `was_rpm_only` channels so the chart no
@@ -1807,16 +1771,7 @@ impl Engine {
         let Some(device_lock) = self.all_devices.get(&key.0) else {
             return;
         };
-        let mut device = device_lock.borrow_mut();
-        let history = Arc::make_mut(&mut device.status_history);
-        for status in history.iter_mut() {
-            for channel in &mut status.channels {
-                if channel.name != key.1 {
-                    continue;
-                }
-                channel.duty = None;
-            }
-        }
+        device_lock.borrow_mut().clear_channel_duty(&key.1);
     }
 
     /// Drive a per-channel calibration diagnosis end-to-end. Registers
@@ -2247,18 +2202,13 @@ impl DiagnosisHost for Engine {
     async fn current_rpm(&self, device_uid: &UID, channel_name: &str) -> Option<RPM> {
         let device_lock = self.all_devices.get(device_uid)?;
         let device = device_lock.borrow();
-        let latest = device.status_history.back()?;
-        latest
-            .channels
-            .iter()
-            .find(|c| c.name == channel_name)
-            .and_then(|c| c.rpm)
+        device.latest_channel(channel_name)?.rpm
     }
 
     async fn latest_status_timestamp_ms(&self, device_uid: &UID) -> Option<i64> {
         let device_lock = self.all_devices.get(device_uid)?;
         let device = device_lock.borrow();
-        Some(device.status_history.back()?.timestamp.timestamp_millis())
+        Some(device.latest_timestamp()?.timestamp_millis())
     }
 
     fn step_settle_cap_ms(&self, _device_uid: &UID) -> u32 {
@@ -2352,21 +2302,18 @@ impl DiagnosisHost for Engine {
         };
         for (device_uid, device_lock) in self.all_devices.iter() {
             let device = device_lock.borrow();
-            let Some(latest) = device.status_history.back() else {
-                continue;
-            };
-            for status in &latest.temps {
-                if status.temp >= limit_celsius {
+            for (name, temp) in device.latest_temps() {
+                if temp >= limit_celsius {
                     hottest.over_limit_count += 1;
                 }
-                if status.temp > hottest.celsius {
-                    hottest.celsius = status.temp;
+                if temp > hottest.celsius {
+                    hottest.celsius = temp;
                     // Resolve only on a new max: the sensor label is the
                     // one whose reading blocked the sweep, so the user
                     // sees which device to cool. `log_device_channel`
                     // re-borrows this device's RefCell immutably, which
                     // coexists with the `device` borrow held here.
-                    hottest.sensor = self.log_device_channel(device_uid, &status.name);
+                    hottest.sensor = self.log_device_channel(device_uid, name);
                 }
             }
         }

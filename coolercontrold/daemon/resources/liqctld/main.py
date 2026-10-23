@@ -540,6 +540,52 @@ def patch_corsair_psu_report_drain() -> bool:
     return True
 
 
+# The Commander ST shares liquidctl's CommanderCore driver with the Commander Core and Core XT,
+# but not their report length.
+_COMMANDER_ST_PRODUCT_ID = 0x0C32
+_COMMANDER_ST_REPORT_LENGTH = 64
+
+_ORIGINAL_COMMANDER_CORE_CONNECT = getattr(CommanderCore, "connect", None)
+
+
+def _write_commander_st_report(device, data):
+    """Writes a Commander ST report at the ST's own length.
+
+    liquidctl pads every write of this driver to the Commander Core's 96 bytes. The ST's reports
+    are 64, so each command carried 32 surplus bytes. Over-long writes are what made the Commander
+    Core answer with `f0` reports and sporadically drop a reply, until liquidctl matched its length
+    (liquidctl issues 464 and 505). An ST shows the same `f0` reports ahead of each lost reply,
+    and a lost reply costs the driver its 5s read timeout.
+
+    Only padding is removed: a write with data past the ST's report goes out unchanged.
+    """
+    report_end = _COMMANDER_ST_REPORT_LENGTH + 1  # the report number byte comes first
+    if any(data[report_end:]):
+        return type(device).write(device, data)
+    return type(device).write(device, data[:report_end])
+
+
+def _connect_sizing_st_reports(self, **kwargs):
+    """Routes a Commander ST's writes through `_write_commander_st_report`.
+
+    Set on the device handle, not the driver class, so the other models keep liquidctl's writes.
+    """
+    result = _ORIGINAL_COMMANDER_CORE_CONNECT(self, **kwargs)
+    device = self.device
+    if device.product_id == _COMMANDER_ST_PRODUCT_ID:
+        device.write = lambda data: _write_commander_st_report(device, data)
+    return result
+
+
+def patch_commander_st_report_length() -> bool:
+    """Installs the connect wrapper above. See `_write_commander_st_report`."""
+    if CommanderCore is None:
+        return False
+    CommanderCore.connect = _connect_sizing_st_reports
+    log.debug("Commander ST writes patched to the device's own report length")
+    return True
+
+
 def patch_kraken_lcd_transfer() -> bool:
     """Installs the whole-frame transfer and the two-bucket rotation.
 
@@ -2496,6 +2542,7 @@ def main() -> None:
     patch_kraken_lcd_packing()
     patch_kraken_lcd_transfer()
     patch_corsair_psu_report_drain()
+    patch_commander_st_report_length()
     device_service = DeviceService()
     # We call liquidctl to find all devices, so that we can adjust the number of threads needed
     #  for parallel device communication.

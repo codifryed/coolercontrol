@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use chrono::{DateTime, Local};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::device::health::{FailsafeRef, UnreachableRef};
 use crate::device::{ChannelAttribute, DeviceType, Duty, UID};
-use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 use anyhow::Result;
@@ -33,8 +34,9 @@ pub trait Repository {
     async fn preload_statuses(self: Rc<Self>);
 
     /// This method should be called after `preload_statuses` to update the internal
-    /// device status history with the last polled status
-    async fn update_statuses(&self) -> Result<()>;
+    /// device status history with the last polled status, stamped `timestamp`: one instant
+    /// for the whole tick, shared by every device.
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()>;
 
     /// Hint to the repository to abort in-flight or queued work so
     /// the main loop's moro scope can exit promptly when shutdown

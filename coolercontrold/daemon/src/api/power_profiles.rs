@@ -3,7 +3,7 @@
 
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::UID;
-use crate::power_profile_listener::PowerProfileSnapshot;
+use crate::listeners::power_profile::PowerProfileSnapshot;
 use axum::extract::State;
 use axum::Json;
 use schemars::JsonSchema;

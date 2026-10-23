@@ -1,20 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Rewrites each pushed status's `duty` into true-duty space. Runs
-//! inside `set_status`'s `Arc::make_mut`, avoiding a second pass that
-//! would deep-clone the history when a reader holds the Arc.
+//! Rewrites each stored channel's `duty` into true-duty space, as the device stores it.
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::state::FanStateMap;
 use super::store::CalibrationStore;
 use super::ChannelKey;
-use crate::device::{Device, DeviceUID, Duty, Status, StatusAugmenter};
+use crate::device::{ChannelSample, Device, DeviceUID, Duty, StatusAugmenter};
 
 pub struct CalibrationStatusAugmenter {
     calibration_store: Rc<CalibrationStore>,
     fan_state_map: Rc<FanStateMap>,
+    /// Lookup key reused for every channel, so a tick allocates nothing once
+    /// the longest device UID and channel name have been seen.
+    key: RefCell<ChannelKey>,
 }
 
 impl CalibrationStatusAugmenter {
@@ -22,51 +24,62 @@ impl CalibrationStatusAugmenter {
         Self {
             calibration_store,
             fan_state_map,
+            key: RefCell::new((String::new(), String::new())),
         }
     }
 }
 
 impl StatusAugmenter for CalibrationStatusAugmenter {
-    fn augment(&self, status: &mut Status, device_uid: &DeviceUID) {
-        for channel in &mut status.channels {
-            let key: ChannelKey = (device_uid.clone(), channel.name.clone());
-            // Sweep is writing raw duty; don't mask it with the prior mapping.
-            if self.fan_state_map.is_under_diagnosis(&key) {
-                continue;
+    fn augment_channel(
+        &self,
+        device_uid: &DeviceUID,
+        channel_name: &str,
+        channel: &mut ChannelSample,
+    ) {
+        let mut key = self.key.borrow_mut();
+        if key.0 != *device_uid {
+            key.0.clear();
+            key.0.push_str(device_uid);
+        }
+        key.1.clear();
+        key.1.push_str(channel_name);
+        let key: &ChannelKey = &key;
+        // Sweep is writing raw duty; don't mask it with the prior mapping.
+        if self.fan_state_map.is_under_diagnosis(key) {
+            return;
+        }
+        // Three-tier resolution:
+        // 1. Hybrid cache: if the dispatcher recently commanded a
+        //    true-duty AND the hardware's read-back device-duty's
+        //    preimage still contains that commanded value, display
+        //    the commanded value exactly. This closes the cross-fan
+        //    drift the stateless midpoint reverse cannot remove.
+        // 2. Midpoint reverse via `device_to_true_duty`: hardware's
+        //    device-duty alone, used for un-cached channels (fresh
+        //    startup) and when hardware has diverged from command.
+        // 3. RPM-derived: fallback for rpm-only devices with no PWM
+        //    readback, and for a sub-floor device-duty whose rpm says the
+        //    fan is turning anyway.
+        let device_duty = channel.duty.map(clamp_f64_to_duty);
+        let commanded = self.fan_state_map.commanded_true_duty(key);
+        let cache_hit = match (device_duty, commanded) {
+            (Some(dut), Some(cmd))
+                if self
+                    .calibration_store
+                    .preimage_contains_true_duty(key, dut, cmd) =>
+            {
+                Some(cmd)
             }
-            // Three-tier resolution:
-            // 1. Hybrid cache: if the dispatcher recently commanded a
-            //    true-duty AND the hardware's read-back device-duty's
-            //    preimage still contains that commanded value, display
-            //    the commanded value exactly. This closes the cross-fan
-            //    drift the stateless midpoint reverse cannot remove.
-            // 2. Midpoint reverse via `device_to_true_duty`: hardware's
-            //    device-duty alone, used for un-cached channels (fresh
-            //    startup) and when hardware has diverged from command.
-            // 3. RPM-derived: fallback for rpm-only devices with no PWM
-            //    readback, and for a sub-floor device-duty whose rpm says the
-            //    fan is turning anyway.
-            let device_duty = channel.duty.map(clamp_f64_to_duty);
-            let commanded = self.fan_state_map.commanded_true_duty(&key);
-            let cache_hit = match (device_duty, commanded) {
-                (Some(dut), Some(cmd))
-                    if self
-                        .calibration_store
-                        .preimage_contains_true_duty(&key, dut, cmd) =>
-                {
-                    Some(cmd)
-                }
-                _ => None,
-            };
-            let device_derived =
-                device_duty.and_then(|d| self.calibration_store.device_to_true_duty(&key, d));
-            let rpm_derived = channel
-                .rpm
-                .and_then(|r| self.calibration_store.rpm_to_true_duty(&key, r));
-            let derived = Self::prefer_rpm_over_stall(device_derived, rpm_derived);
-            if let Some(displayed) = cache_hit.or(derived) {
-                channel.duty = Some(f64::from(displayed));
-            }
+            _ => None,
+        };
+        let device_derived =
+            device_duty.and_then(|d| self.calibration_store.device_to_true_duty(key, d));
+        let rpm_derived = channel
+            .rpm
+            .and_then(|r| self.calibration_store.rpm_to_true_duty(key, r));
+        let derived = Self::prefer_rpm_over_stall(device_derived, rpm_derived);
+        if let Some(displayed) = cache_hit.or(derived) {
+            channel.duty = Some(f64::from(displayed));
         }
     }
 }
@@ -117,7 +130,7 @@ mod tests {
     use super::*;
     use crate::calibration::curve::{Calibration, CurveKind, DutySample};
     use crate::calibration::state::{ChannelEntry, FanState};
-    use crate::device::{ChannelStatus, RPM};
+    use crate::device::{ChannelStatus, Status, RPM};
     use chrono::Local;
 
     fn cal_with_samples(samples: &[(u8, RPM)]) -> Calibration {
@@ -427,5 +440,50 @@ mod tests {
         // Not the stale commanded value; the hardware-derived midpoint.
         assert_eq!(status.channels[0].duty, Some(f64::from(expected)));
         assert_ne!(status.channels[0].duty, Some(f64::from(commanded)));
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn augment_reuses_its_key_across_devices_without_allocating() {
+        // Goal: the reused lookup key names the current device and channel on
+        // every lookup, and a warm call allocates nothing. One augmenter serves
+        // two devices and only dev-a's fan2 is calibrated. The first call sees a
+        // longer UID and channel name, so a stale suffix would break the shorter
+        // lookups that follow.
+        let store = Rc::new(CalibrationStore::empty());
+        let state = Rc::new(FanStateMap::new());
+        let cal = cal_with_samples(&[
+            (0, 0),
+            (5, 100),
+            (10, 200),
+            (15, 300),
+            (20, 400),
+            (30, 600),
+            (50, 1000),
+            (75, 1500),
+            (100, 2000),
+        ]);
+        let device_dut = cal.true_to_device(50).expect("smooth").sustain;
+        let raw = f64::from(device_dut);
+        let expected = f64::from(cal.device_to_true_duty(device_dut).expect("smooth"));
+        assert_ne!(raw, expected, "the rewrite must be observable");
+        store.insert_unsaved(("dev-a".to_string(), "fan2".to_string()), cal);
+        let augmenter = CalibrationStatusAugmenter::new(Rc::clone(&store), Rc::clone(&state));
+        let reading =
+            || status_with_channels(vec![("fan2-long", raw), ("fan1", raw), ("fan2", raw)]);
+        let longer_uid = "dev-a-longer".to_string();
+        let uid = "dev-a".to_string();
+
+        let mut uncalibrated = reading();
+        augmenter.augment(&mut uncalibrated, &longer_uid);
+        let mut status = reading();
+        let ((), allocations) =
+            crate::alloc_count::count_allocations(|| augmenter.augment(&mut status, &uid));
+
+        assert_eq!(allocations, 0);
+        assert!(uncalibrated.channels.iter().all(|c| c.duty == Some(raw)));
+        assert_eq!(status.channels[0].duty, Some(raw));
+        assert_eq!(status.channels[1].duty, Some(raw));
+        assert_eq!(status.channels[2].duty, Some(expected));
     }
 }

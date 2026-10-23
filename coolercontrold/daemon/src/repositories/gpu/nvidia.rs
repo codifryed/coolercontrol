@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use chrono::{DateTime, Local};
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use std::ops::{Add, Not, RangeInclusive, Sub};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::repositories::utils::find_xauthority_path;
@@ -24,10 +26,12 @@ use std::time::Instant;
 use tokio::sync::OnceCell;
 
 use crate::config::Config;
+use crate::device::health::FailsafeRef;
 use crate::device::{
     ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
     DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
+use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
 use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
     GPU_TEMP_NAME,
@@ -67,6 +71,9 @@ pub struct GpuNVidia {
     nvidia_devices: HashMap<TypeIndex, DeviceLock>,
     pub nvidia_device_infos: HashMap<UID, Rc<NvidiaDeviceInfo>>,
     pub nvidia_preloaded_statuses: RefCell<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
+    /// Per NVML GPU, the values written once its reads go unanswered past
+    /// `MISSING_STATUS_THRESHOLD`. Seeded from the status read at init.
+    nvml_failsafe_statuses: RefCell<HashMap<TypeIndex, FailsafeStatusData>>,
     /// Owned handles, held only until `start_nvml_workers` moves each onto its own thread.
     ///
     /// **Empty once detection finishes.** Never test this to decide whether NVML is in play: it
@@ -88,6 +95,7 @@ impl GpuNVidia {
             nvidia_devices: HashMap::new(),
             nvidia_device_infos: HashMap::new(),
             nvidia_preloaded_statuses: RefCell::new(HashMap::new()),
+            nvml_failsafe_statuses: RefCell::new(HashMap::new()),
             nvml_handles_pending_workers: HashMap::new(),
             nvml_io: HashMap::new(),
             xauthority_path: RefCell::new(None),
@@ -109,22 +117,63 @@ impl GpuNVidia {
         Ok(nvidia_devices)
     }
 
-    pub fn update_all_statuses(&self) {
+    pub fn update_all_statuses(&self, timestamp: DateTime<Local>) {
+        let preloaded_statuses_map = self.nvidia_preloaded_statuses.borrow();
+        let failsafes = self.nvml_failsafe_statuses.borrow();
         for (type_index, nv_device_lock) in &self.nvidia_devices {
-            let preloaded_statuses_map = self.nvidia_preloaded_statuses.borrow();
-            let preloaded_statuses = preloaded_statuses_map.get(type_index);
-            if preloaded_statuses.is_none() {
-                error!("There is no status preloaded for this Nvidia device: {type_index}");
+            let failsafe = failsafes
+                .get(type_index)
+                .filter(|fsd| fsd.threshold_exceeded());
+            if let Some(fsd) = failsafe {
+                let mut device = nv_device_lock.borrow_mut();
+                trace!("Device: {} using failsafe status", device.name);
+                fsd.write_failsafe_status(&mut device.write_status(timestamp));
                 continue;
             }
-            let nv_status = preloaded_statuses.unwrap().clone();
-            let status = Status {
-                channels: nv_status.channels.clone(),
-                temps: nv_status.temps.clone(),
-                ..Default::default()
+            let Some(nv_status) = preloaded_statuses_map.get(type_index) else {
+                error!("There is no status preloaded for this Nvidia device: {type_index}");
+                continue;
             };
-            trace!("Device: {} status updated: {:?}", nv_status.name, status);
-            nv_device_lock.borrow_mut().set_status(status);
+            trace!(
+                "Device: {} status updated: {:?} {:?}",
+                nv_status.name,
+                nv_status.temps,
+                nv_status.channels
+            );
+            let mut device = nv_device_lock.borrow_mut();
+            device
+                .write_status(timestamp)
+                .write_all(&nv_status.temps, &nv_status.channels);
+        }
+    }
+
+    /// Records that NVML GPU `type_index` answered its read, ending any failsafe.
+    pub fn record_nvml_answer(&self, type_index: TypeIndex) {
+        let mut failsafes = self.nvml_failsafe_statuses.borrow_mut();
+        let Some(fsd) = failsafes.get_mut(&type_index) else {
+            return;
+        };
+        if fsd.record_success() {
+            info!(
+                "Recovered from failsafe for NVIDIA GPU: {}. Resuming normal status reads.",
+                self.device_name(type_index)
+            );
+        }
+    }
+
+    /// Records that NVML GPU `type_index` did not answer its read. Its last values hold until
+    /// more than `MISSING_STATUS_THRESHOLD` reads in a row go unanswered, then its failsafe
+    /// values apply.
+    pub fn record_nvml_no_answer(&self, type_index: TypeIndex) {
+        let mut failsafes = self.nvml_failsafe_statuses.borrow_mut();
+        let Some(fsd) = failsafes.get_mut(&type_index) else {
+            return;
+        };
+        if fsd.record_failure_log_action() == FailureLogAction::FailsafeLatch {
+            error!(
+                "NVIDIA GPU: {} has not answered status reads. Setting failsafe values.",
+                self.device_name(type_index)
+            );
         }
     }
 
@@ -574,6 +623,7 @@ impl GpuNVidia {
                 temps: temp_status,
                 ..Default::default()
             };
+            self.seed_nvml_failsafe(type_index, &status);
             device_raw.initialize_status_history_with(status, poll_rate);
             let uid = device_raw.uid.clone();
 
@@ -602,12 +652,24 @@ impl GpuNVidia {
                     power: nvidia_power_supported,
                     fan_ranges,
                     pci_bus: device_lock.pci_info().ok().map(|info| info.bus),
+                    read_plan_parts: std::cell::OnceCell::new(),
                 }),
             );
             devices.insert(uid, device);
         }
         self.start_nvml_workers(starting_nvidia_index, poll_rate);
         Ok(devices)
+    }
+
+    /// Builds the failsafe values of NVML GPU `type_index` from its init status.
+    pub fn seed_nvml_failsafe(&self, type_index: TypeIndex, status: &Status) {
+        let (channel_failsafes, temp_failsafes) =
+            failsafe::create_failsafe_data(&status.channels, &status.temps);
+        if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
+            self.nvml_failsafe_statuses
+                .borrow_mut()
+                .insert(type_index, fsd);
+        }
     }
 
     /// Whether this GPU is driven through NVML rather than the `nvidia-settings` CLI.
@@ -724,10 +786,10 @@ impl GpuNVidia {
     /// thread boundary by value.
     fn read_nvml_readings(
         device: &nvml_wrapper::Device<'static>,
-        plan: NvmlReadPlan,
+        plan: &NvmlReadPlan,
     ) -> NvmlReadings {
         let mut readings = NvmlReadings::default();
-        for temp in plan.temps {
+        for temp in plan.temps.iter().copied() {
             match temp {
                 NvmlTemp::Gpu => {
                     readings.gpu_temp = device.temperature(TemperatureSensor::Gpu).ok();
@@ -735,7 +797,7 @@ impl GpuNVidia {
                 NvmlTemp::Memory => readings.memory_temp = Self::get_memory_temp(device),
             }
         }
-        for fan_index in plan.fan_indices {
+        for fan_index in plan.fan_indices.iter().copied() {
             let fan_index_u32 = u32::from(fan_index);
             let Ok(duty) = device.fan_speed(fan_index_u32) else {
                 continue;
@@ -750,7 +812,7 @@ impl GpuNVidia {
         if plan.read_power {
             readings.power_milliwatts = device.power_usage().ok();
         }
-        for clock in plan.freqs {
+        for clock in plan.freqs.iter().copied() {
             if let Ok(frequency) = device.clock_info(clock) {
                 readings.freqs.push((clock, frequency));
             }
@@ -768,12 +830,14 @@ impl GpuNVidia {
         plan: NvmlReadPlan,
     ) -> Option<NvmlReadings> {
         let io = self.nvml_io.get(&gpu_index)?;
-        io.call("read", move |device| Self::read_nvml_readings(device, plan))
-            .await
-            // Unactionable and recurring while the GPU is wedged, so not a warning. Its readings
-            // go stale until the driver answers again.
-            .inspect_err(|err| debug!("NVML read for GPU {gpu_index} failed: {err}"))
-            .ok()
+        io.call("read", move |device| {
+            Self::read_nvml_readings(device, &plan)
+        })
+        .await
+        // Unactionable and recurring while the GPU is wedged, so not a warning. Its readings
+        // go stale until the driver answers again.
+        .inspect_err(|err| debug!("NVML read for GPU {gpu_index} failed: {err}"))
+        .ok()
     }
 
     /// Runs one NVML fan-control write on the GPU's own thread, bounded.
@@ -789,37 +853,29 @@ impl GpuNVidia {
             .map_err(anyhow::Error::from)
     }
 
+    /// One GPU's NVML readings. `None` when the GPU did not answer: the caller keeps its
+    /// last-known-good values.
     pub async fn request_nvml_status(
         &self,
         nv_info: &Rc<NvidiaDeviceInfo>,
-    ) -> StatusNvidiaDeviceNvml {
-        // Two small allocations per GPU per tick, bounded by the device's channel count. Cheap
-        // next to the NVML calls themselves, and what lets the whole pass cross in one hop.
-        let temps: Vec<NvmlTemp> = nv_info
-            .temps
-            .iter()
-            .filter_map(|name| match name.as_str() {
-                GPU_TEMP_NAME => Some(NvmlTemp::Gpu),
-                GPU_TEMP_MEMORY_NAME => Some(NvmlTemp::Memory),
-                // Hotspot comes from nvapi and is filled in on this thread.
-                _ => None,
-            })
-            .collect();
-        let plan = NvmlReadPlan {
-            fan_indices: nv_info.fan_indices.clone().into_boxed_slice(),
-            temps: temps.into_boxed_slice(),
-            read_load: self.nvidia_nvml_load_enabled.get(),
-            read_power: nv_info.power,
-            freqs: nv_info.freqs.clone().into_boxed_slice(),
-        };
-        let Some(readings) = self.read_nvml_bounded(nv_info.gpu_index, plan).await else {
-            // The device did not answer. Reporting nothing leaves the last-known-good values in
-            // place and lets the usual staleness and failsafe path take over.
-            return StatusNvidiaDeviceNvml::default();
-        };
-        StatusNvidiaDeviceNvml {
+    ) -> Option<StatusNvidiaDeviceNvml> {
+        let plan = self.read_plan(nv_info);
+        let readings = self.read_nvml_bounded(nv_info.gpu_index, plan).await?;
+        Some(StatusNvidiaDeviceNvml {
             temps: self.assemble_temps(nv_info, &readings),
             channels: Self::assemble_channels(&readings),
+        })
+    }
+
+    /// What this tick's read pass gathers. The per-device parts are shared, not copied.
+    fn read_plan(&self, nv_info: &NvidiaDeviceInfo) -> NvmlReadPlan {
+        let parts = nv_info.read_plan_parts();
+        NvmlReadPlan {
+            fan_indices: Arc::clone(&parts.fan_indices),
+            temps: Arc::clone(&parts.temps),
+            read_load: self.nvidia_nvml_load_enabled.get(),
+            read_power: nv_info.power,
+            freqs: Arc::clone(&parts.freqs),
         }
     }
 
@@ -1165,6 +1221,7 @@ impl GpuNVidia {
                             power: false,
                             fan_ranges,
                             pci_bus: None,
+                            read_plan_parts: std::cell::OnceCell::new(),
                         }),
                     );
                     devices.insert(uid, device);
@@ -1415,6 +1472,31 @@ impl GpuNVidia {
         }
         self.send_command_to_nvidia_settings(&command).await
     }
+
+    /// The channels and temps currently held at their failsafe values.
+    pub fn failsafing(&self) -> Vec<FailsafeRef> {
+        let failsafes = self.nvml_failsafe_statuses.borrow();
+        let mut refs = Vec::new();
+        for (type_index, device_lock) in &self.nvidia_devices {
+            if let Some(fsd) = failsafes.get(type_index) {
+                refs.extend(fsd.device_failsafe_refs(&device_lock.borrow().uid));
+            }
+        }
+        refs
+    }
+
+    fn device_name(&self, type_index: TypeIndex) -> String {
+        self.nvidia_devices.get(&type_index).map_or_else(
+            || format!("#{type_index}"),
+            |device| device.borrow().name.clone(),
+        )
+    }
+
+    /// Adds `device` as the NVIDIA GPU `type_index`, for tests.
+    #[cfg(test)]
+    pub fn insert_device_for_test(&mut self, type_index: TypeIndex, device: DeviceLock) {
+        self.nvidia_devices.insert(type_index, device);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1437,12 +1519,20 @@ pub struct StatusNvidiaDeviceSMI {
 #[derive(Debug, Clone)]
 /// What one GPU's read pass should gather, in a form that crosses to a blocking thread.
 struct NvmlReadPlan {
-    fan_indices: Box<[FanIndex]>,
+    fan_indices: Arc<[FanIndex]>,
     /// Which NVML-backed temps to read. Hotspot is not here: it comes from nvapi, not NVML.
-    temps: Box<[NvmlTemp]>,
+    temps: Arc<[NvmlTemp]>,
     read_load: bool,
     read_power: bool,
-    freqs: Box<[Clock]>,
+    freqs: Arc<[Clock]>,
+}
+
+/// The parts of a GPU's read plan that never change, built on its first pass.
+#[derive(Debug)]
+struct NvmlReadPlanParts {
+    fan_indices: Arc<[FanIndex]>,
+    temps: Arc<[NvmlTemp]>,
+    freqs: Arc<[Clock]>,
 }
 
 /// The temps NVML itself can report.
@@ -1485,9 +1575,43 @@ pub struct NvidiaDeviceInfo {
     /// Cached PCI bus, read once at init, for the per-tick nvapi hotspot lookup
     /// so it does not call `pci_info()` on every poll.
     pub pci_bus: Option<u32>,
+    read_plan_parts: std::cell::OnceCell<NvmlReadPlanParts>,
 }
 
 impl NvidiaDeviceInfo {
+    fn read_plan_parts(&self) -> &NvmlReadPlanParts {
+        self.read_plan_parts.get_or_init(|| NvmlReadPlanParts {
+            fan_indices: self.fan_indices.as_slice().into(),
+            temps: self
+                .temps
+                .iter()
+                .filter_map(|name| match name.as_str() {
+                    GPU_TEMP_NAME => Some(NvmlTemp::Gpu),
+                    GPU_TEMP_MEMORY_NAME => Some(NvmlTemp::Memory),
+                    // Hotspot comes from nvapi and is filled in on the main thread.
+                    _ => None,
+                })
+                .collect(),
+            freqs: self.freqs.as_slice().into(),
+        })
+    }
+
+    /// A GPU with no fans or sensors found, for tests.
+    #[cfg(test)]
+    pub fn for_test(gpu_index: GpuIndex) -> Self {
+        Self {
+            gpu_index,
+            display_id: 0,
+            fan_indices: Vec::new(),
+            fan_ranges: HashMap::new(),
+            temps: Vec::new(),
+            freqs: Vec::new(),
+            power: false,
+            pci_bus: None,
+            read_plan_parts: std::cell::OnceCell::new(),
+        }
+    }
+
     pub fn get_fan_range(&self, fan_index: FanIndex) -> Result<&NvidiaFanRange> {
         self.fan_ranges
             .get(&fan_index)
@@ -1628,6 +1752,87 @@ mod tests {
     use super::*;
     use crate::setting::CCDeviceSettings;
 
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn the_read_plan_is_built_once_per_gpu() {
+        // Goal: a tick's NVML read plan shares the GPU's fans, temps and clocks instead of
+        // copying them, and still asks for exactly what the GPU has. Method: count the
+        // allocations of a second plan for the same GPU.
+        let gpus = GpuNVidia::new(Rc::new(Config::init_default_config().unwrap()));
+        let mut nv_info = NvidiaDeviceInfo::for_test(0);
+        nv_info.fan_indices = vec![0, 1];
+        nv_info.temps = vec![
+            GPU_TEMP_NAME.to_string(),
+            GPU_TEMP_MEMORY_NAME.to_string(),
+            "GPU Hotspot".to_string(),
+        ];
+        nv_info.freqs = vec![Clock::Graphics];
+        let _ = gpus.read_plan(&nv_info);
+
+        let (plan, allocations) =
+            crate::alloc_count::count_allocations(|| gpus.read_plan(&nv_info));
+
+        assert_eq!(allocations, 0);
+        assert_eq!(&*plan.fan_indices, &[0, 1]);
+        assert_eq!(&*plan.temps, &[NvmlTemp::Gpu, NvmlTemp::Memory]);
+        assert_eq!(plan.freqs.len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_update_stores_the_preloaded_status_without_allocating() {
+        // Goal: the update pass writes the preloaded values into the history in place,
+        // stamped with the tick's timestamp. Method: one tick warms the stats, then count
+        // the allocations of the next.
+        let mut gpus = GpuNVidia::new(Rc::new(Config::init_default_config().unwrap()));
+        let status = StatusNvidiaDeviceSMI {
+            temps: vec![TempStatus {
+                name: GPU_TEMP_NAME.to_string(),
+                temp: 60.0,
+            }],
+            channels: vec![ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1500),
+                duty: Some(40.0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut device = Device::new(
+            "Test GPU".to_string(),
+            DeviceType::GPU,
+            1,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        device.initialize_status_history_with(
+            Status {
+                timestamp: Local::now(),
+                temps: status.temps.clone(),
+                channels: status.channels.clone(),
+            },
+            1.0,
+        );
+        let device = Rc::new(RefCell::new(device));
+        gpus.nvidia_devices.insert(1, Rc::clone(&device));
+        gpus.nvidia_preloaded_statuses
+            .borrow_mut()
+            .insert(1, status);
+        gpus.update_all_statuses(Local::now());
+        let tick = Local::now();
+
+        let ((), allocations) =
+            crate::alloc_count::count_allocations(|| gpus.update_all_statuses(tick));
+
+        assert_eq!(allocations, 0);
+        let device = device.borrow();
+        assert_eq!(device.latest_timestamp(), Some(tick));
+        assert_eq!(device.latest_temp(GPU_TEMP_NAME), Some(60.0));
+        assert_eq!(device.latest_channel("fan1").unwrap().rpm, Some(1500));
+    }
+
     fn nv_info_for(gpu_index: GpuIndex) -> NvidiaDeviceInfo {
         NvidiaDeviceInfo {
             gpu_index,
@@ -1638,6 +1843,7 @@ mod tests {
             freqs: Vec::new(),
             power: false,
             pci_bus: None,
+            read_plan_parts: std::cell::OnceCell::new(),
         }
     }
 
@@ -1699,6 +1905,7 @@ mod tests {
             freqs: vec![],
             power: false,
             pci_bus: None,
+            read_plan_parts: std::cell::OnceCell::new(),
         });
         let readings = NvmlReadings {
             gpu_temp: Some(61),
@@ -1730,6 +1937,7 @@ mod tests {
             freqs: vec![],
             power: false,
             pci_bus: None,
+            read_plan_parts: std::cell::OnceCell::new(),
         });
         // Memory temp unsupported on this card, so the worker reports nothing for it.
         let readings = NvmlReadings {

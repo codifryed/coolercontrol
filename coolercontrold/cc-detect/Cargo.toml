@@ -1,6 +1,6 @@
 [package]
 name = "cc-detect"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 rust-version = "1.88"
 description = "Super-I/O hardware detection"
@@ -13,6 +13,11 @@ license = "GPL-3.0-or-later"
 
 [lib]
 doctest = false
+
+[features]
+# Gates tests that depend on their build environment. Off by default, so distro builds skip them.
+# See RUST_STYLE.md "Gated Tests".
+gated-tests = []
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

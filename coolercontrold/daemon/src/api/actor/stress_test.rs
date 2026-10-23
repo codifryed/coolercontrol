@@ -1828,6 +1828,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn drm_devices_are_empty_when_the_class_is_missing() {
         // Containers and odd kernels have no /sys/class/drm. The picker must
         // degrade to "all GPUs" rather than fail the request.
@@ -1888,6 +1889,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn validate_device_path_rejects_invalid_inputs() {
         // Negative space: paths outside /dev, traversal attempts, and missing
         // devices must all be rejected before we hand them to a subprocess.
@@ -1897,6 +1899,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn find_mount_point_parses_proc_mounts() {
         // find_mount_point reads /proc/mounts which exists on Linux test hosts.
         // For an obviously-bogus device, the result must be None (not panic).

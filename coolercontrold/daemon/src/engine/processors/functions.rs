@@ -69,23 +69,18 @@ impl Processor for FunctionIdentityPreProcessor {
             data.temp = Some(EMERGENCY_MISSING_TEMP);
             return data;
         };
-        data.temp = temp_source_device
-            .borrow()
-            .status_history
-            .iter()
-            .last() // last = latest temp
-            .and_then(|status| {
-                status
-                    .temps
-                    .iter()
-                    .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
-                    .map(|temp_status| temp_status.temp)
-                    .next_back()
-                    .or_else(|| {
-                        log_missing_temp_sensor(data);
-                        Some(EMERGENCY_MISSING_TEMP)
-                    })
-            });
+        let device = temp_source_device.borrow();
+        data.temp = if device.history_len() == 0 {
+            None
+        } else {
+            device
+                .latest_temp(&data.profile.temp_source.temp_name)
+                .or_else(|| {
+                    log_missing_temp_sensor(data);
+                    Some(EMERGENCY_MISSING_TEMP)
+                })
+        };
+        drop(device);
         data
     }
 }
@@ -143,45 +138,30 @@ impl FunctionStandardPreProcessor {
         let temp_source_device = temp_source_device_lock.borrow();
         if metadata.last_applied_temp == 0. {
             // this is needed for the first application
-            let mut latest_temps = temp_source_device
-                .status_history
-                .iter()
-                .rev() // reverse so that take() takes the latest
-                .take(metadata.ideal_stack_size)
-                .flat_map(|status| status.temps.as_slice())
-                .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
-                .map(|temp_status| temp_status.temp)
-                .collect::<Vec<f64>>();
-            latest_temps.reverse(); // re-order temps to proper Vec order
-            if latest_temps.is_empty() {
+            metadata.temp_hist_stack.clear();
+            metadata
+                .temp_hist_stack
+                .extend(temp_source_device.temp_tail(
+                    &data.profile.temp_source.temp_name,
+                    metadata.ideal_stack_size,
+                ));
+            if metadata.temp_hist_stack.is_empty() {
                 log_missing_temp_sensor(data);
-                metadata.temp_hist_stack.clear();
                 metadata.temp_hist_stack.push_back(EMERGENCY_MISSING_TEMP);
                 return;
             }
-            metadata.temp_hist_stack.clear();
-            metadata.temp_hist_stack.extend(latest_temps);
         } else {
             // the normal operation
-            let current_temp_celsius = temp_source_device
-                .status_history
-                .back()
-                .and_then(|status| {
-                    status
-                        .temps
-                        .as_slice()
-                        .iter()
-                        .filter(|temp_status| {
-                            temp_status.name == data.profile.temp_source.temp_name
-                        })
-                        .map(|temp_status| temp_status.temp)
-                        .next_back()
-                        .or_else(|| {
-                            log_missing_temp_sensor(data);
-                            Some(EMERGENCY_MISSING_TEMP)
-                        })
-                })
-                .unwrap_or(EMERGENCY_MISSING_TEMP);
+            let current_temp_celsius = if temp_source_device.history_len() == 0 {
+                EMERGENCY_MISSING_TEMP
+            } else {
+                temp_source_device
+                    .latest_temp(&data.profile.temp_source.temp_name)
+                    .unwrap_or_else(|| {
+                        log_missing_temp_sensor(data);
+                        EMERGENCY_MISSING_TEMP
+                    })
+            };
             metadata.temp_hist_stack.push_back(current_temp_celsius);
         }
         debug_assert!(

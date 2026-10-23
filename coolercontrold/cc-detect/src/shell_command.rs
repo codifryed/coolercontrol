@@ -120,7 +120,8 @@ fn limit_output_length(output: &mut String) {
     }
 }
 
-#[cfg(test)]
+// Gated: these spawn the host's /bin/sh and its tools.
+#[cfg(all(test, feature = "gated-tests"))]
 mod tests {
     use super::*;
 

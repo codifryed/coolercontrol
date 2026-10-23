@@ -90,7 +90,7 @@ impl Watchdog {
         self.last_ping.get()
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "gated-tests"))]
     pub fn ping_count(&self) -> u32 {
         self.ping_count.get()
     }
@@ -294,6 +294,7 @@ mod tests {
     /// The rate limit has to hold through `ping` itself, not only through the
     /// free function: a second immediate call must not re-stamp `last_ping`.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn ping_records_the_first_heartbeat_and_then_rate_limits() {
         let watchdog = Watchdog::with_supervisor_interval(Some(Duration::from_secs(30)));
         assert_eq!(watchdog.last_ping(), None);
@@ -353,6 +354,7 @@ mod tests {
     /// total, which is the resume case: a 15s ping interval inside a wait of
     /// up to 120s.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn heartbeat_sleep_slices_and_terminates() {
         rt::test_runtime(async {
             let watchdog = Watchdog::with_supervisor_interval(Some(Duration::from_millis(10)));
@@ -401,6 +403,7 @@ mod tests {
     /// floor is a small fraction of that. The slicing above pins the arithmetic;
     /// this only has to catch a heartbeat that stops mid-wait.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn heartbeat_sleep_pings_throughout_the_wait() {
         rt::test_runtime(async {
             let watchdog = Watchdog::with_supervisor_interval(Some(Duration::from_millis(20)));

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::cc_fs;
-use crate::notifier::{notify_all_sessions, NotificationHandle, NotificationIcon};
+use crate::events::notifier::{notify_all_sessions, NotificationHandle, NotificationIcon};
 use crate::repositories::utils::{ShellCommand, ShellCommandResult};
 use crate::rt;
 use anyhow::{anyhow, Context, Result};

@@ -1,6 +1,6 @@
 [package]
 name = "cc-stress"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.88"
 description = "CPU, GPU, and RAM stress testing for thermal validation"
@@ -13,6 +13,11 @@ license = "GPL-3.0-or-later"
 
 [lib]
 doctest = false
+
+[features]
+# Gates tests that depend on their build environment. Off by default, so distro builds skip them.
+# See RUST_STYLE.md "Gated Tests".
+gated-tests = []
 
 [dependencies]
 anyhow = "1.0"

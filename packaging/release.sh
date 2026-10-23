@@ -10,7 +10,10 @@ eval RELEASE_VERSION="$(cargo get package.version)"
 popd
 cd ..
 git add CHANGELOG.md \
-    coolercontrold/Cargo.toml \
+    coolercontrold/daemon/Cargo.toml \
+    coolercontrold/cc-detect/Cargo.toml \
+    coolercontrold/cc-image/Cargo.toml \
+    coolercontrold/cc-stress/Cargo.toml \
     coolercontrold/Cargo.lock \
     coolercontrol-ui/package.json \
     coolercontrol-ui/package-lock.json \
@@ -22,5 +25,6 @@ git add CHANGELOG.md \
     packaging/fedora/coolercontrold-rc1.spec \
     packaging/debian/changelog \
     openapi/openapi.json
-git commit -S -m "Release ${RELEASE_VERSION}"
+# --allow-empty: after a failed rehearsal, the fixed release gets a new, empty Release commit.
+git commit -S --allow-empty -m "Release ${RELEASE_VERSION}"
 git tag -s "$RELEASE_VERSION" -m "$RELEASE_VERSION"

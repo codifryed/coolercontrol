@@ -3,7 +3,7 @@
 
 use crate::api::actor::ModeHandle;
 use crate::device::UID;
-use crate::system_event::{SystemEvent, SystemEventHandle, SystemEventKind};
+use crate::events::system_event::{SystemEvent, SystemEventHandle, SystemEventKind};
 use crate::ENV_DBUS;
 use futures_util::StreamExt;
 use log::{error, info, warn};
@@ -33,7 +33,7 @@ const PROFILES_PROPERTY: &str = "Profiles";
 /// Each entry of the `Profiles` array is a dict; this key holds the profile name.
 const PROFILE_NAME_KEY: &str = "Profile";
 
-/// Matches `sleep_listener`: cap the whole handshake so a wedged dbus-broker cannot stall the
+/// Matches the sleep listener: cap the whole handshake so a wedged dbus-broker cannot stall the
 /// listener forever. On timeout we retry rather than run deaf for the rest of the session.
 const DBUS_SETUP_TIMEOUT_S: u64 = 5;
 
@@ -1420,6 +1420,7 @@ mod tests {
     /// Methodology: probe a name that cannot exist. Needs a system bus, not a power profile
     /// daemon; without a bus there is nothing to probe.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn an_absent_bus_name_is_not_served() {
         const ABSENT_BUS_NAME: &str = "org.coolercontrol.NoSuchPowerProfileDaemon";
         const ABSENT_OBJECT_PATH: &str = "/org/coolercontrol/NoSuchPowerProfileDaemon";

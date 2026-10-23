@@ -256,14 +256,7 @@ mod tests {
     use crate::repositories::hwmon::device_io::DeviceIo;
     use crate::repositories::hwmon::hwmon_repo::HwmonChannelCapabilities;
     use serial_test::serial;
-    use std::path::{Path, PathBuf};
-    use uuid::Uuid;
-
-    async fn test_dir() -> PathBuf {
-        let path = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
-        cc_fs::create_dir_all(&path).await.unwrap();
-        path
-    }
+    use std::path::Path;
 
     async fn write_files(base: &Path, files: &[(&str, &str)]) {
         for (name, contents) in files {
@@ -458,7 +451,8 @@ mod tests {
         // Goal: a channel reports only the limits that are really set, in display order.
         // Method: the nvme layout from real hardware, where temp2 has only placeholders.
         cc_fs::test_runtime(async {
-            let base = test_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             write_files(
                 &base,
                 &[
@@ -482,7 +476,6 @@ mod tests {
             assert_eq!(temp1[0].value, 89.85);
             assert_eq!(temp1[1].value, 94.85);
             assert!(temp2.is_empty(), "placeholders only: {temp2:?}");
-            cc_fs::remove_dir_all(&base).await.unwrap();
         });
     }
 
@@ -492,7 +485,8 @@ mod tests {
         // Goal: fan attributes read in table order; a zero minimum is real, a zero divisor is
         // not. Method: an amdgpu-style fan with one invalid divisor added.
         cc_fs::test_runtime(async {
-            let base = test_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             write_files(
                 &base,
                 &[
@@ -516,7 +510,6 @@ mod tests {
             assert_eq!(fan1[0].value, 0.0);
             assert_eq!(fan1[2].kind, ChannelAttributeKind::FanTarget);
             assert_eq!(fan1[2].value, 1200.0);
-            cc_fs::remove_dir_all(&base).await.unwrap();
         });
     }
 
@@ -527,7 +520,8 @@ mod tests {
         // when reading files. Method: the Leakshield layout from issue #613 on a driver with
         // another name, read once with the capability and once without.
         cc_fs::test_runtime(async {
-            let base = test_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             write_files(
                 &base,
                 &[
@@ -546,7 +540,6 @@ mod tests {
             assert_eq!(names(&labelled), ["fan1_min", "fan1_max", "fan1_target"]);
             assert_eq!(labelled[1].value, 472_800.0);
             assert!(plain.is_empty(), "rpm bound applies: {plain:?}");
-            cc_fs::remove_dir_all(&base).await.unwrap();
         });
     }
 
@@ -557,7 +550,8 @@ mod tests {
         // the table does not name. Method: the amdgpu layout from real hardware, whose
         // `cap_default` is not in the hwmon ABI, next to another channel's files.
         cc_fs::test_runtime(async {
-            let base = test_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             write_files(
                 &base,
                 &[
@@ -582,7 +576,6 @@ mod tests {
             assert_eq!(power1[0].kind, ChannelAttributeKind::PowerCap);
             assert_eq!(power1[0].value, 230.0);
             assert_eq!(power1[2].value, 216.0);
-            cc_fs::remove_dir_all(&base).await.unwrap();
         });
     }
 
@@ -592,7 +585,8 @@ mod tests {
         // Goal: a temp channel reports its rated range after the limits and extremes and
         // before the sensor details. Method: a PMBus-style temp with one of each group.
         cc_fs::test_runtime(async {
-            let base = test_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             write_files(
                 &base,
                 &[
@@ -622,7 +616,6 @@ mod tests {
             assert_eq!(temp1[2].kind, ChannelAttributeKind::TempRatedMin);
             assert_eq!(temp1[2].value, -40.0);
             assert_eq!(temp1[3].value, 125.0);
-            cc_fs::remove_dir_all(&base).await.unwrap();
         });
     }
 
@@ -632,7 +625,8 @@ mod tests {
         // Goal: a garbage or empty file does not fail the whole read, and is not reported.
         // Method: one good attribute next to two bad ones.
         cc_fs::test_runtime(async {
-            let base = test_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             write_files(
                 &base,
                 &[
@@ -648,7 +642,6 @@ mod tests {
 
             assert_eq!(names(&temp1), ["temp1_max"]);
             assert_eq!(temp1[0].value, 80.0);
-            cc_fs::remove_dir_all(&base).await.unwrap();
         });
     }
 
@@ -659,7 +652,8 @@ mod tests {
         // dir yields an empty list rather than an error. Method: a load channel whose number
         // collides with real temp files, then a path that does not exist.
         cc_fs::test_runtime(async {
-            let base = test_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             write_files(&base, &[("temp1_max", "80000")]).await;
             let driver = driver_at(&base);
             let missing = driver_at(&base.join("gone"));
@@ -669,7 +663,6 @@ mod tests {
 
             assert!(load.is_empty());
             assert!(gone.is_empty());
-            cc_fs::remove_dir_all(&base).await.unwrap();
         });
     }
 }

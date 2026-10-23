@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::AppState;
-use crate::device_health::DeviceHealthDto;
+use crate::device::health::DeviceHealthDto;
 use axum::extract::State;
 use axum::Json;
 

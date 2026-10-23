@@ -30,6 +30,8 @@ mod settings;
 mod sse;
 pub mod stats;
 pub mod status;
+#[cfg(test)]
+mod status_golden;
 mod stress_test;
 mod tls;
 mod tokens;
@@ -45,7 +47,7 @@ use crate::api::dual_protocol::Protocol;
 use crate::api::frame_policy::FramePolicy;
 use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
-use crate::device_health::DeviceHealthController;
+use crate::device::health::DeviceHealthController;
 use crate::engine::main::Engine;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
@@ -54,7 +56,7 @@ use crate::paths;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::setting::CoolerControlSettings;
-use crate::{admin, cc_fs};
+use crate::{auth::admin, cc_fs};
 use crate::{
     AllDevices, Repos, ENV_CERT_PATH, ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_PORT, ENV_TLS,
     VERSION,
@@ -123,14 +125,14 @@ pub async fn start_server<'s>(
     modes_controller: Rc<ModeController>,
     alert_controller: Rc<AlertController>,
     device_health_controller: Rc<DeviceHealthController>,
-    hardware_support: Rc<crate::hardware_support::HardwareSupportController>,
+    hardware_support: Rc<crate::diagnostics::support::HardwareSupportController>,
     overrides_controller: Rc<OverridesController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
-    notification_handle: crate::notifier::NotificationHandle,
-    system_event_handle: crate::system_event::SystemEventHandle,
-    power_profiles: crate::power_profile_listener::PowerProfiles,
+    notification_handle: crate::events::notifier::NotificationHandle,
+    system_event_handle: crate::events::system_event::SystemEventHandle,
+    power_profiles: crate::listeners::power_profile::PowerProfiles,
     cancel_token: CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
@@ -642,14 +644,14 @@ async fn create_app_state<'s>(
     modes_controller: &Rc<ModeController>,
     alert_controller: &Rc<AlertController>,
     device_health_controller: &Rc<DeviceHealthController>,
-    hardware_support: Rc<crate::hardware_support::HardwareSupportController>,
+    hardware_support: Rc<crate::diagnostics::support::HardwareSupportController>,
     overrides_controller: Rc<OverridesController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
-    notification_handle: crate::notifier::NotificationHandle,
-    system_event_handle: crate::system_event::SystemEventHandle,
-    power_profiles: crate::power_profile_listener::PowerProfiles,
+    notification_handle: crate::events::notifier::NotificationHandle,
+    system_event_handle: crate::events::system_event::SystemEventHandle,
+    power_profiles: crate::listeners::power_profile::PowerProfiles,
     frame_policy: FramePolicy,
     cancel_token: &CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
@@ -745,7 +747,7 @@ async fn create_app_state<'s>(
 
 /// The real app state over no devices and the default config, for tests of the real routes.
 /// Its actors run in `main_scope` until `cancel_token` is cancelled.
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 async fn empty_app_state<'s>(
     cancel_token: &CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
@@ -764,7 +766,7 @@ async fn empty_app_state<'s>(
         Rc::new(FanStateMap::new()),
         Rc::clone(&overrides),
     ));
-    let power_profiles = crate::power_profile_listener::PowerProfiles::default();
+    let power_profiles = crate::listeners::power_profile::PowerProfiles::default();
     // Callers hold the `modes_file` lock; a prior modes test may leave the file unparseable.
     if let Err(err) = std::fs::remove_file(paths::mode_config_file()) {
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
@@ -790,7 +792,8 @@ async fn empty_app_state<'s>(
     ));
     let custom_sensors =
         CustomSensorsRepo::new(Rc::clone(&config), Vec::new(), Rc::clone(&overrides));
-    let hardware_support = crate::hardware_support::HardwareSupportController::init(None, false);
+    let hardware_support =
+        crate::diagnostics::support::HardwareSupportController::init(None, false);
     let status_handle =
         StatusHandle::new(Rc::clone(&all_devices), cancel_token.clone(), main_scope);
     create_app_state(
@@ -807,8 +810,8 @@ async fn empty_app_state<'s>(
         Rc::new(PluginController::new_disabled()),
         LogBufHandle::new(cancel_token.clone()),
         status_handle,
-        crate::notifier::NotificationHandle::new(cancel_token.clone()),
-        crate::system_event::SystemEventHandle::new(cancel_token.clone()),
+        crate::events::notifier::NotificationHandle::new(cancel_token.clone()),
+        crate::events::system_event::SystemEventHandle::new(cancel_token.clone()),
         power_profiles,
         FramePolicy::default(),
         cancel_token,
@@ -1400,9 +1403,9 @@ pub struct AppState {
     pub plugin_handle: PluginHandle,
     pub stress_test_handle: StressTestHandle,
     pub log_buf_handle: LogBufHandle,
-    pub notification_handle: crate::notifier::NotificationHandle,
-    pub system_event_handle: crate::system_event::SystemEventHandle,
-    pub power_profiles: crate::power_profile_listener::PowerProfiles,
+    pub notification_handle: crate::events::notifier::NotificationHandle,
+    pub system_event_handle: crate::events::system_event::SystemEventHandle,
+    pub power_profiles: crate::listeners::power_profile::PowerProfiles,
     /// Fixed at startup, for the routes that serve HTML.
     pub frame_policy: FramePolicy,
 }
@@ -1446,6 +1449,7 @@ mod tests {
     /// Method: the real `api_router` over an empty app state, asked for `/api.json`.
     #[test]
     #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
     fn api_doc_is_served_only_by_debug_builds() {
         crate::rt::test_runtime(async {
             let cancel_token = CancellationToken::new();
@@ -1475,9 +1479,11 @@ mod tests {
 
     /// Far beyond a failed bind, so a server that starts serving fails the test instead of
     /// hanging it.
+    #[cfg(feature = "gated-tests")]
     const BIND_FAILURE_DEADLINE: Duration = Duration::from_secs(10);
 
     /// A plain HTTP server config over `app_state`, with no listener address of its own.
+    #[cfg(feature = "gated-tests")]
     fn server_config(app_state: AppState, cancel_token: CancellationToken) -> ApiServerConfig {
         let sessions = CachingSessionStore::new(
             MemorySessionStore::new(1),
@@ -1506,6 +1512,7 @@ mod tests {
     /// on that same address.
     #[test]
     #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
     fn api_server_returns_the_bind_failure() {
         crate::rt::test_runtime(async {
             let cancel_token = CancellationToken::new();
@@ -1611,6 +1618,18 @@ mod tests {
         );
     }
 
+    /// Goal: a browser's offer negotiates gzip, never brotli, whose encoder zeroes about
+    /// 1 GB to compress a full status history. Method: a Chromium `Accept-Encoding` offer.
+    #[tokio::test]
+    async fn browser_offers_negotiate_gzip() {
+        assert_eq!(
+            content_encoding(Some("gzip, deflate, br, zstd"), "/json")
+                .await
+                .as_deref(),
+            Some("gzip")
+        );
+    }
+
     /// Goal: a client that offers no encoding gets identity, so compression stays negotiated
     /// rather than imposed.
     #[tokio::test]
@@ -1627,12 +1646,14 @@ mod tests {
 
     /// Repo-root spec, relative to this crate. Absent in vendored/source-tarball builds,
     /// which ship only the crate, so the freshness test skips rather than fails there.
+    #[cfg(feature = "gated-tests")]
     const SPEC_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../openapi/openapi.json");
 
     /// Goal: catch a stale checked-in spec, which is a release artifact that is easy to forget
     /// to regenerate. It had already drifted by eight routes before this test existed.
     /// Method: rebuild the spec from the route table and compare it to the file.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn checked_in_openapi_spec_is_current() {
         let Ok(checked_in) = std::fs::read_to_string(SPEC_PATH) else {
             return; // Not a full checkout.
@@ -2130,6 +2151,7 @@ mod tests {
     /// The headers the production stack answers each of `paths` with: the real routes and
     /// fallback over `state`, behind every base layer, compression aside. Runs on the
     /// sidecar, as the servers do, since the timeout layer needs its reactor.
+    #[cfg(feature = "gated-tests")]
     async fn served_headers(
         state: AppState,
         paths: &'static [&'static str],
@@ -2170,6 +2192,7 @@ mod tests {
     /// composed policy, and an API response must keep `X-Frame-Options` and gain no policy.
     #[test]
     #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
     fn frame_policy_reaches_the_served_document() {
         const ANCESTOR: &str = "https://cockpit.example.com:9090";
         const PATHS: [&str; 3] = ["/", "/index.html", "/handshake"];
@@ -2220,6 +2243,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn test_watch_passwd_file_clears_cache_on_mtime_change() {
         // Goal: verify that the watcher clears the in-memory session
         // cache when the password file's mtime changes (simulating a

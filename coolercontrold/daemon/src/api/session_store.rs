@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Mutex;
 
-use crate::admin;
+use crate::auth::admin;
 use crate::cc_fs::sidecar_fs;
 use async_trait::async_trait;
 use indexmap::IndexMap;

@@ -23,6 +23,8 @@ const TEMP_SANITY_MIN: f64 = 0.0;
 const TEMP_SANITY_MAX: f64 = 140.0;
 macro_rules! format_temp_input { ($($arg:tt)*) => {{ format!("temp{}_input", $($arg)*) }}; }
 static THINKPAD_GPU_ENXIO_LOGGED: AtomicBool = AtomicBool::new(false);
+static TAS2764_ENODATA_LOGGED: AtomicBool = AtomicBool::new(false);
+const DEVICE_NAME_TAS2764: &str = "tas2764";
 
 /// Initialize all applicable temp sensors
 pub async fn init_temps(
@@ -170,6 +172,13 @@ fn temp_status_from(
                     temp: 0.0,
                 });
             }
+            if is_tas2764_unsampled(&driver.name, &err) {
+                log_tas2764_unsampled_once(&temp_path());
+                return Some(TempStatus {
+                    name: channel.name.clone(),
+                    temp: 0.0,
+                });
+            }
             if log_enabled!(log::Level::Debug) {
                 warn!(
                     "Could not read temp value at {} ; {err}",
@@ -277,6 +286,10 @@ async fn sensor_is_usable(
                 log_thinkpad_gpu_powerdown_once(&channel_name, None, &temp_path);
                 return true;
             }
+            if is_tas2764_unsampled(driver_name, &err) {
+                log_tas2764_unsampled_once(&temp_path);
+                return true;
+            }
             debug!(
                 "Error reading temperature value from: {} ; {err}",
                 temp_path.display()
@@ -331,6 +344,28 @@ fn log_thinkpad_gpu_powerdown_once(
             "ThinkPad hwmon temp channel '{channel_name}' (label={label}) at {} \
              returned ENXIO. Treating as 0.0 C; expected when no dedicated GPU \
              is present or it is powered down.",
+            temp_path.display()
+        );
+    }
+}
+
+fn is_tas2764_unsampled(driver_name: &str, err: &anyhow::Error) -> bool {
+    if driver_name != DEVICE_NAME_TAS2764 {
+        return false;
+    }
+    err.downcast_ref::<Error>()
+        .and_then(Error::raw_os_error)
+        .is_some_and(|errno| errno == libc::ENODATA)
+}
+
+fn log_tas2764_unsampled_once(temp_path: &Path) {
+    if TAS2764_ENODATA_LOGGED
+        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
+    {
+        info!(
+            "TAS2764 speaker amplifier temp at {} has no sample since the amplifier powered up. \
+             Treating as 0.0 C until audio plays.",
             temp_path.display()
         );
     }
@@ -392,29 +427,28 @@ fn get_temp_channel_name(channel_number: u8) -> String {
 mod tests {
     use super::*;
     use serial_test::serial;
-    use std::path::{Path, PathBuf};
-    use uuid::Uuid;
-
-    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+    #[cfg(feature = "gated-tests")]
+    use std::path::Path;
+    use std::path::PathBuf;
 
     struct HwmonFileContext {
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         test_base_path: PathBuf,
     }
 
-    async fn setup() -> HwmonFileContext {
-        let test_base_path =
-            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
-                .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).await.unwrap();
-        HwmonFileContext { test_base_path }
-    }
-
-    async fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    fn setup() -> HwmonFileContext {
+        let dir = tempfile::tempdir().unwrap();
+        let test_base_path = dir.path().to_path_buf();
+        HwmonFileContext {
+            _dir: dir,
+            test_base_path,
+        }
     }
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn find_temp_dir_not_exist() {
         cc_fs::test_runtime(async {
             // given:
@@ -438,8 +472,8 @@ mod tests {
     fn find_temp() {
         cc_fs::test_runtime(async {
             // given:
-            let test_base_path = Path::new("/tmp/coolercontrol-test/temps_test").to_path_buf();
-            cc_fs::create_dir_all(&test_base_path).await.unwrap();
+            let ctx = setup();
+            let test_base_path = &ctx.test_base_path;
             cc_fs::write(
                 test_base_path.join("temp1_input"),
                 b"30000".to_vec(), // temp
@@ -455,14 +489,10 @@ mod tests {
             let device_name = "Test Driver".to_string();
 
             // when:
-            let temps_result =
-                init_temps(&test_base_path, &device_name, &DeviceIo::default()).await;
+            let temps_result = init_temps(test_base_path, &device_name, &DeviceIo::default()).await;
 
             // then:
             // println!("RESULT: {:?}", fans_result);
-            cc_fs::remove_dir_all(test_base_path.parent().unwrap())
-                .await
-                .unwrap();
             assert!(temps_result.is_ok());
             let temps = temps_result.unwrap();
             assert_eq!(temps.len(), 1);
@@ -480,7 +510,7 @@ mod tests {
         // Verifies a successful read yields one entry per channel and
         // clears the failure indicator.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: two temp channels, both readable.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"35000".to_vec())
@@ -514,7 +544,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(temps.len(), 2);
             assert_eq!(temps[0].name, "temp1");
@@ -532,7 +561,7 @@ mod tests {
     #[serial]
     fn extract_temp_reuses_descriptors_across_ticks() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"35000".to_vec())
                 .await
@@ -572,7 +601,6 @@ mod tests {
                 .unwrap();
             let (third_temps, _) = extract_temp_statuses(&driver_info).await;
 
-            teardown(&ctx).await;
             // Both temp files stay open in the fd cache across ticks.
             let expected_held = 2;
             assert_eq!(held_after_first_tick, expected_held);
@@ -595,7 +623,7 @@ mod tests {
         // omitted and the failure indicator being set. Fabricating 0.0
         // would be read by downstream as "very cold, drop fan duty".
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: single temp channel but no sysfs file.
             let test_base_path = &ctx.test_base_path;
             let driver_info = HwmonDriverInfo {
@@ -615,7 +643,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(temps.len(), 0);
         });
@@ -627,7 +654,7 @@ mod tests {
         // Verifies working sensors keep serving real values while the
         // failing sensor is simply absent from the result.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: two temp channels, only the first one readable.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"50000".to_vec())
@@ -658,7 +685,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(temps.len(), 1);
             assert_eq!(temps[0].name, "temp1");
@@ -672,7 +698,7 @@ mod tests {
         // Verifies a device with all failing reads returns an empty vec
         // rather than one fabricated entry per channel.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: two temp channels, neither readable.
             let test_base_path = &ctx.test_base_path;
             let driver_info = HwmonDriverInfo {
@@ -700,7 +726,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(temps.len(), 0);
         });
@@ -713,7 +738,7 @@ mod tests {
         // Verifies the streaming variant invokes the sink once per
         // successful temp channel in channel-number order.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let test_base_path = &ctx.test_base_path;
             for number in 1u8..=3 {
                 cc_fs::write(
@@ -755,7 +780,6 @@ mod tests {
             let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(received, vec!["temp1", "temp2", "temp3"]);
         });
@@ -767,7 +791,7 @@ mod tests {
         // Verifies the sink is not invoked for a temp channel whose
         // sysfs file is missing, and any_failure is set.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"30000".to_vec())
                 .await
@@ -798,7 +822,6 @@ mod tests {
             let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(received, vec!["temp1"]);
         });
@@ -810,7 +833,7 @@ mod tests {
         // Verifies the sink is never invoked when there are no temp
         // channels, and any_failure is false.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let driver_info = HwmonDriverInfo {
                 path: ctx.test_base_path.clone(),
                 ..Default::default()
@@ -820,7 +843,6 @@ mod tests {
 
             let (statuses, any_failure) = extract_temp_statuses(&driver_info).await;
 
-            teardown(&ctx).await;
             assert!(statuses.is_empty());
             assert!(any_failure.not());
         });
@@ -879,12 +901,45 @@ mod tests {
         assert!(is_thinkpad_gpu_powerdown(devices::DEVICE_NAME_THINK_PAD, &err).not());
     }
 
+    /// Goal: only ENODATA from a `tas2764` counts as an amplifier that has not sampled yet.
+    /// Method: that error against another errno, other drivers, and a non-io error.
+    #[test]
+    fn tas2764_enodata_is_an_unsampled_amplifier_and_nothing_else_is() {
+        let enodata = || -> anyhow::Error { Error::from_raw_os_error(libc::ENODATA).into() };
+        let eio: anyhow::Error = Error::from_raw_os_error(libc::EIO).into();
+        assert!(is_tas2764_unsampled("tas2764", &enodata()));
+        assert!(is_tas2764_unsampled("tas2764", &eio).not());
+        assert!(is_tas2764_unsampled("nct6798", &enodata()).not());
+        assert!(is_tas2764_unsampled(devices::DEVICE_NAME_THINK_PAD, &enodata()).not());
+        assert!(is_tas2764_unsampled("tas2764", &anyhow::anyhow!("not an io error")).not());
+    }
+
+    /// Goal: an unsampled `tas2764` gives a 0 degree status and stays listed, while the same
+    /// error drops any other driver's channel. Method: an ENODATA read under both driver names.
+    #[test]
+    fn an_unsampled_tas2764_reads_zero_instead_of_failing() {
+        let channel = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Temp,
+            number: 1,
+            name: "temp1".to_string(),
+            ..Default::default()
+        };
+        let driver_named = |name: &str| HwmonDriverInfo {
+            name: name.to_string(),
+            ..Default::default()
+        };
+        let enodata = || Err(Error::from_raw_os_error(libc::ENODATA).into());
+        let status = temp_status_from(&driver_named("tas2764"), &channel, enodata()).unwrap();
+        assert_eq!(status.temp, 0.0);
+        assert!(temp_status_from(&driver_named("nct6798"), &channel, enodata()).is_none());
+    }
+
     #[test]
     #[serial]
     fn extract_temp_ignores_non_temp_channels() {
         // Verifies non-Temp channels are ignored even if named similarly.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: one Temp and one non-Temp channel.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"30000".to_vec())
@@ -915,7 +970,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(temps.len(), 1);
             assert_eq!(temps[0].name, "temp1");

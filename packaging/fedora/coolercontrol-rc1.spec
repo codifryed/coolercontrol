@@ -1,11 +1,12 @@
-%global branch main
+# main unless overridden, as the CI prerelease build does with --define for its own ref.
+%{!?branch:%global branch main}
 %global project_id 30707566
 %global qt_dir coolercontrol
 %global ap_id org.coolercontrol.CoolerControl
 %{!?_metainfodir: %define _metainfodir %{_datadir}/metainfo}
 
 Name:           coolercontrol
-Version:        5.0.2~rc1
+Version:        5.1.2~rc1
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 ExclusiveArch:  x86_64 aarch64

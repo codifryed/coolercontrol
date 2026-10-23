@@ -8,6 +8,8 @@
 .cache/
 
 coolercontrold/target/
+# make prerelease-local
+.prerelease/
 
 *.pyc
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::actor::{run_api_actor, ApiActor};
-use crate::device_health::{DeviceHealthController, DeviceHealthDto, HealthEvent};
+use crate::device::health::{DeviceHealthController, DeviceHealthDto, HealthEvent};
 use anyhow::Result;
 use moro_local::Scope;
 use std::rc::Rc;

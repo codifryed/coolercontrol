@@ -14,8 +14,8 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use crate::api::actor::{run_api_actor, ApiActor};
-use crate::hardware_report;
-use crate::hardware_support::HardwareSupportController;
+use crate::diagnostics::report;
+use crate::diagnostics::support::HardwareSupportController;
 use crate::rt;
 use std::rc::Rc;
 use std::time::Duration;
@@ -26,7 +26,7 @@ use std::time::Duration;
 /// taking `GET /detect` down with it, since both share the mailbox. Kept under
 /// the API's own 30s timeout so the client sees the failure rather than a hang.
 ///
-/// The last resort, not the working limit: `hardware_report::REPORT_READ_BUDGET`
+/// The last resort, not the working limit: `report::REPORT_READ_BUDGET`
 /// bounds the reads themselves at 15s and returns a report that names the
 /// device at fault. This fires only for a stall no `timeout` can interrupt,
 /// such as a synchronous `read_dir` on a wedged filesystem.
@@ -112,13 +112,7 @@ impl ApiActor<HardwareReportMessage> for HardwareReportActor {
                 let retained = self.hardware_support.hwmon_drivers();
                 let report = rt::timeout(
                     GENERATE_TIMEOUT,
-                    hardware_report::generate(
-                        full,
-                        detection.as_ref(),
-                        &devices_other,
-                        &hidden,
-                        &retained,
-                    ),
+                    report::generate(full, detection.as_ref(), &devices_other, &hidden, &retained),
                 )
                 .await
                 .unwrap_or_else(|_| {

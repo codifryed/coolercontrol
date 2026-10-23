@@ -268,6 +268,9 @@ export class UISettingsDTO {
     sensorStatsPanelPosition: OverlayPosition = 'top-left'
     // What the dashboard stats legend's min/max/avg cover. Global for the same reason.
     statsLegendScope: StatsLegendScope = 'window'
+    // Per dashboard, in rem. Kept out of the dashboard so resizing never rebuilds the chart,
+    // and a fixed height keeps the same rows in view as the window resizes.
+    statsLegendHeights: Array<[UID, number]> = []
     interfaceFont: InterfaceFont = InterfaceFont.BUNDLED
     // Undefined means the user has never chosen, and `system` means follow the
     // browser locale. Never a resolved code for a non-choice: that is what let

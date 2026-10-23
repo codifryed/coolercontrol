@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::api::actor::{DeviceHandle, StatusHandle};
+use crate::api::actor::{own_process, DeviceHandle, StatusHandle};
 use crate::api::devices::DeviceDto;
 use crate::api::status::DeviceStatusDto;
-use crate::device::{ChannelInfo, ChannelKind, ChannelStatus, TempInfo, TempStatus};
+use crate::device::{ChannelInfo, ChannelKind, ChannelSample, TempInfo};
 use crate::grpc_api::device_service::v1::device_service_server::DeviceService;
 use crate::grpc_api::device_service::v1::{health_response, HealthRequest, HealthResponse};
 use crate::grpc_api::device_service::v1::{CustomFunctionOneRequest, CustomFunctionOneResponse};
@@ -23,7 +23,6 @@ use crate::grpc_api::device_service::v1::{StatusRequest, StatusResponse};
 use crate::grpc_api::models;
 use crate::grpc_api::models::v1::status::FanSpeed;
 use crate::VERSION;
-use nix::unistd::Pid;
 use tonic::{Request, Response, Status};
 
 pub struct CCDeviceService {
@@ -92,19 +91,14 @@ impl CCDeviceService {
 }
 
 #[tonic::async_trait]
-#[allow(clippy::cast_sign_loss)]
 impl DeviceService for CCDeviceService {
     /// Used to confirm service connection and retrieve service health information.
     async fn health(
         &self,
         _request: Request<HealthRequest>,
     ) -> Result<Response<HealthResponse>, Status> {
-        let pid = sysinfo::Pid::from_u32(Pid::this().as_raw() as u32);
-        let uptime_seconds = sysinfo::System::new_with_specifics(
-            sysinfo::RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::nothing()),
-        )
-        .process(pid)
-        .map_or(0, sysinfo::Process::run_time);
+        let (pid, system) = own_process(sysinfo::ProcessRefreshKind::nothing());
+        let uptime_seconds = system.process(pid).map_or(0, sysinfo::Process::run_time);
         let reply = HealthResponse {
             name: self.service_id.clone(),
             version: self.version.clone(),
@@ -259,49 +253,44 @@ impl From<TempInfo> for models::v1::TempInfo {
     }
 }
 
+/// The newest entry's temps, then its channels.
 impl From<DeviceStatusDto> for Vec<models::v1::Status> {
     fn from(value: DeviceStatusDto) -> Self {
-        value
-            .status_history
-            .back()
-            .cloned()
-            .map_or_else(Vec::new, |s| {
-                let mut status: Vec<models::v1::Status> =
-                    s.temps.into_iter().map(Into::into).collect();
-                s.channels
-                    .into_iter()
-                    .map(Into::into)
-                    .for_each(|s| status.push(s));
-                status
-            })
+        let history = &value.status_history;
+        let mut status: Vec<models::v1::Status> = history
+            .latest_temps()
+            .map(|(name, temp)| grpc_temp(name, temp))
+            .collect();
+        status.extend(
+            history
+                .latest_channels()
+                .map(|(name, sample)| grpc_channel(name, sample)),
+        );
+        status
     }
 }
 
-impl From<TempStatus> for models::v1::Status {
-    fn from(value: TempStatus) -> Self {
-        Self {
-            id: value.name,
-            metric: Some(models::v1::status::Metric::Temp(value.temp)),
-        }
+fn grpc_temp(name: &str, temp: f64) -> models::v1::Status {
+    models::v1::Status {
+        id: name.to_string(),
+        metric: Some(models::v1::status::Metric::Temp(temp)),
     }
 }
 
-impl From<ChannelStatus> for models::v1::Status {
-    fn from(value: ChannelStatus) -> Self {
-        let metric = if value.duty.is_some() || value.rpm.is_some() {
-            Some(models::v1::status::Metric::Speed(FanSpeed {
-                duty: value.duty,
-                rpm: value.rpm,
-            }))
-        } else if let Some(watts) = value.watts {
-            Some(models::v1::status::Metric::Watts(watts))
-        } else {
-            value.freq.map(models::v1::status::Metric::Mhz)
-        };
-        Self {
-            id: value.name,
-            metric,
-        }
+fn grpc_channel(name: &str, sample: ChannelSample) -> models::v1::Status {
+    let metric = if sample.duty.is_some() || sample.rpm.is_some() {
+        Some(models::v1::status::Metric::Speed(FanSpeed {
+            duty: sample.duty,
+            rpm: sample.rpm,
+        }))
+    } else if let Some(watts) = sample.watts {
+        Some(models::v1::status::Metric::Watts(watts))
+    } else {
+        sample.freq.map(models::v1::status::Metric::Mhz)
+    };
+    models::v1::Status {
+        id: name.to_string(),
+        metric,
     }
 }
 

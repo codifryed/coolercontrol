@@ -13,8 +13,8 @@
 //! - `failsafe`: a present channel/temp currently serving failsafe values.
 use crate::api::actor::DeviceHealthHandle;
 use crate::config::Config;
-use crate::device::{DeviceType, DeviceUID, Status, UID};
-use crate::hardware_support::{ChannelVerdictRef, SystemFinding};
+use crate::device::{Device, DeviceType, DeviceUID, UID};
+use crate::diagnostics::support::{ChannelVerdictRef, SystemFinding};
 use crate::overrides::OverridesController;
 use crate::setting::{CustomSensor, CustomSensorMetric, Profile, SettingKind, TempSource};
 use crate::{AllDevices, Repos};
@@ -184,7 +184,7 @@ pub struct DeviceHealthController {
     stale_source: RefCell<Vec<SourceRef>>,
     failsafe: RefCell<Vec<FailsafeRef>>,
     unreachable: RefCell<Vec<UnreachableRef>>,
-    hardware_support: Option<Rc<crate::hardware_support::HardwareSupportController>>,
+    hardware_support: Option<Rc<crate::diagnostics::support::HardwareSupportController>>,
     /// Source references extracted from config. Re-extracted only when the
     /// config generation moves, so unchanged ticks parse no config at all.
     candidates: RefCell<Vec<Candidate>>,
@@ -219,7 +219,7 @@ impl DeviceHealthController {
     #[must_use]
     pub fn with_hardware_support(
         mut self,
-        hardware_support: Rc<crate::hardware_support::HardwareSupportController>,
+        hardware_support: Rc<crate::diagnostics::support::HardwareSupportController>,
     ) -> Self {
         self.hardware_support = Some(hardware_support);
         self
@@ -341,18 +341,14 @@ impl DeviceHealthController {
             return true;
         };
         let device = device_lock.borrow();
-        Self::is_absent(
-            device.status_history.back(),
-            candidate.metric,
-            &source.temp_name,
-        )
+        Self::is_absent(&device, candidate.metric, &source.temp_name)
     }
 
-    /// Whether `status` lacks the source. Read with the reference's own metric, as the
-    /// Custom Sensors repository reads it, so the two cannot disagree. A device with no
-    /// status yet has nothing, so its references read as missing.
-    fn is_absent(status: Option<&Status>, metric: CustomSensorMetric, name: &str) -> bool {
-        status.is_none_or(|status| metric.read(status, name).is_none())
+    /// Whether the device's newest status lacks the source. Read with the reference's own
+    /// metric, as the Custom Sensors repository reads it, so the two cannot disagree. A device
+    /// with no status yet has nothing, so its references read as missing.
+    fn is_absent(device: &Device, metric: CustomSensorMetric, name: &str) -> bool {
+        metric.read_latest(device, name).is_none()
     }
 
     fn collect_custom_sensor_candidates(&self, candidates: &mut Vec<Candidate>) {
@@ -604,7 +600,7 @@ impl DeviceHealthController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::{ChannelStatus, TempStatus};
+    use crate::device::{ChannelStatus, Status, TempStatus};
     use crate::setting::{
         CustomSensorKind, CustomSensorMixFunctionType, FunctionUID, ProfileKind, SensorSource,
     };
@@ -770,19 +766,36 @@ mod tests {
         assert!(DeviceHealthController::filter_stale_sources(&[], &candidates).is_empty());
     }
 
+    /// A device whose newest status is `status`, or one with no status yet.
+    fn device_reporting(status: Option<Status>) -> Device {
+        let mut device = Device::new(
+            "nct6798".to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            crate::device::DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        if let Some(status) = status {
+            device.initialize_status_history_with(status, 1.0);
+        }
+        device
+    }
+
     #[test]
     fn is_absent_false_when_the_status_reports_the_temp() {
         // Goal: a reference whose device reports the named temp is not missing.
-        let status = status_with(&["temp1", "temp2"]);
+        let device = device_reporting(Some(status_with(&["temp1", "temp2"])));
         let metric = CustomSensorMetric::Temp;
-        assert!(DeviceHealthController::is_absent(Some(&status), metric, "temp1").not());
+        assert!(DeviceHealthController::is_absent(&device, metric, "temp1").not());
     }
 
     #[test]
     fn is_absent_true_without_a_status() {
         // Goal: a device with no status yet has nothing, so its references are missing.
         assert!(DeviceHealthController::is_absent(
-            None,
+            &device_reporting(None),
             CustomSensorMetric::Temp,
             "temp1"
         ));
@@ -793,17 +806,13 @@ mod tests {
         // Goal: a present device that no longer reports the named temp is missing,
         // as is one reporting no temps at all.
         let metric = CustomSensorMetric::Temp;
-        let status = status_with(&["temp1"]);
+        let device = device_reporting(Some(status_with(&["temp1"])));
         assert!(DeviceHealthController::is_absent(
-            Some(&status),
-            metric,
-            "tempGone"
+            &device, metric, "tempGone"
         ));
-        let no_temps = status_with(&[]);
+        let no_temps = device_reporting(Some(status_with(&[])));
         assert!(DeviceHealthController::is_absent(
-            Some(&no_temps),
-            metric,
-            "temp1"
+            &no_temps, metric, "temp1"
         ));
     }
 
@@ -811,9 +820,8 @@ mod tests {
     fn is_absent_reads_a_channel_source_by_its_metric() {
         // Goal: a channel source is present only when the channel carries the metric's
         // value: the fan reports rpm, but no power, and it is no temp.
-        let status = status_with(&["temp1"]);
-        let is_absent =
-            |metric, name| DeviceHealthController::is_absent(Some(&status), metric, name);
+        let device = device_reporting(Some(status_with(&["temp1"])));
+        let is_absent = |metric, name| DeviceHealthController::is_absent(&device, metric, name);
         assert!(is_absent(CustomSensorMetric::RPM, "fan1").not());
         assert!(is_absent(CustomSensorMetric::Watts, "fan1"));
         assert!(is_absent(CustomSensorMetric::Temp, "fan1"));
@@ -1130,11 +1138,12 @@ mod tests {
     /// channel with no pwm never changes and belongs with the capabilities.
     /// Method: record one of each and check which section each lands in.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn verdict_sections_split_permanent_from_current() {
         let controller = crate::rt::test_runtime(async {
-            crate::hardware_support::HardwareSupportController::init(None, true).await
+            crate::diagnostics::support::HardwareSupportController::init(None, true).await
         });
-        let evidence = crate::hardware_support::ChannelEvidence {
+        let evidence = crate::diagnostics::support::ChannelEvidence {
             has_pwm: true,
             pwm_writable: true,
             has_rpm: true,
@@ -1143,9 +1152,9 @@ mod tests {
         controller.record_channel_diagnosis(
             "dev1",
             "fan1",
-            crate::hardware_support::diagnose_channel(evidence.clone(), "nct6687", true),
+            crate::diagnostics::support::diagnose_channel(evidence.clone(), "nct6687", true),
         );
-        let no_pwm = crate::hardware_support::ChannelEvidence {
+        let no_pwm = crate::diagnostics::support::ChannelEvidence {
             has_pwm: false,
             pwm_writable: false,
             has_rpm: true,
@@ -1154,26 +1163,26 @@ mod tests {
         controller.record_channel_diagnosis(
             "dev1",
             "fan2",
-            crate::hardware_support::diagnose_channel(no_pwm, "some_driver", false),
+            crate::diagnostics::support::diagnose_channel(no_pwm, "some_driver", false),
         );
         // A working channel is reported in neither section.
         controller.record_channel_diagnosis(
             "dev1",
             "fan3",
-            crate::hardware_support::diagnose_channel(evidence, "some_driver", false),
+            crate::diagnostics::support::diagnose_channel(evidence, "some_driver", false),
         );
         let (permanent, current) = controller.partitioned_verdicts();
         assert_eq!(current.len(), 1, "expected one current-state verdict");
         assert_eq!(current[0].channel_name, "fan1");
         assert_eq!(
             current[0].verdict,
-            crate::hardware_support::ChannelVerdict::FirmwareOverride
+            crate::diagnostics::support::ChannelVerdict::FirmwareOverride
         );
         assert_eq!(permanent.len(), 1, "expected one permanent verdict");
         assert_eq!(permanent[0].channel_name, "fan2");
         assert_eq!(
             permanent[0].verdict,
-            crate::hardware_support::ChannelVerdict::NoPwm
+            crate::diagnostics::support::ChannelVerdict::NoPwm
         );
     }
 }

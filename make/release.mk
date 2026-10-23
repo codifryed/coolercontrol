@@ -13,8 +13,9 @@ bump:
 release:
 	@./packaging/release.sh
 
+# Pushes the Release commit, waits for its pipeline's release rehearsal to pass, then the tag.
 push-release:
-	@git push --follow-tags
+	@./packaging/push-release.sh
 
 ubuntu-source-package:
 	@sed -i 's/UNRELEASED/jammy/g' debian/changelog

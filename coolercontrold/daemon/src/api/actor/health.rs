@@ -8,7 +8,6 @@ use crate::{Repos, VERSION};
 use anyhow::Result;
 use chrono::Local;
 use moro_local::Scope;
-use nix::unistd::Pid;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
@@ -42,7 +41,7 @@ impl ApiActor<HealthMessage> for HealthActor {
         &mut self.receiver
     }
 
-    #[allow(clippy::cast_sign_loss, clippy::cast_precision_loss)]
+    #[allow(clippy::cast_precision_loss)]
     async fn handle_message(&mut self, msg: HealthMessage) {
         match msg {
             HealthMessage::Check {
@@ -52,11 +51,8 @@ impl ApiActor<HealthMessage> for HealthActor {
                 respond_to,
             } => {
                 let response = async {
-                    let sys_info = sysinfo::System::new_with_specifics(
-                        sysinfo::RefreshKind::nothing()
-                            .with_processes(sysinfo::ProcessRefreshKind::nothing().with_memory()),
-                    );
-                    let pid = sysinfo::Pid::from_u32(Pid::this().as_raw() as u32);
+                    let (pid, sys_info) =
+                        own_process(sysinfo::ProcessRefreshKind::nothing().with_memory());
                     let daemon_process = sys_info.process(pid);
                     let status =
                         daemon_process.map_or_else(|| "UP".to_string(), |p| p.status().to_string());
@@ -145,5 +141,33 @@ impl HealthHandle {
         };
         let _ = self.sender.send(msg).await;
         rx.await?
+    }
+}
+
+/// Refreshes only the daemon's own process. A `System` built with a process refresh reads
+/// every process and thread on the host instead.
+pub fn own_process(refresh_kind: sysinfo::ProcessRefreshKind) -> (sysinfo::Pid, sysinfo::System) {
+    let pid = sysinfo::Pid::from_u32(std::process::id());
+    let mut system = sysinfo::System::new();
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::Some(&[pid]),
+        false,
+        refresh_kind.without_tasks(),
+    );
+    (pid, system)
+}
+
+#[cfg(all(test, feature = "gated-tests"))]
+mod tests {
+    use super::*;
+
+    /// Goal: a health check reads one process, not the whole host. Method: the refreshed
+    /// process table holds only the daemon, with its memory filled in.
+    #[test]
+    fn own_process_refreshes_only_this_process() {
+        let (pid, system) = own_process(sysinfo::ProcessRefreshKind::nothing().with_memory());
+        assert_eq!(system.processes().len(), 1);
+        let process = system.process(pid).expect("own process refreshed");
+        assert!(process.memory() > 0);
     }
 }

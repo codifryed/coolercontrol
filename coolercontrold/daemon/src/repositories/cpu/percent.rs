@@ -2,12 +2,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::{Context, Result};
+use std::cell::{Ref, RefCell};
 use std::fs;
 use std::path::Path;
+
+use crate::cc_fs::ProcFile;
 
 /// Sane upper bound for logical CPUs. Prevents unbounded allocation
 /// if /proc/stat is somehow corrupted or pathological.
 pub const MAX_LOGICAL_CPUS: usize = 2048;
+
+/// Bound on /proc/stat. `MAX_LOGICAL_CPUS` cpu lines fill at most a quarter of it, leaving the
+/// rest for the interrupt and softirq counters that follow them.
+const STAT_MAX_BYTES: usize = 4 * 1024 * 1024;
+const _: () = assert!(STAT_MAX_BYTES >= 4 * MAX_LOGICAL_CPUS * STAT_CPU_LINE_MAX_BYTES);
+
+/// Bound on one cpu line: `cpu` and a `u16` id, `MAX_STAT_FIELDS` space-led `u64`s, a newline.
+const STAT_CPU_LINE_MAX_BYTES: usize = 3 + 5 + MAX_STAT_FIELDS * (1 + 20) + 1;
 
 /// Minimum number of /proc/stat fields required per cpu line.
 /// Fields: user nice system idle (iowait irq softirq steal are optional).
@@ -36,9 +47,16 @@ pub struct CpuPercent {
 
 /// Reads /proc/stat and computes per-CPU usage percentages from the
 /// delta between consecutive calls.
+///
+/// Every buffer is sized at init and reused, so a poll allocates nothing unless CPUs come online.
 pub struct CpuPercentCollector {
-    stat_path: Box<Path>,
-    prev: Vec<CpuTimes>,
+    stat: ProcFile,
+    /// The latest snapshot.
+    prev: RefCell<Vec<CpuTimes>>,
+    /// Where the next snapshot is parsed. Swapped with `prev` after each poll.
+    next: RefCell<Vec<CpuTimes>>,
+    /// Each CPU's busy percentage between the last two snapshots, ascending by CPU id.
+    percents: RefCell<Vec<CpuPercent>>,
 }
 
 impl CpuPercentCollector {
@@ -51,43 +69,76 @@ impl CpuPercentCollector {
     fn with_path(stat_path: &Path) -> Result<Self> {
         let content = fs::read_to_string(stat_path)
             .with_context(|| format!("reading {}", stat_path.display()))?;
-        let prev = parse_stat_content(&content);
+        let mut prev = Vec::new();
+        parse_stat_content(&content, &mut prev);
         assert!(!prev.is_empty(), "no per-cpu lines found");
+        let stat = ProcFile::new(stat_path, STAT_MAX_BYTES);
+        stat.reserve(content.len());
+        let cpu_count = prev.len();
         Ok(Self {
-            stat_path: stat_path.into(),
-            prev,
+            stat,
+            prev: RefCell::new(prev),
+            next: RefCell::new(Vec::with_capacity(cpu_count)),
+            percents: RefCell::new(Vec::with_capacity(cpu_count)),
         })
     }
 
-    /// Returns per-CPU busy percentages (0.0 to 100.0) since the last call, ascending by CPU id.
+    /// Takes a new snapshot and updates `percents` to each CPU's busy percentage (0.0 to 100.0)
+    /// since the last one.
     ///
     /// Only CPUs online in both snapshots are included: a CPU that came online since has no
     /// baseline yet, and one that went offline has no current reading.
-    #[allow(clippy::cast_precision_loss)]
-    pub fn cpu_percent_per_cpu(&mut self) -> Result<Vec<CpuPercent>> {
-        let content = fs::read_to_string(&self.stat_path)
-            .with_context(|| format!("reading {}", self.stat_path.display()))?;
-        let curr = parse_stat_content(&content);
-        let percents = compute_percents(&self.prev, &curr);
-        self.prev = curr;
-        Ok(percents)
+    ///
+    /// # Errors
+    ///
+    /// When /proc/stat cannot be read. `percents` is then empty until the next poll.
+    pub async fn sample(&self) -> Result<()> {
+        let read = self
+            .stat
+            .read_with(|content| parse_stat_content(content, &mut self.next.borrow_mut()))
+            .await;
+        let mut percents = self.percents.borrow_mut();
+        if let Err(err) = read {
+            percents.clear();
+            return Err(err);
+        }
+        let mut prev = self.prev.borrow_mut();
+        let mut next = self.next.borrow_mut();
+        compute_percents(&prev, &next, &mut percents);
+        debug_assert!(percents.len() <= next.len());
+        debug_assert!(next.len() <= MAX_LOGICAL_CPUS);
+        // The new snapshot becomes the baseline, and the old one's room takes the next parse.
+        std::mem::swap(&mut *prev, &mut *next);
+        Ok(())
+    }
+
+    /// Each CPU's busy percentage at the latest sample, ascending by CPU id.
+    pub fn percents(&self) -> Ref<'_, [CpuPercent]> {
+        Ref::map(self.percents.borrow(), Vec::as_slice)
     }
 
     /// The CPUs online at the latest snapshot, ascending.
     pub fn online_cpu_ids(&self) -> impl Iterator<Item = u16> + '_ {
-        self.prev.iter().map(|times| times.cpu_id)
+        let prev = self.prev.borrow();
+        (0..prev.len()).map(move |index| prev[index].cpu_id)
+    }
+
+    /// Stands in for a sample, for tests of what the load is used for.
+    #[cfg(test)]
+    pub fn set_percents(&self, percents: Vec<CpuPercent>) {
+        *self.percents.borrow_mut() = percents;
     }
 }
 
-/// Computes per-CPU busy percentages from two snapshots, pairing each CPU by id.
+/// Computes per-CPU busy percentages from two snapshots into `percents`, pairing each CPU by id.
 ///
 /// Pairing by position would compare different CPUs once one goes offline or comes online. Both
 /// snapshots are ascending by CPU id, as /proc/stat prints them, so this is a single merge.
 #[allow(clippy::cast_precision_loss)]
-fn compute_percents(prev: &[CpuTimes], curr: &[CpuTimes]) -> Vec<CpuPercent> {
+fn compute_percents(prev: &[CpuTimes], curr: &[CpuTimes], percents: &mut Vec<CpuPercent>) {
     debug_assert!(prev.is_sorted_by_key(|times| times.cpu_id));
     debug_assert!(curr.is_sorted_by_key(|times| times.cpu_id));
-    let mut percents = Vec::with_capacity(curr.len());
+    percents.clear();
     let mut prev_times = prev.iter().peekable();
     for cur in curr {
         // Skip the CPUs that went offline since the previous snapshot.
@@ -116,13 +167,12 @@ fn compute_percents(prev: &[CpuTimes], curr: &[CpuTimes]) -> Vec<CpuPercent> {
         });
     }
     debug_assert!(percents.len() <= curr.len());
-    percents
 }
 
 /// Parses /proc/stat content for per-cpu lines (`cpu0`, `cpu1`, …)
-/// and extracts idle and total jiffies for each logical CPU.
-fn parse_stat_content(content: &str) -> Vec<CpuTimes> {
-    let mut cpus = Vec::with_capacity(num_cpus_hint());
+/// and extracts idle and total jiffies for each logical CPU into `cpus`, replacing what it held.
+fn parse_stat_content(content: &str, cpus: &mut Vec<CpuTimes>) {
+    cpus.clear();
     for line in content.lines() {
         if !line.starts_with("cpu") {
             // Per-cpu lines are grouped at the top of /proc/stat.
@@ -142,7 +192,6 @@ fn parse_stat_content(content: &str) -> Vec<CpuTimes> {
             "/proc/stat reports more than {MAX_LOGICAL_CPUS} CPUs"
         );
     }
-    cpus
 }
 
 /// Parses a single per-cpu line from /proc/stat into jiffies.
@@ -176,17 +225,24 @@ fn parse_cpu_line(line: &str) -> Option<CpuTimes> {
     })
 }
 
-/// Rough hint for initial capacity. A reasonable default avoids
-/// reallocation in most cases without over-allocating.
-fn num_cpus_hint() -> usize {
-    16
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rt::poll_to_end;
 
     const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/tests/proc_stat");
+
+    fn parsed(content: &str) -> Vec<CpuTimes> {
+        let mut cpus = Vec::new();
+        parse_stat_content(content, &mut cpus);
+        cpus
+    }
+
+    fn percents_between(prev: &[CpuTimes], curr: &[CpuTimes]) -> Vec<CpuPercent> {
+        let mut percents = Vec::new();
+        compute_percents(prev, curr, &mut percents);
+        percents
+    }
 
     // -- parse_cpu_line tests --
 
@@ -245,7 +301,7 @@ mod tests {
         // Goal: verify the full 8-cpu fixture produces exactly 8
         // CpuTimes entries with correct values.
         let content = fs::read_to_string(format!("{TEST_DIR}/8_cpu_normal")).unwrap();
-        let cpus = parse_stat_content(&content);
+        let cpus = parsed(&content);
         assert_eq!(cpus.len(), 8);
         // Spot-check cpu0.
         assert_eq!(cpus[0].idle_jiffies, 4_274_964 + 14_051);
@@ -257,7 +313,7 @@ mod tests {
     fn parse_stat_content_single_cpu() {
         // Goal: verify a single-cpu fixture produces 1 entry.
         let content = fs::read_to_string(format!("{TEST_DIR}/1_cpu_minimal")).unwrap();
-        let cpus = parse_stat_content(&content);
+        let cpus = parsed(&content);
         assert_eq!(cpus.len(), 1);
         assert_eq!(cpus[0].idle_jiffies, 1000 + 20);
         assert_eq!(cpus[0].total_jiffies, 100 + 10 + 50 + 1000 + 20 + 5 + 3);
@@ -267,7 +323,7 @@ mod tests {
     fn parse_stat_content_legacy_4_fields() {
         // Goal: verify 4-field-only format still parses correctly.
         let content = fs::read_to_string(format!("{TEST_DIR}/4_field_legacy")).unwrap();
-        let cpus = parse_stat_content(&content);
+        let cpus = parsed(&content);
         assert_eq!(cpus.len(), 2);
         assert_eq!(cpus[0].idle_jiffies, 1000);
         assert_eq!(cpus[1].idle_jiffies, 2000);
@@ -278,7 +334,7 @@ mod tests {
         // Goal: verify a /proc/stat with no cpu lines returns an
         // empty vec (caller decides whether that is an error).
         let content = fs::read_to_string(format!("{TEST_DIR}/empty_no_cpus")).unwrap();
-        let cpus = parse_stat_content(&content);
+        let cpus = parsed(&content);
         assert!(cpus.is_empty());
     }
 
@@ -287,7 +343,7 @@ mod tests {
         // Goal: verify that lines with non-numeric or too-few fields
         // are skipped, while valid lines are still collected.
         let content = fs::read_to_string(format!("{TEST_DIR}/malformed_fields")).unwrap();
-        let cpus = parse_stat_content(&content);
+        let cpus = parsed(&content);
         // cpu0 has "abc" → skipped, cpu1 is valid, cpu2 has too few → skipped.
         assert_eq!(cpus.len(), 1);
     }
@@ -302,7 +358,7 @@ mod tests {
             idle_jiffies: 500,
             total_jiffies: 1000,
         }];
-        let percents = compute_percents(&snapshot, &snapshot);
+        let percents = percents_between(&snapshot, &snapshot);
         assert_eq!(percents.len(), 1);
         assert!((percents[0].percent - 0.0).abs() < f32::EPSILON);
     }
@@ -320,7 +376,7 @@ mod tests {
             idle_jiffies: 500, // idle did not increase.
             total_jiffies: 2000,
         }];
-        let percents = compute_percents(&prev, &curr);
+        let percents = percents_between(&prev, &curr);
         assert!((percents[0].percent - 100.0).abs() < f32::EPSILON);
     }
 
@@ -338,7 +394,7 @@ mod tests {
             idle_jiffies: 500,
             total_jiffies: 1000,
         }];
-        let percents = compute_percents(&prev, &curr);
+        let percents = percents_between(&prev, &curr);
         assert!((percents[0].percent - 50.0).abs() < f32::EPSILON);
     }
 
@@ -357,7 +413,7 @@ mod tests {
         // given a distinct load so a positional pairing would compute the wrong value for it.
         let prev = vec![times(0, 0, 0), times(1, 0, 0), times(2, 500, 1000)];
         let curr = vec![times(0, 500, 1000), times(2, 500, 2000)];
-        let percents = compute_percents(&prev, &curr);
+        let percents = percents_between(&prev, &curr);
         assert_eq!(
             percents,
             vec![
@@ -380,7 +436,7 @@ mod tests {
         // the current snapshot, between two CPUs that were already online.
         let prev = vec![times(0, 0, 0), times(2, 0, 0)];
         let curr = vec![times(0, 500, 1000), times(1, 5, 10), times(2, 250, 1000)];
-        let percents = compute_percents(&prev, &curr);
+        let percents = percents_between(&prev, &curr);
         let cpu_ids: Vec<u16> = percents.iter().map(|percent| percent.cpu_id).collect();
         assert_eq!(cpu_ids, vec![0, 2]);
         assert!((percents[1].percent - 75.0).abs() < f32::EPSILON);
@@ -391,10 +447,7 @@ mod tests {
         // Goal: the id comes from the `cpuN` name, not the line position, since /proc/stat
         // leaves offline CPUs out. Method: a snapshot with cpu1 missing.
         let content = "cpu  3 0 3 3000\ncpu0 1 0 1 1000\ncpu2 2 0 2 2000\nintr 0\n";
-        let cpu_ids: Vec<u16> = parse_stat_content(content)
-            .iter()
-            .map(|times| times.cpu_id)
-            .collect();
+        let cpu_ids: Vec<u16> = parsed(content).iter().map(|times| times.cpu_id).collect();
         assert_eq!(cpu_ids, vec![0, 2]);
         assert!(parse_cpu_line("cpux 1 0 1 1000").is_none());
     }
@@ -407,11 +460,11 @@ mod tests {
         // fixture files representing a before/after snapshot.
         let content_before = fs::read_to_string(format!("{TEST_DIR}/8_cpu_normal")).unwrap();
         let content_after = fs::read_to_string(format!("{TEST_DIR}/8_cpu_after_load")).unwrap();
-        let prev = parse_stat_content(&content_before);
-        let curr = parse_stat_content(&content_after);
+        let prev = parsed(&content_before);
+        let curr = parsed(&content_after);
         assert_eq!(prev.len(), 8);
         assert_eq!(curr.len(), 8);
-        let percents = compute_percents(&prev, &curr);
+        let percents = percents_between(&prev, &curr);
         assert_eq!(percents.len(), 8);
         // All CPUs should show some load (the "after" fixture has
         // higher user+system and slightly higher idle).
@@ -448,9 +501,81 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn collector_with_nonexistent_path_returns_error() {
         // Goal: verify a missing file returns an Err, not a panic.
         let result = CpuPercentCollector::with_path(Path::new("/tmp/does_not_exist_proc_stat"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn collector_rereads_its_file_each_poll() {
+        // Goal: each poll reads the file as it is now, through the held descriptor, and measures
+        // against the snapshot before it. Method: start from one fixture, rewrite the file with a
+        // later one, poll, read the online CPUs back, then poll again with no time passed.
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("stat");
+            fs::copy(format!("{TEST_DIR}/8_cpu_normal"), &path).unwrap();
+            let collector = CpuPercentCollector::with_path(&path).unwrap();
+            fs::copy(format!("{TEST_DIR}/8_cpu_after_load"), &path).unwrap();
+
+            collector.sample().await.unwrap();
+
+            {
+                let percents = collector.percents();
+                assert_eq!(percents.len(), 8);
+                // cpu0 is 50% busy between the fixtures, as `percent_from_two_fixtures` works out.
+                assert!((percents[0].percent - 50.0).abs() < 0.1);
+            }
+            let online: Vec<u16> = collector.online_cpu_ids().collect();
+            assert_eq!(online, (0..8).collect::<Vec<u16>>());
+
+            // The file is unchanged, so measured from the last poll no CPU did anything.
+            collector.sample().await.unwrap();
+            assert!(collector
+                .percents()
+                .iter()
+                .all(|percent| percent.percent == 0.0));
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_poll_allocates_nothing() {
+        // Goal: the read, the parse, the percentages and the swap all reuse buffers sized at
+        // init. Method: count the allocations of two polls, the first one's open included.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stat");
+        fs::copy(format!("{TEST_DIR}/8_cpu_normal"), &path).unwrap();
+        let collector = CpuPercentCollector::with_path(&path).unwrap();
+        fs::copy(format!("{TEST_DIR}/8_cpu_after_load"), &path).unwrap();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            poll_to_end(collector.sample()).0.unwrap();
+            poll_to_end(collector.sample()).0.unwrap();
+        });
+
+        assert_eq!(allocations, 0);
+        assert_eq!(collector.percents().len(), 8);
+    }
+
+    #[test]
+    fn a_failed_read_leaves_no_percentages() {
+        // Goal: a poll that cannot read /proc/stat reports no load rather than the last poll's.
+        // Method: plant percentages, then delete the file before the first poll, whose open then
+        // fails.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stat");
+        fs::copy(format!("{TEST_DIR}/8_cpu_normal"), &path).unwrap();
+        let collector = CpuPercentCollector::with_path(&path).unwrap();
+        collector.set_percents(vec![CpuPercent {
+            cpu_id: 0,
+            percent: 50.0,
+        }]);
+        fs::remove_file(&path).unwrap();
+
+        assert!(poll_to_end(collector.sample()).0.is_err());
+        assert!(collector.percents().is_empty());
     }
 }

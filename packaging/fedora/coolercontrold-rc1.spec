@@ -1,13 +1,16 @@
 %bcond check 1
-%global branch main
+# main unless overridden, as the CI prerelease build does with --define for its own ref.
+%{!?branch:%global branch main}
 %global project_id 30707566
 %global project coolercontrol
-
-# prevent library files from being installed
-%global cargo_install_lib 0
+# Fedora's default of one codegen unit compiles the daemon crate on a single core. 6 matches the
+# Cargo release profile.
+%global rustflags_codegen_units 6
+# Full debuginfo drives rustc past the 8 GB of a Copr builder. 1 keeps the line tables.
+%global rustflags_debuginfo 1
 
 Name:           %{project}d
-Version:        5.0.2~rc1
+Version:        5.1.2~rc1
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 Obsoletes:      coolercontrol-liqctld <= 2.2.2
@@ -48,9 +51,8 @@ tar -xzf %{SOURCE1}
 %install
 install -Dpm 644 systemd/%{name}.service -t %{buildroot}%{_unitdir}
 install -Dpm 644 man/%{name}.8 -t %{buildroot}%{_mandir}/man8
-pushd daemon
-%cargo_install
-popd
+# Not %%cargo_install: it ignores Cargo.lock, so it resolves the crates afresh and rebuilds the daemon.
+install -Dpm 755 target/rpm/%{name} -t %{buildroot}%{_bindir}
 
 %if %{with check}
 %check

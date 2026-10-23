@@ -780,8 +780,10 @@ mod tests {
         assert!(is_ui_buffered(Level::Trace).not());
     }
 
+    #[cfg(feature = "gated-tests")]
     struct NullLog;
 
+    #[cfg(feature = "gated-tests")]
     impl Log for NullLog {
         fn enabled(&self, _metadata: &Metadata) -> bool {
             true
@@ -795,6 +797,7 @@ mod tests {
     // the real logger, swap its journal/stderr sink for a no-op, log one of each, then read
     // the buffer back.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn debug_records_skip_the_ui_buffer() {
         crate::rt::test_runtime(async {
             let level_info = LogLevelInfo {

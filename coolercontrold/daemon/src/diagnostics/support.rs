@@ -59,7 +59,8 @@ pub enum ChannelVerdict {
     NotSupportedByDriver,
     /// The driver exposes no `pwmN` for this channel.
     NoPwm,
-    /// `pwmN` exists but the driver cleared its write bit.
+    /// `pwmN` exists but the driver cleared its write bit. An Apple driver's own control file
+    /// in that state gets this verdict too, without evidence.
     PwmReadOnly,
     /// Probe proved writes are accepted and the fan never responded.
     IgnoresDuty,
@@ -188,6 +189,17 @@ pub fn diagnose_driver_channel(controllable: bool) -> ChannelDiagnosis {
         } else {
             ChannelVerdict::NotSupportedByDriver
         },
+        evidence: None,
+    }
+}
+
+/// The diagnosis for a driver that exposes a fan's control file read-only, where that file is
+/// not a `pwmN`.
+///
+/// Carries no evidence, for the reason `diagnose_driver_channel` gives.
+pub fn diagnose_read_only_driver_channel() -> ChannelDiagnosis {
+    ChannelDiagnosis {
+        verdict: ChannelVerdict::PwmReadOnly,
         evidence: None,
     }
 }
@@ -509,7 +521,7 @@ pub struct HardwareSupportController {
     /// Keyed by device rather than appended: a repository that publishes twice
     /// (a re-initialization after sleep, say) must not double every row in the
     /// report.
-    device_summaries: RefCell<HashMap<DeviceUID, crate::hardware_report::DeviceSummary>>,
+    device_summaries: RefCell<HashMap<DeviceUID, crate::diagnostics::report::DeviceSummary>>,
     /// The hwmon channel information the repository built at startup, kept so
     /// the report can describe a device it already knows without walking sysfs
     /// a second time.
@@ -622,7 +634,7 @@ impl HardwareSupportController {
     pub fn record_device_summary(
         &self,
         device_uid: &str,
-        summary: crate::hardware_report::DeviceSummary,
+        summary: crate::diagnostics::report::DeviceSummary,
     ) {
         self.device_summaries
             .borrow_mut()
@@ -633,7 +645,7 @@ impl HardwareSupportController {
     ///
     /// Sorted by name so a report generated twice reads the same way; an
     /// unordered map would shuffle the rows between runs.
-    pub fn device_summaries(&self) -> Vec<crate::hardware_report::DeviceSummary> {
+    pub fn device_summaries(&self) -> Vec<crate::diagnostics::report::DeviceSummary> {
         let mut summaries = self
             .device_summaries
             .borrow()
@@ -811,6 +823,7 @@ mod tests {
     /// detection at all, hand in results naming a driver nothing can be bound
     /// to, and read the findings back.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn refreshed_detection_recomputes_the_findings() {
         crate::cc_fs::test_runtime(async {
             let controller = HardwareSupportController::init(None, true).await;
@@ -849,6 +862,7 @@ mod tests {
     /// observed, and a re-scan cannot talk the controller out of it. Runs on
     /// every host, so the non-x86 branch stays covered on x86 CI too.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn unsupported_architecture_yields_only_the_unsupported_finding() {
         crate::cc_fs::test_runtime(async {
             let controller = HardwareSupportController::init(None, false).await;
@@ -889,6 +903,7 @@ mod tests {
     /// device carrying all three cases, read back through the same partition
     /// the health snapshot is built from.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn recorded_driver_channels_become_verdicts() {
         crate::cc_fs::test_runtime(async {
             let controller = HardwareSupportController::init(None, true).await;

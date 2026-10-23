@@ -1788,20 +1788,30 @@ fn legacy_sse_event_routes() -> ApiRouter<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "gated-tests")]
     use crate::api::actor::TokenHandle;
     use crate::api::auth;
     use crate::api::session_store::MemorySessionStore;
-    use crate::token::{self, StoredToken};
+    #[cfg(feature = "gated-tests")]
+    use crate::auth::token::{self, StoredToken};
+    #[cfg(feature = "gated-tests")]
     use axum::Extension;
+    #[cfg(feature = "gated-tests")]
     use chrono::Local;
+    #[cfg(feature = "gated-tests")]
     use tokio::net::TcpListener;
+    #[cfg(feature = "gated-tests")]
     use tonic::Code;
+    #[cfg(feature = "gated-tests")]
     use tonic_health::pb::health_client::HealthClient;
+    #[cfg(feature = "gated-tests")]
     use tonic_health::pb::HealthCheckRequest;
     use tower::ServiceExt;
+    #[cfg(feature = "gated-tests")]
     use tower_http::timeout::TimeoutLayer;
     use tower_sessions::SessionManagerLayer;
 
+    #[cfg(feature = "gated-tests")]
     fn expired_token(raw: &str) -> StoredToken {
         StoredToken {
             expires_at: Some(Local::now() - chrono::Duration::hours(1)),
@@ -1809,6 +1819,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "gated-tests")]
     fn stored_token(raw: &str) -> StoredToken {
         StoredToken {
             id: "grpc-test".to_string(),
@@ -1830,6 +1841,7 @@ mod tests {
     ///
     /// The layer order here mirrors `init` by hand. If a layer is added there, it must
     /// be added here too, or these tests stop covering the real stack.
+    #[cfg(feature = "gated-tests")]
     async fn serve(token_handle: TokenHandle) -> String {
         let router = axum::Router::new()
             .route_service(
@@ -1912,6 +1924,7 @@ mod tests {
 
     /// Sends a Basic `/login` on a new pre-auth remote connection, and returns its status
     /// and whether it promoted the connection.
+    #[cfg(feature = "gated-tests")]
     async fn login(app: &axum::Router, password: &str) -> (StatusCode, bool) {
         use axum::extract::ConnectInfo;
         // A TEST-NET peer, allotted beside the throttle statics in `auth_throttle`.
@@ -1935,6 +1948,7 @@ mod tests {
     /// wrong password and then the default one.
     #[test]
     #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
     fn real_login_promotes_only_on_success() {
         crate::rt::test_runtime(async {
             let cancel_token = tokio_util::sync::CancellationToken::new();
@@ -1946,7 +1960,7 @@ mod tests {
                 let (status, promoted) = login(&app, "x").await;
                 assert_eq!(status, StatusCode::UNAUTHORIZED);
                 assert!(promoted.not());
-                let (status, promoted) = login(&app, crate::admin::DEFAULT_PASS).await;
+                let (status, promoted) = login(&app, crate::auth::admin::DEFAULT_PASS).await;
                 assert_eq!(status, StatusCode::OK);
                 assert!(promoted);
                 // Stops the actors so the scope can finish.
@@ -1963,6 +1977,7 @@ mod tests {
     /// and no second port. If hyper's auto builder ever stopped sniffing the HTTP/2
     /// preface, every gRPC client would break and only this test would notice.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn grpc_is_served_over_h2c_from_the_rest_listener() {
         let raw = token::generate_token();
         let address = serve(TokenHandle::with_tokens(vec![stored_token(&raw)])).await;
@@ -1987,6 +2002,7 @@ mod tests {
     /// Goal: the gap this branch exists to close. An unauthenticated peer must not reach
     /// the gRPC surface, on loopback included.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn grpc_without_credentials_is_rejected() {
         let raw = token::generate_token();
         let address = serve(TokenHandle::with_tokens(vec![stored_token(&raw)])).await;
@@ -2010,6 +2026,7 @@ mod tests {
     /// gRPC surface cannot be reached by guessing. Expiry is covered separately, since a
     /// token that exists but has lapsed takes a different path through the store.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn grpc_with_an_unknown_token_is_rejected() {
         let raw = token::generate_token();
         let address = serve(TokenHandle::with_tokens(vec![stored_token(&raw)])).await;
@@ -2042,6 +2059,7 @@ mod tests {
     /// unknown one. The digest fast path matches an expired token before expiry is
     /// checked, so a store hit is not on its own a grant.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn grpc_with_an_expired_token_is_rejected() {
         let raw = token::generate_token();
         let address = serve(TokenHandle::with_tokens(vec![expired_token(&raw)])).await;
@@ -2101,6 +2119,7 @@ mod tests {
     /// that layer. Nest it the other way and this fails with a bare 408 and no
     /// `grpc-status`, which is what a user would have got.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn a_timed_out_grpc_request_comes_back_as_deadline_exceeded() {
         async fn too_slow() -> StatusCode {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;

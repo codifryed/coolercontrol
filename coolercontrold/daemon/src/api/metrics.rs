@@ -11,7 +11,7 @@ use axum::http::header::CONTENT_TYPE;
 use crate::api::devices::DeviceDto;
 use crate::api::status::DeviceStatusDto;
 use crate::api::{AppState, CCError};
-use crate::device::Status;
+use crate::device::StatusSnapshot;
 
 const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
@@ -71,34 +71,31 @@ fn format_prometheus_metrics(devices: &[DeviceDto], statuses: &[DeviceStatusDto]
         let Some(device) = device_map.get(status.uid.as_str()) else {
             continue;
         };
-        let Some(recent) = status.status_history.back() else {
-            continue;
-        };
-        write_temp_metrics(&mut out, device, recent);
-        write_channel_metrics(&mut out, device, recent);
+        write_temp_metrics(&mut out, device, &status.status_history);
+        write_channel_metrics(&mut out, device, &status.status_history);
     }
 
     out
 }
 
-fn write_temp_metrics(out: &mut String, device: &DeviceDto, status: &Status) {
-    for temp in &status.temps {
+fn write_temp_metrics(out: &mut String, device: &DeviceDto, history: &StatusSnapshot) {
+    for (name, temp) in history.latest_temps() {
         let _ = writeln!(
             out,
             "coolercontrol_temperature_celsius{{device=\"{}\",device_uid=\"{}\",device_type=\"{}\",sensor=\"{}\"}} {}",
             escape_label_value(&device.name),
             device.uid,
             device.d_type,
-            escape_label_value(&temp.name),
-            temp.temp,
+            escape_label_value(name),
+            temp,
         );
     }
 }
 
-fn write_channel_metrics(out: &mut String, device: &DeviceDto, status: &Status) {
-    for ch in &status.channels {
+fn write_channel_metrics(out: &mut String, device: &DeviceDto, history: &StatusSnapshot) {
+    for (name, ch) in history.latest_channels() {
         let dev = escape_label_value(&device.name);
-        let channel = escape_label_value(&ch.name);
+        let channel = escape_label_value(name);
         if let Some(rpm) = ch.rpm {
             let _ = writeln!(
                 out,
@@ -147,8 +144,6 @@ mod tests {
     use crate::api::devices::DeviceDto;
     use crate::api::status::DeviceStatusDto;
     use crate::device::{ChannelStatus, DeviceInfo, DeviceType, Status, TempStatus};
-    use std::collections::VecDeque;
-    use std::sync::Arc;
 
     fn make_device(name: &str, uid: &str, d_type: DeviceType) -> DeviceDto {
         DeviceDto {
@@ -166,17 +161,15 @@ mod tests {
         temps: Vec<TempStatus>,
         channels: Vec<ChannelStatus>,
     ) -> DeviceStatusDto {
-        let mut history = VecDeque::new();
-        history.push_back(Status {
-            timestamp: chrono::Local::now(),
-            temps,
-            channels,
-        });
         DeviceStatusDto {
             d_type: DeviceType::Hwmon,
             type_index: 0,
             uid: uid.to_string(),
-            status_history: Arc::new(history),
+            status_history: StatusSnapshot::from_statuses(&[Status {
+                timestamp: chrono::Local::now(),
+                temps,
+                channels,
+            }]),
         }
     }
 
@@ -232,6 +225,57 @@ mod tests {
         assert!(output.contains(
             r#"coolercontrol_power_watts{device="GPU Card",device_uid="uid2",device_type="GPU",channel="fan1"} 120.5"#
         ));
+    }
+
+    #[test]
+    fn prometheus_text_is_golden() {
+        // Goal: the scrape text for the shared status fixture stays byte for byte, NaN and
+        // shortest float formatting included. Method: compare the whole body in both device
+        // orders; the order of devices is not part of the contract.
+        use crate::api::status_golden::{device_dtos, fixture, responses};
+        let fixture = fixture();
+        let responses = responses(&fixture);
+        let output = format_prometheus_metrics(&device_dtos(&fixture), &responses.recent);
+        let header = "\
+# HELP coolercontrol_temperature_celsius Temperature sensor reading in degrees Celsius.
+# TYPE coolercontrol_temperature_celsius gauge
+# HELP coolercontrol_fan_rpm Fan speed in revolutions per minute.
+# TYPE coolercontrol_fan_rpm gauge
+# HELP coolercontrol_duty_percent Channel duty cycle or load percentage (0-100).
+# TYPE coolercontrol_duty_percent gauge
+# HELP coolercontrol_frequency_hertz Channel frequency in Hertz.
+# TYPE coolercontrol_frequency_hertz gauge
+# HELP coolercontrol_power_watts Channel power consumption in Watts.
+# TYPE coolercontrol_power_watts gauge
+";
+        let hwmon = format!(
+            "\
+coolercontrol_temperature_celsius{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",sensor=\"temp1\"}} 41.5
+coolercontrol_temperature_celsius{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",sensor=\"temp2\"}} NaN
+coolercontrol_temperature_celsius{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",sensor=\"temp3\"}} 31.5
+coolercontrol_fan_rpm{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"fan1\"}} 1260
+coolercontrol_duty_percent{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"fan1\"}} 54
+coolercontrol_fan_rpm{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"pump\"}} 2460
+coolercontrol_frequency_hertz{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"power\"}} 1520000000
+coolercontrol_power_watts{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"power\"}} 13.5
+coolercontrol_frequency_hertz{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"clock\"}} 4200000000
+",
+            uid = fixture.hwmon_uid,
+        );
+        let gpu = format!(
+            "\
+coolercontrol_duty_percent{{device=\"Golden GPU\",device_uid=\"{uid}\",device_type=\"GPU\",channel=\"load\"}} 33.333333333333336
+coolercontrol_frequency_hertz{{device=\"Golden GPU\",device_uid=\"{uid}\",device_type=\"GPU\",channel=\"freq\"}} 3030000000
+coolercontrol_power_watts{{device=\"Golden GPU\",device_uid=\"{uid}\",device_type=\"GPU\",channel=\"power\"}} 55.75
+",
+            uid = fixture.gpu_uid,
+        );
+        let one = format!("{header}{hwmon}{gpu}");
+        let other = format!("{header}{gpu}{hwmon}");
+        assert!(
+            output == one || output == other,
+            "scrape text differs:\n{output}\nexpected:\n{one}"
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@ use crate::api::actor::AlertHandle;
 use crate::api::CCError;
 use crate::calibration::{CalibrationAlertGate, DiagnosisRegistry};
 use crate::device::UID;
-use crate::notifier::{self, NotificationHandle, NotificationIcon};
+use crate::events::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::overrides::OverridesController;
 use crate::paths;
 #[cfg(not(test))]
@@ -52,35 +52,6 @@ const MESSAGE_UNREADABLE_UNWATCHED: &str = "The unreadable sensor is no longer w
 
 pub type AlertName = String;
 pub type AlertLogMessage = String;
-
-/// Runs before `AlertController` loads the file, so no reload is needed. A textual replacement
-/// is sound: a UID is 64 hex chars and cannot be a substring of anything else here.
-pub async fn migrate_device_uid_in_file(legacy: &UID, current: &UID) -> Result<bool> {
-    migrate_device_uid_in(paths::alert_config_file(), legacy, current).await
-}
-
-/// Target injected so it is testable without writing to the real config directory.
-async fn migrate_device_uid_in(
-    path: &std::path::Path,
-    legacy: &UID,
-    current: &UID,
-) -> Result<bool> {
-    debug_assert_eq!(legacy.len(), 64);
-    debug_assert_eq!(current.len(), 64);
-    debug_assert_ne!(legacy, current);
-    let Ok(contents) = cc_fs::read_txt(path).await else {
-        return Ok(false);
-    };
-    if contents.contains(legacy.as_str()).not() {
-        return Ok(false);
-    }
-    if contents.contains(current.as_str()) {
-        return Ok(false);
-    }
-    let migrated = contents.replace(legacy.as_str(), current.as_str());
-    cc_fs::write(path, migrated.into_bytes()).await?;
-    Ok(true)
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 // The bools are independent user toggles persisted in alerts.json, not a state machine
@@ -1112,24 +1083,15 @@ impl AlertController {
             return Err("Device not found");
         };
         let device_borrow = device.borrow();
-        // Read the newest status in place: cloning the full Status per source
-        // per tick would be hot-path allocation for a single scalar.
-        let Some(most_recent_status) = device_borrow.status_history.back() else {
+        if device_borrow.history_len() == 0 {
             return Err("Device has no current status");
-        };
+        }
         if source.channel_metric == ChannelMetric::Temp {
-            return most_recent_status
-                .temps
-                .iter()
-                .find(|temp| temp.name == source.channel_name)
-                .map(|temp| temp.temp)
+            return device_borrow
+                .latest_temp(&source.channel_name)
                 .ok_or("Device Channel not found");
         }
-        let Some(channel_status) = most_recent_status
-            .channels
-            .iter()
-            .find(|channel| channel.name == source.channel_name)
-        else {
+        let Some(channel_status) = device_borrow.latest_channel(&source.channel_name) else {
             return Err("Device Channel not found");
         };
         match source.channel_metric {
@@ -1695,87 +1657,6 @@ mod tests {
     use super::*;
     use chrono::Duration;
 
-    const LEGACY_UID: &str = "8ef08515338cc1f7727415a1d6bc45e84d5a818e94bd2072ac34b9d8d87f4210";
-    const CURRENT_UID: &str = "67ada747f6820bb2e4a9b5b639657e0971998a6f5ca5f50480ecf36b46c7ec29";
-
-    async fn write_alert_file(tmp: &tempfile::TempDir, contents: &str) -> std::path::PathBuf {
-        let path = tmp.path().join("alerts.json");
-        cc_fs::write(&path, contents.as_bytes().to_vec())
-            .await
-            .unwrap();
-        path
-    }
-
-    // Goal: an alert watching a drive temp follows the drive onto its wwid-derived UID.
-    // Method: write a realistic alerts file naming the legacy UID in both the
-    // downgrade-compat `channel_source` and the `channel_sources` array, then migrate.
-    #[test]
-    #[serial_test::serial]
-    fn migrate_device_uid_in_file_repoints_every_reference() {
-        crate::rt::test_runtime(async {
-            let contents = format!(
-                r#"[{{"uid":"a1","name":"Drive hot","channel_source":{{"device_uid":"{LEGACY_UID}","channel_name":"temp1"}},"channel_sources":[{{"device_uid":"{LEGACY_UID}","channel_name":"temp1"}}]}}]"#
-            );
-            let tmp = tempfile::tempdir().unwrap();
-            let path = write_alert_file(&tmp, &contents).await;
-
-            let migrated =
-                migrate_device_uid_in(&path, &LEGACY_UID.to_string(), &CURRENT_UID.to_string())
-                    .await
-                    .unwrap();
-
-            let after = cc_fs::read_txt(&path).await.unwrap();
-            assert!(migrated);
-            assert!(after.contains(LEGACY_UID).not());
-            assert_eq!(after.matches(CURRENT_UID).count(), 2);
-            assert!(after.contains(r#""name":"Drive hot""#));
-        });
-    }
-
-    // Goal: negative space. A file that already names the new UID is left untouched, so a
-    // half-applied migration is never merged into an ambiguous state.
-    #[test]
-    #[serial_test::serial]
-    fn migrate_device_uid_in_file_skips_when_current_present() {
-        crate::rt::test_runtime(async {
-            let contents = format!(
-                r#"[{{"uid":"a1","channel_source":{{"device_uid":"{LEGACY_UID}"}}}},{{"uid":"a2","channel_source":{{"device_uid":"{CURRENT_UID}"}}}}]"#
-            );
-            let tmp = tempfile::tempdir().unwrap();
-            let path = write_alert_file(&tmp, &contents).await;
-
-            let migrated =
-                migrate_device_uid_in(&path, &LEGACY_UID.to_string(), &CURRENT_UID.to_string())
-                    .await
-                    .unwrap();
-
-            let after = cc_fs::read_txt(&path).await.unwrap();
-            assert!(migrated.not());
-            assert_eq!(after, contents);
-        });
-    }
-
-    // Goal: the overwhelmingly common case. No alerts reference this device, so the file
-    // must be left byte-identical rather than rewritten on every boot.
-    #[test]
-    #[serial_test::serial]
-    fn migrate_device_uid_in_file_leaves_unrelated_alerts_alone() {
-        crate::rt::test_runtime(async {
-            let contents = r#"[{"uid":"a1","channel_source":{"device_uid":"other"}}]"#;
-            let tmp = tempfile::tempdir().unwrap();
-            let path = write_alert_file(&tmp, contents).await;
-
-            let migrated =
-                migrate_device_uid_in(&path, &LEGACY_UID.to_string(), &CURRENT_UID.to_string())
-                    .await
-                    .unwrap();
-
-            let after = cc_fs::read_txt(&path).await.unwrap();
-            assert!(migrated.not());
-            assert_eq!(after, contents);
-        });
-    }
-
     /// Helper to create a minimal test alert with given uid, min, max, and state.
     fn make_alert(uid: &str, min: f64, max: f64, state: AlertState) -> Alert {
         assert!(min <= max, "min must be <= max for a valid alert range.");
@@ -1899,6 +1780,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_warmup_to_active_after_duration() {
         // Goal: verify WarmUp becomes Active once the warmup duration elapsed.
         let past = Local::now() - Duration::seconds(2);
@@ -1907,6 +1789,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_warmup_stays_warmup_before_duration() {
         // Goal: verify WarmUp does NOT become Active before the duration elapses.
         let now = Local::now();
@@ -1946,6 +1829,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_cooldown_clears_after_duration() {
         // Goal: verify Cooldown becomes Inactive once the value stayed
         // in range for the full cooldown duration.
@@ -1955,6 +1839,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_cooldown_holds_before_duration() {
         // Goal: verify Cooldown does NOT clear before the duration elapses.
         let now = Local::now();
@@ -1988,6 +1873,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn transition_zero_warmup_two_tick_activation() {
         // Goal: verify warmup_duration=0 still takes two consecutive
         // out-of-range ticks: Inactive -> WarmUp -> Active.
@@ -2060,6 +1946,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn is_silenced_only_while_timestamp_in_future() {
         // Goal: verify the silence window: future timestamp silences,
         // past timestamp and None do not.
@@ -2288,6 +2175,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn build_transition_event_silenced_suppresses_notification_and_shutdown() {
         // Goal: verify a silenced fire is logged (flagged silenced) but sends
         // no desktop notification and does not schedule a shutdown.
@@ -2590,6 +2478,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn cancel_shutdown_if_unwanted_cancels_on_disable_and_on_silence() {
         // Goal: the two originally-handled quieting actions still cancel, so
         // broadening the condition did not drop the behaviour it replaced.
@@ -2919,6 +2808,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn build_quiet_event_none_while_silenced() {
         // Goal: verify no catch-up or repeat happens while still silenced.
         let mut alert = make_alert("a", 20.0, 80.0, AlertState::Active);
@@ -2943,6 +2833,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn build_quiet_event_repeat_after_interval() {
         // Goal: verify the repeat notification fires once the interval elapsed
         // and is desktop-only (no log entry), then re-arms the timer.
@@ -2964,6 +2855,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn build_quiet_event_no_repeat_before_interval_or_without_desktop() {
         // Goal: verify repeat obeys the interval and requires desktop_notify.
         let mut alert = make_alert("a", 20.0, 80.0, AlertState::Active);
@@ -3402,6 +3294,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn suppression_leaves_temp_sources_live() {
         // Goal: verify Temp sources are exempt from calibration suppression even
         // when a sweep is registered under the same channel name; the temp alert
@@ -3432,6 +3325,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn suppression_only_hits_the_swept_channel() {
         // Goal: verify that with two RPM sources and only one under calibration,
         // the other still fires and the event names only the live channel. This
@@ -3465,6 +3359,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn sweep_start_cancels_pending_shutdown_silently() {
         // Goal: verify a calibration starting on the channel of an already-Active
         // shutdown alert resets the source, cancels the pending shutdown via a
@@ -3542,6 +3437,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn gate_ignores_quiet_and_irrelevant_alerts() {
         // Goal: verify disabled, silenced, not-yet-Active, and Temp-source
         // alerts do not block calibration.
@@ -3598,6 +3494,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn post_sweep_rearm_goes_through_warmup() {
         // Goal: verify that after the sweep ends, a still-failing source re-arms
         // through the normal WarmUp path and fires fresh, with a new shutdown.

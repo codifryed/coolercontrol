@@ -44,9 +44,20 @@ pub struct CpuTopology {
 }
 
 impl CpuTopology {
-    /// Parses cpuinfo text. Errors when it names no processor that devices can be keyed by, which
-    /// is what the caller needs before it can build any CPU device at all.
+    /// Parses cpuinfo text with no board model to fall back on. Test-only: production always
+    /// passes what the device tree says.
+    #[cfg(test)]
     pub fn parse(cpu_info_data: &str) -> Result<Self> {
+        Self::parse_with_board_model(cpu_info_data, None)
+    }
+
+    /// Parses cpuinfo text. Errors when it names no processor that devices can be keyed by, which
+    /// is what the caller needs before it can build any CPU device at all. When cpuinfo names no
+    /// model, as on Apple Silicon, the fallback board model stands in.
+    pub fn parse_with_board_model(
+        cpu_info_data: &str,
+        fallback_board_model: Option<&str>,
+    ) -> Result<Self> {
         let entries = parse_processor_entries(cpu_info_data)?;
         let mut packages = BTreeSet::new();
         let mut model_names = BTreeMap::new();
@@ -63,7 +74,7 @@ impl CpuTopology {
         if packages.is_empty() && model_names.is_empty() {
             // Some CPUs, like the Raspberry Pi, don't have a physical id, so we need to fake one,
             // they do have a model name though.
-            if let Some(board_model) = board_model(cpu_info_data) {
+            if let Some(board_model) = board_model(cpu_info_data).or(fallback_board_model) {
                 packages.insert(0);
                 model_names.insert(0, board_model.to_owned());
             }
@@ -329,10 +340,11 @@ fn processor_owners(entries: &[ProcessorEntry]) -> Vec<Option<PhysicalID>> {
 /// The alternatives are `/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq` and
 /// `/sys/devices/system/cpu/cpufreq/policy[0-9]*/scaling_cur_freq`, which have been reported as
 /// significantly slower on some systems, and give no way to tie a frequency to a package.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+///
+/// Frequencies are folded into a slot per physical id as they are read, so a poll allocates only
+/// the map it returns.
 pub fn parse_freqs(cpu_info_data: &str) -> HashMap<PhysicalID, CpuFreqs> {
-    let mut cpu_freqs = HashMap::new();
-    let mut cpu_info_freqs: HashMap<PhysicalID, Vec<f64>> = HashMap::new();
+    let mut tallies = [FreqTally::EMPTY; PHYSICAL_ID_SLOTS];
     let mut physical_id: PhysicalID = 0;
     let mut freq: f64 = 0.;
     let mut physical_id_present = false;
@@ -347,41 +359,90 @@ pub fn parse_freqs(cpu_info_data: &str) -> HashMap<PhysicalID, CpuFreqs> {
         };
         if key == "physical id" {
             let Ok(parsed) = value.parse() else {
-                return cpu_freqs;
+                return HashMap::new();
             };
             physical_id = parsed;
             physical_id_present = true;
         }
         if key == "cpu MHz" {
             let Ok(parsed) = value.parse() else {
-                return cpu_freqs;
+                return HashMap::new();
             };
             freq = parsed;
             freq_present = true;
         }
         if physical_id_present && freq_present {
-            // after each processor's entry
-            cpu_info_freqs.entry(physical_id).or_default().push(freq);
+            // After each processor's entry. A package's slot index is its physical id.
+            tallies[usize::from(physical_id)].add(freq);
             physical_id_present = false;
             freq_present = false;
         }
     }
-    for (physical_id, freqs) in cpu_info_freqs {
-        let min = freqs
-            .iter()
-            .min_by(|a, b| a.total_cmp(b))
-            .unwrap_or(&0.)
-            .round() as Mhz;
-        let max = freqs
-            .iter()
-            .max_by(|a, b| a.total_cmp(b))
-            .unwrap_or(&0.)
-            .round() as Mhz;
-        #[allow(clippy::cast_precision_loss)]
-        let avg = (freqs.iter().sum::<f64>() / freqs.len() as f64).round() as Mhz;
-        cpu_freqs.insert(physical_id, CpuFreqs { min, max, avg });
+    let mut cpu_freqs = HashMap::new();
+    // Pairs each slot with the physical id that indexes it.
+    for (physical_id, tally) in (0..=PhysicalID::MAX).zip(&tallies) {
+        if tally.count > 0 {
+            cpu_freqs.insert(physical_id, tally.freqs());
+        }
     }
     cpu_freqs
+}
+
+/// A `PhysicalID` is a `u8`, so one slot per possible value holds every package without a map.
+const PHYSICAL_ID_SLOTS: usize = PhysicalID::MAX as usize + 1;
+
+/// The frequencies one package's processors reported in a poll, folded as they are read.
+#[derive(Clone, Copy)]
+struct FreqTally {
+    freq_mhz_min: f64,
+    freq_mhz_max: f64,
+    freq_mhz_sum: f64,
+    count: u32,
+}
+
+impl FreqTally {
+    const EMPTY: Self = Self {
+        freq_mhz_min: 0.,
+        freq_mhz_max: 0.,
+        freq_mhz_sum: 0.,
+        count: 0,
+    };
+
+    fn add(&mut self, freq_mhz: f64) {
+        if self.count == 0 {
+            // The first value is both bounds.
+            *self = Self {
+                freq_mhz_min: freq_mhz,
+                freq_mhz_max: freq_mhz,
+                freq_mhz_sum: freq_mhz,
+                count: 1,
+            };
+            return;
+        }
+        // `total_cmp` gives every value, NaN included, a place.
+        if freq_mhz.total_cmp(&self.freq_mhz_min).is_lt() {
+            self.freq_mhz_min = freq_mhz;
+        }
+        if freq_mhz.total_cmp(&self.freq_mhz_max).is_gt() {
+            self.freq_mhz_max = freq_mhz;
+        }
+        // A running total and count, for the mean `freqs` takes.
+        self.freq_mhz_sum += freq_mhz;
+        self.count += 1;
+        debug_assert!(self.freq_mhz_min.total_cmp(&self.freq_mhz_max).is_le());
+        debug_assert!(self.count > 1);
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn freqs(&self) -> CpuFreqs {
+        debug_assert!(self.count > 0);
+        CpuFreqs {
+            min: self.freq_mhz_min.round() as Mhz,
+            max: self.freq_mhz_max.round() as Mhz,
+            // The mean over every processor the package reported.
+            avg: (self.freq_mhz_sum / f64::from(self.count)).round() as Mhz,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -681,5 +742,31 @@ mod tests {
         // then: cpuinfo without frequencies gives none, rather than a fabricated 0.
         assert!(parse_freqs(fixtures::RASPBERRY_PI_5).is_empty());
         assert!(parse_freqs("").is_empty());
+    }
+
+    /// Goal: the per-poll parse allocates only the map it returns, however many processors each
+    /// package has. Method: count the allocations of parsing the two-package dump.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn parsing_frequencies_allocates_only_the_result() {
+        let (freqs, allocations) =
+            crate::alloc_count::count_allocations(|| parse_freqs(fixtures::AMD_DOUBLE_CPU));
+
+        assert_eq!(freqs.len(), 2);
+        // At most: the optimizer may elide an allocation, never add one.
+        assert!(allocations <= 1);
+    }
+
+    /// Goal: Apple Silicon, whose cpuinfo names no model, is one package named by the board
+    /// model. Method: an M1 Max cpuinfo parsed without a board model, then with one.
+    #[test]
+    fn apple_silicon_is_named_by_its_device_tree_model() {
+        let model = "Apple MacBook Pro (16-inch, M1 Max, 2021)";
+        assert!(CpuTopology::parse(fixtures::APPLE_M1_MAX).is_err());
+        let topology =
+            CpuTopology::parse_with_board_model(fixtures::APPLE_M1_MAX, Some(model)).unwrap();
+        assert_eq!(topology.package_count(), 1);
+        assert_eq!(topology.model_name(Some(0)).as_deref(), Some(model));
+        assert!(parse_freqs(fixtures::APPLE_M1_MAX).is_empty());
     }
 }

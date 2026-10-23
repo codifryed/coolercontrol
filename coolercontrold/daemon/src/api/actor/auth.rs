@@ -7,14 +7,16 @@
 //! `api::auth_throttle`. This actor used to keep its own lockout, but that one was global:
 //! any single peer could trip it and lock every login out, the local admin's included.
 
-use crate::admin;
 use crate::api::actor::{run_api_actor, ApiActor};
+use crate::auth::admin;
+use crate::paths;
 use anyhow::Result;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 struct AuthActor {
     receiver: mpsc::Receiver<AuthMessage>,
+    default_check: admin::DefaultPasswdCheck,
 }
 
 enum AuthMessage {
@@ -26,11 +28,17 @@ enum AuthMessage {
         passwd: String,
         respond_to: oneshot::Sender<Result<bool>>,
     },
+    PasswdIsDefault {
+        respond_to: oneshot::Sender<Result<bool>>,
+    },
 }
 
 impl AuthActor {
     pub fn new(receiver: mpsc::Receiver<AuthMessage>) -> Self {
-        Self { receiver }
+        Self {
+            receiver,
+            default_check: admin::DefaultPasswdCheck::default(),
+        }
     }
 }
 
@@ -50,6 +58,10 @@ impl ApiActor<AuthMessage> for AuthActor {
             }
             AuthMessage::AdminMatchPasswd { passwd, respond_to } => {
                 let _ = respond_to.send(Ok(admin::match_passwd(&passwd).await));
+            }
+            AuthMessage::PasswdIsDefault { respond_to } => {
+                let is_default = self.default_check.is_default(paths::passwd_file()).await;
+                let _ = respond_to.send(Ok(is_default));
             }
         }
     }
@@ -87,6 +99,14 @@ impl AuthHandle {
             passwd,
             respond_to: tx,
         };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    /// Whether the admin password is still the default. argon2 runs once per stored hash.
+    pub async fn is_default_passwd(&self) -> Result<bool> {
+        let (tx, rx) = oneshot::channel();
+        let msg = AuthMessage::PasswdIsDefault { respond_to: tx };
         let _ = self.sender.send(msg).await;
         rx.await?
     }

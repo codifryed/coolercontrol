@@ -12,7 +12,7 @@
       "name": "GPL3+",
       "identifier": "GPL3+"
     },
-    "version": "5.0.1"
+    "version": "5.1.1"
   },
   "paths": {
     "/handshake": {
@@ -8016,7 +8016,7 @@
             "const": "no_pwm"
           },
           {
-            "description": "`pwmN` exists but the driver cleared its write bit.",
+            "description": "`pwmN` exists but the driver cleared its write bit. An Apple driver's own control file\n in that state gets this verdict too, without evidence.",
             "type": "string",
             "const": "pwm_read_only"
           },
@@ -8982,7 +8982,7 @@
             "$ref": "#/components/schemas/DeviceType"
           },
           "status_history": {
-            "description": "Status history wrapped in Arc for O(1) cloning for serialization",
+            "description": "The device's statuses, oldest first. A copy taken on request.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Status"

@@ -3,7 +3,7 @@
 
 //! Paste-ready hardware report.
 //!
-//! Reuses `fans::init_fans` and `hardware_support::diagnose_channel` rather
+//! Reuses `fans::init_fans` and `support::diagnose_channel` rather
 //! than re-deriving anything, so the report and the running daemon can never
 //! disagree about a verdict.
 //!
@@ -12,13 +12,13 @@
 //! are limited to board and BIOS, which is what actually narrows a diagnosis.
 
 use crate::device::{ChannelName, Device, DeviceInfo, DeviceType};
-use crate::hardware_support::{
+use crate::diagnostics::support::{
     self, ChannelExclusion, ChannelVerdict, DetectedChipRef, HiddenHardware, HwmonExclusion,
     ProbeEnvironment, SystemFinding, SystemInfo,
 };
 use crate::repositories::hwmon::device_io::DeviceIo;
-use crate::repositories::hwmon::fans;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::{apple, devices, fans};
 use crate::{cc_fs, rt, VERSION};
 use log::warn;
 use std::collections::HashMap;
@@ -72,6 +72,10 @@ const _: () = assert!(DEVICE_READ_BUDGET.as_millis() < REPORT_READ_BUDGET.as_mil
 /// Naming the device is the whole point: this is the line a maintainer needs,
 /// and it is the one thing an all-or-nothing timeout cannot produce.
 const UNRESPONSIVE_NOTE: &str = "did not answer in time, the driver may be stuck";
+
+/// Follows the value of a control file its driver registered read-only. No space, so each
+/// `name=value` in the raw state stays one word.
+const READ_ONLY_MARK: &str = "(read-only)";
 
 /// One hwmon device as the report sees it.
 struct ReportDevice {
@@ -510,7 +514,7 @@ fn derive_findings(
     detection: &cc_detect::DetectionResults,
     detection_supported: bool,
 ) -> Vec<SystemFinding> {
-    let bound_drivers = hardware_support::resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
+    let bound_drivers = support::resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
     let chips = detection
         .detected_chips
         .iter()
@@ -524,7 +528,7 @@ fn derive_findings(
         is_secure_boot: detection.environment.is_secure_boot,
         has_dev_port: detection.environment.has_dev_port,
     };
-    hardware_support::derive_system_findings(
+    support::derive_system_findings(
         detection_supported,
         &chips,
         &detection.blacklisted,
@@ -564,19 +568,16 @@ async fn channel_lines(device: &ReportDevice) -> String {
     let mut lines = String::new();
     for fan in &device.fans {
         let verdict = verdict_for(device, fan);
-        let pwm = read_attribute(&device.path, &format!("pwm{}", fan.number)).await;
-        let pwm_enable = read_attribute(&device.path, &format!("pwm{}_enable", fan.number)).await;
-        let rpm = read_attribute(&device.path, &format!("fan{}_input", fan.number)).await;
+        let state = raw_state(device, fan.number).await;
         let hidden = device
             .excluded_channels
             .get(&fan.name)
             .map_or_else(String::new, |reason| format!(" {}", reason.label()));
         let _ = writeln!(
             lines,
-            "    {}: verdict={} pwm={pwm} pwm_enable={pwm_enable} rpm={rpm} \
-             writable={} label={}{hidden}",
+            "    {}: verdict={} {state} writable={} label={}{hidden}",
             fan.name,
-            verdict_label(verdict),
+            verdict_text(fan, verdict),
             fan.caps.is_fan_controllable(),
             fan.label.as_deref().unwrap_or("-")
         );
@@ -587,11 +588,37 @@ async fn channel_lines(device: &ReportDevice) -> String {
 /// The raw pwm state behind a verdict. `pwm_enable` in particular is the field
 /// that distinguishes a driver-defined mode from a documented one, and it is
 /// what a maintainer asks for first.
-async fn raw_state(base_path: &Path, number: u8) -> String {
-    let pwm = read_attribute(base_path, &format!("pwm{number}")).await;
-    let pwm_enable = read_attribute(base_path, &format!("pwm{number}_enable")).await;
-    let rpm = read_attribute(base_path, &format!("fan{number}_input")).await;
-    format!("pwm={pwm} pwm_enable={pwm_enable} rpm={rpm}")
+///
+/// An Apple device adds its driver's own fan files, which carry that state there. A control
+/// file its driver registered read-only is marked, since that is why the fan cannot be driven.
+async fn raw_state(device: &ReportDevice, number: u8) -> String {
+    let base_path = &device.path;
+    let apple_driver = apple::detect(&device.name, base_path);
+    let read_only = apple_driver.map_or_else(Vec::new, |apple_driver| {
+        apple_driver.read_only_control_files(base_path, number)
+    });
+    let mut files = vec![
+        ("pwm", format!("pwm{number}")),
+        ("pwm_enable", format!("pwm{number}_enable")),
+        ("rpm", format!("fan{number}_input")),
+    ];
+    if let Some(apple_driver) = apple_driver {
+        for suffix in apple_driver.fan_attribute_suffixes() {
+            files.push((suffix, format!("fan{number}_{suffix}")));
+        }
+    }
+    let mut state = String::with_capacity(files.len() * 16);
+    for (label, file_name) in &files {
+        let value = read_attribute(base_path, file_name).await;
+        let mark = if read_only.contains(file_name) {
+            READ_ONLY_MARK
+        } else {
+            ""
+        };
+        let separator = if state.is_empty() { "" } else { " " };
+        let _ = write!(state, "{separator}{label}={value}{mark}");
+    }
+    state
 }
 
 /// Reads one sysfs attribute for the full dump. A missing or unreadable file
@@ -631,8 +658,8 @@ async fn channel_notes(
     if verdict.is_controllable().not() {
         notes.push(format!(
             "{} ({})",
-            verdict_label(verdict),
-            raw_state(&device.path, fan.number).await
+            verdict_text(fan, verdict),
+            raw_state(device, fan.number).await
         ));
     }
     notes.join(", ")
@@ -761,14 +788,19 @@ async fn collect_retained(
     devices
 }
 
-/// Reads a device's fan channels with the exact same `init_fans` the daemon
-/// uses, so a scanned device and a retained one describe themselves alike.
+/// Reads a device's fan channels with the exact same detection the daemon
+/// uses, an Apple driver's own included, so a scanned device and a retained
+/// one describe themselves alike.
 async fn read_fans(path: &Path, name: &str) -> Vec<HwmonChannelInfo> {
     // Inline on purpose: the report is a one-shot scan with no tick to protect, so a device that
     // stalls here delays only the report that asked for it.
-    fans::init_fans(path, name, &DeviceIo::default())
-        .await
-        .unwrap_or_default()
+    let io = DeviceIo::default();
+    let fans = match apple::detect(name, path) {
+        Some(apple_driver) => apple_driver.init_fans(path, &io).await,
+        None => fans::init_fans(path, name, &io).await,
+    };
+    // Quiet on an error: the daemon logged it when it started.
+    fans.unwrap_or_default()
         .into_iter()
         .filter(|channel| channel.hwmon_type == HwmonChannelType::Fan)
         .collect()
@@ -788,14 +820,10 @@ async fn scan_hwmon(hidden: &HiddenHardware, budget: ReadBudget) -> Vec<ReportDe
     // Numeric, not lexicographic: plain sorting puts hwmon10 before hwmon2,
     // which reads as a mistake in a report a human is scanning.
     paths.sort_by_key(|path| (hwmon_index(path), path.clone()));
-    for path in paths {
-        let Ok(name) = cc_fs::read_txt(path.join("name")).await else {
+    for hwmon_path in paths {
+        let Some((path, name)) = attribute_dir(&hwmon_path).await else {
             continue;
         };
-        let name = name.trim().to_string();
-        if name.is_empty() {
-            continue;
-        }
         let driver = resolve_driver(&path);
         // Matched on the canonical path: the entries here are symlinks into
         // the bus tree, while the daemon recorded its own walk of it.
@@ -831,18 +859,47 @@ async fn scan_hwmon(hidden: &HiddenHardware, budget: ReadBudget) -> Vec<ReportDe
     devices
 }
 
-/// The trailing number of a `hwmonN` directory. Entries that do not match sort
-/// last rather than being dropped, since a report should show what is there.
+/// The directory holding a hwmon entry's attributes, with the device's name.
+///
+/// Normally the entry itself. A driver on the old registration API, `applesmc`
+/// before Linux 7.3 among them, keeps its name and attributes on the parent
+/// device, which is where the daemon reads them too. Without this such a
+/// device was missing from the full report.
+async fn attribute_dir(hwmon_path: &Path) -> Option<(PathBuf, String)> {
+    for dir in [hwmon_path.to_path_buf(), hwmon_path.join("device")] {
+        let Ok(name) = cc_fs::read_txt(dir.join("name")).await else {
+            continue;
+        };
+        let name = name.trim();
+        if name.is_empty().not() {
+            return Some((dir, name.to_string()));
+        }
+    }
+    None
+}
+
+/// The trailing number of a `hwmonN` directory, also for the `hwmonN/device`
+/// that an old-style driver's attributes live in. Entries that do not match
+/// sort last rather than being dropped, since a report should show what is
+/// there.
 fn hwmon_index(path: &Path) -> u32 {
-    path.file_name()
+    let entry = if path.ends_with("device") {
+        path.parent().unwrap_or(path)
+    } else {
+        path
+    };
+    entry
+        .file_name()
         .and_then(|name| name.to_str())
         .and_then(|name| name.strip_prefix("hwmon"))
         .and_then(|digits| digits.parse().ok())
         .unwrap_or(u32::MAX)
 }
 
-fn resolve_driver(hwmon_path: &Path) -> Option<String> {
-    let target = cc_fs::read_link(hwmon_path.join("device").join("driver")).ok()?;
+/// The kernel driver bound to a device, from either of the paths the daemon
+/// knows a device by: the hwmon entry, or the `device` directory inside it.
+fn resolve_driver(base_path: &Path) -> Option<String> {
+    let target = cc_fs::read_link(devices::device_path(base_path).join("driver")).ok()?;
     let driver = target.file_name()?.to_str()?;
     if driver.is_empty() {
         return None;
@@ -868,6 +925,15 @@ fn trim_to_budget(report: String) -> String {
     }
     trimmed.push_str(TRIM_NOTICE);
     trimmed
+}
+
+/// The verdict in the report's words. An Apple fan has no `pwmN`, so its read-only verdict
+/// names the fan control, and the raw state beside it marks the file.
+fn verdict_text(fan: &HwmonChannelInfo, verdict: ChannelVerdict) -> &'static str {
+    if verdict == ChannelVerdict::PwmReadOnly && fan.caps.is_apple_smc_read_only() {
+        return "fan control is read-only";
+    }
+    verdict_label(verdict)
 }
 
 fn verdict_label(verdict: ChannelVerdict) -> &'static str {
@@ -937,6 +1003,8 @@ fn available_or_not(value: bool) -> &'static str {
 mod tests {
     use super::*;
     use serial_test::serial;
+    use std::fs::Permissions;
+    use std::os::unix::fs::PermissionsExt;
 
     /// Goal: the compact report stays pasteable into Discord *after* the UI
     /// wraps it in a code fence. Method: feed the trimmer a report far over the
@@ -1143,6 +1211,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "gated-tests")]
     fn driver_info(name: &str, fans: &[&str]) -> Rc<HwmonDriverInfo> {
         Rc::new(HwmonDriverInfo {
             name: name.to_string(),
@@ -1165,6 +1234,7 @@ mod tests {
     /// anyway. A path that cannot be read is the strongest possible proof that
     /// nothing was read.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn retained_devices_are_not_re_read() {
         let retained = [driver_info("nct6687", &["fan1", "fan2"])];
         let devices = crate::rt::test_runtime(async {
@@ -1185,6 +1255,7 @@ mod tests {
     /// retained copy cannot show what went missing, and reusing it would
     /// silently drop the hidden-channel lines.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_device_with_a_hidden_channel_is_re_read() {
         let retained = [driver_info("nct6687", &["fan1"])];
         let canonical = cc_fs::canonicalize(Path::new("/sys/class/hwmon"))
@@ -1315,6 +1386,226 @@ mod tests {
         assert_eq!(hwmon_index(Path::new("/sys/class/hwmon/oddball")), u32::MAX);
     }
 
+    /// Goal: a device the daemon knows by its `hwmonN/device` directory sorts
+    /// with its hwmon entry, not last. `applesmc` before Linux 7.3 is one.
+    #[test]
+    fn a_device_directory_sorts_by_its_hwmon_entry() {
+        assert_eq!(hwmon_index(Path::new("/sys/class/hwmon/hwmon4/device")), 4);
+    }
+
+    /// A fake hwmon tree in a temp directory, removed by the caller.
+    async fn seed_files(dir: &Path, files: &[(&str, &str)]) {
+        cc_fs::create_dir_all(dir).await.unwrap();
+        for (file, value) in files {
+            cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                .await
+                .unwrap();
+        }
+    }
+
+    /// Goal: the full report finds a device whose name and attributes live on
+    /// the parent device, which is how `applesmc` registered before Linux 7.3.
+    /// Reading only `hwmonN/name` left it out. Method: one entry of each
+    /// layout, and one with no name anywhere.
+    #[test]
+    #[serial]
+    fn a_device_named_on_its_parent_is_still_found() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
+            let modern = base.join("hwmon1");
+            let old_style = base.join("hwmon2");
+            let nameless = base.join("hwmon3");
+            seed_files(&modern, &[("name", "nct6798\n")]).await;
+            seed_files(&old_style.join("device"), &[("name", "applesmc\n")]).await;
+            seed_files(&nameless.join("device"), &[("fan1_input", "1200")]).await;
+
+            let found_modern = attribute_dir(&modern).await;
+            let found_old_style = attribute_dir(&old_style).await;
+            let found_nameless = attribute_dir(&nameless).await;
+
+            assert_eq!(found_modern, Some((modern, "nct6798".to_string())));
+            assert_eq!(
+                found_old_style,
+                Some((old_style.join("device"), "applesmc".to_string()))
+            );
+            assert_eq!(found_nameless, None);
+        });
+    }
+
+    /// Goal: the driver link resolves from either path the daemon knows a
+    /// device by. A retained `applesmc` device carries its `device` directory,
+    /// which used to report no driver link. Method: a fake entry whose device
+    /// directory links to its driver.
+    #[test]
+    #[serial]
+    fn the_driver_resolves_from_the_entry_and_from_its_device_directory() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
+            let entry = base.join("hwmon2");
+            let driver_dir = base.join("drivers").join("applesmc");
+            cc_fs::create_dir_all(&entry.join("device")).await.unwrap();
+            cc_fs::create_dir_all(&driver_dir).await.unwrap();
+            std::os::unix::fs::symlink(&driver_dir, entry.join("device").join("driver")).unwrap();
+
+            let from_entry = resolve_driver(&entry);
+            let from_device_dir = resolve_driver(&entry.join("device"));
+
+            assert_eq!(from_entry.as_deref(), Some("applesmc"));
+            assert_eq!(from_device_dir.as_deref(), Some("applesmc"));
+        });
+    }
+
+    /// Goal: a device the report cannot read has no fans to show, and the report says nothing
+    /// more, since the reason was the daemon's to log at start. Method: an Apple device of
+    /// each kind and a plain one, all with their directory gone.
+    #[test]
+    fn an_unreadable_device_has_no_fans() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let missing = tmp.path().join("missing");
+
+            let apple_fans = read_fans(&missing, "applesmc").await;
+            let apple_silicon_fans = read_fans(&missing, "macsmc_hwmon").await;
+            let plain_fans = read_fans(&missing, "nct6798").await;
+
+            assert!(apple_fans.is_empty());
+            assert!(apple_silicon_fans.is_empty());
+            assert!(plain_fans.is_empty());
+        });
+    }
+
+    /// Goal: the report gives the reason an Apple fan cannot be driven in its driver's own
+    /// terms, and marks the file behind it. Method: per driver a fan with one control file
+    /// read-only, and an Intel fan with no mode file at all, as the summary reads them.
+    #[test]
+    #[serial]
+    fn a_locked_apple_fan_names_its_read_only_file() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
+            let limits = [
+                ("fan1_input", "1500"),
+                ("fan1_min", "1499"),
+                ("fan1_max", "5348"),
+            ];
+            let cases: [(&str, &str, &[(&str, &str)], Option<&str>); 4] = [
+                (
+                    "silicon",
+                    "macsmc_hwmon",
+                    &[("fan1_target", "0")],
+                    Some("fan1_target"),
+                ),
+                (
+                    "intel",
+                    "applesmc",
+                    &[("fan1_output", "1500"), ("fan1_manual", "0")],
+                    Some("fan1_manual"),
+                ),
+                (
+                    "intel_7_3",
+                    "applesmc",
+                    &[("fan1_target", "1500"), ("pwm1_enable", "2")],
+                    Some("pwm1_enable"),
+                ),
+                (
+                    "intel_no_mode",
+                    "applesmc",
+                    &[("fan1_output", "1500")],
+                    None,
+                ),
+            ];
+
+            let mut notes = Vec::with_capacity(cases.len());
+            for (dir_name, name, files, read_only) in cases {
+                let dir = base.join(dir_name);
+                seed_files(&dir, &limits).await;
+                seed_files(&dir, files).await;
+                if let Some(file) = read_only {
+                    cc_fs::set_permissions(dir.join(file), Permissions::from_mode(0o444))
+                        .await
+                        .unwrap();
+                }
+                let device = ReportDevice {
+                    path: dir.clone(),
+                    fans: read_fans(&dir, name).await,
+                    ..report_device(name, None)
+                };
+                notes.push(summary_notes(&device).await);
+            }
+
+            let expected = [
+                "    fan1: fan control is read-only (pwm=- pwm_enable=- rpm=1500 \
+                 target=0(read-only) min=1499 max=5348)\n",
+                "    fan1: fan control is read-only (pwm=- pwm_enable=- rpm=1500 output=1500 \
+                 manual=0(read-only) min=1499 max=5348)\n",
+                "    fan1: fan control is read-only (pwm=- pwm_enable=2(read-only) rpm=1500 \
+                 target=1500 min=1499 max=5348)\n",
+                "    fan1: the driver in use exposes no control (pwm=- pwm_enable=- rpm=1500 \
+                 output=1500 manual=- min=1499 max=5348)\n",
+            ];
+            assert_eq!(notes, expected);
+        });
+    }
+
+    /// Goal: a re-read Apple device describes its fans the way the daemon
+    /// sees them, and its raw line carries the driver's own fan files. The
+    /// generic reader only knows `pwmN`, so it reported a working Apple fan as
+    /// having no pwm. Method: a fake device per Apple driver, and a plain one.
+    #[test]
+    #[serial]
+    fn an_apple_device_is_read_through_its_own_driver() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
+            let intel = base.join("applesmc");
+            let intel_7_3 = base.join("applesmc_7_3");
+            let silicon = base.join("macsmc_hwmon");
+            let plain = base.join("nct6798");
+            let fan_files = [
+                ("fan1_input", "3100"),
+                ("fan1_min", "2000"),
+                ("fan1_max", "6200"),
+            ];
+            seed_files(&intel, &fan_files).await;
+            seed_files(&intel, &[("fan1_output", "3100"), ("fan1_manual", "1")]).await;
+            seed_files(&intel_7_3, &fan_files).await;
+            seed_files(&intel_7_3, &[("fan1_target", "3100"), ("pwm1_enable", "1")]).await;
+            seed_files(&silicon, &fan_files).await;
+            seed_files(&silicon, &[("fan1_target", "0")]).await;
+            seed_files(&plain, &[("fan1_input", "900")]).await;
+
+            let mut lines = Vec::with_capacity(4);
+            for (dir, name) in [
+                (&intel, "applesmc"),
+                (&intel_7_3, "applesmc"),
+                (&silicon, "macsmc_hwmon"),
+                (&plain, "nct6798"),
+            ] {
+                let device = ReportDevice {
+                    path: dir.clone(),
+                    fans: read_fans(dir, name).await,
+                    ..report_device(name, None)
+                };
+                lines.push(channel_lines(&device).await);
+            }
+
+            let expected = [
+                "fan1: verdict=controllable pwm=- pwm_enable=- rpm=3100 output=3100 manual=1 \
+                 min=2000 max=6200 writable=true",
+                "fan1: verdict=controllable pwm=- pwm_enable=1 rpm=3100 target=3100 min=2000 \
+                 max=6200 writable=true",
+                "fan1: verdict=controllable pwm=- pwm_enable=- rpm=3100 target=0 min=2000 \
+                 max=6200 writable=true",
+                "pwm=- pwm_enable=- rpm=900 writable=false",
+            ];
+            for (line, expected) in lines.iter().zip(expected) {
+                assert!(line.contains(expected), "expected `{expected}` in:\n{line}");
+            }
+        });
+    }
+
     /// Goal: with detection switched off the report says so rather than
     /// asserting an environment it never observed. Reporting NoDevPort when no
     /// probe ran would be a claim we cannot back.
@@ -1332,6 +1623,7 @@ mod tests {
     /// Goal: a fresh budget hands a device its own cap, not the whole report's.
     /// One device must never be able to spend every other device's time.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_fresh_budget_caps_each_device_at_its_own_limit() {
         let allowed = ReadBudget::starting_now()
             .for_device()
@@ -1345,6 +1637,7 @@ mod tests {
     /// the last devices scanned could overrun the actor's own timeout between
     /// them and lose the whole report.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_nearly_spent_budget_hands_out_only_what_is_left() {
         let budget = ReadBudget {
             deadline: Instant::now() + Duration::from_millis(200),
@@ -1369,6 +1662,7 @@ mod tests {
     /// common case must pay nothing for the bound being there.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn work_inside_the_budget_returns_its_value() {
         cc_fs::test_runtime(async {
             let budget = ReadBudget::starting_now();
@@ -1443,6 +1737,7 @@ mod tests {
     /// so the marker keeps meaning something when it does appear.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn a_device_that_answered_carries_no_note() {
         cc_fs::test_runtime(async {
             let healthy = report_device("nct6687", None);

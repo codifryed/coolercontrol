@@ -83,7 +83,7 @@ pub async fn health_service() -> HealthServer<impl Health> {
     health_service
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod tests {
     use super::*;
     use crate::grpc_api::device_service::v1::device_service_client::DeviceServiceClient;

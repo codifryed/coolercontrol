@@ -1073,8 +1073,10 @@ mod tests {
     use crate::repositories::service_plugin::service_manifest::{ConnectionType, EnvVar};
     use std::cell::RefCell;
     use std::collections::VecDeque;
+    #[cfg(feature = "gated-tests")]
     use std::os::unix::fs::MetadataExt;
 
+    #[cfg(feature = "gated-tests")]
     fn is_root() -> bool {
         nix::unistd::geteuid().is_root()
     }
@@ -1747,6 +1749,7 @@ mod tests {
     /// Method: the handover resets the manifest's mode, so the fake init system records
     /// that mode when it is asked to stop: still unset there means the stop came first.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn bring_up_stops_a_plugin_that_is_down_before_the_handover() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -1788,6 +1791,7 @@ mod tests {
     /// Method: the manifest's mode is reset whenever the folder is secured, and that needs
     /// no root, so it shows whether the handover ran.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn bring_up_secures_the_folder_only_while_the_plugin_is_down() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -1970,6 +1974,7 @@ mod tests {
     /// authenticate as this daemon to a remote machine; one that could rewrite the pin
     /// could redirect trust to a certificate of its choosing.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn secure_plugin_folder_locks_down_daemon_credentials() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2004,6 +2009,7 @@ mod tests {
     /// failure this guards. Setting the permission bits needs no root, so all three files
     /// must still be hardened even though the call reports an error.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn secure_plugin_folder_hardens_every_file_despite_a_failure() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2120,6 +2126,7 @@ mod tests {
         (controller, config_path)
     }
 
+    #[cfg(feature = "gated-tests")]
     fn make_fifo(path: &Path) {
         let path_c = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
         // SAFETY: CString is valid; mode is a standard POSIX value; mkfifo is safe for
@@ -2208,6 +2215,7 @@ mod tests {
     /// Method: make the config a FIFO with no other end, then load and save within a time
     /// limit, so that a wait fails this test and does not hang the suite.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_config_that_is_a_fifo_never_makes_the_daemon_wait() {
         crate::rt::test_runtime(async {
             let plugins_dir = tempfile::tempdir().unwrap();
@@ -2362,6 +2370,7 @@ mod tests {
     /// that fails early must not turn into files that were never secured.
     /// Method: hand a plugin's files to a user that does not exist and read the modes back.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_handover_to_an_unknown_user_still_sets_every_mode() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2392,6 +2401,7 @@ mod tests {
     /// Methodology: leave a 0666 manifest behind, secure the folder, and re-read the mode. This
     /// half of `secure_plugin_folder` does not need root, unlike the ownership reset.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn secure_plugin_folder_resets_manifest_permissions() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2419,6 +2429,7 @@ mod tests {
     /// the group write bit is what keeps the folder usable by the plugin.
     /// Methodology: setting the mode needs no root, so secure a folder and read it back.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn secure_plugin_folder_makes_the_folder_sticky() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2435,6 +2446,7 @@ mod tests {
     /// Methodology: secure an empty directory as root and assert success, so plugins that have
     /// not yet been given a manifest do not fail initialization.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn secure_plugin_folder_without_manifest_succeeds() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2455,6 +2467,7 @@ mod tests {
     /// Methodology: root-only. Secure a folder as `cc-plugin-user` and compare the manifest's uid
     /// against the directory's.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn secure_plugin_folder_keeps_manifest_owned_by_root() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2495,6 +2508,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn test_secure_config_file_sets_600_permissions() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2529,6 +2543,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn test_secure_config_file_chown_fails_for_non_root() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2549,6 +2564,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn test_secure_config_file_chown_succeeds_as_root() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
@@ -2573,6 +2589,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn test_secure_config_file_permissions_maintained_after_rewrite() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {

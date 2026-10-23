@@ -26,13 +26,13 @@ build: sync-app
 	@$(CARGO) build --locked $(release) $(FEATURES)
 
 test: release += --release
-test: test-liqctld
+test:
 	@$(CARGO) test --locked $(release) $(FEATURES)
 
-# liqctld's tests call liquidctl's own implementations, so they need it installed. This is a
-# Rust daemon and liquidctl is an optional runtime dep, so building it must never require a
-# python package: a missing one skips. Only the pipeline job that installs liquidctl sets
-# LIQCTLD_TESTS_REQUIRED, which turns that skip into the failure CI needs it to be.
+# liqctld's tests call liquidctl's own implementations, so they need it installed. They depend on
+# the host's liquidctl and Pillow, so `test`, which distro builds run, leaves them out. A missing
+# package skips. Only the pipeline job that installs liquidctl sets LIQCTLD_TESTS_REQUIRED, which
+# turns that skip into the failure CI needs it to be.
 test-liqctld:
 	@if python3 -c 'import liquidctl, PIL' 2>/dev/null; then \
 		python3 -m unittest discover -s daemon/resources/liqctld -t daemon/resources/liqctld -p 'test_*.py'; \
@@ -63,24 +63,33 @@ clippy:
 # Named lints, and RUSTFLAGS cleared, so the gate means the same thing everywhere. CI sets a global
 # `-Dwarnings`, and the toolchain is not pinned: under an older clippy that makes `unknown_lints`
 # fatal, so a forward-looking `#[allow(clippy::..)]` the shipped toolchain does not know fails a job
-# nobody can reproduce locally. The MSRV job clears RUSTFLAGS for the same reason. Both lints below
-# predate the 1.95 MSRV, so they exist wherever this builds. Debug, to share artifacts with `test`.
+# nobody can reproduce locally. The MSRV job clears RUSTFLAGS for the same reason. Both clippy lints
+# below predate the 1.95 MSRV, so they exist wherever this builds. Debug, to share artifacts with
+# `test`. `dead_code` and `unused_imports` catch a helper left unused once its callers are gated.
 clippy-tests:
 	@RUSTFLAGS= $(CARGO) clippy --locked --all-targets $(FEATURES) -- \
-		-D clippy::await_holding_refcell_ref -D clippy::await_holding_lock
+		-D clippy::await_holding_refcell_ref -D clippy::await_holding_lock \
+		-D dead_code -D unused_imports
 
 # test execution is split from compilation so the timeout only bounds the run phase:
 # a hung test binary (wedged FIFO pairing class) otherwise burns the whole CI job budget.
 # JSON goes through a file so the junit report survives a kill and the exit status is kept.
 # The code quality run allows `unknown_lints`: the image's clippy trails local toolchains, so an
 # `#[allow(clippy::..)]` for a lint it has not learned yet is not a finding.
+# Test code is linted with and without `gated-tests`: each build compiles code the other leaves out.
+# RUSTC_BOOTSTRAP, which the JSON format needs, reaches only the test binaries, through a runner.
+# Set for cargo, it reruns the build scripts that watch it (proc-macro2 and others) and rebuilds
+# some 150 crates in every step that lacks it, so no step could reuse another's artifacts. The JSON
+# flags would fail rustdoc's harness, so doctests run apart.
+ci_test_runner := --config "target.'cfg(all())'.runner=[\"env\",\"RUSTC_BOOTSTRAP=1\"]"
 ci-test: test-liqctld
 	@$(CARGO) build --locked $(release)
 	@./target/debug/$(executable) --version
-	@RUSTC_BOOTSTRAP=1 $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --no-run
-	@RUSTC_BOOTSTRAP=1 timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) -- -Z unstable-options --format json > target/ci-test.json; s=$$?; gitlab-report -p test < target/ci-test.json > report.xml || true; exit $$s
-	@RUSTFLAGS= $(CARGO) clippy --locked --all-targets $(FEATURES) -- \
-		-D clippy::await_holding_refcell_ref -D clippy::await_holding_lock
+	@$(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --no-run
+	@timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --lib --bins --tests $(ci_test_runner) -- -Z unstable-options --format json > target/ci-test.json; s=$$?; gitlab-report -p test < target/ci-test.json > report.xml || true; exit $$s
+	@timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --doc
+	@$(MAKE) clippy-tests
+	@$(MAKE) clippy-tests FEATURES="--features gated-tests"
 	@$(CARGO) clippy --locked $(release) --message-format=json -- -A unknown_lints | gitlab-report -p clippy > gl-code-quality-report.json
     
 dev-run: sync-app

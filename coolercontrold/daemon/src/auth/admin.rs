@@ -24,51 +24,105 @@ pub const DEFAULT_PASS: &str = "coolAdmin";
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
 pub async fn match_passwd(passwd: &str) -> bool {
-    match load_passwd().await {
-        Ok(stored_hash) => {
-            if is_legacy_hash(&stored_hash) {
-                let legacy_hash = hash_passwd_sha512(passwd.as_bytes());
-                let input_bytes = legacy_hash.as_bytes();
-                let stored_bytes = stored_hash.as_bytes();
-                let is_match = input_bytes.len() == stored_bytes.len()
-                    && input_bytes.ct_eq(stored_bytes).into();
-                if is_match {
-                    if let Err(err) = migrate_to_argon2(passwd).await {
-                        error!("Failed to migrate password hash to Argon2id: {err}");
-                    }
-                }
-                is_match
-            } else {
-                // Argon2 verify is CPU-bound (~8 ms). Run it on the sidecar's blocking pool so it
-                // does not stall the sidecar's single async reactor, and so a burst of login
-                // attempts cannot monopolize it. All callers already run on the sidecar runtime.
-                let passwd = passwd.to_owned();
-                tokio::task::spawn_blocking(move || verify_password_argon2(&passwd, &stored_hash))
-                    .await
-                    .unwrap_or_else(|err| {
-                        error!("Argon2 verify task failed to join: {err}");
-                        false
-                    })
-            }
-        }
+    let stored_hash = match load_passwd().await {
+        Ok(Some(stored_hash)) => stored_hash,
+        // Nothing stored, so only the default matches. It is public, so comparing against it
+        // needs no argon2.
+        Ok(None) => return passwd.as_bytes().ct_eq(DEFAULT_PASS.as_bytes()).into(),
         Err(err) => {
             error!("Error loading password: {err}");
-            false
+            return false;
         }
+    };
+    let is_legacy = is_legacy_hash(&stored_hash);
+    let is_match = verify_stored_hash(passwd, stored_hash).await;
+    if is_legacy {
+        if is_match {
+            if let Err(err) = migrate_to_argon2(passwd).await {
+                error!("Failed to migrate password hash to Argon2id: {err}");
+            }
+        }
+    }
+    is_match
+}
+
+/// Whether `passwd` matches `stored_hash`, a legacy SHA-512 hash or an argon2 one.
+async fn verify_stored_hash(passwd: &str, stored_hash: String) -> bool {
+    if is_legacy_hash(&stored_hash) {
+        let legacy_hash = hash_passwd_sha512(passwd.as_bytes());
+        let input_bytes = legacy_hash.as_bytes();
+        let stored_bytes = stored_hash.as_bytes();
+        return input_bytes.len() == stored_bytes.len() && input_bytes.ct_eq(stored_bytes).into();
+    }
+    // Argon2 verify is CPU-bound (~8 ms). Run it on the sidecar's blocking pool so it does not
+    // stall the sidecar's single async reactor, and so a burst of login attempts cannot
+    // monopolize it. All callers already run on the sidecar runtime.
+    let passwd = passwd.to_owned();
+    tokio::task::spawn_blocking(move || verify_password_argon2(&passwd, &stored_hash))
+        .await
+        .unwrap_or_else(|err| {
+            error!("Argon2 verify task failed to join: {err}");
+            false
+        })
+}
+
+/// Answers whether the admin password is still the default, which `/verify-session` asks on
+/// every UI load. Remembers the verdict for one stored hash, so argon2 runs once per hash, not
+/// per call. Every save or reset writes a fresh salt, so a changed file, the CLI's
+/// `--reset-password` included, is verified again.
+#[derive(Default)]
+pub struct DefaultPasswdCheck {
+    verdict: Option<DefaultVerdict>,
+}
+
+struct DefaultVerdict {
+    stored_hash: String,
+    is_default: bool,
+}
+
+impl DefaultPasswdCheck {
+    /// What `match_passwd(DEFAULT_PASS)` answers, without migrating a legacy hash: the next
+    /// login with the default does that.
+    pub async fn is_default(&mut self, passwd_path: &Path) -> bool {
+        let stored_hash = match read_stored_hash(passwd_path).await {
+            Ok(Some(stored_hash)) => stored_hash,
+            // Nothing stored, so the default applies.
+            Ok(None) => return true,
+            Err(err) => {
+                error!("Error loading password: {err}");
+                return false;
+            }
+        };
+        if let Some(verdict) = self
+            .verdict
+            .as_ref()
+            .filter(|verdict| verdict.stored_hash == stored_hash)
+        {
+            return verdict.is_default;
+        }
+        let is_default = verify_stored_hash(DEFAULT_PASS, stored_hash.clone()).await;
+        self.verdict = Some(DefaultVerdict {
+            stored_hash,
+            is_default,
+        });
+        is_default
     }
 }
 
-pub async fn load_passwd() -> Result<String> {
-    let passwd_path = paths::passwd_file();
+/// The stored hash, or `None` when there is none to read and the default password applies.
+pub async fn load_passwd() -> Result<Option<String>> {
+    read_stored_hash(paths::passwd_file()).await
+}
+
+async fn read_stored_hash(passwd_path: &Path) -> Result<Option<String>> {
     if passwd_path.exists() {
         if let Ok(contents) = sidecar_fs::read_txt(passwd_path).await {
             sidecar_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))
                 .await?;
-            return Ok(contents.trim().to_owned());
+            return Ok(Some(contents.trim().to_owned()));
         }
     }
-    let passwd = hash_password(DEFAULT_PASS).await?;
-    Ok(passwd)
+    Ok(None)
 }
 
 pub async fn save_passwd(password: &str) -> Result<()> {
@@ -285,6 +339,62 @@ mod tests {
         assert!(Argon2::default()
             .verify_password(new_pass.as_bytes(), &parsed_original)
             .is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn default_check_without_a_file_is_default() {
+        // Goal: with no password file the default applies, with nothing hashed or remembered.
+        // Method: point the check at a path that does not exist.
+        sidecar_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let mut check = DefaultPasswdCheck::default();
+            assert!(check.is_default(&dir.path().join(".passwd")).await);
+            assert!(check.verdict.is_none());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn default_check_verifies_each_stored_hash_once() {
+        // Goal: a remembered verdict answers for the same stored hash, and a changed file is
+        // verified again. Method: plant a wrong verdict for the stored hash; getting it back
+        // shows the call skipped argon2. Then rewrite the file as a save or reset would.
+        sidecar_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let passwd_path = dir.path().join(".passwd");
+            let custom_hash = hash_password_argon2("custom").unwrap();
+            std::fs::write(&passwd_path, &custom_hash).unwrap();
+            let mut check = DefaultPasswdCheck::default();
+            assert!(check.is_default(&passwd_path).await.not());
+
+            check.verdict = Some(DefaultVerdict {
+                stored_hash: custom_hash,
+                is_default: true,
+            });
+            assert!(check.is_default(&passwd_path).await);
+
+            std::fs::write(&passwd_path, hash_password_argon2("custom").unwrap()).unwrap();
+            assert!(check.is_default(&passwd_path).await.not());
+            std::fs::write(&passwd_path, hash_password_argon2(DEFAULT_PASS).unwrap()).unwrap();
+            assert!(check.is_default(&passwd_path).await);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn default_check_matches_a_legacy_hash_without_migrating() {
+        // Goal: a legacy SHA-512 hash of the default is recognized and left as stored, since
+        // the next login with the default migrates it. Method: check it, then compare the file.
+        sidecar_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let passwd_path = dir.path().join(".passwd");
+            let legacy_hash = hash_passwd_sha512(DEFAULT_PASS.as_bytes());
+            std::fs::write(&passwd_path, &legacy_hash).unwrap();
+            let mut check = DefaultPasswdCheck::default();
+            assert!(check.is_default(&passwd_path).await);
+            assert_eq!(std::fs::read_to_string(&passwd_path).unwrap(), legacy_hash);
+        });
     }
 
     #[test]

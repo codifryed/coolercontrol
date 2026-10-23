@@ -6,10 +6,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink, type RouteLocationRaw } from 'vue-router'
 import type { UID } from '@/models/Device.ts'
 import type { StatsLegendScope } from '@/models/UISettings.ts'
 import type { ChannelStats } from '@/models/Stats.ts'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { monitoringChannelRoute } from '@/shell/channelRoute.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import { useStatFormat } from '@/composables/useStatFormat.ts'
 import {
@@ -57,11 +60,22 @@ const rows = computed((): Array<LegendRow> =>
 
 const deviceName = (deviceUID: UID): string =>
     settingsStore.allUIDeviceSettings.get(deviceUID)?.name ?? ''
+
+const deviceStore = useDeviceStore()
+const sensorRoute = (line: WindowLineStats): RouteLocationRaw =>
+    monitoringChannelRoute(
+        deviceStore.allDevices(),
+        line.deviceUID,
+        line.channelName,
+        settingsStore.channelUnit,
+    )
 </script>
 
 <template>
-    <div id="time-chart-legend" class="border-t border-border-one">
-        <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-1 pt-2">
+    <div class="flex h-full flex-col">
+        <div
+            class="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-1 pt-2"
+        >
             <span class="font-semibold">{{ t('components.chartStats.title') }}</span>
             <span class="inline-flex items-center gap-1.5">
                 <UiToggleGroup
@@ -73,7 +87,7 @@ const deviceName = (deviceUID: UID): string =>
                 <HelpIcon :text="t('components.chartStats.sinceStartHelp')" :size="0.9" />
             </span>
         </div>
-        <div class="max-h-[35vh] overflow-auto px-2 pb-2">
+        <div class="min-h-0 flex-1 overflow-auto px-2 pb-2">
             <table class="w-full min-w-[32rem] border-collapse text-sm tabular-nums">
                 <thead>
                     <tr class="text-text-color-secondary">
@@ -94,7 +108,10 @@ const deviceName = (deviceUID: UID): string =>
                         @mouseenter="emit('focusLine', line.seriesIndex)"
                     >
                         <td class="legend-cell text-left">
-                            <div class="flex min-w-0 items-center gap-2">
+                            <RouterLink
+                                :to="sensorRoute(line)"
+                                class="flex min-w-0 items-center gap-2 rounded outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+                            >
                                 <svg width="22" height="8" class="shrink-0" aria-hidden="true">
                                     <line
                                         x1="1"
@@ -110,7 +127,7 @@ const deviceName = (deviceUID: UID): string =>
                                 <span class="truncate text-xs text-text-color-secondary">{{
                                     deviceName(line.deviceUID)
                                 }}</span>
-                            </div>
+                            </RouterLink>
                         </td>
                         <td class="legend-cell font-semibold">
                             {{ formatStat(line.latest, line) }}

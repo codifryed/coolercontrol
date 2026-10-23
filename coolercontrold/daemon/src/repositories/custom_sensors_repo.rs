@@ -11,16 +11,17 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::string::ToString;
-use std::sync::Arc;
 use std::time::Instant;
+
+use chrono::{DateTime, Local};
 
 use crate::api::CCError;
 use crate::config::Config;
+use crate::device::health::{FailsafeKind, FailsafeRef};
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DriverInfo, DriverType, Status, TempInfo, TempName, TempStatus, UID,
+    ChannelInfo, ChannelKind, ChannelName, ChannelSample, Device, DeviceInfo, DeviceType,
+    DriverInfo, DriverType, StatusWriter, TempInfo, TempName, UID,
 };
-use crate::device_health::{FailsafeKind, FailsafeRef};
 use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{
     MISSING_DUTY_FAILSAFE, MISSING_FREQ_FAILSAFE, MISSING_RPM_FAILSAFE, MISSING_STATUS_THRESHOLD,
@@ -381,6 +382,11 @@ impl CustomSensorsRepo {
 
     /// Adds a new sensor's values to every entry of the custom sensor device's status
     /// history, so its chart starts with real values wherever its sources have them.
+    ///
+    /// An entry whose sources lack a value holds the last computed value for up to
+    /// `MISSING_STATUS_THRESHOLD` such entries in a row, then reports the metric's failsafe,
+    /// and reports the failsafe at once when there is nothing to hold. Unlike a live Mix or
+    /// Offset tick, one missing source does not fail safe at once.
     async fn fill_status_history_for_new_sensor(&self, sensor: &CustomSensor) -> Result<()> {
         // A File sensor is read once: that checks the file and gives the newest entry its
         // value. Older entries are placeholder zeros, as a file has no history (not a
@@ -391,42 +397,122 @@ impl CustomSensorsRepo {
             }
             _ => None,
         };
-        let mut status_history = self
+        self.verify_sources_report_now(sensor)?;
+        // Computed before the device is borrowed mutably: a parent's backfill reads its
+        // children's history on the same device.
+        let history_len = self
             .custom_sensor_device
             .as_ref()
             .unwrap()
             .borrow()
-            .status_history
-            .clone();
-        // Get mutable access to the VecDeque (will clone if there are other Arc refs)
-        let history = Arc::make_mut(&mut status_history);
-        let newest_index = history.len().saturating_sub(1);
-        for (index, status) in history.iter_mut().enumerate() {
+            .history_len();
+        let newest_index = history_len.saturating_sub(1);
+        let mut values = Vec::with_capacity(history_len);
+        let mut held: Option<f64> = None;
+        let mut misses: usize = 0;
+        for index in 0..history_len {
             let raw = match file_value {
-                Some(value) if index == newest_index => value,
-                Some(_) => 0.,
-                None => self.backfill_value(sensor, index)?,
+                Some(value) if index == newest_index => Some(value),
+                Some(_) => Some(0.),
+                None => self.backfill_value(sensor, index),
             };
-            let value = Self::reported_value(sensor.metric, raw).unwrap_or(0.);
-            Self::push_value(
-                status,
-                SensorValue {
-                    id: sensor.id.clone(),
-                    metric: sensor.metric,
-                    value,
-                },
-            );
+            let value = if let Some(raw) = raw {
+                let value = Self::reported_value(sensor.metric, raw).unwrap_or(0.);
+                held = Some(value);
+                misses = 0;
+                value
+            } else {
+                misses += 1;
+                match held {
+                    Some(value) if misses <= MISSING_STATUS_THRESHOLD => value,
+                    _ => Self::failsafe_value(sensor.metric),
+                }
+            };
+            values.push(value);
         }
-        self.custom_sensor_device
-            .as_ref()
-            .unwrap()
-            .borrow_mut()
-            .status_history = status_history;
+        let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
+        if sensor.metric.is_temp() {
+            device.add_temp_column(&sensor.id, &values);
+        } else {
+            let samples: Vec<ChannelSample> = values
+                .iter()
+                .map(|value| Self::channel_sample(sensor.metric, *value))
+                .collect();
+            device.add_channel_column(&sensor.id, &samples);
+        }
         Ok(())
     }
 
+    /// A Mix or Scale & Offset sensor's present source devices must report its value now:
+    /// a source that does not is no source, and the live sensor would only ever failsafe.
+    /// Older entries may lack it; the backfill holds or failsafes those.
+    fn verify_sources_report_now(&self, sensor: &CustomSensor) -> Result<()> {
+        let sources = match &sensor.kind {
+            CustomSensorKind::Mix { sources, .. } | CustomSensorKind::Offset { sources, .. } => {
+                sources
+            }
+            CustomSensorKind::TimeAverage { .. }
+            | CustomSensorKind::ExponentialMovingAvg { .. }
+            | CustomSensorKind::File { .. } => return Ok(()),
+        };
+        for source in sources {
+            let Some(source_device) = self.backfill_source_device(source) else {
+                continue;
+            };
+            if sensor
+                .metric
+                .read_latest(&source_device.borrow(), &source.name)
+                .is_none()
+            {
+                let msg = format!(
+                    "Source not found for Custom Sensor: \"{}\" has no {} value",
+                    self.source_label(source),
+                    sensor.metric
+                );
+                return Err(CCError::UserError { msg }.into());
+            }
+        }
+        Ok(())
+    }
+
+    /// The device a new sensor's source is read from: the Custom Sensors device itself for a
+    /// child, which already has a history, else the source's own device.
+    fn backfill_source_device(&self, source: &SensorSource) -> Option<&DeviceLock> {
+        if source.device_uid == self.device_uid {
+            self.custom_sensor_device.as_ref()
+        } else {
+            self.all_devices.get(&source.device_uid)
+        }
+    }
+
+    /// A channel sensor's value as the channel the device reports. `reported_value` left
+    /// rpm and freq whole and inside the u32 range.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn channel_sample(metric: CustomSensorMetric, value: f64) -> ChannelSample {
+        match metric {
+            CustomSensorMetric::Temp => unreachable!("a temp sensor reports no channel"),
+            CustomSensorMetric::Duty => ChannelSample {
+                duty: Some(value),
+                ..Default::default()
+            },
+            CustomSensorMetric::RPM => ChannelSample {
+                rpm: Some(value as u32),
+                ..Default::default()
+            },
+            CustomSensorMetric::Freq => ChannelSample {
+                freq: Some(value as u32),
+                ..Default::default()
+            },
+            CustomSensorMetric::Watts => ChannelSample {
+                watts: Some(value),
+                ..Default::default()
+            },
+        }
+    }
+
     /// A new sensor's computed value at history `index`, from its sources' values there.
-    fn backfill_value(&self, sensor: &CustomSensor, index: usize) -> Result<f64> {
+    /// `None` when a present source has no value there.
+    fn backfill_value(&self, sensor: &CustomSensor, index: usize) -> Option<f64> {
         let metric = sensor.metric;
         match &sensor.kind {
             CustomSensorKind::Mix {
@@ -446,12 +532,14 @@ impl CustomSensorsRepo {
                 time_window_seconds,
                 sources,
             } => {
-                // The source device's status_history is fully populated, so every
-                // back-filled entry gets a real time-average.
+                if self.backfill_source_device(&sources[0]).is_none() {
+                    // No such device: the placeholder zero, as for an absent Mix source.
+                    return Some(0.);
+                }
                 let sample_count = Self::window_sample_count(*time_window_seconds, self.poll_rate);
                 let samples =
                     self.collect_indexed_source_samples(metric, &sources[0], index, sample_count);
-                Ok(Self::compute_time_average(&samples).unwrap_or(0.))
+                Self::compute_time_average(&samples)
             }
             CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
@@ -459,52 +547,38 @@ impl CustomSensorsRepo {
             } => {
                 // Same strategy as TimeAverage. The samples come oldest first, which is
                 // what compute_ema wants.
+                if self.backfill_source_device(&sources[0]).is_none() {
+                    return Some(0.);
+                }
                 let sample_count = Self::window_sample_count(*time_window_seconds, self.poll_rate);
                 let samples =
                     self.collect_indexed_source_samples(metric, &sources[0], index, sample_count);
-                Ok(Self::compute_ema(&samples, sample_count).unwrap_or(0.))
+                Self::compute_ema(&samples, sample_count)
             }
             // Read once by the caller.
-            CustomSensorKind::File { .. } => Ok(0.),
+            CustomSensorKind::File { .. } => Some(0.),
         }
     }
 
     /// Reduces a Mix or Scale & Offset sensor's sources at history `index` with `reduce`. A
     /// source whose device is absent is skipped; if none resolve, the data is zero-filled
     /// (prior back-fill behavior) so the chart shows a value rather than aborting the fill.
-    /// A present device that lacks the value fails the fill: there is no such source.
+    /// `None` when a present device lacks the value at `index`.
     fn process_reduced_indexed(
         &self,
         sensor: &CustomSensor,
         sources: &[SensorSource],
         index: usize,
         reduce: impl Fn(&[SourceData]) -> f64,
-    ) -> Result<f64> {
+    ) -> Option<f64> {
         let mut source_data = Vec::with_capacity(sources.len());
         for source in sources {
-            let some_source_device = if source.device_uid == self.device_uid {
-                // Only used for NEW sensors, so safe for Parents too: children already have a
-                // built status history.
-                self.custom_sensor_device.as_ref()
-            } else {
-                self.all_devices.get(&source.device_uid)
-            };
-            let Some(source_device) = some_source_device else {
+            let Some(source_device) = self.backfill_source_device(source) else {
                 continue;
             };
-            let some_value = source_device
-                .borrow()
-                .status_history
-                .get(index)
-                .and_then(|status| sensor.metric.read(status, &source.name));
-            let Some(value) = some_value else {
-                let msg = format!(
-                    "Source not found for Custom Sensor: \"{}\" has no {} value",
-                    self.source_label(source),
-                    sensor.metric
-                );
-                return Err(CCError::UserError { msg }.into());
-            };
+            let value = sensor
+                .metric
+                .read_at(&source_device.borrow(), index, &source.name)?;
             source_data.push(SourceData {
                 value,
                 weight: f64::from(source.weight),
@@ -520,7 +594,7 @@ impl CustomSensorsRepo {
                 self.sensor_log_name(&sensor.id)
             );
         }
-        Ok(reduce(&source_data))
+        Some(reduce(&source_data))
     }
 
     /// Computes the current-tick value of a Mix or Scale & Offset Custom Sensor by reducing
@@ -678,9 +752,7 @@ impl CustomSensorsRepo {
             return Self::child_value(metric, &source.name, values);
         }
         let source_device = self.all_devices.get(&source.device_uid)?;
-        let device = source_device.borrow();
-        let status = device.status_history.back()?;
-        metric.read(status, &source.name)
+        metric.read_latest(&source_device.borrow(), &source.name)
     }
 
     /// A child sensor's value this tick. A child of another metric is no source.
@@ -709,29 +781,19 @@ impl CustomSensorsRepo {
         debug_assert!(sample_count >= 1);
         let mut samples: VecDeque<Option<f64>> = VecDeque::with_capacity(sample_count);
         // Collect newest-first as the old walk did, then reverse into window order.
+        let push_newest = |samples: &mut VecDeque<Option<f64>>, device: &Device, count: usize| {
+            let len = device.history_len();
+            for index in (len.saturating_sub(count)..len).rev() {
+                samples.push_back(metric.read_at(device, index, &source.name));
+            }
+        };
         if source.device_uid == self.device_uid {
             samples.push_back(Self::child_value(metric, &source.name, values));
             if let Some(cs_device) = self.custom_sensor_device.as_ref() {
-                for status in cs_device
-                    .borrow()
-                    .status_history
-                    .iter()
-                    .rev()
-                    .take(sample_count - 1)
-                {
-                    samples.push_back(metric.read(status, &source.name));
-                }
+                push_newest(&mut samples, &cs_device.borrow(), sample_count - 1);
             }
         } else if let Some(source_device) = self.all_devices.get(&source.device_uid) {
-            for status in source_device
-                .borrow()
-                .status_history
-                .iter()
-                .rev()
-                .take(sample_count)
-            {
-                samples.push_back(metric.read(status, &source.name));
-            }
+            push_newest(&mut samples, &source_device.borrow(), sample_count);
         }
         samples.make_contiguous().reverse();
         SampleWindow {
@@ -762,14 +824,12 @@ impl CustomSensorsRepo {
             return samples;
         };
         let device_ref = source_device.borrow();
-        let history_len = device_ref.status_history.len();
+        let history_len = device_ref.history_len();
         let end = index.saturating_add(1).min(history_len);
         let start = end.saturating_sub(sample_count);
         for k in start..end {
-            if let Some(status) = device_ref.status_history.get(k) {
-                if let Some(sample) = metric.read(status, &source.name) {
-                    samples.push(sample);
-                }
+            if let Some(sample) = metric.read_at(&device_ref, k, &source.name) {
+                samples.push(sample);
             }
         }
         samples
@@ -1084,16 +1144,11 @@ impl CustomSensorsRepo {
     }
 
     fn remove_status_history_for_sensor(&self, sensor_id: &str) {
-        let mut device_lock = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
-        let history = Arc::make_mut(&mut device_lock.status_history);
-        for status in history {
-            status
-                .temps
-                .retain(|temp_status| temp_status.name != sensor_id);
-            status
-                .channels
-                .retain(|channel_status| channel_status.name != sensor_id);
-        }
+        self.custom_sensor_device
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .remove_status_name(sensor_id);
     }
 
     /// Verifies that the sensor is not already a child of another sensor
@@ -1368,38 +1423,15 @@ impl CustomSensorsRepo {
         Some(value)
     }
 
-    /// Appends a sensor's value to `status`: a temperature among the temps, any other metric
-    /// as a channel carrying that one value.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn push_value(status: &mut Status, sensor_value: SensorValue) {
+    /// Writes a sensor's value into `writer`'s entry: a temperature among the temps, any other
+    /// metric as a channel carrying that one value.
+    fn write_value(writer: &mut StatusWriter<'_>, sensor_value: &SensorValue) {
         let SensorValue { id, metric, value } = sensor_value;
         debug_assert!(value.is_finite());
-        let channel = |name: ChannelName| ChannelStatus {
-            name,
-            ..Default::default()
-        };
-        match metric {
-            CustomSensorMetric::Temp => status.temps.push(TempStatus {
-                name: id,
-                temp: value,
-            }),
-            CustomSensorMetric::Duty => status.channels.push(ChannelStatus {
-                duty: Some(value),
-                ..channel(id)
-            }),
-            // `reported_value` left these whole and inside the u32 range.
-            CustomSensorMetric::RPM => status.channels.push(ChannelStatus {
-                rpm: Some(value as u32),
-                ..channel(id)
-            }),
-            CustomSensorMetric::Freq => status.channels.push(ChannelStatus {
-                freq: Some(value as u32),
-                ..channel(id)
-            }),
-            CustomSensorMetric::Watts => status.channels.push(ChannelStatus {
-                watts: Some(value),
-                ..channel(id)
-            }),
+        if metric.is_temp() {
+            writer.temp(id, *value);
+        } else {
+            writer.channel(id, Self::channel_sample(*metric, *value));
         }
     }
 
@@ -1550,19 +1582,12 @@ impl Repository for CustomSensorsRepo {
         self.reconstruct_relationships();
         // not allowed to blacklist this device, otherwise things can get strange
         self.custom_sensor_device = Some(Rc::new(RefCell::new(custom_sensor_device)));
-        self.update_statuses().await?;
-        let recent_status = self
-            .custom_sensor_device
-            .as_ref()
-            .unwrap()
-            .borrow()
-            .status_current()
-            .unwrap();
+        self.update_statuses(Local::now()).await?;
         self.custom_sensor_device
             .as_ref()
             .unwrap()
             .borrow_mut()
-            .initialize_status_history_with(recent_status, poll_rate);
+            .initialize_status_history_from_latest(poll_rate);
         if log::max_level() == log::LevelFilter::Debug {
             info!(
                 "Initialized Custom Sensors Device: {:?}",
@@ -1605,7 +1630,7 @@ impl Repository for CustomSensorsRepo {
         self.sample_windows.borrow_mut().clear();
     }
 
-    async fn update_statuses(&self) -> Result<()> {
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         if self.custom_sensor_device.is_none() {
             return Ok(());
         }
@@ -1633,16 +1658,12 @@ impl Repository for CustomSensorsRepo {
                 self.process_live_sensor(sensor, &mut values, &mut file_sensors);
             });
         debug_assert_eq!(values.len(), sensor_count);
-        let mut status = Status::default();
-        status.temps.reserve(values.len());
-        for value in values {
-            Self::push_value(&mut status, value);
+        let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
+        let mut writer = device.write_status(timestamp);
+        for value in &values {
+            Self::write_value(&mut writer, value);
         }
-        self.custom_sensor_device
-            .as_ref()
-            .unwrap()
-            .borrow_mut()
-            .set_status(status);
+        drop(device);
         trace!(
             "STATUS SNAPSHOT Time taken for CUSTOM_SENSORS device: {:?}",
             start_update.elapsed()
@@ -1735,11 +1756,11 @@ struct SourceData {
 mod tests {
     use crate::cc_fs;
     use crate::config::Config;
+    use crate::device::health::FailsafeKind;
     use crate::device::{
         ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempInfo, TempName,
         TempStatus, UID,
     };
-    use crate::device_health::FailsafeKind;
     use crate::overrides::OverridesController;
     use crate::repositories::custom_sensors_repo::{
         CustomSensorsRepo, SampleWindow, SourceData, SAMPLE_WINDOW_MAX_SLOTS,
@@ -1750,11 +1771,14 @@ mod tests {
         CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
         SensorSource,
     };
+    use chrono::Local;
     use serial_test::serial;
     use std::cell::RefCell;
     use std::collections::{HashMap, VecDeque};
     use std::ops::Not;
-    use std::path::{Path, PathBuf};
+    #[cfg(feature = "gated-tests")]
+    use std::path::Path;
+    use std::path::PathBuf;
     use std::rc::Rc;
 
     fn file_sensor(id: &str, file_path: PathBuf) -> CustomSensor {
@@ -2280,7 +2304,8 @@ mod tests {
     fn test_file_temp_status_valid() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"30000".to_vec(), // millidegree temp
@@ -2307,6 +2332,7 @@ mod tests {
     // also recorded in the failsafing-sensors set so the once-per-occurrence warn fires.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_file_temp_status_invalid() {
         cc_fs::test_runtime(async {
             // given:
@@ -2336,7 +2362,8 @@ mod tests {
     fn test_file_temp_valid() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"30000".to_vec(), // millidegree temp
@@ -2360,7 +2387,8 @@ mod tests {
     fn test_file_temp_valid_with_return() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b" 30000\n\r".to_vec())
                 .await
                 .unwrap();
@@ -2377,6 +2405,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_file_temp_not_exist() {
         cc_fs::test_runtime(async {
             // given:
@@ -2399,7 +2428,8 @@ mod tests {
     fn test_file_temp_invalid_out_of_range_1() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"-1000".to_vec(), // millidegree temp
@@ -2425,7 +2455,8 @@ mod tests {
     fn test_file_temp_invalid_out_of_range_2() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"1000000".to_vec(), // millidegree temp
@@ -2451,7 +2482,8 @@ mod tests {
     fn test_file_temp_invalid_format() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
             // when:
             let temp_result =
@@ -2472,7 +2504,8 @@ mod tests {
     fn test_file_temp_invalid_beyond_32_bits() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write_string(&test_file, (i64::from(i32::MAX) + 1).to_string())
                 .await
                 .unwrap();
@@ -2495,7 +2528,8 @@ mod tests {
     fn test_file_temp_invalid_file_size_too_large() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"100000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2521,7 +2555,8 @@ mod tests {
     fn test_file_temp_invalid_number_format() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
             // when:
             let temp_result =
@@ -2540,7 +2575,8 @@ mod tests {
     fn test_file_temp_invalid_empty() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
             // when:
             let temp_result =
@@ -2559,7 +2595,8 @@ mod tests {
     fn test_file_temp_invalid_blank() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();
             // when:
             let temp_result =
@@ -2584,7 +2621,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
@@ -2632,7 +2670,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let mut child_sensor = mix_sensor("child_sensor", vec![]);
             let parent_sensor = mix_sensor(
@@ -2686,7 +2725,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file.clone());
             let second_child_sensor = file_sensor("second_child_sensor", test_file);
@@ -2735,7 +2775,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             repo.set_custom_sensor(file_sensor("shared_child", test_file.clone()))
                 .await
@@ -2795,7 +2836,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
@@ -2845,7 +2887,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file.clone());
             let second_child_sensor = file_sensor("second_child_sensor", test_file);
@@ -2945,7 +2988,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
@@ -2987,7 +3031,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
@@ -2998,7 +3043,7 @@ mod tests {
                     name: "child_sensor".to_string(),
                 }],
             );
-            let second_test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let second_test_file = dir.path().join("second-sensor");
             cc_fs::write(&second_test_file, b"90000".to_vec())
                 .await
                 .unwrap();
@@ -3026,7 +3071,7 @@ mod tests {
                 .await
                 .expect("Failed to set second parent sensor");
             repo.sensors.borrow_mut().reverse(); // put the parents first, to be sure.
-            let result = repo.update_statuses().await;
+            let result = repo.update_statuses(Local::now()).await;
 
             // then:
             assert!(result.is_ok());
@@ -3034,7 +3079,7 @@ mod tests {
                 .custom_sensor_device
                 .unwrap()
                 .borrow()
-                .status_current()
+                .latest_status()
                 .unwrap()
                 .temps;
             assert!(all_status_temps
@@ -3112,8 +3157,8 @@ mod tests {
             assert!(result.is_err());
             assert_eq!(repo.sensors.borrow().len(), 1);
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-            assert!(device.status_history.is_empty().not());
-            for status in device.status_history.iter() {
+            assert!(device.history_len() > 0);
+            for status in device.history_statuses().iter() {
                 let entry_count = status.temps.iter().filter(|t| t.name == "sensor").count();
                 assert_eq!(entry_count, 1);
             }
@@ -3372,7 +3417,7 @@ mod tests {
     /// Reads the latest temp the Custom Sensors device is reporting for `cs_id`.
     fn current_temp_for(repo: &CustomSensorsRepo, cs_id: &str) -> f64 {
         let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-        let status = device.status_current().unwrap();
+        let status = device.latest_status().unwrap();
         status
             .temps
             .iter()
@@ -3402,6 +3447,30 @@ mod tests {
         }
     }
 
+    // A tick's entry carries the tick's timestamp, the one instant the main loop takes for
+    // every device, rather than the moment this repository happened to run.
+    #[test]
+    #[serial]
+    fn update_stamps_the_entry_with_the_tick_timestamp() {
+        cc_fs::test_runtime(async {
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+            repo.initialize_devices().await.unwrap();
+            repo.set_custom_sensor(mix_sensor(
+                "mix1",
+                vec![temp_source("nonexistent_device_uid", "any_temp")],
+            ))
+            .await
+            .unwrap();
+            let tick = Local::now() - chrono::TimeDelta::milliseconds(1_234);
+
+            repo.update_statuses(tick).await.unwrap();
+
+            let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
+            assert_eq!(device.latest_timestamp(), Some(tick));
+        });
+    }
+
     // Mix sensor pointing at a non-existent source device short-circuits to
     // MISSING_TEMP_FAILSAFE on the live tick (any-miss-fails-the-sensor per Q6c) and is
     // recorded in the failsafing-sensors set so the once-per-occurrence warn fires.
@@ -3424,7 +3493,7 @@ mod tests {
             // Backfill skips a missing source device and falls through to the empty
             // source_data dummy (0); set_custom_sensor therefore succeeds.
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!((current_temp_for(&repo, "mix1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("mix1"));
@@ -3460,11 +3529,109 @@ mod tests {
             );
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             // Max(70, 60) = 70
             assert!((current_temp_for(&repo, "mix1") - 70.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("mix1").not());
+        });
+    }
+
+    /// Pushes `count` source entries, with `cpu` at `temp` or without it.
+    fn push_source_ticks(source_dev: &DeviceLock, count: usize, cpu: Option<f64>) {
+        for _ in 0..count {
+            let mut temps = vec![TempStatus {
+                name: "gpu".to_string(),
+                temp: 60.0,
+            }];
+            if let Some(temp) = cpu {
+                temps.push(TempStatus {
+                    name: "cpu".to_string(),
+                    temp,
+                });
+            }
+            source_dev.borrow_mut().set_status(Status {
+                timestamp: Local::now(),
+                temps,
+                channels: Vec::new(),
+            });
+        }
+    }
+
+    /// The values a new sensor was backfilled with, oldest first.
+    fn backfilled_temps(repo: &CustomSensorsRepo, cs_id: &str) -> Vec<f64> {
+        let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
+        device
+            .history_statuses()
+            .iter()
+            .map(|status| {
+                status
+                    .temps
+                    .iter()
+                    .find(|temp| temp.name == cs_id)
+                    .map(|temp| temp.temp)
+                    .expect("every entry carries the new sensor")
+            })
+            .collect()
+    }
+
+    // A source that stops reporting partway through the history is backfilled as the live
+    // sensor would have reported it: the last value held for `MISSING_STATUS_THRESHOLD`
+    // entries, then the failsafe, then real values again once the source returns.
+    #[test]
+    #[serial]
+    fn backfill_holds_then_failsafes_a_source_that_went_missing() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "cpu".to_string(),
+                temp: 40.0,
+            }]);
+            push_source_ticks(&source_dev, MISSING_STATUS_THRESHOLD + 2, None);
+            push_source_ticks(&source_dev, 3, Some(50.0));
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
+            repo.initialize_devices().await.unwrap();
+
+            repo.set_custom_sensor(mix_sensor("mix1", vec![temp_source(&source_uid, "cpu")]))
+                .await
+                .unwrap();
+
+            let values = backfilled_temps(&repo, "mix1");
+            let tail = &values[values.len() - (MISSING_STATUS_THRESHOLD + 2 + 3 + 1)..];
+            let mut expected = vec![40.0];
+            expected.extend([40.0; MISSING_STATUS_THRESHOLD]);
+            expected.extend([MISSING_TEMP_FAILSAFE; 2]);
+            expected.extend([50.0; 3]);
+            assert_eq!(tail, expected.as_slice());
+            assert!(repo.failsafing_sensors.borrow().contains_key("mix1").not());
+        });
+    }
+
+    // A source first reported recently no longer refuses the sensor. Entries from before it
+    // existed have nothing to hold, so they carry the failsafe, as a live tick would.
+    #[test]
+    #[serial]
+    fn backfill_failsafes_entries_before_a_source_first_reported() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "gpu".to_string(),
+                temp: 60.0,
+            }]);
+            push_source_ticks(&source_dev, 5, Some(55.0));
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
+            repo.initialize_devices().await.unwrap();
+
+            repo.set_custom_sensor(mix_sensor("mix1", vec![temp_source(&source_uid, "cpu")]))
+                .await
+                .unwrap();
+
+            let values = backfilled_temps(&repo, "mix1");
+            let (before, after) = values.split_at(values.len() - 5);
+            assert!(before.iter().all(|temp| *temp == MISSING_TEMP_FAILSAFE));
+            assert_eq!(after, [55.0; 5].as_slice());
         });
     }
 
@@ -3500,7 +3667,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!(
                 (current_temp_for(&repo, "delta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3532,7 +3699,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             // -25 offset on the failsafe would have been 75 under arithmetic substitution;
             // short-circuit must produce exactly MISSING_TEMP_FAILSAFE.
@@ -3567,7 +3734,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!((current_temp_for(&repo, "ta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("ta1"));
@@ -3602,7 +3769,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!((current_temp_for(&repo, "ema1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("ema1"));
@@ -3636,7 +3803,7 @@ mod tests {
             };
             repo.sensors.borrow_mut().push(sensor);
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!(
                 (current_temp_for(&repo, "ema_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3674,7 +3841,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let temp = current_temp_for(&repo, "ema_ok");
             assert!(
@@ -3723,7 +3890,7 @@ mod tests {
             };
             repo.sensors.borrow_mut().push(sensor);
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!(
                 (current_temp_for(&repo, "ta_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3740,7 +3907,8 @@ mod tests {
     #[serial]
     fn file_sensor_recovers_from_failsafe() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
 
             let test_config = Rc::new(Config::init_default_config().unwrap());
@@ -3750,7 +3918,7 @@ mod tests {
             repo.set_custom_sensor(sensor).await.unwrap();
 
             // Tick 1: file readable, real value
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
 
@@ -3758,14 +3926,14 @@ mod tests {
             // rather than commanding a fan curve to 100 C on one unlucky read.
             cc_fs::remove_file(&test_file).await.ok();
             for _ in 0..MISSING_STATUS_THRESHOLD {
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
                 assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
             }
 
             // One more failure passes the threshold: now it failsafes, and the repository
             // must report the ref with the reason from the entry transition.
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!(
                 (current_temp_for(&repo, "file1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
             );
@@ -3777,7 +3945,7 @@ mod tests {
 
             // Restore the file with a new value: next tick recovers.
             cc_fs::write(&test_file, b"55000".to_vec()).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
         });
@@ -3790,7 +3958,8 @@ mod tests {
     #[serial]
     fn file_sensor_holds_last_good_value_on_transient_failure() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -3798,11 +3967,11 @@ mod tests {
             repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             // A truncated file reads as unparseable, exactly like the mid-write race.
             cc_fs::write(&test_file, Vec::new()).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
@@ -3816,7 +3985,8 @@ mod tests {
     #[serial]
     fn file_sensor_failsafes_immediately_when_never_read_successfully() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -3828,7 +3998,7 @@ mod tests {
                 .unwrap();
             cc_fs::remove_file(&test_file).await.ok();
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!(
                 (current_temp_for(&repo, "file1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3844,7 +4014,8 @@ mod tests {
     #[serial]
     fn file_sensor_failure_run_resets_after_a_good_read() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -3852,20 +4023,20 @@ mod tests {
             repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             for _ in 0..MISSING_STATUS_THRESHOLD {
                 cc_fs::write(&test_file, Vec::new()).await.unwrap();
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
             // A good read clears the run.
             cc_fs::write(&test_file, b"55000".to_vec()).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
 
             // The very next failure is therefore the first of a fresh run, not the ninth.
             cc_fs::write(&test_file, Vec::new()).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
         });
@@ -3877,7 +4048,8 @@ mod tests {
     #[serial]
     fn delete_custom_sensor_clears_failsafing_state() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -3906,7 +4078,8 @@ mod tests {
     #[serial]
     fn update_custom_sensor_clears_failsafing_state() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -3952,7 +4125,7 @@ mod tests {
             // status_history entries for mix_bf (all backfilled) must be 0, not failsafe.
             // The sensor must NOT be in the failsafing set: backfill bypasses emit_failsafe.
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-            for status in device.status_history.iter() {
+            for status in device.history_statuses().iter() {
                 let entry = status
                     .temps
                     .iter()
@@ -4025,7 +4198,7 @@ mod tests {
     ) -> Option<f64> {
         let device = device.borrow();
         let mut temps: Vec<f64> = device
-            .status_history
+            .history_statuses()
             .iter()
             .rev()
             .take(sample_count)
@@ -4101,7 +4274,7 @@ mod tests {
             ];
             for temp in stream {
                 push_source_tick(&source_dev, "cpu", Some(temp));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 for (label, window) in windows {
                     let sample_count = usize::from(window);
                     let avg_ref =
@@ -4175,7 +4348,7 @@ mod tests {
             ];
             for temp in stream {
                 push_source_tick(&source_dev, "cpu", temp);
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 let avg_ref = reference_windowed(&source_dev, "cpu", 5, false).unwrap();
                 let ema_ref = reference_windowed(&source_dev, "cpu", 5, true).unwrap();
                 assert_eq!(current_temp_for(&repo, "avg").to_bits(), avg_ref.to_bits());
@@ -4184,7 +4357,7 @@ mod tests {
             // Drain the whole window with gaps: all-None slots must failsafe.
             for _ in 0..5 {
                 push_source_tick(&source_dev, "cpu", None);
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
             for id in ["avg", "ema"] {
                 assert!(
@@ -4223,7 +4396,7 @@ mod tests {
             .unwrap();
             for temp in [70.0, 72.0, 74.0, 76.0] {
                 push_source_tick(&source_dev, "cpu", Some(temp));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
             repo.update_custom_sensor(time_average_sensor(
                 "avg",
@@ -4234,7 +4407,7 @@ mod tests {
             .unwrap();
             assert!(repo.sample_windows.borrow().contains_key("avg").not());
             push_source_tick(&source_dev, "cpu", Some(78.0));
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             let avg_ref = reference_windowed(&source_dev, "cpu", 3, false).unwrap();
             assert_eq!(current_temp_for(&repo, "avg").to_bits(), avg_ref.to_bits());
             assert_eq!(
@@ -4271,7 +4444,7 @@ mod tests {
                     sample_count: 5,
                 },
             );
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "avg") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.sample_windows.borrow().contains_key("avg").not());
             assert!(repo.failsafing_sensors.borrow().contains_key("avg"));
@@ -4298,11 +4471,11 @@ mod tests {
                 .unwrap();
             for temp in [70.0, 71.0, 72.0, 73.0, 74.0, 75.0] {
                 push_source_tick(&source_dev, "cpu", Some(temp));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
             repo.sample_windows.borrow_mut().clear();
             push_source_tick(&source_dev, "cpu", Some(69.5));
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             let ema_ref = reference_windowed(&source_dev, "cpu", 5, true).unwrap();
             assert_eq!(current_temp_for(&repo, "ema").to_bits(), ema_ref.to_bits());
         });
@@ -4331,7 +4504,7 @@ mod tests {
             .await
             .unwrap();
             push_source_tick(&source_dev, "cpu", Some(70.0));
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!(repo.sample_windows.borrow().is_empty().not());
             repo.prepare_for_sleep().await;
             assert!(repo.sample_windows.borrow().is_empty());
@@ -4362,7 +4535,7 @@ mod tests {
             .unwrap();
             for tick in 0..15 {
                 push_source_tick(&source_dev, "cpu", Some(70.0 + f64::from(tick)));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 let windows = repo.sample_windows.borrow();
                 let window = windows.get("avg").unwrap();
                 assert!(window.samples.len() <= window.sample_count);
@@ -4465,7 +4638,7 @@ mod tests {
     /// The channel the Custom Sensors device currently reports for `cs_id`.
     fn current_channel_for(repo: &CustomSensorsRepo, cs_id: &str) -> ChannelStatus {
         let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-        let status = device.status_current().unwrap();
+        let status = device.latest_status().unwrap();
         assert!(status.temps.iter().all(|temp| temp.name != cs_id));
         status
             .channels
@@ -4501,7 +4674,7 @@ mod tests {
             ))
             .await
             .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let channel = current_channel_for(&repo, "pressure");
             assert_eq!(channel.rpm, Some(438));
@@ -4535,7 +4708,7 @@ mod tests {
                     .await
                     .unwrap();
             }
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let blank = |name: &str| ChannelStatus {
                 name: name.to_string(),
@@ -4594,7 +4767,7 @@ mod tests {
                 },
             );
             repo.set_custom_sensor(total).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert_eq!(current_channel_for(&repo, "total").watts, Some(345.75));
         });
@@ -4619,7 +4792,7 @@ mod tests {
             ] {
                 repo.set_custom_sensor(sensor).await.unwrap();
             }
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert_eq!(current_channel_for(&repo, "duty_high").duty, Some(100.));
             assert_eq!(current_channel_for(&repo, "duty_low").duty, Some(0.));
@@ -4662,17 +4835,17 @@ mod tests {
             repo.set_custom_sensor(scaled("rpm", CustomSensorMetric::RPM, 1., 50., source))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(1250));
 
             // The fan channel is gone from the source's newest status.
             push_channel_tick(&dev, Vec::new());
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(0));
             assert!(repo.failsafing_sensors.borrow().contains_key("rpm"));
 
             push_channel_tick(&dev, channel_tick(900, 40., 3600, 65.5));
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(950));
             assert!(repo.failsafing_sensors.borrow().is_empty());
         });
@@ -4697,7 +4870,7 @@ mod tests {
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
             assert!(device.info.channels.is_empty());
             assert!(device
-                .status_history
+                .history_statuses()
                 .iter()
                 .all(|status| status.channels.is_empty()));
         });
@@ -4730,7 +4903,7 @@ mod tests {
             repo.set_custom_sensor(window("ema", true)).await.unwrap();
             for rpm in [1000, 1100, 1300] {
                 push_channel_tick(&dev, channel_tick(rpm, 40., 3600, 65.5));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
 
             // (1000 + 1100 + 1300) / 3 = 1133.33
@@ -4756,7 +4929,7 @@ mod tests {
             repo.set_custom_sensor(scaled("parent", CustomSensorMetric::RPM, 10., 0., child()))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             // The child reports 438, not 438.4, and that is what the parent scales.
             assert_eq!(current_channel_for(&repo, "child").rpm, Some(438));
@@ -4789,14 +4962,14 @@ mod tests {
                 .unwrap();
             {
                 let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-                assert!(device.status_history.is_empty().not());
-                for status in device.status_history.iter() {
+                assert!(device.history_len() > 0);
+                for status in device.history_statuses().iter() {
                     assert_eq!(status.channels.len(), 1);
                     assert_eq!(status.channels[0].name, "rpm");
                     assert_eq!(status.temps.len(), 1);
                     assert_eq!(status.temps[0].name, "temp");
                 }
-                let newest = device.status_current().unwrap();
+                let newest = device.latest_status().unwrap();
                 assert_eq!(newest.channels[0].rpm, Some(1200));
                 assert_eq!(device.info.channels.len(), 1);
                 assert_eq!(device.info.temps.len(), 1);
@@ -4807,7 +4980,7 @@ mod tests {
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
             assert!(device.info.channels.is_empty());
             assert_eq!(device.info.temps.len(), 1);
-            for status in device.status_history.iter() {
+            for status in device.history_statuses().iter() {
                 assert!(status.channels.is_empty());
                 assert_eq!(status.temps.len(), 1);
             }
@@ -4835,8 +5008,8 @@ mod tests {
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
             assert!(device.info.temps.is_empty());
             assert!(device.info.channels.contains_key("watts"));
-            assert!(device.status_history.len() > 1);
-            for status in device.status_history.iter() {
+            assert!(device.history_len() > 1);
+            for status in device.history_statuses().iter() {
                 assert_eq!(status.channels.len(), 1);
                 assert!(status.channels[0].watts.is_some());
             }
@@ -4857,7 +5030,7 @@ mod tests {
             repo.set_custom_sensor(scaled("rpm", CustomSensorMetric::RPM, 1., 0., gone()))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let failsafing = repo.failsafing();
             assert_eq!(failsafing.len(), 2);
@@ -4897,7 +5070,7 @@ mod tests {
 
             let rescaled = scaled("fan", CustomSensorMetric::RPM, 2., 0., fan());
             repo.update_custom_sensor(rescaled).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "fan").rpm, Some(2400));
         });
     }
@@ -5051,7 +5224,7 @@ mod tests {
             name_channel(&overrides, &source_uid, "temp1", "Coolant").await;
             source_dev.borrow_mut().set_status(Status::default());
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let failsafing = repo.failsafing();
             assert_eq!(failsafing.len(), 1);
@@ -5183,7 +5356,7 @@ mod tests {
                 source_names(&test_config.get_custom_sensors().unwrap()),
                 ["temp1"]
             );
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_temp_for(&repo, "parent"), 40.);
         });
     }
@@ -5239,7 +5412,8 @@ mod tests {
     #[serial]
     fn file_value_reads_a_number_beyond_32_bits() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"100000000000\n".to_vec())
                 .await
                 .unwrap();
@@ -5261,7 +5435,8 @@ mod tests {
     #[serial]
     fn file_sensor_reports_holds_and_failsafes_a_channel_metric() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"3600500000".to_vec())
                 .await
                 .unwrap();
@@ -5274,17 +5449,17 @@ mod tests {
                 },
             );
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "freq").freq, Some(3601));
 
             cc_fs::remove_file(&test_file).await.unwrap();
             for _ in 0..MISSING_STATUS_THRESHOLD {
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 assert_eq!(current_channel_for(&repo, "freq").freq, Some(3601));
             }
             assert!(repo.failsafing_sensors.borrow().is_empty());
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "freq").freq, Some(0));
             assert!(repo.failsafing_sensors.borrow().contains_key("freq"));
         });
@@ -5296,7 +5471,8 @@ mod tests {
     #[serial]
     fn file_sensor_is_checked_against_its_metric_on_create() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"1200".to_vec()).await.unwrap();
             let repo = repo_with(vec![]).await;
             let file = |id: &str, metric| {
@@ -5316,7 +5492,7 @@ mod tests {
             repo.set_custom_sensor(file("rpm", CustomSensorMetric::RPM))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(1200));
         });
     }

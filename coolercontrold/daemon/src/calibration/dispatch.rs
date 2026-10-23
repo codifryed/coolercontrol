@@ -1309,6 +1309,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn dispatch_skips_walk_when_override_disables_it() {
         // Goal: with `walk_after_kick_override = Some(false)`, the deferred task must call
         // complete_kick (single sustain write) instead of complete_kick_with_walk: kick, then

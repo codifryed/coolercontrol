@@ -114,6 +114,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn test_environment_detect() {
         let env = Environment::detect();
         // These tests are environment-dependent, but should not panic
