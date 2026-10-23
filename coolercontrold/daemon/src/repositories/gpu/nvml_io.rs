@@ -50,7 +50,7 @@ impl NvmlIo {
         // Detached deliberately: a wedged worker never returns, so a handle would only invite a
         // `join` that cannot be bounded.
         let builder = thread::Builder::new().name(thread_name);
-        affinity::spawn(builder, move || run_worker(device, rx))?;
+        affinity::spawn_worker(builder, move || run_worker(device, rx))?;
         Ok(Self {
             tx,
             reply_timeout,

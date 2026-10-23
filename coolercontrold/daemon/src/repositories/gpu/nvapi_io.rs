@@ -100,7 +100,7 @@ impl NvApiIo {
         // Detached deliberately: a wedged thread never returns, so a handle would only invite a
         // `join` that cannot be bounded.
         let builder = thread::Builder::new().name(THREAD_NAME.to_owned());
-        let spawned = affinity::spawn(builder, move || run_worker(init, ready_tx, rx));
+        let spawned = affinity::spawn_worker(builder, move || run_worker(init, ready_tx, rx));
         if let Err(err) = spawned {
             warn!(
                 "Could not start the nvapi thread: {err}. GPU hotspot temperatures are not \

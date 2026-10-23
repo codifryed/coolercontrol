@@ -155,7 +155,7 @@ impl LiqctldIo {
         debug_assert!(status_timeout > Duration::ZERO);
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
         let mut http = LiqctldHttp::new(endpoint);
-        spawn_worker(format!("{THREAD_NAME_PREFIX}{device_index}"), move || {
+        start_worker_thread(format!("{THREAD_NAME_PREFIX}{device_index}"), move || {
             run_loop(rx, |request| serve_device(&mut http, device_index, request));
         })?;
         Ok(Self {
@@ -373,7 +373,7 @@ impl LiqctldControl {
         let budget = endpoint.exchange_budget();
         let (tx, rx) = mpsc::channel::<ControlRequest>(QUEUE_DEPTH);
         let mut http = LiqctldHttp::new(endpoint);
-        spawn_worker(CONTROL_THREAD_NAME.to_owned(), move || {
+        start_worker_thread(CONTROL_THREAD_NAME.to_owned(), move || {
             run_loop(rx, |request| serve_control(&mut http, request));
         })?;
         Ok(Self { tx, budget })
@@ -446,14 +446,14 @@ async fn round_trip<R, T>(
     rt::timeout(budget, exchange).await.ok()
 }
 
-fn spawn_worker(thread_name: String, body: impl FnOnce() + Send + 'static) -> Result<()> {
+fn start_worker_thread(thread_name: String, body: impl FnOnce() + Send + 'static) -> Result<()> {
     debug!("liqctld worker starting: {thread_name}");
     // Detached deliberately: a worker stuck in a socket read only returns at its timeout, so a
     // handle would only invite a `join` that cannot be bounded.
     let builder = thread::Builder::new()
         .name(thread_name)
         .stack_size(WORKER_STACK_BYTES);
-    affinity::spawn(builder, body)?;
+    affinity::spawn_worker(builder, body)?;
     Ok(())
 }
 
