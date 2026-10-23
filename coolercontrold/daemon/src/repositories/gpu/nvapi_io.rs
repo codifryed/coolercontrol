@@ -15,6 +15,7 @@ use std::time::Duration;
 use log::{debug, info, warn};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::affinity;
 use crate::repositories::gpu::nvapi::NvApi;
 use crate::repositories::hwmon::device_io::{
     DeviceHealth, HealthState, QUEUE_DEPTH, UNREACHABLE_PROBE_INTERVAL,
@@ -98,9 +99,8 @@ impl NvApiIo {
         let (ready_tx, ready_rx) = oneshot::channel::<bool>();
         // Detached deliberately: a wedged thread never returns, so a handle would only invite a
         // `join` that cannot be bounded.
-        let spawned = thread::Builder::new()
-            .name(THREAD_NAME.to_owned())
-            .spawn(move || run_worker(init, ready_tx, rx));
+        let builder = thread::Builder::new().name(THREAD_NAME.to_owned());
+        let spawned = affinity::spawn(builder, move || run_worker(init, ready_tx, rx));
         if let Err(err) = spawned {
             warn!(
                 "Could not start the nvapi thread: {err}. GPU hotspot temperatures are not \

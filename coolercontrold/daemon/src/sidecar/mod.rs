@@ -3,10 +3,10 @@
 
 //! The Tokio sidecar thread.
 //!
-//! A single long-lived OS thread running a current-thread Tokio runtime. It hosts the parts of the
-//! daemon that require a Tokio reactor (the REST/gRPC servers, the dbus sleep listener, and the
-//! service-plugin tonic transport) so the main thread can run a non-Tokio runtime. (liqctld is the
-//! exception: it becomes compio-native rather than moving here.)
+//! A single long-lived OS thread running a current-thread Tokio runtime. It hosts the daemon's
+//! network and D-Bus transports (the REST/gRPC servers, the dbus sleep listener, and the
+//! service-plugin tonic transport) and its child processes, off the main thread that runs the
+//! engine. It first existed so the main thread could run compio; liqctld has workers of its own.
 //!
 //! The hosted actors are `!Send` (they hold `Rc`/`RefCell` state), and a `!Send` future cannot be
 //! moved across threads. So the main thread does not send a future: it sends a `Send` *builder*

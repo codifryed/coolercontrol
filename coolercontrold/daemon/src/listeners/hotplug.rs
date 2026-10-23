@@ -28,9 +28,10 @@ use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 const DEBOUNCE_DURATION: Duration = Duration::from_secs(5);
-/// Poll interval for the netlink socket (compio has no fd-readiness primitive). uevents queue in
-/// the socket buffer, so a coarse poll loses no events; it only adds at most this much latency to
-/// detecting a device change (already debounced), keeping idle wakeups low.
+/// Poll interval for the netlink socket, which is drained on a timer rather than woken per uevent:
+/// the kernel broadcasts every subsystem's uevents to it. They queue in the socket buffer, so a
+/// coarse poll loses no events; it only adds at most this much latency to detecting a device
+/// change (already debounced), keeping idle wakeups low.
 const NETLINK_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// Standard kernel uevent buffer size. Messages exceeding this are truncated.
 const UEVENT_BUF_SIZE: usize = 4096;

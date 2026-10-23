@@ -173,8 +173,8 @@ pub async fn start_server<'s>(
     )
     .await;
     let tls_config = tls_config(&settings).await;
-    // admin uses `sidecar_fs` (always Tokio); this runs during main-thread API init, so dispatch
-    // it to the sidecar (no Tokio reactor on the compio main thread).
+    // admin uses `sidecar_fs`, which the auth subsystem awaits on the sidecar; this runs during
+    // main-thread API init, so dispatch it there.
     let session_key = crate::sidecar::handle()
         .run(admin::load_or_generate_session_key)
         .await??;
@@ -943,8 +943,8 @@ async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
         tls::set_served_fingerprint(fingerprint);
     }
     // `RustlsConfig::from_pem_file` reads the cert/key via `tokio::fs` and parses via
-    // `spawn_blocking`, both of which need a Tokio reactor. This runs during main-thread API init
-    // (no reactor on the compio main thread), so load it on the sidecar. Harmless on Tokio too.
+    // `spawn_blocking`. This runs during main-thread API init, so load it on the sidecar, which
+    // serves the API it configures.
     match crate::sidecar::handle()
         .run(move || RustlsConfig::from_pem_file(cert_path, key_path))
         .await
@@ -1015,8 +1015,8 @@ pub fn is_forbidden_name_char(c: char) -> bool {
 }
 
 /// Probes whether `address` can be bound, the same way the server binds it. The bind is
-/// synchronous so it needs no reactor: it runs on the main thread (which may be compio) during
-/// API init, before the server moves to the sidecar.
+/// synchronous: it runs on the main thread during API init, before the server moves to the
+/// sidecar.
 /// The actual server listener is bound on the sidecar (see `create_api_server`).
 fn can_bind_tcp(address: impl Into<SocketAddr>) -> bool {
     connection::listener(address.into()).is_ok()
@@ -2248,7 +2248,7 @@ mod tests {
         // Goal: verify that the watcher clears the in-memory session
         // cache when the password file's mtime changes (simulating a
         // CLI `--reset-password` against a running daemon). Runs on the
-        // active runtime (Tokio or compio) since the watcher uses the rt facade.
+        // main runtime, since the watcher uses the rt facade.
         use std::collections::HashMap;
         use time::OffsetDateTime;
         use tower_sessions::session::Record;

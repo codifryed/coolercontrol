@@ -4,16 +4,16 @@
 //! Async runtime facade.
 //!
 //! Centralizes the runtime entry, task spawning, timers, and shutdown-signal handling behind one
-//! module so the underlying runtime can be swapped without touching call sites. The backend is
-//! compio (`runtime`, `test_runtime`, `spawn`, `sleep`, `sleep_until`, `interval`, `timeout`,
-//! `shutdown_signal`, `log_active_backend`).
+//! module so the underlying runtime can be swapped without touching call sites. The backend is a
+//! tokio current-thread runtime with a `LocalSet` (`runtime`, `test_runtime`, `spawn`, `sleep`,
+//! `sleep_until`, `interval`, `timeout`, `shutdown_signal`, `log_ignored_driver_override`).
 //!
-//! Only main-thread code goes through this facade; the sidecar thread uses its Tokio runtime
+//! Only main-thread code goes through this facade; the sidecar thread uses its own Tokio runtime
 //! directly. Channels (`tokio::sync`) and `CancellationToken` are reactor-agnostic and are used
 //! directly, not wrapped here.
 
-mod compio_rt;
-pub use compio_rt::*;
+mod tokio_rt;
+pub use tokio_rt::*;
 
 /// Runtime-agnostic blocking-join failure (the spawned closure panicked or the join was cancelled).
 /// The backend's native join error is kept as a string so its concrete type never leaks past the
@@ -35,9 +35,9 @@ impl std::fmt::Display for JoinError {
 
 impl std::error::Error for JoinError {}
 
-/// Lets every other ready task run before the caller continues. compio has no `yield_now`: this
-/// wakes the current task and returns `Pending` once, which puts it at the back of the run queue
-/// without allocating.
+/// Lets every other ready task run before the caller continues. This wakes the current task and
+/// returns `Pending` once, which puts it at the back of the run queue without allocating. Unlike
+/// tokio's own, it needs no runtime, so `poll_to_end` can drive it in allocation counts.
 pub async fn yield_now() {
     let mut yielded = false;
     std::future::poll_fn(|cx| {

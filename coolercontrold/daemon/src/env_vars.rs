@@ -121,13 +121,11 @@ pub const ENV_VARS: &[EnvVarDoc] = &[
     },
     EnvVarDoc {
         name: RUNTIME_DRIVER_NAME,
-        description: "Reactor backend the async runtime uses. epoll avoids the io_uring wait \
-                      being accounted as iowait, which shows an otherwise idle core as fully \
-                      busy, at the cost of noticeably more wakeups. Only needed on kernels 6.5 \
-                      to 6.14: 6.15+ drops the iowait accounting on its own. Read on builds \
-                      with the compio runtime only.",
-        values: "epoll | io_uring",
-        default: "io_uring where the kernel supports it, otherwise epoll",
+        description: "No longer has an effect: the runtime always uses epoll, so an idle \
+                      core is never shown as busy with iowait. It chose the reactor of the \
+                      earlier compio runtime. When set, the daemon logs a note at startup.",
+        values: "ignored",
+        default: "epoll",
     },
     EnvVarDoc {
         name: ENV_CONFIG_DIR,

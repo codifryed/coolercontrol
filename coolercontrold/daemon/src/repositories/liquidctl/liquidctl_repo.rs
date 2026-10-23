@@ -362,8 +362,8 @@ impl LiquidctlRepo {
             .await;
             return Err(InitError::LiqctldDisabled.into());
         }
-        // verify_env spawns a Python process via the supervisor's `tokio::process`, so it must run
-        // on the sidecar Tokio runtime (no Tokio reactor on the compio main thread).
+        // verify_env spawns a Python process via the supervisor's `tokio::process`, so it runs on
+        // the sidecar, where the supervisor's child processes live.
         if let Err(err) = crate::sidecar::handle()
             .run(liqctld_service::verify_env)
             .await

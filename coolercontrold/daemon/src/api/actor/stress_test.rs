@@ -1370,8 +1370,8 @@ pub struct StressTestHandle {
 
 impl StressTestHandle {
     pub async fn new(cancel_token: CancellationToken) -> Self {
-        // Probe stress-ng and run the actor on the sidecar: both manage child processes via
-        // tokio::process, which needs a Tokio reactor (the main thread may be on compio).
+        // Probe stress-ng and run the actor on the sidecar, where the daemon runs its child
+        // processes through tokio::process.
         let stress_ng = crate::sidecar::handle()
             .run(detect_stress_ng)
             .await

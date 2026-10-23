@@ -3,11 +3,10 @@
 
 //! Per-device sysfs IO, isolated on a thread of its own.
 //!
-//! kernfs advertises a `.poll`, so `io_uring` issues sysfs reads inline on the submitting thread
-//! and kernfs then blocks anyway. A driver that does a USB round trip inside its read therefore
-//! parks the whole single-threaded runtime, and with it the snapshot cap, the permit timeouts and
-//! the failsafe's staleness counting: every protection the daemon has is a timer on the runtime
-//! the stall is holding.
+//! A sysfs read blocks in the driver's `show()`, and cannot be cancelled. A driver that does a
+//! USB round trip inside its read would therefore park the whole single-threaded runtime, were it
+//! read there, and with it the snapshot cap, the permit timeouts and the failsafe's staleness
+//! counting: every protection the daemon has is a timer on the runtime the stall would hold.
 //!
 //! One thread and one `SysfsFdCache` per device makes that machinery able to run. It adds no
 //! safety of its own. The thread runs no runtime: it blocks on its queue and in plain syscalls.
@@ -24,6 +23,7 @@ use anyhow::Result;
 use log::{debug, warn};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::affinity;
 use crate::cc_fs::{self, ReadIndex, SysfsValue};
 use crate::config::Config;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
@@ -137,15 +137,15 @@ impl DeviceIo {
         let liveness = WorkerLiveness(Arc::downgrade(&running));
         // Detached deliberately: a wedged worker never returns, so there is no handle worth
         // keeping. Holding one would only invite a `join` that cannot be bounded.
-        std::thread::Builder::new()
+        let builder = std::thread::Builder::new()
             .name(thread_name)
-            .stack_size(WORKER_STACK_BYTES)
-            .spawn(move || {
-                run_worker(rx);
-                // Held for the thread's whole life, so its exit can be seen once every handle is
-                // gone: see `WorkerLiveness`.
-                drop(running);
-            })?;
+            .stack_size(WORKER_STACK_BYTES);
+        affinity::spawn(builder, move || {
+            run_worker(rx);
+            // Held for the thread's whole life, so its exit can be seen once every handle is
+            // gone: see `WorkerLiveness`.
+            drop(running);
+        })?;
         Ok(Self::Threaded(Rc::new(Worker {
             state: HealthState::new(device_name.to_owned()),
             tx,
