@@ -844,7 +844,7 @@ impl From<&ChannelStatus> for ChannelSample {
 
 impl ChannelSample {
     /// Writes these values over `channel`'s.
-    fn apply_to(self, channel: &mut ChannelStatus) {
+    pub fn apply_to(self, channel: &mut ChannelStatus) {
         channel.rpm = self.rpm;
         channel.duty = self.duty;
         channel.freq = self.freq;

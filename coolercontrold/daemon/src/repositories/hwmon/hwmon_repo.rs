@@ -59,9 +59,10 @@ use crate::cc_fs::ReadIndex;
 use crate::config::Config;
 use crate::device::health::{FailsafeRef, UnreachableRef};
 use crate::device::{
-    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus,
-    Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status,
-    Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES, UID,
+    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelSample,
+    ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty,
+    SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus, TypeIndex, Watts,
+    MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::diagnostics::support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
 use crate::overrides::OverridesController;
@@ -1190,27 +1191,22 @@ impl HwmonRepo {
     ) {
         match ch_type {
             HwmonChannelType::Power => {
-                if let Some(status) = power::read_one_power_status(driver, channel).await {
-                    self.mark_channel_fresh(type_index, &status.name);
-                    self.upsert_single_channel(type_index, status);
-                }
+                let watts = power::read_one_watts(driver, channel).await;
+                self.upsert_watts(type_index, channel, watts);
             }
             HwmonChannelType::Temp => {
-                let status = if drivetemp_suspended {
+                let temp = if drivetemp_suspended {
                     Some(drivetemp::default_suspended_temp_for(channel))
                 } else {
-                    temps::read_one_temp_status(driver, channel).await
+                    temps::read_one_temp(driver, channel).await
                 };
-                if let Some(status) = status {
-                    self.mark_temp_fresh(type_index, &status.name);
-                    self.upsert_single_temp(type_index, status);
-                }
+                self.upsert_temp(type_index, channel, temp);
             }
             HwmonChannelType::Fan => {
-                let status = self.read_fan_channel(type_index, driver, channel).await;
-                if let Some(status) = status {
-                    self.mark_channel_fresh(type_index, &status.name);
-                    self.upsert_single_channel(type_index, status);
+                let sample = self.read_fan_channel(type_index, driver, channel).await;
+                if let Some(sample) = sample {
+                    self.mark_channel_fresh(type_index, &channel.name);
+                    self.upsert_single_channel(type_index, &channel.name, sample);
                 }
             }
             _ => {}
@@ -1230,28 +1226,21 @@ impl HwmonRepo {
         ch_type: &HwmonChannelType,
         drivetemp_suspended: bool,
     ) {
-        let upsert_channel = |status: Option<ChannelStatus>| {
-            let Some(status) = status else { return };
-            self.mark_channel_fresh(type_index, &status.name);
-            self.upsert_single_channel(type_index, status);
-        };
-        let upsert_temp = |status: Option<TempStatus>| {
-            let Some(status) = status else { return };
-            self.mark_temp_fresh(type_index, &status.name);
-            self.upsert_single_temp(type_index, status);
-        };
+        let upsert_watts = |channel, watts| self.upsert_watts(type_index, channel, watts);
+        let upsert_temp = |channel, temp| self.upsert_temp(type_index, channel, temp);
         match ch_type {
-            HwmonChannelType::Power => {
-                power::read_power_statuses(driver, channels, upsert_channel).await;
-            }
+            HwmonChannelType::Power => power::read_watts(driver, channels, upsert_watts).await,
             HwmonChannelType::Temp => {
                 // A suspended drive must not be read at all, so it never enters the batch.
                 if drivetemp_suspended {
-                    channels
-                        .map(|channel| Some(drivetemp::default_suspended_temp_for(channel)))
-                        .for_each(upsert_temp);
+                    for channel in channels {
+                        upsert_temp(
+                            channel,
+                            Some(drivetemp::default_suspended_temp_for(channel)),
+                        );
+                    }
                 } else {
-                    temps::read_temp_statuses(driver, channels, upsert_temp).await;
+                    temps::read_temps(driver, channels, upsert_temp).await;
                 }
             }
             HwmonChannelType::Fan => self.read_fan_channels(type_index, driver, channels).await,
@@ -1277,21 +1266,24 @@ impl HwmonRepo {
                 .map_or(fans::FanRead::Full, fans::FanRead::RpmOnly)
         };
         let on_reading = |channel: &HwmonChannelInfo, reading| {
-            let status = match reading {
+            let sample = match reading {
                 fans::FanReading::Failed => return,
-                fans::FanReading::Rpm { rpm, duty } => ChannelStatus {
-                    name: channel.name.clone(),
+                fans::FanReading::Rpm { rpm, duty } => ChannelSample {
                     rpm,
                     duty: Some(f64::from(duty)),
                     ..Default::default()
                 },
-                fans::FanReading::Full(status) => {
-                    self.refresh_duty_cache(type_index, channel, status.duty);
-                    status
+                fans::FanReading::Full { rpm, duty } => {
+                    self.refresh_duty_cache(type_index, channel, duty);
+                    ChannelSample {
+                        rpm,
+                        duty,
+                        ..Default::default()
+                    }
                 }
             };
-            self.mark_channel_fresh(type_index, &status.name);
-            self.upsert_single_channel(type_index, status);
+            self.mark_channel_fresh(type_index, &channel.name);
+            self.upsert_single_channel(type_index, &channel.name, sample);
         };
         fans::read_fan_statuses(driver, channels, want, on_reading).await;
     }
@@ -1304,17 +1296,17 @@ impl HwmonRepo {
         type_index: TypeIndex,
         driver: &Rc<HwmonDriverInfo>,
         channel: &HwmonChannelInfo,
-    ) -> Option<ChannelStatus> {
+    ) -> Option<ChannelSample> {
         debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
         if self.slow_devices.contains(&type_index).not() {
-            return read_one_fan_status_for(driver, channel).await;
+            let status = read_one_fan_status_for(driver, channel).await?;
+            return Some(ChannelSample::from(&status));
         }
         if let Some(duty) = self.reusable_duty(type_index, &channel.name, Instant::now()) {
             // Outer None: RPM read failed (omit so failsafe engages).
             // Inner None: no RPM cap.
             let rpm = read_one_fan_rpm_only_for(driver, channel).await?;
-            return Some(ChannelStatus {
-                name: channel.name.clone(),
+            return Some(ChannelSample {
                 rpm,
                 duty: Some(f64::from(duty)),
                 ..Default::default()
@@ -1323,7 +1315,7 @@ impl HwmonRepo {
         // Verify due (or no cache entry yet): real read + refresh.
         let status = read_one_fan_status_for(driver, channel).await?;
         self.refresh_duty_cache(type_index, channel, status.duty);
-        Some(status)
+        Some(ChannelSample::from(&status))
     }
 
     /// The duty a slow device's channel may reuse this tick, or `None` when a real read is due.
@@ -1392,34 +1384,61 @@ impl HwmonRepo {
         }
     }
 
-    /// Replace-or-append: short borrow released before the next
-    /// extractor yield.
-    fn upsert_single_channel(&self, type_index: TypeIndex, fresh: ChannelStatus) {
+    /// Marks and stores one power read, if it read.
+    fn upsert_watts(
+        &self,
+        type_index: TypeIndex,
+        channel: &HwmonChannelInfo,
+        watts: Option<Watts>,
+    ) {
+        let Some(watts) = watts else { return };
+        self.mark_channel_fresh(type_index, &channel.name);
+        let sample = ChannelSample {
+            watts: Some(watts),
+            ..Default::default()
+        };
+        self.upsert_single_channel(type_index, &channel.name, sample);
+    }
+
+    /// Marks and stores one temp read, if it read.
+    fn upsert_temp(&self, type_index: TypeIndex, channel: &HwmonChannelInfo, temp: Option<Temp>) {
+        let Some(temp) = temp else { return };
+        self.mark_temp_fresh(type_index, &channel.name);
+        self.upsert_single_temp(type_index, &channel.name, temp);
+    }
+
+    /// Replace-or-append: short borrow released before the next extractor yield. A stored channel
+    /// keeps its name, so only its first read allocates one.
+    fn upsert_single_channel(&self, type_index: TypeIndex, name: &str, sample: ChannelSample) {
         let mut preloaded = self.preloaded_statuses.borrow_mut();
         let (channels, _) = preloaded
             .entry(type_index)
             .or_insert_with(|| (Vec::new(), Vec::new()));
         let len_before = channels.len();
-        if let Some(entry) = channels.iter_mut().find(|c| c.name == fresh.name) {
-            *entry = fresh;
+        if let Some(entry) = channels.iter_mut().find(|c| c.name == name) {
+            sample.apply_to(entry);
             debug_assert_eq!(channels.len(), len_before);
         } else {
-            channels.push(fresh);
+            channels.push(sample.to_status(name));
             debug_assert_eq!(channels.len(), len_before + 1);
         }
     }
 
-    fn upsert_single_temp(&self, type_index: TypeIndex, fresh: TempStatus) {
+    /// As `upsert_single_channel`, for a temp.
+    fn upsert_single_temp(&self, type_index: TypeIndex, name: &str, temp: Temp) {
         let mut preloaded = self.preloaded_statuses.borrow_mut();
         let (_, temps) = preloaded
             .entry(type_index)
             .or_insert_with(|| (Vec::new(), Vec::new()));
         let len_before = temps.len();
-        if let Some(entry) = temps.iter_mut().find(|t| t.name == fresh.name) {
-            *entry = fresh;
+        if let Some(entry) = temps.iter_mut().find(|t| t.name == name) {
+            entry.temp = temp;
             debug_assert_eq!(temps.len(), len_before);
         } else {
-            temps.push(fresh);
+            temps.push(TempStatus {
+                name: name.to_owned(),
+                temp,
+            });
             debug_assert_eq!(temps.len(), len_before + 1);
         }
     }
@@ -3251,6 +3270,68 @@ mod preload_tests {
                 assert_eq!(channels[0].name, "fan1");
                 assert_eq!(channels[0].rpm, Some(1800));
             }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn a_preload_keeps_each_stored_name() {
+        // Goal: a tick writes its values into the stored statuses and keeps their names, so only
+        // a channel's first read allocates one. Method: a fan, a temp and a power channel through
+        // two preloads with new values, comparing each stored name's buffer before and after.
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            let base = &ctx.test_base_path;
+            let write = |file: &str, value: &str| cc_fs::write(base.join(file), value.into());
+            write("pwm1", "128").await.unwrap();
+            write("fan1_input", "1200").await.unwrap();
+            write("temp1_input", "40000").await.unwrap();
+            write("power1_average", "20000000").await.unwrap();
+            let temp = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Temp,
+                number: 1,
+                name: "temp1".to_string(),
+                ..Default::default()
+            };
+            let power = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Power,
+                number: 1,
+                name: "power1_average".to_string(),
+                ..Default::default()
+            };
+            let fan = fan_channel_with_paths(1, "fan1", base);
+            let driver = driver_with_channels(base, vec![fan, temp, power]).await;
+            let repo = new_test_repo();
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+            let name_buffers = || {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, temps) = &preloaded[&TEST_TYPE_INDEX];
+                let channel_names = channels.iter().map(|c| c.name.as_ptr());
+                let temp_names = temps.iter().map(|t| t.name.as_ptr());
+                channel_names.chain(temp_names).collect::<Vec<_>>()
+            };
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            let first_names = name_buffers();
+
+            write("fan1_input", "1800").await.unwrap();
+            write("temp1_input", "45000").await.unwrap();
+            write("power1_average", "30000000").await.unwrap();
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            assert_eq!(first_names.len(), 3);
+            assert_eq!(name_buffers(), first_names);
+            let preloaded = repo.preloaded_statuses.borrow();
+            let (channels, temps) = &preloaded[&TEST_TYPE_INDEX];
+            let channel = |name: &str| channels.iter().find(|c| c.name == name).unwrap();
+            assert_eq!(channel("fan1").rpm, Some(1800));
+            assert_eq!(channel("power1_average").watts, Some(30.0));
+            assert_eq!(
+                temps,
+                &vec![TempStatus {
+                    name: "temp1".to_string(),
+                    temp: 45.0
+                }]
+            );
         });
     }
 
