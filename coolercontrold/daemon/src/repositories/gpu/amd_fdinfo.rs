@@ -155,7 +155,10 @@ async fn accumulate_pid_clients(
         };
         let fdinfo_path = proc_root.join(pid).join("fdinfo").join(fd_name);
         // The process can close the fd or exit between the readlink and this read.
-        let _ = cc_fs::read_proc_once(&fdinfo_path, buf, FDINFO_BYTES_MAX, |content| {
+        let Ok(fdinfo) = std::fs::File::open(&fdinfo_path) else {
+            continue;
+        };
+        let _ = cc_fs::read_proc_held(&fdinfo, buf, FDINFO_BYTES_MAX, |content| {
             accumulate_fdinfo(content, pci_slot, clients);
         })
         .await;
