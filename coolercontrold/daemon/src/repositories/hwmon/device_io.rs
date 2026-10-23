@@ -13,7 +13,7 @@
 use std::cell::{Cell, RefCell};
 use std::fmt::Display;
 use std::io::{Error, ErrorKind};
-use std::ops::Not;
+use std::ops::{Deref, Not};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -151,6 +151,8 @@ impl DeviceIo {
             tx,
             reply_timeout,
             pending_registry: RefCell::new(None),
+            spare_indices: RefCell::default(),
+            spare_values: RefCell::default(),
             liveness,
         })))
     }
@@ -238,7 +240,7 @@ impl DeviceIo {
         path: impl FnOnce() -> PathBuf,
     ) -> Result<SysfsValue> {
         match slot {
-            Some(slot) => self.read_many(&[slot]).await.remove(0),
+            Some(slot) => self.read_many([slot]).await.take(0),
             None => self.read_value(&path()).await,
         }
     }
@@ -296,52 +298,27 @@ impl DeviceIo {
     /// Reads several attributes in one hop, so a device's whole attribute set costs one round
     /// trip rather than one each. Results are positional, with per-path errors preserved.
     ///
+    /// On the threaded path a warm batch allocates only its reply channel: the slot and result
+    /// buffers travel to the worker and back, and the result buffer comes home when the
+    /// `ReadBatch` drops.
+    ///
     /// # Panics
     ///
     /// Debug builds assert the batch is within `READ_BATCH_MAX` and that the reply is positional.
-    pub async fn read_many(&self, indices: &[ReadIndex]) -> Vec<Result<SysfsValue>> {
-        debug_assert!(indices.len() <= READ_BATCH_MAX);
-        if indices.is_empty() {
-            return Vec::new();
-        }
+    pub async fn read_many(&self, indices: impl IntoIterator<Item = ReadIndex>) -> ReadBatch<'_> {
         match self {
             Self::Inline(fds) => {
-                let mut out = Vec::with_capacity(indices.len());
+                let indices = indices.into_iter();
+                let mut values = Vec::with_capacity(indices.size_hint().0);
                 for index in indices {
-                    out.push(fds.read_index(*index));
+                    values.push(fds.read_index(index));
                     // Each read blocks the runtime thread, so other ready tasks run between them.
                     rt::yield_now().await;
                 }
-                debug_assert_eq!(out.len(), indices.len());
-                out
+                debug_assert!(values.len() <= READ_BATCH_MAX);
+                ReadBatch { values, home: None }
             }
-            Self::Threaded(worker) => {
-                worker.ensure_registry().await;
-                let batch = indices.to_vec();
-                let expected = batch.len();
-                let dispatched = worker
-                    .dispatch("reading", &BatchLabel(indices[0], expected), |reply| {
-                        Request::ReadMany {
-                            indices: batch,
-                            reply,
-                        }
-                    })
-                    .await;
-                match dispatched {
-                    Ok(values) => {
-                        debug_assert_eq!(values.len(), expected);
-                        values
-                    }
-                    // The device did not answer at all, so every path in the batch failed the
-                    // same way. Fanning the one error out keeps the result positional.
-                    Err(err) => {
-                        let message = err.to_string();
-                        (0..expected)
-                            .map(|_| Err(anyhow::anyhow!("{message}")))
-                            .collect()
-                    }
-                }
-            }
+            Self::Threaded(worker) => worker.read_many(indices).await,
         }
     }
 
@@ -409,6 +386,8 @@ impl DeviceIo {
             tx,
             reply_timeout,
             pending_registry: RefCell::new(None),
+            spare_indices: RefCell::default(),
+            spare_values: RefCell::default(),
             liveness: WorkerLiveness(Arc::downgrade(&running)),
         };
         (Self::Threaded(Rc::new(worker)), rx, running)
@@ -630,6 +609,10 @@ pub struct Worker {
     /// such a device still reports timeouts and still goes unreachable, rather than failing every
     /// read as unregistered and looking healthy while doing it.
     pending_registry: RefCell<Option<Vec<PathBuf>>>,
+    /// Batch buffers kept between batches, so a warm batch allocates neither. Empty while a batch
+    /// is in flight; a batch that overlaps it, or follows a timeout, allocates its own.
+    spare_indices: RefCell<Vec<ReadIndex>>,
+    spare_values: RefCell<Vec<Result<SysfsValue>>>,
     liveness: WorkerLiveness,
 }
 
@@ -696,6 +679,54 @@ impl Worker {
         }
     }
 
+    async fn read_many(&self, indices: impl IntoIterator<Item = ReadIndex>) -> ReadBatch<'_> {
+        let mut batch_indices = self.spare_indices.take();
+        batch_indices.clear();
+        batch_indices.extend(indices);
+        debug_assert!(batch_indices.len() <= READ_BATCH_MAX);
+        if batch_indices.is_empty() {
+            self.spare_indices.replace(batch_indices);
+            return ReadBatch {
+                values: Vec::new(),
+                home: None,
+            };
+        }
+        self.ensure_registry().await;
+        let expected = batch_indices.len();
+        let label = BatchLabel(batch_indices[0], expected);
+        let buffers = BatchBuffers {
+            indices: batch_indices,
+            values: self.spare_values.take(),
+        };
+        let dispatched = self
+            .dispatch("reading", &label, |reply| Request::ReadMany {
+                buffers,
+                reply,
+            })
+            .await;
+        let values = match dispatched {
+            Ok(buffers) => {
+                debug_assert_eq!(buffers.values.len(), expected);
+                debug_assert_eq!(buffers.indices.len(), expected);
+                self.spare_indices.replace(buffers.indices);
+                buffers.values
+            }
+            // The device did not answer at all, so every path in the batch failed the same way.
+            // Fanning the one error out keeps the result positional. The buffers stay with the
+            // worker, so the next batch allocates a fresh pair.
+            Err(err) => {
+                let message = err.to_string();
+                (0..expected)
+                    .map(|_| Err(anyhow::anyhow!("{message}")))
+                    .collect()
+            }
+        };
+        ReadBatch {
+            values,
+            home: Some(&self.spare_values),
+        }
+    }
+
     fn health(&self) -> DeviceHealth {
         self.state.health()
     }
@@ -731,8 +762,8 @@ pub enum Request {
         reply: oneshot::Sender<Result<Vec<u8>>>,
     },
     ReadMany {
-        indices: Vec<ReadIndex>,
-        reply: oneshot::Sender<Result<Vec<Result<SysfsValue>>>>,
+        buffers: BatchBuffers,
+        reply: oneshot::Sender<Result<BatchBuffers>>,
     },
     /// Hands the worker its read table. Sent once, after detection settles the channel set.
     Install {
@@ -750,6 +781,59 @@ pub enum Request {
         reply: oneshot::Sender<Result<usize>>,
     },
     ClearDescriptors,
+}
+
+/// One batch's slots and results, sent to the worker and back so a warm batch allocates neither.
+#[derive(Debug)]
+pub struct BatchBuffers {
+    pub indices: Vec<ReadIndex>,
+    pub values: Vec<Result<SysfsValue>>,
+}
+
+/// One batch's results, positional with the slots asked for.
+///
+/// Dropping it hands the result buffer back to the device's worker for the next batch.
+#[derive(Debug)]
+pub struct ReadBatch<'io> {
+    values: Vec<Result<SysfsValue>>,
+    /// `None` on the inline path and for an empty batch, which have no buffer worth keeping.
+    home: Option<&'io RefCell<Vec<Result<SysfsValue>>>>,
+}
+
+impl ReadBatch<'_> {
+    /// Moves one result out, leaving an empty value behind, which costs no heap the way an error
+    /// would. Each position is taken once, so the placeholder is never read; read anyway, it fails
+    /// to parse.
+    pub fn take(&mut self, index: usize) -> Result<SysfsValue> {
+        debug_assert!(index < self.values.len());
+        std::mem::replace(&mut self.values[index], Ok(SysfsValue::empty()))
+    }
+
+    /// Every result in order, each taken as by `take`.
+    pub fn take_all(&mut self) -> impl Iterator<Item = Result<SysfsValue>> + '_ {
+        self.values
+            .iter_mut()
+            .map(|value| std::mem::replace(value, Ok(SysfsValue::empty())))
+    }
+}
+
+impl Deref for ReadBatch<'_> {
+    type Target = [Result<SysfsValue>];
+
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+impl Drop for ReadBatch<'_> {
+    fn drop(&mut self) {
+        let Some(home) = self.home else {
+            return;
+        };
+        // Errors hold heap, so they are freed now rather than when the buffer is next filled.
+        self.values.clear();
+        home.replace(std::mem::take(&mut self.values));
+    }
 }
 
 /// The worker thread body: its own descriptor cache, one blocking request at a time, until the
@@ -774,12 +858,13 @@ fn serve_one(fds: &cc_fs::SysfsFdCache, request: Request) {
         Request::ReadBytes { path, reply } => {
             let _ = reply.send(cc_fs::read_bytes_blocking(&path));
         }
-        Request::ReadMany { indices, reply } => {
-            let mut values = Vec::with_capacity(indices.len());
-            for index in &indices {
-                values.push(fds.read_index(*index));
-            }
-            let _ = reply.send(Ok(values));
+        Request::ReadMany { mut buffers, reply } => {
+            buffers.values.clear();
+            buffers
+                .values
+                .extend(buffers.indices.iter().map(|index| fds.read_index(*index)));
+            debug_assert_eq!(buffers.values.len(), buffers.indices.len());
+            let _ = reply.send(Ok(buffers));
         }
         Request::Install { paths, reply } => {
             fds.install(paths);
@@ -930,10 +1015,10 @@ mod tests {
                 "nothing open before the first read"
             );
 
-            io.read_many(&slots).await;
+            io.read_many(slots.iter().copied()).await;
             assert_eq!(io.descriptor_count().await, 2);
 
-            io.read_many(&slots).await;
+            io.read_many(slots.iter().copied()).await;
             assert_eq!(
                 io.descriptor_count().await,
                 2,
@@ -953,7 +1038,7 @@ mod tests {
                 .await
                 .expect("install never reports failure, it retries");
 
-            let results = io.read_many(&[0]).await;
+            let results = io.read_many([0]).await;
 
             assert_eq!(results.len(), 1);
             let message = results[0].as_ref().unwrap_err().to_string();
@@ -1023,6 +1108,160 @@ mod tests {
             assert_eq!(slotted.trimmed_str().unwrap(), "45000");
             assert_eq!(unslotted.trimmed_str().unwrap(), "45000");
         });
+    }
+
+    // --- ReadBatch: buffers that come home ---
+
+    /// Plays the worker for one batch: fills every slot and replies, returning where the two
+    /// buffers live so a test can tell a reused buffer from a new one.
+    async fn serve_one_batch_by_hand(rx: &mut mpsc::Receiver<Request>) -> (usize, usize) {
+        let Some(Request::ReadMany { mut buffers, reply }) = rx.recv().await else {
+            panic!("expected a batch");
+        };
+        buffers.values.clear();
+        buffers.values.extend(
+            buffers
+                .indices
+                .iter()
+                .map(|_| Ok(SysfsValue::from_bytes(b"41000\n"))),
+        );
+        let addresses = (
+            buffers.indices.as_ptr() as usize,
+            buffers.values.as_ptr() as usize,
+        );
+        reply.send(Ok(buffers)).unwrap();
+        addresses
+    }
+
+    /// Goal: a warm batch must travel in the buffers the last one brought back, which is what
+    /// keeps the per-tick read path from allocating. Method: play the worker by hand, note where
+    /// each batch's buffers live, and check the second batch arrives in the first one's. Also
+    /// check the result buffer is out while a batch is alive and home once it drops.
+    #[test]
+    fn a_warm_batch_travels_in_the_last_batchs_buffers() {
+        crate::rt::test_runtime(async {
+            let (io, mut rx) = DeviceIo::wedged_for_test(WORKER_TIMEOUT);
+            let worker = worker_of(&io);
+            let mut addresses = Vec::with_capacity(2);
+            for _ in 0..2 {
+                let (batch, served) = futures_util::future::join(
+                    io.read_many([0, 1, 2]),
+                    serve_one_batch_by_hand(&mut rx),
+                )
+                .await;
+                assert_eq!(batch.len(), 3);
+                assert!(batch.iter().all(Result::is_ok));
+                assert_eq!(
+                    worker.spare_values.borrow().capacity(),
+                    0,
+                    "the result buffer is with the batch while it lives"
+                );
+                drop(batch);
+                assert!(worker.spare_values.borrow().capacity() >= 3);
+                assert!(
+                    worker.spare_values.borrow().is_empty(),
+                    "results are cleared"
+                );
+                addresses.push(served);
+            }
+            assert_eq!(
+                addresses[0], addresses[1],
+                "the second batch must reuse the first one's buffers"
+            );
+        });
+    }
+
+    /// Goal: a batch that times out must not leave the next batch without results; it just
+    /// loses the buffers. Method: time a batch out, then serve the next by hand.
+    #[test]
+    fn a_batch_after_a_timeout_still_reads() {
+        crate::rt::test_runtime(async {
+            let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let lost = io.read_many([0]).await;
+            assert!(lost[0].is_err());
+            drop(lost);
+            // Discard the request the timed-out batch left queued.
+            assert!(rx.try_recv().is_ok());
+
+            let (batch, _) =
+                futures_util::future::join(io.read_many([0]), serve_one_batch_by_hand(&mut rx))
+                    .await;
+
+            assert_eq!(batch.len(), 1);
+            assert!(batch[0].is_ok());
+        });
+    }
+
+    /// Goal: a warm batch costs the worker thread no heap, so the `ccio-*` threads stop
+    /// allocating per tick. Method: serve the same batch twice against real files on the test
+    /// thread, and count the second.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_batch_allocates_nothing_on_the_worker() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths: Vec<PathBuf> = (1..=3)
+            .map(|n| dir.path().join(format!("temp{n}_input")))
+            .collect();
+        for path in &paths {
+            std::fs::write(path, "41000\n").unwrap();
+        }
+        let fds = cc_fs::SysfsFdCache::default();
+        fds.install(paths);
+        let (reply, mut reply_rx) = oneshot::channel();
+        let cold = BatchBuffers {
+            indices: vec![0, 1, 2],
+            values: Vec::new(),
+        };
+        serve_one(
+            &fds,
+            Request::ReadMany {
+                buffers: cold,
+                reply,
+            },
+        );
+        let warm = reply_rx.try_recv().unwrap().unwrap();
+        let (reply, mut reply_rx) = oneshot::channel();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            serve_one(
+                &fds,
+                Request::ReadMany {
+                    buffers: warm,
+                    reply,
+                },
+            );
+        });
+
+        assert_eq!(allocations, 0);
+        let served = reply_rx.try_recv().unwrap().unwrap();
+        assert_eq!(served.values.len(), 3);
+        for value in &served.values {
+            assert_eq!(value.as_ref().unwrap().trimmed_str().unwrap(), "41000");
+        }
+    }
+
+    /// Goal: taking values out of a batch allocates nothing, and a position taken twice still
+    /// reads as an error, never as a number. Method: count the allocations of two takes, then
+    /// parse what a second take of the same position returns.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn taking_a_batched_result_allocates_nothing() {
+        let mut batch = ReadBatch {
+            values: vec![
+                Ok(SysfsValue::from_bytes(b"1200\n")),
+                Ok(SysfsValue::from_bytes(b"128\n")),
+            ],
+            home: None,
+        };
+
+        let ((pwm, rpm), allocations) =
+            crate::alloc_count::count_allocations(|| (batch.take(1), batch.take(0)));
+
+        assert_eq!(allocations, 0);
+        assert_eq!(pwm.unwrap().parse::<u8>().unwrap(), 128);
+        assert_eq!(rpm.unwrap().parse::<u32>().unwrap(), 1200);
+        let again = batch.take(0).and_then(|value| value.parse::<u32>());
+        assert!(again.is_err());
     }
 
     // --- HealthState: the rules both workers share ---
@@ -1111,7 +1350,7 @@ mod tests {
             io.install_registry(vec![good.clone(), absent.clone(), other.clone()])
                 .await
                 .unwrap();
-            let results = io.read_many(&[0, 1, 2]).await;
+            let results = io.read_many([0, 1, 2]).await;
 
             assert_eq!(results.len(), 3);
             assert_eq!(results[0].as_ref().unwrap().trimmed_str().unwrap(), "41000");
@@ -1133,7 +1372,7 @@ mod tests {
             let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             let slots: Vec<ReadIndex> = (0..12).collect();
 
-            let results = io.read_many(&slots).await;
+            let results = io.read_many(slots.iter().copied()).await;
 
             assert_eq!(results.len(), 12, "every slot still gets a result");
             let mut queued = 0;
@@ -1153,7 +1392,7 @@ mod tests {
             let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             let slots: Vec<ReadIndex> = (0..4).collect();
 
-            let results = io.read_many(&slots).await;
+            let results = io.read_many(slots.iter().copied()).await;
 
             assert_eq!(results.len(), 4);
             assert!(results.iter().all(Result::is_err), "no slot may look fresh");
@@ -1166,7 +1405,7 @@ mod tests {
     fn an_empty_batch_dispatches_nothing() {
         crate::rt::test_runtime(async {
             let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
-            assert!(io.read_many(&[]).await.is_empty());
+            assert!(io.read_many(std::iter::empty()).await.is_empty());
             assert!(rx.try_recv().is_err(), "an empty batch must not be sent");
         });
     }
@@ -1186,13 +1425,13 @@ mod tests {
                 .install_registry(vec![good.clone(), absent.clone()])
                 .await
                 .unwrap();
-            let inline = inline_io.read_many(&[0, 1]).await;
+            let inline = inline_io.read_many([0, 1]).await;
             let threaded_io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             threaded_io
                 .install_registry(vec![good, absent])
                 .await
                 .unwrap();
-            let threaded = threaded_io.read_many(&[0, 1]).await;
+            let threaded = threaded_io.read_many([0, 1]).await;
 
             assert_eq!(inline.len(), threaded.len());
             assert_eq!(
@@ -1259,7 +1498,7 @@ mod tests {
         let (installed, _) = crate::rt::poll_to_end(io.install_registry(paths));
         installed.unwrap();
 
-        let (values, polls) = crate::rt::poll_to_end(io.read_many(&[0, 1, 2]));
+        let (values, polls) = crate::rt::poll_to_end(io.read_many([0, 1, 2]));
 
         assert_eq!(values.len(), 3);
         assert!(values.iter().all(Result::is_ok));

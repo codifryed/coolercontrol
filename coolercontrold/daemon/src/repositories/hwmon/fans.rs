@@ -331,7 +331,7 @@ pub async fn read_fan_statuses(
     // Two passes: gather the slots this tick actually needs, then map each channel to its
     // position in the reply. Only the attributes the caller asked for are read.
     let (batch, positions) = batch_slots(plan);
-    let mut results = driver.io.read_many(&batch).await;
+    let mut results = driver.io.read_many(batch.iter().copied()).await;
     debug_assert_eq!(results.len(), batch.len());
 
     let log_error = log_enabled!(log::Level::Debug);
@@ -339,7 +339,8 @@ pub async fn read_fan_statuses(
     for ((channel, want), (pwm_slot, rpm_slot)) in plan.iter().zip(positions) {
         let fan_rpm = match rpm_slot {
             Some(index) => {
-                let raw = take_result(&mut results, index)
+                let raw = results
+                    .take(index)
                     .and_then(check_parsing_32)
                     .map(|rpm| guard_fan_rpm(rpm, &channel.caps));
                 interpret_fan_rpm(|| rpm_path_for(driver, channel), raw, log_error)
@@ -357,7 +358,8 @@ pub async fn read_fan_statuses(
         }
         let fan_duty = match pwm_slot {
             Some(index) => {
-                let raw = take_result(&mut results, index)
+                let raw = results
+                    .take(index)
                     .and_then(check_parsing_8)
                     .map(pwm_value_to_duty);
                 interpret_pwm_duty(
@@ -413,17 +415,6 @@ fn batch_slots(
     debug_assert_eq!(positions.len(), plan.len());
     debug_assert!(batch.len() <= plan.len() * 2);
     (batch, positions)
-}
-
-/// Takes one positional result out of a batch, leaving an empty value behind, which costs no heap
-/// the way an error would. The batch is consumed exactly once per slot, so the placeholder is
-/// never read; read anyway, it fails to parse.
-fn take_result(
-    results: &mut [Result<cc_fs::SysfsValue>],
-    index: usize,
-) -> Result<cc_fs::SysfsValue> {
-    debug_assert!(index < results.len());
-    std::mem::replace(&mut results[index], Ok(cc_fs::SysfsValue::empty()))
 }
 
 /// Where one channel's pwm value lives.
@@ -2475,27 +2466,5 @@ mod tests {
         assert_eq!(built_unlogged, 0);
         assert_eq!(logged, None);
         assert_eq!(built.get(), 1);
-    }
-
-    /// Goal: taking a fan's values out of a batch reply allocates nothing, and a slot taken twice
-    /// still reads as an error, never as a number. Method: count the allocations of two takes,
-    /// then parse what a second take of the same slot returns.
-    #[test]
-    #[cfg(feature = "gated-tests")]
-    fn taking_a_batched_result_allocates_nothing() {
-        let mut results = vec![
-            Ok(cc_fs::SysfsValue::from_bytes(b"1200\n")),
-            Ok(cc_fs::SysfsValue::from_bytes(b"128\n")),
-        ];
-
-        let ((pwm, rpm), allocations) = crate::alloc_count::count_allocations(|| {
-            (take_result(&mut results, 1), take_result(&mut results, 0))
-        });
-
-        assert_eq!(allocations, 0);
-        assert_eq!(pwm.unwrap().parse::<u8>().unwrap(), 128);
-        assert_eq!(rpm.unwrap().parse::<u32>().unwrap(), 1200);
-        let again = take_result(&mut results, 0).and_then(|value| value.parse::<u32>());
-        assert!(again.is_err());
     }
 }

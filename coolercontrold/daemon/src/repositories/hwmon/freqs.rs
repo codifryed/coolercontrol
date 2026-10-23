@@ -78,7 +78,8 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
         channels.len(),
         "every freq channel needs a read slot; was the registry installed?"
     );
-    let mut results = driver.io.read_many(&slots).await.into_iter();
+    let mut batch = driver.io.read_many(slots.iter().copied()).await;
+    let mut results = batch.take_all();
     for (channel, has_slot) in channels.iter().zip(slotted) {
         let Some(result) = has_slot.then(|| results.next()).flatten() else {
             continue;

@@ -102,7 +102,8 @@ pub async fn read_temp_statuses(
                 .debug_assert_slot(*slot, &temp_path_for(driver, channel));
         }
     }
-    let mut results = driver.io.read_many(&slots).await.into_iter();
+    let mut batch = driver.io.read_many(slots.iter().copied()).await;
+    let mut results = batch.take_all();
     channels
         .iter()
         .zip(slotted)
