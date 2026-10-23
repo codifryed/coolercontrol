@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::cc_fs::{self, SysfsValue};
-use crate::device::TempStatus;
+use crate::device::{Temp, TempStatus};
 use crate::repositories::cpu::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
@@ -78,13 +78,14 @@ pub async fn init_temps(
 /// Reads a set of temp channels in one hop.
 ///
 /// The device permit is held across the whole pass anyway, so the reads were going to happen back
-/// to back; one round trip is cheaper than one per channel. `on_status` is called once per channel,
-/// in order, with `None` for a channel that has nothing usable. A callback rather than a returned
-/// `Vec`, because the per-tick caller consumes each status as it comes.
-pub async fn read_temp_statuses<'a>(
+/// to back; one round trip is cheaper than one per channel. `on_temp` is called once per channel,
+/// in order, with `None` for a channel that has nothing usable. A callback with the channel rather
+/// than a returned `Vec` of statuses, because the per-tick caller writes each value into the status
+/// it keeps, under the channel's name, as it comes.
+pub async fn read_temps<'a>(
     driver: &'a HwmonDriverInfo,
     channels: impl Iterator<Item = &'a HwmonChannelInfo> + Clone,
-    mut on_status: impl FnMut(Option<TempStatus>),
+    mut on_temp: impl FnMut(&'a HwmonChannelInfo, Option<Temp>),
 ) {
     debug_assert!(
         channels
@@ -109,7 +110,10 @@ pub async fn read_temp_statuses<'a>(
     // wrong fan curve.
     let has_slot = |channel: &&HwmonChannelInfo| channel.read_slot.value.is_some();
     for (channel, result) in pair_with_results(channels, has_slot, batch.take_all()) {
-        on_status(result.and_then(|result| temp_status_from(driver, channel, result)));
+        on_temp(
+            channel,
+            result.and_then(|result| temp_from(driver, channel, result)),
+        );
     }
 }
 
@@ -121,30 +125,26 @@ fn temp_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBu
         .unwrap_or_else(|| driver.path.join(format_temp_input!(channel.number)))
 }
 
-/// Reads the temp file for one channel and returns the resulting
-/// `TempStatus`, or `None` if the read failed. Pulled out so the
-/// preload loop can acquire the device permit per channel and
-/// avoid holding it across the whole device's temp set.
-pub async fn read_one_temp_status(
-    driver: &HwmonDriverInfo,
-    channel: &HwmonChannelInfo,
-) -> Option<TempStatus> {
+/// Reads the temp file for one channel and returns its temp, or `None` if the read failed. Pulled
+/// out so the preload loop can acquire the device permit per channel and avoid holding it across
+/// the whole device's temp set.
+pub async fn read_one_temp(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> Option<Temp> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Temp);
     let result = driver
         .io
         .read_one(channel.read_slot.value, || temp_path_for(driver, channel))
         .await;
-    temp_status_from(driver, channel, result)
+    temp_from(driver, channel, result)
 }
 
-/// Turns one raw read into a `TempStatus`, or `None` when the channel has nothing usable to
-/// report. Shared by the batched pass and the single-channel path so both interpret a failure,
-/// and the `ThinkPad` powered-down carve-out, identically.
-fn temp_status_from(
+/// Turns one raw read into a temp, or `None` when the channel has nothing usable to report. Shared
+/// by the batched pass and the single-channel path so both interpret a failure, and the `ThinkPad`
+/// powered-down carve-out, identically.
+fn temp_from(
     driver: &HwmonDriverInfo,
     channel: &HwmonChannelInfo,
     result: Result<SysfsValue>,
-) -> Option<TempStatus> {
+) -> Option<Temp> {
     // Only the log arms need it, and `log::debug!` evaluates its arguments only when enabled, so
     // the per-tick pass never builds a path.
     let temp_path = || temp_path_for(driver, channel);
@@ -155,10 +155,7 @@ fn temp_status_from(
     {
         Ok(temp) => {
             debug!("hwmon read {}: {temp} C", temp_path().display());
-            Some(TempStatus {
-                name: channel.name.clone(),
-                temp,
-            })
+            Some(temp)
         }
         Err(err) => {
             if is_thinkpad_gpu_powerdown(&driver.name, &err) {
@@ -167,17 +164,11 @@ fn temp_status_from(
                     channel.label.as_deref(),
                     &temp_path(),
                 );
-                return Some(TempStatus {
-                    name: channel.name.clone(),
-                    temp: 0.0,
-                });
+                return Some(0.0);
             }
             if is_tas2764_unsampled(&driver.name, &err) {
                 log_tas2764_unsampled_once(&temp_path());
-                return Some(TempStatus {
-                    name: channel.name.clone(),
-                    temp: 0.0,
-                });
+                return Some(0.0);
             }
             if log_enabled!(log::Level::Debug) {
                 warn!(
@@ -198,8 +189,11 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>
         .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp);
     let mut temps = Vec::with_capacity(channels.clone().count());
     let mut any_failure = false;
-    read_temp_statuses(driver, channels, |status| match status {
-        Some(status) => temps.push(status),
+    read_temps(driver, channels, |channel, temp| match temp {
+        Some(temp) => temps.push(TempStatus {
+            name: channel.name.clone(),
+            temp,
+        }),
         None => any_failure = true,
     })
     .await;
@@ -954,9 +948,9 @@ mod tests {
             ..Default::default()
         };
         let enodata = || Err(Error::from_raw_os_error(libc::ENODATA).into());
-        let status = temp_status_from(&driver_named("tas2764"), &channel, enodata()).unwrap();
-        assert_eq!(status.temp, 0.0);
-        assert!(temp_status_from(&driver_named("nct6798"), &channel, enodata()).is_none());
+        let temp = temp_from(&driver_named("tas2764"), &channel, enodata()).unwrap();
+        assert_eq!(temp, 0.0);
+        assert!(temp_from(&driver_named("nct6798"), &channel, enodata()).is_none());
     }
 
     #[test]

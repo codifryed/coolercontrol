@@ -29,8 +29,9 @@ use tokio::sync::OnceCell;
 use crate::config::Config;
 use crate::device::health::FailsafeRef;
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelInfo, ChannelKind, ChannelName, ChannelSample, ChannelStatus, Device, DeviceInfo,
+    DeviceType, DriverInfo, DriverType, Duty, SpeedOptions, Status, StatusRefill, Temp, TempInfo,
+    TempStatus, TypeIndex, UID,
 };
 use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
 use crate::repositories::gpu::gpu_repo::{
@@ -816,13 +817,9 @@ impl GpuNVidia {
     pub async fn request_nvml_status(
         &self,
         nv_info: &Rc<NvidiaDeviceInfo>,
-    ) -> Option<StatusNvidiaDeviceNvml> {
+    ) -> Option<NvmlReadings> {
         let plan = self.read_plan(nv_info);
-        let readings = self.read_nvml_bounded(nv_info.gpu_index, plan).await?;
-        Some(StatusNvidiaDeviceNvml {
-            temps: Self::assemble_temps(nv_info, &readings),
-            channels: Self::assemble_channels(&readings),
-        })
+        self.read_nvml_bounded(nv_info.gpu_index, plan).await
     }
 
     /// Stores one GPU's answered NVML status, then patches in its hotspot if nvapi answers.
@@ -833,7 +830,7 @@ impl GpuNVidia {
         &self,
         type_index: TypeIndex,
         nv_info: &NvidiaDeviceInfo,
-        nvml_status: StatusNvidiaDeviceNvml,
+        readings: &NvmlReadings,
     ) {
         debug_assert!(
             nv_info.hotspot_pci_bus.is_none()
@@ -843,28 +840,7 @@ impl GpuNVidia {
                     .any(|name| name == GPU_TEMP_HOTSPOT_NAME),
             "a hotspot bus implies a hotspot channel"
         );
-        {
-            let mut statuses = self.nvidia_preloaded_statuses.borrow_mut();
-            let mut temps = nvml_status.temps;
-            let carried_hotspot = statuses.get(&type_index).and_then(|status| {
-                status
-                    .temps
-                    .iter()
-                    .find(|temp| temp.name == GPU_TEMP_HOTSPOT_NAME)
-                    .map(|temp| temp.temp)
-            });
-            if let Some(hotspot_temp) = carried_hotspot {
-                Self::insert_hotspot(nv_info, &mut temps, hotspot_temp);
-            }
-            statuses.insert(
-                type_index,
-                StatusNvidiaDeviceSMI {
-                    temps,
-                    channels: nvml_status.channels,
-                    ..Default::default()
-                },
-            );
-        }
+        self.refill_nvml_status(type_index, nv_info, readings);
         self.record_nvml_answer(type_index);
         let hotspot_temp = self.read_hotspot(nv_info).await;
         let mut statuses = self.nvidia_preloaded_statuses.borrow_mut();
@@ -877,6 +853,28 @@ impl GpuNVidia {
                 .temps
                 .retain(|temp| temp.name != GPU_TEMP_HOTSPOT_NAME),
         }
+    }
+
+    /// Refills the GPU's stored status from its NVML readings, in place, carrying over last
+    /// tick's hotspot. A tick reading what the last one did keeps every name.
+    fn refill_nvml_status(
+        &self,
+        type_index: TypeIndex,
+        nv_info: &NvidiaDeviceInfo,
+        readings: &NvmlReadings,
+    ) {
+        let mut statuses = self.nvidia_preloaded_statuses.borrow_mut();
+        let status = statuses.entry(type_index).or_default();
+        let carried_hotspot = status
+            .temps
+            .iter()
+            .find(|temp| temp.name == GPU_TEMP_HOTSPOT_NAME)
+            .map(|temp| temp.temp);
+        let mut refill = StatusRefill::new(&mut status.channels, &mut status.temps);
+        Self::refill_temps(nv_info, readings, carried_hotspot, &mut refill);
+        Self::refill_channels(readings, &mut refill);
+        drop(refill);
+        debug_assert!(status.temps.len() <= nv_info.temps.len());
     }
 
     /// This tick's hotspot, read through nvapi once NVML has answered. None when the GPU has no
@@ -900,28 +898,28 @@ impl GpuNVidia {
         }
     }
 
-    /// Rebuilds the NVML temps in the device's own order. Hotspot comes from nvapi rather than
-    /// NVML, so `insert_hotspot` adds it later.
-    fn assemble_temps(nv_info: &NvidiaDeviceInfo, readings: &NvmlReadings) -> Vec<TempStatus> {
-        let mut temps = Vec::with_capacity(nv_info.temps.len());
+    /// Refills the temps in the device's own order. Hotspot comes from nvapi rather than NVML,
+    /// so it is `hotspot`, the last one read, until `store_nvml_status` settles this tick's.
+    fn refill_temps(
+        nv_info: &NvidiaDeviceInfo,
+        readings: &NvmlReadings,
+        hotspot: Option<Temp>,
+        refill: &mut StatusRefill,
+    ) {
         for name in &nv_info.temps {
             let temp = match name.as_str() {
                 GPU_TEMP_NAME => readings.gpu_temp.map(f64::from),
                 GPU_TEMP_MEMORY_NAME => readings.memory_temp,
-                GPU_TEMP_HOTSPOT_NAME => None,
+                GPU_TEMP_HOTSPOT_NAME => hotspot,
                 other => {
                     error!("Unexpected Nvidia temp name: {other}");
                     None
                 }
             };
             if let Some(temp) = temp {
-                temps.push(TempStatus {
-                    name: name.clone(),
-                    temp,
-                });
+                refill.temp(name, temp);
             }
         }
-        temps
     }
 
     /// Puts the hotspot into `temps` at its place in the device's own order, as if every temp
@@ -968,29 +966,28 @@ impl GpuNVidia {
         );
     }
 
-    fn assemble_channels(readings: &NvmlReadings) -> Vec<ChannelStatus> {
-        let mut channels = Vec::with_capacity(readings.fans.len() + readings.freqs.len() + 2);
+    fn refill_channels(readings: &NvmlReadings, refill: &mut StatusRefill) {
         for (fan_index, duty, rpm) in &readings.fans {
-            channels.push(ChannelStatus {
-                name: format!("{NVIDIA_FAN_PREFIX}{}", fan_index + 1),
+            let sample = ChannelSample {
                 duty: Some(f64::from(*duty)),
                 rpm: *rpm,
                 ..Default::default()
-            });
+            };
+            refill.channel_fmt(format_args!("{NVIDIA_FAN_PREFIX}{}", fan_index + 1), sample);
         }
         if let Some(load) = readings.load {
-            channels.push(ChannelStatus {
-                name: GPU_LOAD_NAME.to_string(),
+            let sample = ChannelSample {
                 duty: Some(f64::from(load)),
                 ..Default::default()
-            });
+            };
+            refill.channel(GPU_LOAD_NAME, sample);
         }
         if let Some(milli_watts) = readings.power_milliwatts {
-            channels.push(ChannelStatus {
-                name: GPU_POWER_NAME.to_string(),
+            let sample = ChannelSample {
                 watts: Some(Self::convert_milliwatts_to_watts(milli_watts)),
                 ..Default::default()
-            });
+            };
+            refill.channel(GPU_POWER_NAME, sample);
         }
         for (clock, frequency) in &readings.freqs {
             let name = match clock {
@@ -999,13 +996,12 @@ impl GpuNVidia {
                 Clock::Memory => NVIDIA_CLOCK_MEMORY,
                 Clock::Video => NVIDIA_CLOCK_VIDEO,
             };
-            channels.push(ChannelStatus {
-                name: name.to_string(),
+            let sample = ChannelSample {
                 freq: Some(*frequency),
                 ..Default::default()
-            });
+            };
+            refill.channel(name, sample);
         }
-        channels
     }
 
     /// resets the nvidia fan control back to automatic
@@ -1602,7 +1598,7 @@ enum NvmlTemp {
 
 /// What it gathered. Plain data, so it crosses back by value.
 #[derive(Debug, Default)]
-struct NvmlReadings {
+pub struct NvmlReadings {
     gpu_temp: Option<u32>,
     memory_temp: Option<Temp>,
     /// Fan index, duty percent, rpm when the device reports one.
@@ -1610,12 +1606,6 @@ struct NvmlReadings {
     load: Option<u32>,
     power_milliwatts: Option<u32>,
     freqs: Vec<(Clock, u32)>,
-}
-
-#[derive(Debug, Default)]
-pub struct StatusNvidiaDeviceNvml {
-    pub channels: Vec<ChannelStatus>,
-    pub temps: Vec<TempStatus>,
 }
 
 #[derive(Debug)]
@@ -2093,6 +2083,51 @@ mod tests {
         assert_eq!(device.latest_channel("fan1").unwrap().rpm, Some(1500));
     }
 
+    /// One GPU's status refilled from `readings` into empty lists, with no hotspot carried.
+    fn refilled(
+        nv_info: &NvidiaDeviceInfo,
+        readings: &NvmlReadings,
+    ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
+        let mut channels = Vec::new();
+        let mut temps = Vec::new();
+        let mut refill = StatusRefill::new(&mut channels, &mut temps);
+        GpuNVidia::refill_temps(nv_info, readings, None, &mut refill);
+        GpuNVidia::refill_channels(readings, &mut refill);
+        drop(refill);
+        (channels, temps)
+    }
+
+    /// Goal: a tick refills the stored NVML status in place, so one reading what the last did
+    /// allocates nothing, and the result is what a fresh build gives. Method: one GPU's readings,
+    /// fans included, refilled twice into the stored status; the second is counted.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_nvml_refill_allocates_nothing() {
+        let gpus = GpuNVidia::new(Rc::new(Config::init_default_config().unwrap()));
+        let nv_info = NvidiaDeviceInfo {
+            temps: vec![GPU_TEMP_NAME.to_string(), GPU_TEMP_MEMORY_NAME.to_string()],
+            ..nv_info_for(0)
+        };
+        let readings = NvmlReadings {
+            gpu_temp: Some(55),
+            memory_temp: Some(70.0),
+            fans: vec![(0, 42, Some(1200)), (1, 55, None)],
+            load: Some(37),
+            power_milliwatts: Some(150_000),
+            freqs: vec![(Clock::Graphics, 2100)],
+        };
+        gpus.refill_nvml_status(1, &nv_info, &readings);
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            gpus.refill_nvml_status(1, &nv_info, &readings);
+        });
+
+        assert_eq!(allocations, 0);
+        let statuses = gpus.nvidia_preloaded_statuses.borrow();
+        let stored = (statuses[&1].channels.clone(), statuses[&1].temps.clone());
+        assert_eq!(stored, refilled(&nv_info, &readings));
+    }
+
     fn nv_info_for(gpu_index: GpuIndex) -> NvidiaDeviceInfo {
         NvidiaDeviceInfo {
             gpu_index,
@@ -2172,7 +2207,7 @@ mod tests {
             ..Default::default()
         };
 
-        let temps = GpuNVidia::assemble_temps(&nv_info, &readings);
+        let temps = refilled(&nv_info, &readings).1;
 
         assert_eq!(temps.len(), 2);
         assert_eq!(temps[0].name, GPU_TEMP_MEMORY_NAME);
@@ -2200,7 +2235,7 @@ mod tests {
             ..Default::default()
         };
 
-        let mut temps = GpuNVidia::assemble_temps(&nv_info, &readings);
+        let mut temps = refilled(&nv_info, &readings).1;
         assert_eq!(temps.len(), 2);
         assert!(temps.iter().all(|temp| temp.name != GPU_TEMP_HOTSPOT_NAME));
         GpuNVidia::insert_hotspot(&nv_info, &mut temps, 80.0);
@@ -2316,12 +2351,9 @@ mod tests {
                 hotspot_pci_bus: Some(1),
                 ..nv_info_for(0)
             };
-            let nvml_status = StatusNvidiaDeviceNvml {
-                temps: vec![TempStatus {
-                    name: GPU_TEMP_NAME.to_string(),
-                    temp: 61.0,
-                }],
-                channels: Vec::new(),
+            let readings = NvmlReadings {
+                gpu_temp: Some(61),
+                ..Default::default()
             };
 
             let check_then_release = async {
@@ -2332,7 +2364,7 @@ mod tests {
                 release_tx.send(()).unwrap();
             };
             tokio::join!(
-                gpus.store_nvml_status(1, &nv_info, nvml_status),
+                gpus.store_nvml_status(1, &nv_info, &readings),
                 check_then_release
             );
 
@@ -2370,18 +2402,10 @@ mod tests {
                 hotspot_pci_bus: Some(1),
                 ..nv_info_for(0)
             };
-            let nvml_status = || StatusNvidiaDeviceNvml {
-                temps: vec![
-                    TempStatus {
-                        name: GPU_TEMP_NAME.to_string(),
-                        temp: 61.0,
-                    },
-                    TempStatus {
-                        name: GPU_TEMP_MEMORY_NAME.to_string(),
-                        temp: 70.0,
-                    },
-                ],
-                channels: Vec::new(),
+            let readings = NvmlReadings {
+                gpu_temp: Some(61),
+                memory_temp: Some(70.0),
+                ..Default::default()
             };
             let temp_names = |gpus: &GpuNVidia| -> Vec<String> {
                 gpus.nvidia_preloaded_statuses.borrow()[&1]
@@ -2392,7 +2416,7 @@ mod tests {
             };
 
             reply_tx.send(Some(80.0)).unwrap();
-            gpus.store_nvml_status(1, &nv_info, nvml_status()).await;
+            gpus.store_nvml_status(1, &nv_info, &readings).await;
             assert_eq!(
                 temp_names(&gpus),
                 [GPU_TEMP_NAME, GPU_TEMP_HOTSPOT_NAME, GPU_TEMP_MEMORY_NAME]
@@ -2406,7 +2430,7 @@ mod tests {
                 reply_tx.send(None).unwrap();
             };
             tokio::join!(
-                gpus.store_nvml_status(1, &nv_info, nvml_status()),
+                gpus.store_nvml_status(1, &nv_info, &readings),
                 check_then_fail
             );
 
@@ -2437,7 +2461,7 @@ mod tests {
             ..Default::default()
         };
 
-        let temps = GpuNVidia::assemble_temps(&nv_info, &readings);
+        let temps = refilled(&nv_info, &readings).1;
 
         assert_eq!(temps.len(), 1, "only the answered temp is reported");
         assert_eq!(temps[0].name, GPU_TEMP_NAME);
@@ -2456,7 +2480,7 @@ mod tests {
             ..Default::default()
         };
 
-        let channels = GpuNVidia::assemble_channels(&readings);
+        let (channels, _) = refilled(&nv_info_for(0), &readings);
 
         let names: Vec<&str> = channels.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(
@@ -2481,8 +2505,9 @@ mod tests {
     /// wedged-driver path, which is the reason these calls moved off the runtime thread.
     #[test]
     fn no_readings_produce_an_empty_status() {
-        let readings = NvmlReadings::default();
-        assert!(GpuNVidia::assemble_channels(&readings).is_empty());
+        let (channels, temps) = refilled(&nv_info_for(0), &NvmlReadings::default());
+        assert!(channels.is_empty());
+        assert!(temps.is_empty());
     }
 
     // Builds a GpuNVidia backed by a default config in which each given UID is marked

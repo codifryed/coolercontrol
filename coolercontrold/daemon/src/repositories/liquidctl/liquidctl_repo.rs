@@ -15,8 +15,8 @@ use std::time::{Duration, Instant};
 use crate::config::Config;
 use crate::device::health::FailsafeRef;
 use crate::device::{
-    ChannelKind, ChannelName, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo,
-    Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelKind, ChannelName, ChannelSample, ChannelStatus, DeviceInfo, DeviceType, DeviceUID,
+    Duty, LcInfo, Status, StatusWriter, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::diagnostics::support::HardwareSupportController;
 use crate::overrides::OverridesController;
@@ -254,9 +254,15 @@ pub struct LiquidctlRepo {
     /// Registry the channel verdicts are published to.
     hardware_support: Option<Rc<HardwareSupportController>>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
+    /// The lines each device's next status is parsed into: the one before last tick's, handed
+    /// back when a new status replaces it.
+    spare_statuses: RefCell<HashMap<u8, LCStatus>>,
     /// Each device's status map, kept across ticks and refreshed in place from its preloaded
     /// lines, so a tick costs no map or key allocations: see `refresh_status_map`.
     status_maps: RefCell<HashMap<TypeIndex, StatusMap>>,
+    /// Each device's status as its driver maps it, kept across ticks and refilled in place, so a
+    /// tick reporting the same channels as the last keeps every name.
+    driver_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     failsafe_statuses: RefCell<HashMap<TypeIndex, FailsafeStatusData>>,
     disabled_channels: RefCell<HashMap<UID, Vec<ChannelName>>>,
     /// Cached per-device command delay in milliseconds. Loaded at startup from config.
@@ -346,6 +352,23 @@ fn liquidctl_summary(device: &Device, enabled: bool) -> crate::diagnostics::repo
     summary
 }
 
+/// Writes a driver status into a history entry, leaving out the disabled channels. liquidctl
+/// reports every channel whatever its settings, so this runs every tick.
+fn write_enabled(
+    writer: &mut StatusWriter<'_>,
+    channels: &[ChannelStatus],
+    temps: &[TempStatus],
+    disabled: &[ChannelName],
+) {
+    let enabled = |name: &String| disabled.contains(name).not();
+    for temp in temps.iter().filter(|temp| enabled(&temp.name)) {
+        writer.temp(&temp.name, temp.temp);
+    }
+    for channel in channels.iter().filter(|channel| enabled(&channel.name)) {
+        writer.channel(&channel.name, ChannelSample::from(channel));
+    }
+}
+
 impl LiquidctlRepo {
     pub async fn new(
         config: Rc<Config>,
@@ -413,7 +436,9 @@ impl LiquidctlRepo {
             devices: HashMap::new(),
             hardware_support: None,
             preloaded_statuses: RefCell::new(HashMap::new()),
+            spare_statuses: RefCell::new(HashMap::new()),
             status_maps: RefCell::new(HashMap::new()),
+            driver_statuses: RefCell::new(HashMap::new()),
             failsafe_statuses: RefCell::new(HashMap::new()),
             disabled_channels: RefCell::new(HashMap::new()),
             device_delays: HashMap::new(),
@@ -843,8 +868,13 @@ impl LiquidctlRepo {
             .acquire()
             .await
             .expect("device permit never closed");
+        let recycled = self
+            .spare_statuses
+            .borrow_mut()
+            .remove(device_id)
+            .unwrap_or_default();
         let status_response = match self.device_io(*device_id) {
-            Ok(io) => io.status().await,
+            Ok(io) => io.status(recycled).await,
             Err(err) => Err(err),
         };
         // Hold the permit through the command delay so the next request to this device observes the
@@ -860,6 +890,34 @@ impl LiquidctlRepo {
             status_map.insert(lc_status.0.to_lowercase(), lc_status.1.clone());
         }
         status_map
+    }
+
+    /// Stores a read status, returning the one it replaces to the spares so the next read
+    /// reuses its lines, and records the read with the failsafe.
+    fn store_status(
+        &self,
+        device_id: u8,
+        mut status: LCStatus,
+        device_name: impl FnOnce() -> String,
+    ) {
+        Self::lowercase_names(&mut status);
+        let replaced = self
+            .preloaded_statuses
+            .borrow_mut()
+            .insert(device_id, status);
+        if let Some(replaced) = replaced {
+            self.spare_statuses.borrow_mut().insert(device_id, replaced);
+        }
+        let mut fsd_map = self.failsafe_statuses.borrow_mut();
+        if let Some(fsd) = fsd_map.get_mut(&device_id) {
+            if fsd.record_success() {
+                info!(
+                    "Recovered from failsafe for liquidctl device: {}. \
+                     Resuming normal status reads.",
+                    device_name()
+                );
+            }
+        }
     }
 
     /// Lowercases each line's name in place, as status maps are keyed. liquidctl's names are
@@ -895,23 +953,49 @@ impl LiquidctlRepo {
             .all(|(name, _, _)| status_map.contains_key(name)));
     }
 
-    /// Builds a normal status from preloaded data for the given device.
-    fn build_normal_status(&self, device: &Device) -> Result<Status> {
+    /// Refills the device's driver status from its preloaded lines and writes it into the
+    /// device's history, leaving out its disabled channels.
+    fn write_normal_status(&self, device: &mut Device, timestamp: DateTime<Local>) {
         let preloaded_statuses = self.preloaded_statuses.borrow();
         let Some(lc_status) = preloaded_statuses.get(&device.type_index) else {
             error!(
                 "There is no status preloaded for this device: {}",
                 device.uid
             );
-            return Err(anyhow!("No preloaded status for device: {}", device.uid));
+            return;
         };
         let Some(lc_info) = device.lc_info.as_ref() else {
-            return Err(anyhow!("Missing lc_info for device: {}", device.uid));
+            return;
         };
         let driver_type = &lc_info.driver_type;
-        let status = self.map_status(driver_type, &device.uid, lc_status, device.type_index);
-        trace!("Device: {} status updated: {status:?}", device.name);
-        Ok(status)
+        let mut driver_statuses = self.driver_statuses.borrow_mut();
+        let (channels, temps) = driver_statuses.entry(device.type_index).or_default();
+        {
+            let mut status_maps = self.status_maps.borrow_mut();
+            let status_map = status_maps.entry(device.type_index).or_default();
+            Self::refresh_status_map(status_map, lc_status);
+            self.device_mapper.refill_status(
+                driver_type,
+                status_map,
+                device.type_index,
+                channels,
+                temps,
+            );
+        }
+        trace!(
+            "Device: {} status updated: {temps:?} {channels:?}",
+            device.name
+        );
+        let disabled_channels = self.disabled_channels.borrow();
+        let disabled = disabled_channels
+            .get(&device.uid)
+            .map_or(&[][..], Vec::as_slice);
+        write_enabled(
+            &mut device.write_status(timestamp),
+            channels,
+            temps,
+            disabled,
+        );
     }
 
     fn map_status(
@@ -1891,22 +1975,7 @@ impl Repository for LiquidctlRepo {
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
                     match self.call_status(&device_id, delay).await {
-                        Ok(mut status) => {
-                            Self::lowercase_names(&mut status);
-                            self.preloaded_statuses
-                                .borrow_mut()
-                                .insert(device_id, status);
-                            let mut fsd_map = self.failsafe_statuses.borrow_mut();
-                            if let Some(fsd) = fsd_map.get_mut(&device_id) {
-                                if fsd.record_success() {
-                                    info!(
-                                        "Recovered from failsafe for liquidctl \
-                                         device: {}. Resuming normal status reads.",
-                                        device_name()
-                                    );
-                                }
-                            }
-                        }
+                        Ok(status) => self.store_status(device_id, status, device_name),
                         Err(err) => {
                             let mut fsd_map = self.failsafe_statuses.borrow_mut();
                             let Some(fsd) = fsd_map.get_mut(&device_id) else {
@@ -1956,13 +2025,7 @@ impl Repository for LiquidctlRepo {
                 fsd.write_failsafe_status(&mut device.write_status(timestamp));
                 continue;
             }
-            // The driver mapping builds a status from the allocated liquidctl message.
-            let Ok(status) = self.build_normal_status(&device) else {
-                continue;
-            };
-            device
-                .write_status(timestamp)
-                .write_all(&status.temps, &status.channels);
+            self.write_normal_status(&mut device, timestamp);
         }
         Ok(())
     }
@@ -3222,6 +3285,63 @@ mod tests {
         assert_eq!(allocations, 0);
         assert_eq!(status_map["pump speed"], "1990");
         assert_eq!(status_map["liquid temperature"], "31.25");
+    }
+
+    /// Goal: a disabled channel or temp never reaches the history, and the rest do, with no
+    /// allocation once the device's history knows the names. Method: write a driver status with
+    /// one disabled channel and one disabled temp twice into a device, counting the second.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_driver_status_is_written_without_its_disabled_channels() {
+        let channels = vec![
+            ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(800),
+                ..Default::default()
+            },
+            ChannelStatus {
+                name: "pump".to_string(),
+                rpm: Some(2000),
+                ..Default::default()
+            },
+        ];
+        let temps = vec![
+            TempStatus {
+                name: "liquid".to_string(),
+                temp: 31.5,
+            },
+            TempStatus {
+                name: "temp1".to_string(),
+                temp: 40.0,
+            },
+        ];
+        let disabled = vec!["fan1".to_string(), "temp1".to_string()];
+        let mut device = Device::new(
+            "Kraken".to_string(),
+            DeviceType::Liquidctl,
+            1,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        write_enabled(
+            &mut device.write_status(Local::now()),
+            &channels,
+            &temps,
+            &disabled,
+        );
+        let tick = Local::now();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            write_enabled(&mut device.write_status(tick), &channels, &temps, &disabled);
+        });
+
+        assert_eq!(allocations, 0);
+        assert_eq!(device.latest_temp("liquid"), Some(31.5));
+        assert_eq!(device.latest_channel("pump").unwrap().rpm, Some(2000));
+        assert_eq!(device.latest_temp("temp1"), None);
+        assert!(device.latest_channel("fan1").is_none());
     }
 
     fn lcd_device_info() -> DeviceInfo {

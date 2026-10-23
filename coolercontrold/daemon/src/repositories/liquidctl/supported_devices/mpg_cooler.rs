@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions, TempStatus,
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -221,20 +221,19 @@ impl DeviceSupport for MpgCoolerSupport {
         self.convert_to_channel_lighting_modes(color_modes)
     }
 
-    fn get_temperatures(&self, _status_map: &StatusMap) -> Vec<TempStatus> {
-        Vec::new()
-    }
+    fn refill_temperatures(&self, _status_map: &StatusMap, _refill: &mut StatusRefill<'_>) {}
 
-    fn get_channel_statuses(
+    fn refill_channel_statuses(
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-    ) -> Vec<ChannelStatus> {
-        let mut channel_statuses = vec![];
-        self.add_multiple_fans_status(status_map, &mut channel_statuses);
-        self.add_single_pump_status(status_map, &mut channel_statuses);
-        self.add_single_water_block_status(status_map, &mut channel_statuses);
-        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
-        channel_statuses
+        refill: &mut StatusRefill<'_>,
+    ) {
+        self.add_multiple_fans_status(status_map, refill);
+        self.add_single_pump_status(status_map, refill);
+        self.add_single_water_block_status(status_map, refill);
+        refill
+            .channels_mut()
+            .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }
 }

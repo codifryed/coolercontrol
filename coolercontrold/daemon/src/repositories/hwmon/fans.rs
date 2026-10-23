@@ -311,7 +311,7 @@ pub enum FanRead {
 #[derive(Debug)]
 pub enum FanReading {
     /// A full read that produced everything expected of the channel.
-    Full(ChannelStatus),
+    Full { rpm: Option<u32>, duty: Option<f64> },
     /// An rpm-only read, with the duty decided for it. `rpm` is `None` when the channel has no rpm
     /// capability, which is not a failure.
     Rpm { rpm: Option<u32>, duty: Duty },
@@ -420,12 +420,10 @@ async fn fan_reading_from(
     if expected_pwm_failed || expected_rpm_failed {
         FanReading::Failed
     } else {
-        FanReading::Full(ChannelStatus {
-            name: channel.name.clone(),
+        FanReading::Full {
             rpm: fan_rpm,
             duty: fan_duty,
-            ..Default::default()
-        })
+        }
     }
 }
 
@@ -543,9 +541,14 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
     let mut fans = Vec::with_capacity(channels.clone().count());
     let mut any_failure = false;
     let full = |_: &HwmonChannelInfo| FanRead::Full;
-    read_fan_statuses(driver, channels, full, |_, reading| {
-        if let FanReading::Full(status) = reading {
-            fans.push(status);
+    read_fan_statuses(driver, channels, full, |channel, reading| {
+        if let FanReading::Full { rpm, duty } = reading {
+            fans.push(ChannelStatus {
+                name: channel.name.clone(),
+                rpm,
+                duty,
+                ..Default::default()
+            });
         } else {
             debug_assert!(matches!(reading, FanReading::Failed));
             any_failure = true;
@@ -2534,10 +2537,17 @@ mod tests {
             .await;
 
             assert_eq!(readings.len(), 3);
-            let FanReading::Full(first) = &readings[0].1 else {
-                panic!("fan1 must read in full, got {:?}", readings[0].1);
-            };
-            assert_eq!((first.duty, first.rpm), (Some(100.0), Some(1100)));
+            assert!(
+                matches!(
+                    readings[0].1,
+                    FanReading::Full {
+                        rpm: Some(1100),
+                        duty: Some(100.0)
+                    }
+                ),
+                "fan1 must read in full, got {:?}",
+                readings[0].1
+            );
             assert!(
                 matches!(
                     readings[1].1,
@@ -2549,10 +2559,17 @@ mod tests {
                 "fan2 must read its rpm only, got {:?}",
                 readings[1].1
             );
-            let FanReading::Full(third) = &readings[2].1 else {
-                panic!("fan3 must read in full, got {:?}", readings[2].1);
-            };
-            assert_eq!((third.duty, third.rpm), (Some(20.0), Some(3300)));
+            assert!(
+                matches!(
+                    readings[2].1,
+                    FanReading::Full {
+                        rpm: Some(3300),
+                        duty: Some(20.0)
+                    }
+                ),
+                "fan3 must read in full, got {:?}",
+                readings[2].1
+            );
         });
     }
 }

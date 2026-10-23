@@ -103,12 +103,12 @@ pub fn is_power_attribute(file_name: &str) -> bool {
     PATTERN.is_match(file_name)
 }
 
-/// Reads a set of power channels in one hop. See `temps::read_temp_statuses` for why the per-tick
-/// path batches, and for the callback.
-pub async fn read_power_statuses<'a>(
+/// Reads a set of power channels in one hop. See `temps::read_temps` for why the per-tick path
+/// batches, and for the callback.
+pub async fn read_watts<'a>(
     driver: &'a HwmonDriverInfo,
     channels: impl Iterator<Item = &'a HwmonChannelInfo> + Clone,
-    mut on_status: impl FnMut(Option<ChannelStatus>),
+    mut on_watts: impl FnMut(&'a HwmonChannelInfo, Option<Watts>),
 ) {
     debug_assert!(
         channels
@@ -131,17 +131,20 @@ pub async fn read_power_statuses<'a>(
     let mut batch = driver.io.read_many(slots).await;
     let has_slot = |channel: &&HwmonChannelInfo| channel.read_slot.value.is_some();
     for (channel, result) in pair_with_results(channels, has_slot, batch.take_all()) {
-        on_status(result.and_then(|result| power_status_from(driver, channel, result)));
+        on_watts(
+            channel,
+            result.and_then(|result| watts_from(driver, channel, result)),
+        );
     }
 }
 
-/// Turns one raw power read into a `ChannelStatus`. Shared by the batched pass and the
-/// single-channel path so both log and discard failures identically.
-fn power_status_from(
+/// Turns one raw power read into watts. Shared by the batched pass and the single-channel path so
+/// both log and discard failures identically.
+fn watts_from(
     driver: &HwmonDriverInfo,
     channel: &HwmonChannelInfo,
     result: Result<cc_fs::SysfsValue>,
-) -> Option<ChannelStatus> {
+) -> Option<Watts> {
     // Only the log arms need it, and `log::debug!` evaluates its arguments only when enabled, so
     // the per-tick pass never builds a path.
     let power_path = || driver.path.join(&channel.name);
@@ -158,29 +161,19 @@ fn power_status_from(
             }
         })
         .ok()
-        .map(|watts| ChannelStatus {
-            name: channel.name.clone(),
-            watts: Some(watts),
-            ..Default::default()
-        })
 }
 
-/// Reads the power-input file for one channel and returns the
-/// resulting `ChannelStatus`, or `None` if the read failed.
-/// Pulled out so the preload loop can acquire the device permit
-/// per channel and avoid holding it across the whole device's
-/// power-channel set.
-pub async fn read_one_power_status(
-    driver: &HwmonDriverInfo,
-    channel: &HwmonChannelInfo,
-) -> Option<ChannelStatus> {
+/// Reads the power-input file for one channel and returns its watts, or `None` if the read failed.
+/// Pulled out so the preload loop can acquire the device permit per channel and avoid holding it
+/// across the whole device's power-channel set.
+pub async fn read_one_watts(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> Option<Watts> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Power);
     // In the Power case, channel.name is the real name of the sysfs file.
     let result = driver
         .io
         .read_one(channel.read_slot.value, || driver.path.join(&channel.name))
         .await;
-    power_status_from(driver, channel, result)
+    watts_from(driver, channel, result)
 }
 
 /// Every power channel in one hop, for callers that want an owned `Vec` (the reinit path).
@@ -191,8 +184,12 @@ pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
         .filter(|channel| channel.hwmon_type == HwmonChannelType::Power);
     let mut powers = Vec::with_capacity(channels.clone().count());
     let mut any_failure = false;
-    read_power_statuses(driver, channels, |status| match status {
-        Some(status) => powers.push(status),
+    read_watts(driver, channels, |channel, watts| match watts {
+        Some(watts) => powers.push(ChannelStatus {
+            name: channel.name.clone(),
+            watts: Some(watts),
+            ..Default::default()
+        }),
         None => any_failure = true,
     })
     .await;

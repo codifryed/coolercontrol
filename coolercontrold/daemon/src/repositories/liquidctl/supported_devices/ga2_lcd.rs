@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions, TempStatus,
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -142,22 +142,21 @@ impl DeviceSupport for Ga2LcdSupport {
         self.convert_to_channel_lighting_modes(color_modes)
     }
 
-    fn get_temperatures(&self, status_map: &StatusMap) -> Vec<TempStatus> {
-        let mut temps = Vec::with_capacity(1);
-        self.add_liquid_temp(status_map, &mut temps);
-        temps
+    fn refill_temperatures(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
+        self.add_liquid_temp(status_map, refill);
     }
 
-    fn get_channel_statuses(
+    fn refill_channel_statuses(
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-    ) -> Vec<ChannelStatus> {
-        let mut channel_statuses = Vec::with_capacity(2);
-        self.add_single_fan_status(status_map, &mut channel_statuses);
-        self.add_single_pump_status(status_map, &mut channel_statuses);
-        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
-        channel_statuses
+        refill: &mut StatusRefill<'_>,
+    ) {
+        self.add_single_fan_status(status_map, refill);
+        self.add_single_pump_status(status_map, refill);
+        refill
+            .channels_mut()
+            .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }
 
     /// This device driver does not have unique channel names, so we have to map them on the fly.

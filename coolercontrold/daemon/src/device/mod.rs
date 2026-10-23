@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pub mod health;
+mod status_refill;
 mod status_ring;
 pub mod uid;
 
@@ -17,6 +18,7 @@ use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use log::warn;
+pub use status_refill::StatusRefill;
 pub use status_ring::StatusSnapshot;
 use status_ring::{local_time, timestamp_ns, SnapshotFilter, StatusRing, MAX_NAMES};
 
@@ -844,7 +846,7 @@ impl From<&ChannelStatus> for ChannelSample {
 
 impl ChannelSample {
     /// Writes these values over `channel`'s.
-    fn apply_to(self, channel: &mut ChannelStatus) {
+    pub fn apply_to(self, channel: &mut ChannelStatus) {
         channel.rpm = self.rpm;
         channel.duty = self.duty;
         channel.freq = self.freq;

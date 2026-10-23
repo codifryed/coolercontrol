@@ -52,15 +52,17 @@ pub async fn init_freqs(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonC
     Ok(freqs)
 }
 
-/// Extract frequency statuses. Failed reads are omitted from the
-/// returned vector rather than reported as 0 MHz so downstream does not
-/// see a fabricated frequency.
-pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
+/// Reads every frequency channel in one hop, calling `on_freq` once per channel that read, in
+/// order. A failed read is left out rather than reported as 0 MHz, so downstream does not see a
+/// fabricated frequency.
+pub async fn read_freqs<'a>(
+    driver: &'a HwmonDriverInfo,
+    mut on_freq: impl FnMut(&'a HwmonChannelInfo, Mhz),
+) {
     let channels = driver
         .channels
         .iter()
         .filter(|channel| channel.hwmon_type == HwmonChannelType::Freq);
-    let mut freqs = Vec::with_capacity(channels.clone().count());
     debug_assert!(
         channels
             .clone()
@@ -78,14 +80,9 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
             continue;
         };
         if let Ok(freq) = result.and_then(check_parsing_64).map(hertz_to_megahertz) {
-            freqs.push(ChannelStatus {
-                name: channel.name.clone(),
-                freq: Some(freq),
-                ..Default::default()
-            });
+            on_freq(channel, freq);
         }
     }
-    freqs
 }
 
 #[allow(dead_code)]
@@ -188,6 +185,19 @@ mod tests {
     use serial_test::serial;
     use std::ops::Not;
     use std::path::PathBuf;
+
+    async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
+        let mut freqs = Vec::new();
+        read_freqs(driver, |channel, freq| {
+            freqs.push(ChannelStatus {
+                name: channel.name.clone(),
+                freq: Some(freq),
+                ..Default::default()
+            });
+        })
+        .await;
+        freqs
+    }
 
     struct HwmonFileContext {
         /// Owns the fixture directory, which is removed when the context drops.

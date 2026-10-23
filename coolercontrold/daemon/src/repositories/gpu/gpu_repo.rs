@@ -268,11 +268,9 @@ impl GpuRepo {
                             );
                         },
                         Ok(device_permit) = device_semaphore.acquire() => {
-                            let statuses = self.gpus_amd.get_amd_status(amd_driver).await;
                             self.gpus_amd
-                                .amd_preloaded_statuses
-                                .borrow_mut()
-                                .insert(type_index, statuses);
+                                .preload_amd_status(type_index, amd_driver)
+                                .await;
                             apply_device_command_delay(delay).await;
                             drop(device_permit);
                         },
@@ -291,9 +289,9 @@ impl GpuRepo {
                     // A GPU that did not answer keeps its last-known-good values until its
                     // failsafe takes over.
                     match self.gpus_nvidia.request_nvml_status(nv_info).await {
-                        Some(nvml_status) => {
+                        Some(readings) => {
                             self.gpus_nvidia
-                                .store_nvml_status(type_index, nv_info, nvml_status)
+                                .store_nvml_status(type_index, nv_info, &readings)
                                 .await;
                         }
                         None => self.gpus_nvidia.record_nvml_no_answer(type_index),

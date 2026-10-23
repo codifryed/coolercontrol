@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions,
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -76,33 +76,22 @@ impl DeviceSupport for H1V2Support {
         Vec::new()
     }
 
-    fn get_channel_statuses(&self, status_map: &StatusMap, device_index: u8) -> Vec<ChannelStatus> {
-        let mut channel_statuses = vec![];
-        self.add_multiple_fans_status(status_map, &mut channel_statuses);
+    fn refill_channel_statuses(
+        &self,
+        status_map: &StatusMap,
+        device_index: u8,
+        refill: &mut StatusRefill<'_>,
+    ) {
+        self.add_multiple_fans_status(status_map, refill);
         // Same workaround as the SmartDevice2, since it uses the same base implementation:
         // fan speeds set to 0 will make it disappear from liquidctl status for this driver,
         // (non-0 check) unfortunately that also happens when no fan is attached.
         // caveat: not an issue if hwmon driver is present
         if let Some(speed_channel_names) = self.init_speed_channel_map.borrow().get(&device_index) {
-            if channel_statuses.len() < speed_channel_names.len() {
-                let channel_names_current_status = channel_statuses
-                    .iter()
-                    .map(|status| status.name.clone())
-                    .collect::<Vec<String>>();
-                speed_channel_names
-                    .iter()
-                    .filter(|channel_name| !channel_names_current_status.contains(channel_name))
-                    .for_each(|channel_name| {
-                        channel_statuses.push(ChannelStatus {
-                            name: channel_name.clone(),
-                            rpm: Some(0),
-                            duty: Some(0.0),
-                            ..Default::default()
-                        });
-                    });
-            }
+            self.add_missing_speed_channels(speed_channel_names, refill);
         }
-        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
-        channel_statuses
+        refill
+            .channels_mut()
+            .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }
 }

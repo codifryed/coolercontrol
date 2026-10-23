@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo,
-    DriverType, LightingMode, SpeedOptions, TempStatus,
+    ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelSample, DeviceInfo, DriverInfo,
+    DriverType, LightingMode, SpeedOptions, StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -85,47 +85,41 @@ impl DeviceSupport for MsiAcpiEcSupport {
         self.convert_to_channel_lighting_modes(color_modes)
     }
 
-    fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_temp_probes(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let cpu_temp = status_map.get("cpu temp").and_then(parse_float);
         if let Some(temp) = cpu_temp {
-            temps.push(TempStatus {
-                name: "cpu temp".to_string(),
-                temp,
-            });
+            refill.temp("cpu temp", temp);
         }
         let gpu_temp = status_map.get("gpu temp").and_then(parse_float);
         if let Some(temp) = gpu_temp {
-            temps.push(TempStatus {
-                name: "gpu temp".to_string(),
-                temp,
-            });
+            refill.temp("gpu temp", temp);
         }
     }
 
-    fn add_single_fan_status(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
-    ) {
+    fn add_single_fan_status(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         let cpu_fan_rpm = status_map.get("cpu fan speed").and_then(parse_u32);
         let cpu_fan_duty = status_map.get("cpu fan duty").and_then(parse_float);
         let gpu_fan_rpm = status_map.get("gpu fan speed").and_then(parse_u32);
         let gpu_fan_duty = status_map.get("gpu fan duty").and_then(parse_float);
         if cpu_fan_rpm.is_some() || cpu_fan_duty.is_some() {
-            channel_statuses.push(ChannelStatus {
-                name: "cpu fan".to_string(),
-                rpm: cpu_fan_rpm,
-                duty: cpu_fan_duty,
-                ..Default::default()
-            });
+            refill.channel(
+                "cpu fan",
+                ChannelSample {
+                    rpm: cpu_fan_rpm,
+                    duty: cpu_fan_duty,
+                    ..Default::default()
+                },
+            );
         }
         if gpu_fan_rpm.is_some() || gpu_fan_duty.is_some() {
-            channel_statuses.push(ChannelStatus {
-                name: "gpu fan".to_string(),
-                rpm: gpu_fan_rpm,
-                duty: gpu_fan_duty,
-                ..Default::default()
-            });
+            refill.channel(
+                "gpu fan",
+                ChannelSample {
+                    rpm: gpu_fan_rpm,
+                    duty: gpu_fan_duty,
+                    ..Default::default()
+                },
+            );
         }
     }
 }
