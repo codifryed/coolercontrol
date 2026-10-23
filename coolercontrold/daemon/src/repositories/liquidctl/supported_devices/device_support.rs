@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use heck::ToTitleCase;
-use log::warn;
+use log::info;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -45,7 +45,7 @@ fn fan_slot<'a, T>(
             .swap(true, Ordering::Relaxed)
             .not()
         {
-            warn!("Ignoring liquidctl status line for an unexpected fan number: {line}");
+            info!("Ignoring liquidctl status line for an unexpected fan number: {line}");
         }
     }
     slot
