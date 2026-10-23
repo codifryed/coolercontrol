@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo,
-    DriverType, LightingMode, SpeedOptions, TempStatus,
+    ChannelExtensionNames, ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType,
+    LightingMode, SpeedOptions, StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -83,21 +83,20 @@ impl DeviceSupport for CoolitSupport {
         Vec::new()
     }
 
-    fn get_temperatures(&self, status_map: &StatusMap) -> Vec<TempStatus> {
-        let mut temps = vec![];
-        self.add_liquid_temp(status_map, &mut temps);
-        temps
+    fn refill_temperatures(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+        self.add_liquid_temp(status_map, temps);
     }
 
-    fn get_channel_statuses(
+    fn refill_channel_statuses(
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-    ) -> Vec<ChannelStatus> {
-        let mut channel_statuses = vec![];
-        self.add_single_pump_status(status_map, &mut channel_statuses);
-        self.add_multiple_fans_status(status_map, &mut channel_statuses);
-        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
+        channel_statuses: &mut StatusRefill<'_>,
+    ) {
+        self.add_single_pump_status(status_map, channel_statuses);
+        self.add_multiple_fans_status(status_map, channel_statuses);
         channel_statuses
+            .channels_mut()
+            .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }
 }

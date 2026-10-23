@@ -76,6 +76,36 @@ impl<'a> StatusRefill<'a> {
         debug_assert!(self.channels[self.channel_count - 1].name.is_empty().not());
     }
 
+    /// As `temp`, for a name formatted into the kept entry's own buffer.
+    pub fn temp_fmt(&mut self, name: fmt::Arguments<'_>, temp: Temp) {
+        debug_assert!(self.temp_count <= self.temps.len());
+        if let Some(entry) = self.temps.get_mut(self.temp_count) {
+            entry.name.clear();
+            entry
+                .name
+                .write_fmt(name)
+                .expect("formatting into a String does not fail");
+            entry.temp = temp;
+        } else {
+            self.temps.push(TempStatus {
+                name: name.to_string(),
+                temp,
+            });
+        }
+        self.temp_count += 1;
+        debug_assert!(self.temps[self.temp_count - 1].name.is_empty().not());
+    }
+
+    /// This tick's channels so far.
+    pub fn channels(&self) -> &[ChannelStatus] {
+        &self.channels[..self.channel_count]
+    }
+
+    /// This tick's temps, for a caller that must change them before they are kept.
+    pub fn temps_mut(&mut self) -> &mut [TempStatus] {
+        &mut self.temps[..self.temp_count]
+    }
+
     /// This tick's channels, for a caller that must change them before they are kept.
     pub fn channels_mut(&mut self) -> &mut [ChannelStatus] {
         &mut self.channels[..self.channel_count]

@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions, Status, TempStatus,
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    Status, StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -66,33 +66,34 @@ impl DeviceSupport for AquaComputerSupport {
         Vec::new()
     }
 
-    fn get_temperatures(&self, status_map: &StatusMap) -> Vec<TempStatus> {
-        let mut temps = Vec::with_capacity(status_map.len());
+    fn refill_temperatures(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         // D5
-        self.add_liquid_temp(status_map, &mut temps);
+        self.add_liquid_temp(status_map, temps);
         // Farbwerk, Farbwerk 360, Octo, Quadro
-        self.add_temp_sensors(status_map, &mut temps);
+        self.add_temp_sensors(status_map, temps);
         // D5, Farbwerk 360, Octo, Quadro
-        self.add_software_temp_sensors(status_map, &mut temps);
-        temps.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        self.add_software_temp_sensors(status_map, temps);
         temps
+            .temps_mut()
+            .sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
 
-    fn get_channel_statuses(
+    fn refill_channel_statuses(
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-    ) -> Vec<ChannelStatus> {
-        let mut channel_statuses = Vec::with_capacity(status_map.len());
+        channel_statuses: &mut StatusRefill<'_>,
+    ) {
         // D5
-        self.add_single_fan_status(status_map, &mut channel_statuses);
-        self.add_single_pump_status(status_map, &mut channel_statuses);
+        self.add_single_fan_status(status_map, channel_statuses);
+        self.add_single_pump_status(status_map, channel_statuses);
         // Octo, Quadro
-        self.add_multiple_fans_status(status_map, &mut channel_statuses);
+        self.add_multiple_fans_status(status_map, channel_statuses);
         // Quadro
-        self.add_flow_sensor_status(status_map, &mut channel_statuses);
-        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
+        self.add_flow_sensor_status(status_map, channel_statuses);
         channel_statuses
+            .channels_mut()
+            .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }
 }
 

@@ -3,10 +3,11 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Not;
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions,
+    ChannelInfo, ChannelKind, ChannelSample, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions, StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -116,32 +117,36 @@ impl DeviceSupport for SmartDeviceSupport {
         self.convert_to_channel_lighting_modes(color_modes)
     }
 
-    fn get_channel_statuses(&self, status_map: &StatusMap, device_index: u8) -> Vec<ChannelStatus> {
-        let mut channel_statuses = vec![];
-        self.add_multiple_fans_status(status_map, &mut channel_statuses);
+    fn refill_channel_statuses(
+        &self,
+        status_map: &StatusMap,
+        device_index: u8,
+        channel_statuses: &mut StatusRefill<'_>,
+    ) {
+        self.add_multiple_fans_status(status_map, channel_statuses);
         // fan speeds set to 0 will make it disappear from liquidctl status for this driver,
         // (non-0 check) unfortunately that also happens when no fan is attached.
         // caveat: not an issue if hwmon driver is present
         if let Some(speed_channel_names) = self.init_speed_channel_map.borrow().get(&device_index) {
-            if channel_statuses.len() < speed_channel_names.len() {
-                let channel_names_current_status = channel_statuses
-                    .iter()
-                    .map(|status| status.name.clone())
-                    .collect::<Vec<String>>();
-                speed_channel_names
-                    .iter()
-                    .filter(|channel_name| !channel_names_current_status.contains(channel_name))
-                    .for_each(|channel_name| {
-                        channel_statuses.push(ChannelStatus {
-                            name: channel_name.clone(),
+            if channel_statuses.channels().len() < speed_channel_names.len() {
+                for channel_name in speed_channel_names {
+                    let reported = channel_statuses
+                        .channels()
+                        .iter()
+                        .any(|status| status.name == *channel_name);
+                    if reported.not() {
+                        let sample = ChannelSample {
                             rpm: Some(0),
                             duty: Some(0.0),
                             ..Default::default()
-                        });
-                    });
+                        };
+                        channel_statuses.channel(channel_name, sample);
+                    }
+                }
             }
         }
-        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
         channel_statuses
+            .channels_mut()
+            .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }
 }

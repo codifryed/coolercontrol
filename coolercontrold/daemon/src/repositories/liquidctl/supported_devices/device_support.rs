@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use heck::ToTitleCase;
+use log::warn;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Not;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::LazyLock;
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, LightingMode, LightingModeType, Status,
-    TempStatus,
+    ChannelInfo, ChannelKind, ChannelSample, ChannelStatus, DeviceInfo, LightingMode,
+    LightingModeType, Status, StatusRefill, TempStatus,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -22,6 +24,31 @@ pub const FLOW_CHANNEL_NAME: &str = "flow";
 /// liquidctl reports flow in dL/h, and the status carries it as rpm. The bracketed unit is
 /// what tells the UI the value is not a speed.
 pub const FLOW_CHANNEL_LABEL: &str = "Flow [dL/h]";
+
+/// The highest fan number a status line may carry. liquidctl devices number a handful of fans;
+/// a line past this is logged and left out rather than grown into.
+const FAN_NUMBER_MAX: usize = 32;
+static UNEXPECTED_FAN_NUMBER_LOGGED: AtomicBool = AtomicBool::new(false);
+
+/// The slot for fan `fan_number` among a status's numbered fans, or `None`, logged once, when
+/// the number is past `FAN_NUMBER_MAX`.
+fn fan_slot<'a, T>(
+    fans: &'a mut [Option<T>; FAN_NUMBER_MAX + 1],
+    fan_number: u32,
+    line: &str,
+) -> Option<&'a mut Option<T>> {
+    let slot = usize::try_from(fan_number)
+        .ok()
+        .and_then(|number| fans.get_mut(number));
+    if slot.is_none()
+        && UNEXPECTED_FAN_NUMBER_LOGGED
+            .swap(true, Ordering::Relaxed)
+            .not()
+    {
+        warn!("Ignoring liquidctl status line for an unexpected fan number: {line}");
+    }
+    slot
+}
 
 pub fn get_firmware_ver(status_map: &StatusMap) -> Option<String> {
     status_map.get("firmware version").cloned()
@@ -110,70 +137,93 @@ pub trait DeviceSupport: Debug {
     }
 
     fn extract_status(&self, status_map: &StatusMap, device_index: u8) -> Status {
-        Status {
-            temps: self.get_temperatures(status_map),
-            channels: self.get_channel_statuses(status_map, device_index),
-            ..Default::default()
-        }
+        let mut status = Status::default();
+        self.refill_status(
+            status_map,
+            device_index,
+            &mut status.channels,
+            &mut status.temps,
+        );
+        status
+    }
+
+    /// Refills a device's status from its status map in place, leaving it as `extract_status`
+    /// would build it.
+    fn refill_status(
+        &self,
+        status_map: &StatusMap,
+        device_index: u8,
+        channels: &mut Vec<ChannelStatus>,
+        temps: &mut Vec<TempStatus>,
+    ) {
+        let mut refill = StatusRefill::new(channels, temps);
+        self.refill_temperatures(status_map, &mut refill);
+        self.refill_channel_statuses(status_map, device_index, &mut refill);
+    }
+
+    #[cfg(test)]
+    fn get_temperatures(&self, status_map: &StatusMap) -> Vec<TempStatus> {
+        self.extract_status(status_map, 0).temps
+    }
+
+    #[cfg(test)]
+    fn get_channel_statuses(&self, status_map: &StatusMap, device_index: u8) -> Vec<ChannelStatus> {
+        let mut channels = Vec::new();
+        let mut temps = Vec::new();
+        let mut refill = StatusRefill::new(&mut channels, &mut temps);
+        self.refill_channel_statuses(status_map, device_index, &mut refill);
+        drop(refill);
+        channels
     }
 
     /// It's possible to override this method and use only the needed sub-functions per device
-    fn get_temperatures(&self, status_map: &StatusMap) -> Vec<TempStatus> {
-        let mut temps = Vec::with_capacity(status_map.len());
-        self.add_liquid_temp(status_map, &mut temps);
-        self.add_water_temp(status_map, &mut temps);
-        self.add_temp(status_map, &mut temps);
-        self.add_temp_probes(status_map, &mut temps);
-        self.add_vrm_temp(status_map, &mut temps);
-        self.add_case_temp(status_map, &mut temps);
-        self.add_temp_sensors(status_map, &mut temps);
-        // self.add_software_temp_sensors(status_map, &mut temps);
+    fn refill_temperatures(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
+        self.add_liquid_temp(status_map, temps);
+        self.add_water_temp(status_map, temps);
+        self.add_temp(status_map, temps);
+        self.add_temp_probes(status_map, temps);
+        self.add_vrm_temp(status_map, temps);
+        self.add_case_temp(status_map, temps);
+        self.add_temp_sensors(status_map, temps);
+        // self.add_software_temp_sensors(status_map, temps);
         // ...for a future feature (needs testing and is in dB)
         // self.add_noise_level(status_map, &mut temps, device_index);
-        temps.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         temps
+            .temps_mut()
+            .sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
 
-    fn add_liquid_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_liquid_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         let liquid_temp = status_map
             .get("liquid temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = liquid_temp {
-            temps.push(TempStatus {
-                name: "liquid".to_string(),
-                temp,
-            });
+            temps.temp("liquid", temp);
         }
     }
 
-    fn add_water_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_water_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         let water_temp = status_map
             .get("water temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = water_temp {
-            temps.push(TempStatus {
-                name: "water".to_string(),
-                temp,
-            });
+            temps.temp("water", temp);
         }
     }
 
-    fn add_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         let plain_temp = status_map
             .get("temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = plain_temp {
-            temps.push(TempStatus {
-                name: "temp".to_string(),
-                temp,
-            });
+            temps.temp("temp", temp);
         }
     }
 
-    fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         static TEMP_PROBE_PATTERN: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"temperature \d+").unwrap());
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
@@ -183,8 +233,7 @@ pub trait DeviceSupport: Debug {
                     if let Some(probe_number) =
                         NUMBER_PATTERN.find_at(probe_name, probe_name.len() - 2)
                     {
-                        let name = format!("temp{}", probe_number.as_str());
-                        temps.push(TempStatus { name, temp });
+                        temps.temp_fmt(format_args!("temp{}", probe_number.as_str()), temp);
                     }
                 }
             }
@@ -192,33 +241,27 @@ pub trait DeviceSupport: Debug {
     }
 
     /// Voltage Regulator temp for PSUs
-    fn add_vrm_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_vrm_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         let vrm_temp = status_map
             .get("vrm temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = vrm_temp {
-            temps.push(TempStatus {
-                name: "vrm".to_string(),
-                temp,
-            });
+            temps.temp("vrm", temp);
         }
     }
 
-    fn add_case_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_case_temp(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         let case_temp = status_map
             .get("case temperature")
             .and_then(parse_float)
             .map(valid_temp);
         if let Some(temp) = case_temp {
-            temps.push(TempStatus {
-                name: "case".to_string(),
-                temp,
-            });
+            temps.temp("case", temp);
         }
     }
 
-    fn add_temp_sensors(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_temp_sensors(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         static TEMP_SENSOR_PATTERN: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"sensor \d+").unwrap());
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
@@ -228,15 +271,14 @@ pub trait DeviceSupport: Debug {
                     if let Some(sensor_number) =
                         NUMBER_PATTERN.find_at(sensor_name, sensor_name.len() - 2)
                     {
-                        let name = format!("sensor{}", sensor_number.as_str());
-                        temps.push(TempStatus { name, temp });
+                        temps.temp_fmt(format_args!("sensor{}", sensor_number.as_str()), temp);
                     }
                 }
             }
         }
     }
 
-    fn add_software_temp_sensors(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_software_temp_sensors(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         static SOFT_TEMP_SENSOR_PATTERN: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"soft. sensor \d+").unwrap());
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
@@ -246,8 +288,8 @@ pub trait DeviceSupport: Debug {
                     if let Some(sensor_number) =
                         NUMBER_PATTERN.find_at(sensor_name, sensor_name.len() - 2)
                     {
-                        let name = format!("soft-sensor{}", sensor_number.as_str());
-                        temps.push(TempStatus { name, temp });
+                        let name = format_args!("soft-sensor{}", sensor_number.as_str());
+                        temps.temp_fmt(name, temp);
                     }
                 }
             }
@@ -255,40 +297,38 @@ pub trait DeviceSupport: Debug {
     }
 
     #[allow(dead_code)]
-    fn add_noise_level(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_noise_level(&self, status_map: &StatusMap, temps: &mut StatusRefill<'_>) {
         let noise_lvl = status_map.get("noise level").and_then(parse_float);
         if let Some(noise) = noise_lvl {
-            temps.push(TempStatus {
-                name: "noise".to_string(),
-                temp: noise,
-            });
+            temps.temp("noise", noise);
         }
     }
 
     /// It's possible to override this method and use only the needed sub-functions per device
-    fn get_channel_statuses(
+    fn refill_channel_statuses(
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-    ) -> Vec<ChannelStatus> {
-        let mut channel_statuses = Vec::with_capacity(status_map.len());
-        self.add_single_fan_status(status_map, &mut channel_statuses);
-        self.add_single_external_fans_status(status_map, &mut channel_statuses);
-        self.add_single_pump_status(status_map, &mut channel_statuses);
-        self.add_single_pump_fan_status(status_map, &mut channel_statuses);
-        self.add_multiple_fans_status(status_map, &mut channel_statuses);
-        self.add_multiple_external_fans_status(status_map, &mut channel_statuses);
-        self.add_single_water_block_status(status_map, &mut channel_statuses);
+        channel_statuses: &mut StatusRefill<'_>,
+    ) {
+        self.add_single_fan_status(status_map, channel_statuses);
+        self.add_single_external_fans_status(status_map, channel_statuses);
+        self.add_single_pump_status(status_map, channel_statuses);
+        self.add_single_pump_fan_status(status_map, channel_statuses);
+        self.add_multiple_fans_status(status_map, channel_statuses);
+        self.add_multiple_external_fans_status(status_map, channel_statuses);
+        self.add_single_water_block_status(status_map, channel_statuses);
         // only applicable for a single device so far:
-        // self.add_psu_power_statuses(status_map, &mut channel_statuses);
-        channel_statuses.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        // self.add_psu_power_statuses(status_map, channel_statuses);
         channel_statuses
+            .channels_mut()
+            .sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
 
     fn add_single_fan_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
+        channel_statuses: &mut StatusRefill<'_>,
     ) {
         let fan_rpm = status_map
             .get("fan speed")
@@ -299,19 +339,21 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if fan_rpm.is_some() || fan_duty.is_some() {
-            channel_statuses.push(ChannelStatus {
-                name: "fan".to_string(),
-                rpm: fan_rpm,
-                duty: fan_duty,
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "fan",
+                ChannelSample {
+                    rpm: fan_rpm,
+                    duty: fan_duty,
+                    ..Default::default()
+                },
+            );
         }
     }
 
     fn add_single_external_fans_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
+        channel_statuses: &mut StatusRefill<'_>,
     ) {
         // asus_ryujin: where the status comes in singular, but the control channel is plural
         let fan_duty = status_map
@@ -319,18 +361,20 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if fan_duty.is_some() {
-            channel_statuses.push(ChannelStatus {
-                name: "external-fans".to_string(),
-                duty: fan_duty,
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "external-fans",
+                ChannelSample {
+                    duty: fan_duty,
+                    ..Default::default()
+                },
+            );
         }
     }
 
     fn add_single_pump_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
+        channel_statuses: &mut StatusRefill<'_>,
     ) {
         let pump_rpm = status_map
             .get("pump speed")
@@ -341,19 +385,21 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if pump_rpm.is_some() || pump_duty.is_some() {
-            channel_statuses.push(ChannelStatus {
-                name: "pump".to_string(),
-                rpm: pump_rpm,
-                duty: pump_duty,
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "pump",
+                ChannelSample {
+                    rpm: pump_rpm,
+                    duty: pump_duty,
+                    ..Default::default()
+                },
+            );
         }
     }
 
     fn add_single_pump_fan_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
+        channel_statuses: &mut StatusRefill<'_>,
     ) {
         let pump_rpm = status_map
             .get("pump fan speed")
@@ -364,19 +410,21 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if pump_rpm.is_some() || pump_duty.is_some() {
-            channel_statuses.push(ChannelStatus {
-                name: "pump-fan".to_string(),
-                rpm: pump_rpm,
-                duty: pump_duty,
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "pump-fan",
+                ChannelSample {
+                    rpm: pump_rpm,
+                    duty: pump_duty,
+                    ..Default::default()
+                },
+            );
         }
     }
 
     fn add_single_water_block_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
+        channel_statuses: &mut StatusRefill<'_>,
     ) {
         let water_block_rpm = status_map
             .get("water block speed")
@@ -387,57 +435,69 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_float)
             .map(valid_duty);
         if water_block_rpm.is_some() || water_block_duty.is_some() {
-            channel_statuses.push(ChannelStatus {
-                name: "waterblock-fan".to_string(),
-                rpm: water_block_rpm,
-                duty: water_block_duty,
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "waterblock-fan",
+                ChannelSample {
+                    rpm: water_block_rpm,
+                    duty: water_block_duty,
+                    ..Default::default()
+                },
+            );
         }
     }
 
     fn add_psu_power_statuses(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
+        channel_statuses: &mut StatusRefill<'_>,
     ) {
         if let Some(watts) = status_map.get("total power output").and_then(parse_float) {
-            channel_statuses.push(ChannelStatus {
-                name: "total-power".to_string(),
-                watts: Some(watts),
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "total-power",
+                ChannelSample {
+                    watts: Some(watts),
+                    ..Default::default()
+                },
+            );
         }
         if let Some(watts) = status_map
             .get("estimated input power")
             .and_then(parse_float)
         {
-            channel_statuses.push(ChannelStatus {
-                name: "estimated-input-power".to_string(),
-                watts: Some(watts),
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "estimated-input-power",
+                ChannelSample {
+                    watts: Some(watts),
+                    ..Default::default()
+                },
+            );
         }
         if let Some(watts) = status_map.get("+12v output power").and_then(parse_float) {
-            channel_statuses.push(ChannelStatus {
-                name: "12v-power".to_string(),
-                watts: Some(watts),
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "12v-power",
+                ChannelSample {
+                    watts: Some(watts),
+                    ..Default::default()
+                },
+            );
         }
         if let Some(watts) = status_map.get("+5v output power").and_then(parse_float) {
-            channel_statuses.push(ChannelStatus {
-                name: "5v-power".to_string(),
-                watts: Some(watts),
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "5v-power",
+                ChannelSample {
+                    watts: Some(watts),
+                    ..Default::default()
+                },
+            );
         }
         if let Some(watts) = status_map.get("+3.3v output power").and_then(parse_float) {
-            channel_statuses.push(ChannelStatus {
-                name: "3.3v-power".to_string(),
-                watts: Some(watts),
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                "3.3v-power",
+                ChannelSample {
+                    watts: Some(watts),
+                    ..Default::default()
+                },
+            );
         }
     }
 
@@ -450,7 +510,7 @@ pub trait DeviceSupport: Debug {
     fn add_multiple_fans_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
+        channel_statuses: &mut StatusRefill<'_>,
     ) {
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
         static MULTIPLE_FAN_SPEED: LazyLock<Regex> =
@@ -459,69 +519,80 @@ pub trait DeviceSupport: Debug {
             LazyLock::new(|| Regex::new(r"^fan speed \d+").unwrap());
         static MULTIPLE_FAN_DUTY: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"^fan \d+ duty").unwrap());
-        let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> =
-            HashMap::with_capacity(status_map.len());
+        let mut fans = [None; FAN_NUMBER_MAX + 1];
         for (name, value) in status_map {
-            if let Some(fan_number) = NUMBER_PATTERN
+            let Some(fan_number) = NUMBER_PATTERN
                 .find_at(name, 3)
                 .and_then(|number| parse_u32_inner(number.as_str()))
-            {
-                let fan_name = format!("fan{fan_number}");
-                if MULTIPLE_FAN_SPEED.is_match(name) || MULTIPLE_FAN_SPEED_CORSAIR.is_match(name) {
-                    let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
-                    *rpm = parse_u32_inner(value).map(valid_rpm);
-                } else if MULTIPLE_FAN_DUTY.is_match(name) {
-                    let (_, duty) = fans_map.entry(fan_name).or_insert((None, None));
-                    *duty = parse_float_inner(value).map(valid_duty);
-                }
+            else {
+                continue;
+            };
+            let is_speed =
+                MULTIPLE_FAN_SPEED.is_match(name) || MULTIPLE_FAN_SPEED_CORSAIR.is_match(name);
+            let is_duty = is_speed.not() && MULTIPLE_FAN_DUTY.is_match(name);
+            if is_speed.not() && is_duty.not() {
+                continue;
+            }
+            let Some(fan) = fan_slot(&mut fans, fan_number, name) else {
+                continue;
+            };
+            let (rpm, duty) = fan.get_or_insert((None, None));
+            if is_speed {
+                *rpm = parse_u32_inner(value).map(valid_rpm);
+            } else {
+                *duty = parse_float_inner(value).map(valid_duty);
             }
         }
-        for (name, (rpm, duty)) in fans_map {
-            channel_statuses.push(ChannelStatus {
-                name,
-                rpm,
-                duty,
-                ..Default::default()
-            });
+        for (fan_number, fan) in fans.iter().enumerate() {
+            if let Some((rpm, duty)) = *fan {
+                let sample = ChannelSample {
+                    rpm,
+                    duty,
+                    ..Default::default()
+                };
+                channel_statuses.channel_fmt(format_args!("fan{fan_number}"), sample);
+            }
         }
     }
 
     fn add_multiple_external_fans_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
+        channel_statuses: &mut StatusRefill<'_>,
     ) {
         static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
         static MULTIPLE_FAN_SPEED: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"external fan \d+ speed").unwrap());
-        let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> =
-            HashMap::with_capacity(status_map.len());
+        let mut fans = [None; FAN_NUMBER_MAX + 1];
         for (name, value) in status_map {
-            if MULTIPLE_FAN_SPEED.is_match(name) {
-                if let Some(fan_number) = NUMBER_PATTERN
-                    .find_at(name, 12)
-                    .and_then(|number| parse_u32_inner(number.as_str()))
-                {
-                    let fan_name = format!("external-fan{fan_number}");
-                    let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
-                    *rpm = parse_u32_inner(value).map(valid_rpm);
-                }
+            if MULTIPLE_FAN_SPEED.is_match(name).not() {
+                continue;
+            }
+            let Some(fan_number) = NUMBER_PATTERN
+                .find_at(name, 12)
+                .and_then(|number| parse_u32_inner(number.as_str()))
+            else {
+                continue;
+            };
+            if let Some(fan) = fan_slot(&mut fans, fan_number, name) {
+                *fan = Some(parse_u32_inner(value).map(valid_rpm));
             }
         }
-        for (name, (rpm, duty)) in fans_map {
-            channel_statuses.push(ChannelStatus {
-                name,
-                rpm,
-                duty,
-                ..Default::default()
-            });
+        for (fan_number, fan) in fans.iter().enumerate() {
+            if let Some(rpm) = *fan {
+                let sample = ChannelSample {
+                    rpm,
+                    ..Default::default()
+                };
+                channel_statuses.channel_fmt(format_args!("external-fan{fan_number}"), sample);
+            }
         }
     }
 
     fn add_flow_sensor_status(
         &self,
         status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
+        channel_statuses: &mut StatusRefill<'_>,
     ) {
         // We use rpm speed as a proxy for flow speed
         let flow_speed = status_map
@@ -529,11 +600,13 @@ pub trait DeviceSupport: Debug {
             .and_then(parse_u32)
             .map(valid_rpm);
         if flow_speed.is_some() {
-            channel_statuses.push(ChannelStatus {
-                name: FLOW_CHANNEL_NAME.to_string(),
-                rpm: flow_speed,
-                ..Default::default()
-            });
+            channel_statuses.channel(
+                FLOW_CHANNEL_NAME,
+                ChannelSample {
+                    rpm: flow_speed,
+                    ..Default::default()
+                },
+            );
         }
     }
 
@@ -590,6 +663,14 @@ mod tests {
     use crate::repositories::liquidctl::supported_devices::kraken_x3::KrakenX3Support;
 
     use super::*;
+
+    /// What `add` writes, refilled into empty lists.
+    fn refilled(add: impl FnOnce(&mut StatusRefill<'_>)) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
+        let mut channels = Vec::new();
+        let mut temps = Vec::new();
+        add(&mut StatusRefill::new(&mut channels, &mut temps));
+        (channels, temps)
+    }
 
     fn assert_temp_status_vector_contents_eq(
         device_support: &KrakenX3Support,
@@ -791,8 +872,8 @@ mod tests {
             }],
         )];
         for (given, expected) in given_expected {
-            let mut result_temps = vec![];
-            device_support.add_noise_level(&given, &mut result_temps);
+            let (_, result_temps) =
+                refilled(|refill| device_support.add_noise_level(&given, refill));
             assert!(expected
                 .iter()
                 .all(|temp_status| result_temps.contains(temp_status)));
@@ -1314,8 +1395,8 @@ mod tests {
             ],
         )];
         for (given, expected) in given_expected {
-            let mut result_temps = vec![];
-            device_support.add_software_temp_sensors(&given, &mut result_temps);
+            let (_, result_temps) =
+                refilled(|refill| device_support.add_software_temp_sensors(&given, refill));
             assert!(
                 expected.iter().all(|ts| result_temps.contains(ts)),
                 "result missing expected entries: {result_temps:?}"
@@ -1337,8 +1418,8 @@ mod tests {
             ("temperature 1".to_string(), temp.clone()),
             ("soft-sensor-1".to_string(), temp.clone()),
         ]);
-        let mut result_temps = vec![];
-        device_support.add_software_temp_sensors(&given, &mut result_temps);
+        let (_, result_temps) =
+            refilled(|refill| device_support.add_software_temp_sensors(&given, refill));
         assert!(
             result_temps.is_empty(),
             "expected no results, got: {result_temps:?}"
@@ -1363,8 +1444,8 @@ mod tests {
                 temp: -40.0,
             },
         ];
-        let mut result_temps = vec![];
-        device_support.add_software_temp_sensors(&given, &mut result_temps);
+        let (_, result_temps) =
+            refilled(|refill| device_support.add_software_temp_sensors(&given, refill));
         assert!(
             expected.iter().all(|ts| result_temps.contains(ts)),
             "result missing expected entries: {result_temps:?}"
@@ -1378,8 +1459,8 @@ mod tests {
         let device_support = KrakenX3Support::new();
         let flow_speed: u32 = 250;
         let given = HashMap::from([("flow sensor".to_string(), flow_speed.to_string())]);
-        let mut result_statuses = vec![];
-        device_support.add_flow_sensor_status(&given, &mut result_statuses);
+        let (result_statuses, _) =
+            refilled(|refill| device_support.add_flow_sensor_status(&given, refill));
         assert_eq!(result_statuses.len(), 1);
         assert_eq!(result_statuses[0].name, "flow");
         assert_eq!(result_statuses[0].rpm, Some(flow_speed));
@@ -1398,8 +1479,8 @@ mod tests {
         // Confirms that no ChannelStatus is pushed when "flow sensor" is absent.
         let device_support = KrakenX3Support::new();
         let given = HashMap::from([("fan speed".to_string(), "1200".to_string())]);
-        let mut result_statuses = vec![];
-        device_support.add_flow_sensor_status(&given, &mut result_statuses);
+        let (result_statuses, _) =
+            refilled(|refill| device_support.add_flow_sensor_status(&given, refill));
         assert!(
             result_statuses.is_empty(),
             "expected no results, got: {result_statuses:?}"
@@ -1411,8 +1492,8 @@ mod tests {
         // Confirms that a non-parseable flow sensor value results in no status being pushed.
         let device_support = KrakenX3Support::new();
         let given = HashMap::from([("flow sensor".to_string(), "unknown".to_string())]);
-        let mut result_statuses = vec![];
-        device_support.add_flow_sensor_status(&given, &mut result_statuses);
+        let (result_statuses, _) =
+            refilled(|refill| device_support.add_flow_sensor_status(&given, refill));
         assert!(
             result_statuses.is_empty(),
             "expected no results, got: {result_statuses:?}"
@@ -1502,5 +1583,99 @@ mod tests {
             .extend_info_from_status(&status_with_channels(&["fan1", "flow"]), &mut device_info);
         assert_eq!(device_info.channels.len(), 1);
         assert!(device_info.channels.contains_key("fan1"));
+    }
+
+    fn map_of(entries: &[(&str, &str)]) -> StatusMap {
+        entries
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+            .collect()
+    }
+
+    /// Goal: a status refilled in place each tick holds what a fresh extract from the same map
+    /// would, in the same order, through channels and temps that come and go. Method: refill one
+    /// pair through three maps and compare each with `extract_status`.
+    #[test]
+    fn a_refilled_status_matches_a_fresh_extract() {
+        let device_support = KrakenX3Support::new();
+        let maps = [
+            map_of(&[
+                ("liquid temperature", "31.5"),
+                ("temperature 1", "40"),
+                ("pump speed", "2000"),
+                ("fan 1 speed", "800"),
+                ("fan 2 duty", "40"),
+            ]),
+            map_of(&[("liquid temperature", "31.25"), ("fan 2 speed", "790")]),
+            map_of(&[
+                ("temperature 2", "41"),
+                ("fan speed 3", "700"),
+                ("fan 1 speed", "810"),
+                ("pump duty", "60"),
+            ]),
+        ];
+        let mut channels = Vec::new();
+        let mut temps = Vec::new();
+
+        for status_map in maps {
+            device_support.refill_status(&status_map, 1, &mut channels, &mut temps);
+
+            let fresh = device_support.extract_status(&status_map, 1);
+            assert_eq!(channels, fresh.channels);
+            assert_eq!(temps, fresh.temps);
+        }
+    }
+
+    /// Goal: once warm, refilling a device's status from a map with the same names allocates
+    /// nothing, though the helpers report in an order the sort then changes. Method: refill a
+    /// few ticks from one map, letting each kept name settle where the sort leaves it, then
+    /// count one more.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_refill_allocates_nothing() {
+        let device_support = KrakenX3Support::new();
+        let status_map = map_of(&[
+            ("liquid temperature", "31.5"),
+            ("temperature 1", "40"),
+            ("pump speed", "2000"),
+            ("pump duty", "60"),
+            ("fan 1 speed", "800"),
+            ("fan 2 speed", "790"),
+            ("fan speed", "900"),
+        ]);
+        let mut channels = Vec::new();
+        let mut temps = Vec::new();
+        for _ in 0..4 {
+            device_support.refill_status(&status_map, 1, &mut channels, &mut temps);
+        }
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            device_support.refill_status(&status_map, 1, &mut channels, &mut temps);
+        });
+
+        assert_eq!(allocations, 0);
+        assert_eq!(channels.len(), 4);
+        assert_eq!(temps.len(), 2);
+    }
+
+    /// Goal: numbered fans up to the bound are reported, and a line numbering one past it is
+    /// left out rather than indexing past the slots. Method: the highest allowed fan number and
+    /// the one after it, as speed lines.
+    #[test]
+    fn a_fan_number_past_the_bound_is_left_out() {
+        let device_support = KrakenX3Support::new();
+        let highest = FAN_NUMBER_MAX.to_string();
+        let past = (FAN_NUMBER_MAX + 1).to_string();
+        let status_map = map_of(&[
+            (&format!("fan {highest} speed"), "800"),
+            (&format!("fan {past} speed"), "900"),
+            (&format!("external fan {past} speed"), "900"),
+        ]);
+
+        let channels = device_support.get_channel_statuses(&status_map, 1);
+
+        assert_eq!(channels.len(), 1);
+        assert_eq!(channels[0].name, format!("fan{highest}"));
+        assert_eq!(channels[0].rpm, Some(800));
     }
 }

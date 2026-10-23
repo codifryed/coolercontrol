@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions,
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -103,15 +103,16 @@ impl DeviceSupport for CorsairHidPsuSupport {
         Vec::new()
     }
 
-    fn get_channel_statuses(
+    fn refill_channel_statuses(
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-    ) -> Vec<ChannelStatus> {
-        let mut channel_statuses = vec![];
-        self.add_single_fan_status(status_map, &mut channel_statuses);
-        self.add_psu_power_statuses(status_map, &mut channel_statuses);
-        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
+        channel_statuses: &mut StatusRefill<'_>,
+    ) {
+        self.add_single_fan_status(status_map, channel_statuses);
+        self.add_psu_power_statuses(status_map, channel_statuses);
         channel_statuses
+            .channels_mut()
+            .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }
 }
