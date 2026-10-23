@@ -236,6 +236,7 @@ impl DrmClients {
         scanned: &mut HashMap<u64, u64>,
     ) {
         self.held.clear();
+        let was_overflowed = self.overflowed;
         self.overflowed = false;
         let Ok(entries) = cc_fs::read_dir(proc_root) else {
             return;
@@ -253,7 +254,7 @@ impl DrmClients {
         }
         debug_assert!(self.held.len() <= DRM_CLIENTS_HELD_MAX);
         debug_assert!(self.overflowed.not() || self.held.len() == DRM_CLIENTS_HELD_MAX);
-        if self.overflowed {
+        if self.overflowed && was_overflowed.not() {
             debug!(
                 "More than {DRM_CLIENTS_HELD_MAX} DRM clients on {pci_slot}; walking /proc \
                  every tick until fewer remain"
