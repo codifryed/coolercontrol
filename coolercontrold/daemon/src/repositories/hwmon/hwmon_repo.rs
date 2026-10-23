@@ -6014,6 +6014,58 @@ mod slow_device_tests {
         });
     }
 
+    /// Polls `future` once, leaving it where it stopped.
+    #[cfg(feature = "gated-tests")]
+    async fn poll_once<F: Future>(future: std::pin::Pin<&mut F>) -> std::task::Poll<F::Output> {
+        let mut future = Some(future);
+        std::future::poll_fn(|cx| std::task::Poll::Ready(future.take().unwrap().poll(cx))).await
+    }
+
+    /// A slow device with three fans whose worker is served by hand, fan1 and fan2 cached and
+    /// fan3 due. Returns the raw value each read slot answers with.
+    #[cfg(feature = "gated-tests")]
+    async fn mid_read_setup(
+        dir: &Path,
+    ) -> (
+        HwmonRepo,
+        Rc<HwmonDriverInfo>,
+        tokio::sync::mpsc::Receiver<crate::repositories::hwmon::device_io::Request>,
+        HashMap<ReadIndex, String>,
+    ) {
+        seed_fan_files(dir, &[1, 2, 3], 255).await;
+        let mut driver = HwmonDriverInfo {
+            name: "dev".to_string(),
+            path: dir.to_path_buf(),
+            channels: (1..=3)
+                .map(|n| fan_channel(n, &format!("fan{n}"), dir))
+                .collect(),
+            u_id: "test-uid-mid-read".to_string(),
+            ..Default::default()
+        }
+        .with_read_registry()
+        .await;
+        let (wedged_io, rx) = DeviceIo::wedged_for_test(Duration::from_secs(60));
+        driver.io = wedged_io;
+        let mut values = HashMap::new();
+        let raw = [(255, 1100), (128, 2200), (51, 3300)];
+        for (channel, (pwm, rpm)) in driver.channels.iter().zip(raw) {
+            values.insert(channel.read_slot.pwm.unwrap(), pwm.to_string());
+            values.insert(channel.read_slot.rpm.unwrap(), rpm.to_string());
+        }
+        let fresh = Instant::now() + Duration::from_secs(60);
+        let mut repo = empty_repo();
+        install_driver(
+            &mut repo,
+            TEST_TYPE_INDEX,
+            driver,
+            true,
+            vec![("fan1", 40, fresh), ("fan2", 60, fresh)],
+        );
+        seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
+        let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
+        (repo, driver, rx, values)
+    }
+
     /// Goal: a duty-cache entry dropped while a batched fan read is in flight must not change
     /// how the reply is walked. A walk that decides again takes more slots than the batch holds,
     /// shifting every later channel's values and running off the end of the batch. Method: a
@@ -6024,49 +6076,11 @@ mod slow_device_tests {
     #[cfg(feature = "gated-tests")]
     fn fan_decisions_survive_a_cache_drop_mid_read() {
         use crate::repositories::hwmon::device_io::Request;
-        use std::pin::{pin, Pin};
-        use std::task::Poll;
-
-        /// Polls `future` once, leaving it where it stopped.
-        async fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
-            let mut future = Some(future);
-            std::future::poll_fn(|cx| Poll::Ready(future.take().unwrap().poll(cx))).await
-        }
+        use std::pin::pin;
 
         cc_fs::test_runtime(async {
             let tmp = tempfile::tempdir().unwrap();
-            let dir = tmp.path().join("dev");
-            seed_fan_files(&dir, &[1, 2, 3], 255).await;
-            let mut driver = HwmonDriverInfo {
-                name: "dev".to_string(),
-                path: dir.clone(),
-                channels: (1..=3)
-                    .map(|n| fan_channel(n, &format!("fan{n}"), &dir))
-                    .collect(),
-                u_id: "test-uid-mid-read".to_string(),
-                ..Default::default()
-            }
-            .with_read_registry()
-            .await;
-            let (wedged_io, mut rx) = DeviceIo::wedged_for_test(Duration::from_secs(60));
-            driver.io = wedged_io;
-            let mut values = HashMap::new();
-            let raw = [(255, 1100), (128, 2200), (51, 3300)];
-            for (channel, (pwm, rpm)) in driver.channels.iter().zip(raw) {
-                values.insert(channel.read_slot.pwm.unwrap(), pwm.to_string());
-                values.insert(channel.read_slot.rpm.unwrap(), rpm.to_string());
-            }
-            let fresh = Instant::now() + Duration::from_secs(60);
-            let mut repo = empty_repo();
-            install_driver(
-                &mut repo,
-                TEST_TYPE_INDEX,
-                driver,
-                true,
-                vec![("fan1", 40, fresh), ("fan2", 60, fresh)],
-            );
-            seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
-            let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
+            let (repo, driver, mut rx, values) = mid_read_setup(&tmp.path().join("dev")).await;
 
             let mut pass =
                 pin!(repo.read_fan_channels(TEST_TYPE_INDEX, &driver, driver.channels.iter()));
