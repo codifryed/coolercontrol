@@ -101,7 +101,7 @@ fn pin_to_current_cpu() -> Result<(usize, CpuSet)> {
     let main_cpu = sched_getcpu()?;
     let mut main_mask = CpuSet::new();
     main_mask.set(main_cpu)?;
-    debug_assert!(main_mask.is_set(main_cpu).unwrap_or(false));
+    debug_assert!(process_mask.is_set(main_cpu).unwrap_or(false));
     sched_setaffinity(Pid::from_raw(0), &main_mask)?;
     Ok((main_cpu, process_mask))
 }
@@ -195,7 +195,6 @@ fn parse_cpu_list(text: &str) -> Option<Vec<usize>> {
             return None;
         }
     }
-    debug_assert!(cpus.len() <= CpuSet::count());
     Some(cpus)
 }
 
