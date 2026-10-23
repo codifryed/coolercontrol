@@ -803,6 +803,10 @@ impl LiquidctlRepo {
                 }
             }
         }
+        debug_assert!(status_map.len() <= lc_statuses.len());
+        debug_assert!(lc_statuses
+            .iter()
+            .all(|(name, _, _)| status_map.contains_key(name)));
     }
 
     /// Builds a normal status from preloaded data for the given device.
