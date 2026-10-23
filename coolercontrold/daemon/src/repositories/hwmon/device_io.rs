@@ -304,7 +304,8 @@ impl DeviceIo {
     ///
     /// # Panics
     ///
-    /// Debug builds assert the batch is within `READ_BATCH_MAX` and that the reply is positional.
+    /// Debug builds assert the batch is within `READ_BATCH_MAX`, and on the threaded path that the
+    /// reply is positional.
     pub async fn read_many(&self, indices: impl IntoIterator<Item = ReadIndex>) -> ReadBatch<'_> {
         match self {
             Self::Inline(fds) => {
