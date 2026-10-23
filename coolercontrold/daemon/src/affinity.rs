@@ -140,7 +140,7 @@ fn active_mode_preempts(modes: &str) -> bool {
 fn fixed_model_preempts(version: &str) -> bool {
     version
         .split_whitespace()
-        .any(|flag| flag == "PREEMPT" || flag == "PREEMPT_RT")
+        .any(|flag| matches!(flag, "PREEMPT" | "PREEMPT_RT"))
 }
 
 fn siblings_path(cpu: usize) -> PathBuf {
@@ -155,7 +155,10 @@ fn worker_cpus(main_cpu: usize, siblings: &str, process_mask: &CpuSet) -> Option
     let mut workers = CpuSet::new();
     let mut found = false;
     for cpu in parse_cpu_list(siblings)? {
-        if cpu != main_cpu && process_mask.is_set(cpu).unwrap_or(false) {
+        if cpu == main_cpu {
+            continue;
+        }
+        if process_mask.is_set(cpu).unwrap_or(false) {
             workers.set(cpu).ok()?;
             found = true;
         }
@@ -174,7 +177,10 @@ fn parse_cpu_list(text: &str) -> Option<Vec<usize>> {
             let cpu = part.parse().ok()?;
             (cpu, cpu)
         };
-        if first > last || last >= CpuSet::count() {
+        if first > last {
+            return None;
+        }
+        if last >= CpuSet::count() {
             return None;
         }
         cpus.extend(first..=last);
