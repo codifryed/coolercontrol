@@ -1074,7 +1074,8 @@ async fn init_custom_sensors_repo(
     overrides: Rc<overrides::OverridesController>,
 ) -> Result<CustomSensorsRepo> {
     let mut custom_sensors_repo =
-        CustomSensorsRepo::new(config, devices_for_custom_sensors, overrides)?;
+        CustomSensorsRepo::new(config, devices_for_custom_sensors, overrides)?
+            .with_isolated_file_reads();
     custom_sensors_repo.initialize_devices().await?;
     Ok(custom_sensors_repo)
 }

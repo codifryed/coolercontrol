@@ -157,6 +157,17 @@ impl DeviceIo {
         }
     }
 
+    /// Leaves the unreachable and answering-again warnings to the owner, which can name what a
+    /// stall affects. The health rules are unchanged. A no-op when not isolated, as nothing is
+    /// announced there.
+    #[must_use]
+    pub fn owner_announces_health(self) -> Self {
+        if let Self::Threaded(worker) = &self {
+            worker.state.leave_announcements_to_owner();
+        }
+        self
+    }
+
     /// Reads one attribute by path, without caching its descriptor.
     ///
     /// For detection probes, labels and read-before-write checks, none of which repeat per tick.
@@ -399,6 +410,9 @@ pub struct HealthState {
     consecutive_timeouts: Cell<u8>,
     /// `Some` while the device is unreachable: no request is dispatched until this instant.
     probe_after: Cell<Option<Instant>>,
+    /// Whether going unreachable and answering again are warned here. Off when the owner can
+    /// name what the stall affects better than `device_name` does.
+    announces: Cell<bool>,
 }
 
 impl HealthState {
@@ -408,6 +422,7 @@ impl HealthState {
             device_name,
             consecutive_timeouts: Cell::new(0),
             probe_after: Cell::new(None),
+            announces: Cell::new(true),
         }
     }
 
@@ -430,10 +445,12 @@ impl HealthState {
             debug!("device IO recovered: {}", self.device_name);
         }
         if self.probe_after.get().is_some() {
-            warn!(
-                "Device {} is answering again after being unreachable.",
-                self.device_name
-            );
+            if self.announces.get() {
+                warn!(
+                    "Device {} is answering again after being unreachable.",
+                    self.device_name
+                );
+            }
         }
         self.consecutive_timeouts.set(0);
         self.probe_after.set(None);
@@ -455,8 +472,15 @@ impl HealthState {
             .set(Some(Instant::now() + UNREACHABLE_PROBE_INTERVAL));
         // Once, on the way in. A device that stays wedged must not log every probe.
         if was_unreachable.not() {
-            warn!("{}", unreachable_warning(&self.device_name, timeouts));
+            if self.announces.get() {
+                warn!("{}", unreachable_warning(&self.device_name, timeouts));
+            }
         }
+    }
+
+    /// Leaves the unreachable and answering-again warnings to the owner.
+    pub fn leave_announcements_to_owner(&self) {
+        self.announces.set(false);
     }
 
     /// Lets the next dispatch through even if the device is currently unreachable.
@@ -1221,6 +1245,32 @@ mod tests {
             let err = result.unwrap_err();
             let io_err = err.downcast_ref::<Error>().unwrap();
             assert_eq!(io_err.kind(), ErrorKind::HostUnreachable);
+        });
+    }
+
+    /// Goal: leaving the warnings to the owner must change only who logs, never the health rules
+    /// the owner reads back. Method: wedge a worker that leaves its announcements to the owner,
+    /// time it out to the threshold and check it went unreachable as any other does.
+    #[test]
+    fn an_owner_announced_device_keeps_the_health_rules() {
+        crate::rt::test_runtime(async {
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let io = io.owner_announces_health();
+            assert!(worker_of(&io).state.announces.get().not());
+            let path = Path::new("/sys/class/hwmon/hwmon0/temp1_input");
+
+            for _ in 0..UNREACHABLE_AFTER_TIMEOUTS {
+                assert!(io.read_value(path).await.is_err());
+            }
+
+            assert_eq!(
+                io.health(),
+                DeviceHealth::Unreachable {
+                    consecutive_timeouts: UNREACHABLE_AFTER_TIMEOUTS
+                }
+            );
+            let inline = DeviceIo::default().owner_announces_health();
+            assert!(matches!(inline, DeviceIo::Inline(_)));
         });
     }
 
