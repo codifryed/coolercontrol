@@ -118,6 +118,11 @@ pub struct CustomSensorsRepo {
     sample_windows: RefCell<HashMap<CustomSensorId, SampleWindow>>,
     /// Transient read state for `File` sensors. See [`FileReadState`].
     file_read_state: RefCell<HashMap<CustomSensorId, FileReadState>>,
+    /// Every sensor's value this tick, in processing order, kept across ticks so each id is
+    /// written over the last tick's in place.
+    tick_values: RefCell<Vec<SensorValue>>,
+    /// One Mix or Scale & Offset sensor's source values, reused by each in turn.
+    source_data: RefCell<Vec<SourceData>>,
     /// Every File sensor's source, rebuilt whenever the sensors change. A read pass keeps the
     /// list it started with, so a pass that outlives a change can tell and drops its results.
     file_sources: RefCell<Rc<[FileSource]>>,
@@ -178,6 +183,18 @@ struct SensorValue {
     value: f64,
 }
 
+/// A File sensor's read state, created on its first use, so a sensor already tracked costs no
+/// copy of its id.
+fn file_read_state_of<'a>(
+    states: &'a mut HashMap<CustomSensorId, FileReadState>,
+    id: &CustomSensorId,
+) -> &'a mut FileReadState {
+    if states.contains_key(id).not() {
+        states.insert(id.clone(), FileReadState::default());
+    }
+    states.get_mut(id).expect("inserted above when absent")
+}
+
 impl CustomSensorsRepo {
     pub fn new(
         config: Rc<Config>,
@@ -201,6 +218,8 @@ impl CustomSensorsRepo {
             overrides,
             failsafing_sensors: RefCell::new(HashMap::new()),
             file_read_state: RefCell::new(HashMap::new()),
+            tick_values: RefCell::new(Vec::new()),
+            source_data: RefCell::new(Vec::new()),
             file_sources: RefCell::new(Rc::new([])),
             io: DeviceIo::default(),
             file_io_unreachable: Cell::new(false),
@@ -696,8 +715,9 @@ impl CustomSensorsRepo {
         sources: &[SensorSource],
         values: &[SensorValue],
         reduce: impl Fn(&[SourceData]) -> f64,
-    ) -> SensorValue {
-        let mut source_data = Vec::with_capacity(sources.len());
+    ) -> f64 {
+        let mut source_data = self.source_data.borrow_mut();
+        source_data.clear();
         for source in sources {
             let Some(value) = self.source_value(sensor.metric, source, values) else {
                 return self.emit_source_missing_failsafe(sensor, source);
@@ -715,10 +735,10 @@ impl CustomSensorsRepo {
         self.emit_real(&sensor.id, sensor.metric, reduce(&source_data))
     }
 
-    /// Computes one sensor's current-tick value and pushes it to `values`. Shared by the
-    /// children-first and parents passes of `update_statuses`; parents are never `File`, so
-    /// that arm is inert for them.
-    fn process_live_sensor(&self, sensor: &CustomSensor, values: &mut Vec<SensorValue>) {
+    /// Computes one sensor's current-tick value from the sensors processed before it, in
+    /// `values`. Shared by the children-first and parents passes of `update_statuses`; parents
+    /// are never `File`, so that arm is inert for them.
+    fn process_live_sensor(&self, sensor: &CustomSensor, values: &[SensorValue]) -> f64 {
         let metric = sensor.metric;
         let value = match &sensor.kind {
             CustomSensorKind::Mix {
@@ -756,7 +776,34 @@ impl CustomSensorsRepo {
                 true,
             ),
         };
-        values.push(value);
+        debug_assert!(value.is_finite());
+        value
+    }
+
+    /// Writes `sensor`'s value into `values` at `index`, over the entry the same position held
+    /// last tick, so an unchanged sensor order keeps every id.
+    fn refill_value(
+        values: &mut Vec<SensorValue>,
+        index: usize,
+        sensor: &CustomSensor,
+        value: f64,
+    ) {
+        debug_assert!(index <= values.len());
+        match values.get_mut(index) {
+            Some(entry) => {
+                if entry.id != sensor.id {
+                    entry.id.clone_from(&sensor.id);
+                }
+                entry.metric = sensor.metric;
+                entry.value = value;
+            }
+            None => values.push(SensorValue {
+                id: sensor.id.clone(),
+                metric: sensor.metric,
+                value,
+            }),
+        }
+        debug_assert_eq!(values[index].id, sensor.id);
     }
 
     /// Current-tick processing for the windowed sensors: `TimeAverage` (the arithmetic mean
@@ -774,7 +821,7 @@ impl CustomSensorsRepo {
         window_seconds: u16,
         values: &[SensorValue],
         is_ema: bool,
-    ) -> SensorValue {
+    ) -> f64 {
         let id = &sensor.id;
         let metric = sensor.metric;
         if window_seconds == 0 {
@@ -1086,37 +1133,33 @@ impl CustomSensorsRepo {
     /// once-per-occurrence warn log): a fan curve rides out a writer caught mid-truncate, or a
     /// slow read, but still reacts to a genuinely lost source. Live-tick path only; backfill
     /// reads `check_file_value` directly so it does not interact with the failsafing-state set.
-    fn process_file_current(&self, id: &CustomSensorId, metric: CustomSensorMetric) -> SensorValue {
+    fn process_file_current(&self, id: &CustomSensorId, metric: CustomSensorMetric) -> f64 {
         let fresh = self
             .file_read_state
             .borrow_mut()
             .get_mut(id)
             .and_then(|state| state.fresh.take());
         debug_assert!(fresh.is_none_or(f64::is_finite));
-        let sensor_value = match fresh {
+        let value = match fresh {
             Some(raw) => {
-                let sensor_value = self.emit_real(id, metric, raw);
+                let value = self.emit_real(id, metric, raw);
                 // Held as reported, so a held value equals the one it stands in for.
-                self.record_file_read_success(id, sensor_value.value);
-                sensor_value
+                self.record_file_read_success(id, value);
+                value
             }
             None => match self.tolerate_file_read_failure(id) {
-                Some(value) => SensorValue {
-                    id: id.clone(),
-                    metric,
-                    value,
-                },
+                Some(value) => value,
                 None => self.emit_failsafe(id, metric, "file unreadable"),
             },
         };
-        debug_assert!(sensor_value.value.is_finite());
-        sensor_value
+        debug_assert!(value.is_finite());
+        value
     }
 
     /// Clears the failure run and holds `value` as the value to emit if the next reads fail.
     fn record_file_read_success(&self, id: &CustomSensorId, value: f64) {
         let mut states = self.file_read_state.borrow_mut();
-        let state = states.entry(id.clone()).or_default();
+        let state = file_read_state_of(&mut states, id);
         state.consecutive_failures = 0;
         state.last_good_value = Some(value);
     }
@@ -1125,7 +1168,7 @@ impl CustomSensorsRepo {
     /// of failures passes `MISSING_STATUS_THRESHOLD` and the caller must failsafe.
     fn tolerate_file_read_failure(&self, id: &CustomSensorId) -> Option<f64> {
         let mut states = self.file_read_state.borrow_mut();
-        let state = states.entry(id.clone()).or_default();
+        let state = file_read_state_of(&mut states, id);
         state.consecutive_failures = state.consecutive_failures.saturating_add(1);
         if usize::from(state.consecutive_failures) > MISSING_STATUS_THRESHOLD {
             return None;
@@ -1730,37 +1773,19 @@ impl CustomSensorsRepo {
     /// Failsafes a sensor whose source is gone. The reason names the source, for the user
     /// by its labels and for the log with its raw keys. Both are built on entry only: this
     /// runs on every tick for as long as the source stays missing.
-    fn emit_source_missing_failsafe(
-        &self,
-        sensor: &CustomSensor,
-        source: &SensorSource,
-    ) -> SensorValue {
+    fn emit_source_missing_failsafe(&self, sensor: &CustomSensor, source: &SensorSource) -> f64 {
         if self.failsafing_sensors.borrow().contains_key(&sensor.id) {
-            return Self::failsafe_sensor_value(&sensor.id, sensor.metric);
+            return Self::failsafe_value(sensor.metric);
         }
         let reason = format!("source missing: {}", self.source_label(source));
         let log_reason = format!("source missing: {}", self.source_log_name(source));
         self.emit_failsafe_logged(&sensor.id, sensor.metric, &reason, &log_reason)
     }
 
-    /// The value a failsafing sensor reports.
-    fn failsafe_sensor_value(sensor_id: &str, metric: CustomSensorMetric) -> SensorValue {
-        SensorValue {
-            id: sensor_id.to_string(),
-            metric,
-            value: Self::failsafe_value(metric),
-        }
-    }
-
     /// Builds the failsafe value and emits the entry log line on the first occurrence.
     /// `reason` is included in the log so a future operator can tell the cs_type-specific
     /// cause apart (for example "all sources missing" vs "file unreadable").
-    fn emit_failsafe(
-        &self,
-        sensor_id: &str,
-        metric: CustomSensorMetric,
-        reason: &str,
-    ) -> SensorValue {
+    fn emit_failsafe(&self, sensor_id: &str, metric: CustomSensorMetric, reason: &str) -> f64 {
         self.emit_failsafe_logged(sensor_id, metric, reason, reason)
     }
 
@@ -1771,24 +1796,56 @@ impl CustomSensorsRepo {
         metric: CustomSensorMetric,
         reason: &str,
         log_reason: &str,
-    ) -> SensorValue {
-        let sensor_value = Self::failsafe_sensor_value(sensor_id, metric);
+    ) -> f64 {
+        let value = Self::failsafe_value(metric);
         if self.note_failsafing_sensor(sensor_id, reason) {
-            let value = sensor_value.value;
             let unit = if metric.is_temp() { "°C" } else { "" };
             warn!(
                 "Custom Sensor {} entering failsafe ({value}{unit}): {log_reason}",
                 self.sensor_log_name(sensor_id)
             );
         }
-        sensor_value
+        value
+    }
+
+    /// Computes every sensor's value for this tick and writes them into the device's history,
+    /// stamped `timestamp`.
+    fn write_tick(&self, timestamp: DateTime<Local>) {
+        if self.custom_sensor_device.is_none() {
+            return;
+        }
+        let start_update = Instant::now();
+        let sensors = self.sensors.borrow();
+        let mut values = self.tick_values.borrow_mut();
+        // Children and standalone sensors first, so parents can read child values this tick.
+        let not_parents = sensors.iter().filter(|s| s.children.is_empty());
+        let parents = sensors.iter().filter(|s| s.children.is_empty().not());
+        let mut count = 0;
+        for sensor in not_parents.chain(parents) {
+            let value = self.process_live_sensor(sensor, &values[..count]);
+            Self::refill_value(&mut values, count, sensor, value);
+            count += 1;
+        }
+        values.truncate(count);
+        debug_assert_eq!(values.len(), sensors.len());
+        drop(sensors);
+        let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
+        let mut writer = device.write_status(timestamp);
+        for value in values.iter() {
+            Self::write_value(&mut writer, value);
+        }
+        drop(device);
+        trace!(
+            "STATUS SNAPSHOT Time taken for CUSTOM_SENSORS device: {:?}",
+            start_update.elapsed()
+        );
     }
 
     /// Wraps a computed value as the sensor reports it and emits the recovery log line on the
     /// first non-failsafing tick after a failsafe state. Cheap to call on every successful
     /// tick: `HashMap::remove` returns `None` when the id is absent. A result that is not a
     /// number is no reading, so it failsafes instead.
-    fn emit_real(&self, sensor_id: &str, metric: CustomSensorMetric, raw: f64) -> SensorValue {
+    fn emit_real(&self, sensor_id: &str, metric: CustomSensorMetric, raw: f64) -> f64 {
         let Some(value) = Self::reported_value(metric, raw) else {
             return self.emit_failsafe(sensor_id, metric, "result is not a number");
         };
@@ -1798,11 +1855,7 @@ impl CustomSensorsRepo {
                 self.sensor_log_name(sensor_id)
             );
         }
-        SensorValue {
-            id: sensor_id.to_string(),
-            metric,
-            value,
-        }
+        value
     }
 }
 
@@ -1932,34 +1985,7 @@ impl Repository for CustomSensorsRepo {
     }
 
     async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
-        if self.custom_sensor_device.is_none() {
-            return Ok(());
-        }
-        let start_update = Instant::now();
-        let sensor_count = self.sensors.borrow().len();
-        let mut values: Vec<SensorValue> = Vec::with_capacity(sensor_count);
-        // Children and standalone sensors first, so parents can read child values this tick.
-        self.sensors
-            .borrow()
-            .iter()
-            .filter(|s| s.children.is_empty()) // not parents
-            .for_each(|sensor| self.process_live_sensor(sensor, &mut values));
-        self.sensors
-            .borrow()
-            .iter()
-            .filter(|s| s.children.is_empty().not()) // parents
-            .for_each(|sensor| self.process_live_sensor(sensor, &mut values));
-        debug_assert_eq!(values.len(), sensor_count);
-        let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
-        let mut writer = device.write_status(timestamp);
-        for value in &values {
-            Self::write_value(&mut writer, value);
-        }
-        drop(device);
-        trace!(
-            "STATUS SNAPSHOT Time taken for CUSTOM_SENSORS device: {:?}",
-            start_update.elapsed()
-        );
+        self.write_tick(timestamp);
         Ok(())
     }
 
@@ -2647,8 +2673,7 @@ mod tests {
             let temp = repo.process_file_current(&cs_name, CustomSensorMetric::Temp);
 
             // then:
-            assert_eq!(temp.id, cs_name);
-            assert!((temp.value - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+            assert!((temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert_eq!(
                 repo.failsafing_sensors.borrow()[cs_name.as_str()],
                 "file unreadable"
@@ -3849,6 +3874,72 @@ mod tests {
             assert!((current_temp_for(&repo, "mix1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("mix1"));
         });
+    }
+
+    /// Goal: once warm, a tick of Mix sensors allocates nothing: the values and their ids are
+    /// kept across ticks, and each sensor's sources are gathered into a kept buffer. Method: two
+    /// Mix sensors over a source device's temps, ticked twice to warm, then a third counted.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_tick_allocates_nothing() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![
+                TempStatus {
+                    name: "cpu".to_string(),
+                    temp: 70.0,
+                },
+                TempStatus {
+                    name: "gpu".to_string(),
+                    temp: 60.0,
+                },
+            ]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sources = || {
+                vec![
+                    temp_source(&source_uid, "cpu"),
+                    temp_source(&source_uid, "gpu"),
+                ]
+            };
+            repo.set_custom_sensor(mix_sensor("mix1", sources()))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(mix_sensor("mix2", sources()))
+                .await
+                .unwrap();
+            repo.write_tick(Local::now());
+            repo.write_tick(Local::now());
+            let tick = Local::now();
+
+            let ((), allocations) = crate::alloc_count::count_allocations(|| repo.write_tick(tick));
+
+            assert_eq!(allocations, 0);
+            assert!((current_temp_for(&repo, "mix1") - 70.0).abs() < f64::EPSILON);
+            assert!((current_temp_for(&repo, "mix2") - 70.0).abs() < f64::EPSILON);
+        });
+    }
+
+    /// Goal: a File sensor's read bookkeeping copies its id only when the sensor is first
+    /// tracked. Method: record a good read, then count a second one and a tolerated failure.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn tracked_file_reads_copy_no_id() {
+        let test_config = Rc::new(Config::init_default_config().unwrap());
+        let repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+        let id = "file1".to_string();
+        repo.record_file_read_success(&id, 40.0);
+
+        let (held, allocations) = crate::alloc_count::count_allocations(|| {
+            repo.record_file_read_success(&id, 41.0);
+            repo.tolerate_file_read_failure(&id)
+        });
+
+        assert_eq!(allocations, 0);
+        assert_eq!(held, Some(41.0));
     }
 
     // Mix sensor with all sources present emits the real Max value and does not enter the
