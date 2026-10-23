@@ -161,16 +161,20 @@ impl FdInfoTracker {
 /// after each process a walk covers.
 #[derive(Default)]
 struct DrmClients {
-    /// The fdinfo of each client the last walk found, so a tick costs one read per client.
-    fdinfos: Vec<File>,
-    /// The client-id each held file had when found, in step with `fdinfos`, so a client open
-    /// through several fds is held once.
-    held_ids: Vec<u64>,
+    /// Each client the last walk found, so a tick costs one read per client.
+    held: Vec<HeldClient>,
     /// When `/proc` was last walked. `None` until the first tick.
     walked_at: Option<Instant>,
     /// Whether the last walk found more clients than it may hold. Every tick walks until one
     /// finds room again, so no client goes uncounted.
     overflowed: bool,
+}
+
+/// A held client's fdinfo, with the client-id it had when found, so a client open through
+/// several fds is held once.
+struct HeldClient {
+    fdinfo: File,
+    client_id: u64,
 }
 
 impl DrmClients {
@@ -191,8 +195,7 @@ impl DrmClients {
         } else {
             self.read_held(pci_slot, buf, scanned).await;
         }
-        debug_assert_eq!(self.fdinfos.len(), self.held_ids.len());
-        debug_assert!(self.fdinfos.len() <= DRM_CLIENTS_HELD_MAX);
+        debug_assert!(self.held.len() <= DRM_CLIENTS_HELD_MAX);
     }
 
     /// Reads each held fdinfo into `scanned`, dropping any that no longer belongs to one of this
@@ -204,12 +207,12 @@ impl DrmClients {
         buf: &mut Vec<u8>,
         scanned: &mut HashMap<u64, u64>,
     ) {
-        let held_count = self.fdinfos.len();
+        let held_count = self.held.len();
         let mut index = 0;
         // Bounded: each pass either moves past one file or drops one.
-        while index < self.fdinfos.len() {
+        while index < self.held.len() {
             let read =
-                cc_fs::read_proc_held(&self.fdinfos[index], buf, FDINFO_BYTES_MAX, |content| {
+                cc_fs::read_proc_held(&self.held[index].fdinfo, buf, FDINFO_BYTES_MAX, |content| {
                     accumulate_fdinfo(content, pci_slot, scanned)
                 })
                 .await;
@@ -217,11 +220,10 @@ impl DrmClients {
                 index += 1;
             } else {
                 // Order does not matter: each file is read on its own.
-                self.fdinfos.swap_remove(index);
-                self.held_ids.swap_remove(index);
+                self.held.swap_remove(index);
             }
         }
-        debug_assert!(self.fdinfos.len() <= held_count);
+        debug_assert!(self.held.len() <= held_count);
     }
 
     /// Walks `/proc` for this GPU's DRM clients, reading each into `scanned` and holding its
@@ -233,8 +235,7 @@ impl DrmClients {
         buf: &mut Vec<u8>,
         scanned: &mut HashMap<u64, u64>,
     ) {
-        self.fdinfos.clear();
-        self.held_ids.clear();
+        self.held.clear();
         self.overflowed = false;
         let Ok(entries) = cc_fs::read_dir(proc_root) else {
             return;
@@ -250,8 +251,8 @@ impl DrmClients {
             // processes even when none of them is a DRM client.
             rt::yield_now().await;
         }
-        debug_assert!(self.held_ids.len() <= DRM_CLIENTS_HELD_MAX);
-        debug_assert!(self.overflowed.not() || self.held_ids.len() == DRM_CLIENTS_HELD_MAX);
+        debug_assert!(self.held.len() <= DRM_CLIENTS_HELD_MAX);
+        debug_assert!(self.overflowed.not() || self.held.len() == DRM_CLIENTS_HELD_MAX);
         if self.overflowed {
             debug!(
                 "More than {DRM_CLIENTS_HELD_MAX} DRM clients on {pci_slot}; walking /proc \
@@ -270,7 +271,7 @@ impl DrmClients {
         buf: &mut Vec<u8>,
         scanned: &mut HashMap<u64, u64>,
     ) {
-        debug_assert!(self.held_ids.len() <= DRM_CLIENTS_HELD_MAX);
+        debug_assert!(self.held.len() <= DRM_CLIENTS_HELD_MAX);
         let Ok(fds) = cc_fs::read_dir(proc_root.join(pid).join("fd")) else {
             return;
         };
@@ -301,22 +302,21 @@ impl DrmClients {
                 self.hold(fdinfo, client_id);
             }
         }
-        debug_assert!(self.held_ids.len() <= DRM_CLIENTS_HELD_MAX);
+        debug_assert!(self.held.len() <= DRM_CLIENTS_HELD_MAX);
     }
 
     /// Holds a client's fdinfo for the ticks until the next walk, unless the client is held
     /// already or the bound is reached.
     fn hold(&mut self, fdinfo: File, client_id: u64) {
-        if self.held_ids.contains(&client_id) {
+        if self.held.iter().any(|held| held.client_id == client_id) {
             return;
         }
-        if self.held_ids.len() < DRM_CLIENTS_HELD_MAX {
-            self.fdinfos.push(fdinfo);
-            self.held_ids.push(client_id);
+        if self.held.len() < DRM_CLIENTS_HELD_MAX {
+            self.held.push(HeldClient { fdinfo, client_id });
         } else {
             self.overflowed = true;
         }
-        debug_assert_eq!(self.fdinfos.len(), self.held_ids.len());
+        debug_assert!(self.held.len() <= DRM_CLIENTS_HELD_MAX);
     }
 }
 
@@ -554,6 +554,10 @@ mod tests {
         clients
     }
 
+    fn held_ids(drm_clients: &DrmClients) -> Vec<u64> {
+        drm_clients.held.iter().map(|held| held.client_id).collect()
+    }
+
     fn drm_fdinfo(client_id: u64, busy_ns: u64) -> String {
         format!("drm-pdev:\t{PDEV}\ndrm-client-id:\t{client_id}\ndrm-engine-gfx:\t{busy_ns} ns\n")
     }
@@ -658,7 +662,7 @@ mod tests {
                 .scan_in(root, PDEV, &mut buf, t0, &mut clients)
                 .await;
             assert_eq!(
-                drm_clients.held_ids.len(),
+                drm_clients.held.len(),
                 2,
                 "the other GPU's client is not held"
             );
@@ -669,7 +673,7 @@ mod tests {
                 .scan_in(root, PDEV, &mut buf, t1, &mut clients)
                 .await;
             assert!(clients.is_empty());
-            assert_eq!(drm_clients.held_ids, vec![2], "the idle client stays");
+            assert_eq!(held_ids(&drm_clients), vec![2], "the idle client stays");
 
             std::fs::write(root.join("10/fdinfo/3"), drm_fdinfo(1, 500)).unwrap();
             let t2 = t0 + Duration::from_secs(2);
@@ -690,11 +694,16 @@ mod tests {
             let readable = dir.path().join("readable");
             std::fs::write(&readable, drm_fdinfo(1, 100)).unwrap();
             let mut drm_clients = DrmClients {
-                fdinfos: vec![
-                    File::open(dir.path()).unwrap(),
-                    File::open(&readable).unwrap(),
+                held: vec![
+                    HeldClient {
+                        fdinfo: File::open(dir.path()).unwrap(),
+                        client_id: 7,
+                    },
+                    HeldClient {
+                        fdinfo: File::open(&readable).unwrap(),
+                        client_id: 1,
+                    },
                 ],
-                held_ids: vec![7, 1],
                 walked_at: Some(Instant::now()),
                 overflowed: false,
             };
@@ -706,11 +715,10 @@ mod tests {
 
             assert_eq!(clients, HashMap::from([(1, 100)]));
             assert_eq!(
-                drm_clients.held_ids,
+                held_ids(&drm_clients),
                 vec![1],
                 "the unreadable file is dropped"
             );
-            assert_eq!(drm_clients.fdinfos.len(), 1);
         });
     }
 
@@ -732,8 +740,7 @@ mod tests {
                 .await;
 
             assert_eq!(clients, HashMap::from([(1, 100)]));
-            assert_eq!(drm_clients.held_ids, vec![1]);
-            assert_eq!(drm_clients.fdinfos.len(), 1);
+            assert_eq!(held_ids(&drm_clients), vec![1]);
         });
     }
 
@@ -767,7 +774,7 @@ mod tests {
                 .scan_in(root, PDEV, &mut buf, t0, &mut clients)
                 .await;
             assert_eq!(clients.len(), client_count, "every client is counted");
-            assert_eq!(drm_clients.fdinfos.len(), DRM_CLIENTS_HELD_MAX);
+            assert_eq!(drm_clients.held.len(), DRM_CLIENTS_HELD_MAX);
             assert!(drm_clients.overflowed);
 
             // Inside the interval, a new client would wait for the next walk; past the bound it
