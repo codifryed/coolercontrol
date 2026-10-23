@@ -822,10 +822,55 @@ impl std::io::Write for LogBufHandle {
     }
 }
 
+/// Test-only: sets the process-wide max log level and restores the previous one on drop, so a
+/// panicking test cannot leave it changed for the rest of the run.
+#[cfg(test)]
+pub struct MaxLevelGuard {
+    previous: LevelFilter,
+}
+
+#[cfg(test)]
+impl MaxLevelGuard {
+    pub fn set(level: LevelFilter) -> Self {
+        let previous = log::max_level();
+        log::set_max_level(level);
+        Self { previous }
+    }
+}
+
+#[cfg(test)]
+impl Drop for MaxLevelGuard {
+    fn drop(&mut self) {
+        log::set_max_level(self.previous);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::io::Write;
+
+    // Goal: the guard restores the previous max level even when the test panics while it is held.
+    #[test]
+    #[serial]
+    fn max_level_guard_restores_the_level_on_panic() {
+        let before = log::max_level();
+        let raised = if before == LevelFilter::Trace {
+            LevelFilter::Error
+        } else {
+            LevelFilter::Trace
+        };
+
+        let result = std::panic::catch_unwind(|| {
+            let _guard = MaxLevelGuard::set(raised);
+            assert_eq!(log::max_level(), raised);
+            panic!("while the level is raised");
+        });
+
+        assert!(result.is_err());
+        assert_eq!(log::max_level(), before);
+    }
 
     // Goal: the synchronous `Write` impl delivers a line to the buffer actor via `try_send` (no
     // runtime handle), and `get_logs` returns it. The actor drains the bounded channel FIFO, so the

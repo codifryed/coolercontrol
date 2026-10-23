@@ -376,20 +376,23 @@ impl FailsafeStatusData {
     }
 
     /// Refs for every channel/temp this device is currently per-channel
-    /// failsafing (the hwmon staleness path).
-    pub fn per_channel_failsafe_refs(&self, device_uid: &DeviceUID) -> Vec<FailsafeRef> {
-        let mut refs = Vec::with_capacity(self.temp_state.len() + self.channel_state.len());
-        for (name, state) in &self.temp_state {
-            if state.is_failsafed {
-                refs.push(Self::stale_ref(device_uid, name, FailsafeKind::Temp));
-            }
-        }
-        for (name, state) in &self.channel_state {
-            if state.is_failsafed {
-                refs.push(Self::stale_ref(device_uid, name, FailsafeKind::Channel));
-            }
-        }
-        refs
+    /// failsafing (the hwmon staleness path). An iterator, so the usual
+    /// device, with nothing failsafed, costs no allocation each tick.
+    pub fn per_channel_failsafe_refs<'a>(
+        &'a self,
+        device_uid: &'a DeviceUID,
+    ) -> impl Iterator<Item = FailsafeRef> + 'a {
+        let temps = self
+            .temp_state
+            .iter()
+            .filter(|(_, state)| state.is_failsafed)
+            .map(|(name, _)| Self::stale_ref(device_uid, name, FailsafeKind::Temp));
+        let channels = self
+            .channel_state
+            .iter()
+            .filter(|(_, state)| state.is_failsafed)
+            .map(|(name, _)| Self::stale_ref(device_uid, name, FailsafeKind::Channel));
+        temps.chain(channels)
     }
 
     /// Refs once the device-wide failure counter has tripped (the liquidctl /
@@ -1406,7 +1409,7 @@ mod tests {
         for _ in 0..=MISSING_STATUS_THRESHOLD {
             tick_with_one_fresh_channel(&mut fsd, &mut channels, &mut temps, "fan1");
         }
-        let refs = fsd.per_channel_failsafe_refs(&"dev1".to_string());
+        let refs: Vec<_> = fsd.per_channel_failsafe_refs(&"dev1".to_string()).collect();
         assert_eq!(refs.len(), 2);
         assert!(refs.iter().all(|r| r.device_uid == "dev1"));
         assert!(refs.iter().all(|r| r.reason == STALE_FAILSAFE_REASON));
@@ -1425,9 +1428,30 @@ mod tests {
         let mut fsd = make_fsd_for_staleness_tests();
         let (mut channels, mut temps) = starting_cache();
         tick_with_all_fresh(&mut fsd, &mut channels, &mut temps);
-        assert!(fsd
-            .per_channel_failsafe_refs(&"dev1".to_string())
-            .is_empty());
+        assert_eq!(
+            fsd.per_channel_failsafe_refs(&"dev1".to_string()).count(),
+            0
+        );
+    }
+
+    /// Goal: the usual device, with nothing failsafed, adds no allocation to the tick when its
+    /// refs are gathered, as `HwmonRepo::failsafing` does every tick. Method: tick every channel
+    /// fresh, then count the allocations of extending an empty list with the device's refs.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn gathering_refs_of_a_fresh_device_allocates_nothing() {
+        let mut fsd = make_fsd_for_staleness_tests();
+        let (mut channels, mut temps) = starting_cache();
+        tick_with_all_fresh(&mut fsd, &mut channels, &mut temps);
+        let device_uid = "dev1".to_string();
+        let mut refs = Vec::new();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            refs.extend(fsd.per_channel_failsafe_refs(&device_uid));
+        });
+
+        assert_eq!(allocations, 0);
+        assert!(refs.is_empty());
     }
 
     #[test]
