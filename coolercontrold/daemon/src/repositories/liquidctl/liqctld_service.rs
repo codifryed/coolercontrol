@@ -9,7 +9,8 @@ use nix::unistd::Pid;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::process::{ExitStatus, Stdio};
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
@@ -22,6 +23,8 @@ use tokio_util::sync::CancellationToken;
 
 const MAX_RETRIES: u32 = 3;
 const SHUTDOWN_TIMEOUT_SECS: u64 = 10;
+/// Pause before the supervisor restarts a service that exited on its own.
+const RESTART_PAUSE: Duration = Duration::from_secs(2);
 
 /// PID of the currently running liqctld child, or 0 when none is running. Recorded so the daemon's
 /// shutdown path (and the sidecar force-exit backstop) can SIGKILL the process group directly if
@@ -60,17 +63,44 @@ pub async fn verify_env() -> Result<()> {
 /// This function runs the `liqctld` service daemon.
 /// The `run_token` is used to signal that the daemon is shutting down.
 /// The `stop_token` is used to signal that only the service should be stopped.
-pub async fn run(run_token: CancellationToken, stop_token: CancellationToken) -> Result<()> {
+/// `restarts` counts the times the service is restarted in place after exiting on its own.
+pub async fn run(
+    run_token: CancellationToken,
+    stop_token: CancellationToken,
+    restarts: Arc<AtomicU32>,
+) -> Result<()> {
     debug!("Starting...");
+    let start = || run_python(PY_SERVICE, run_token.clone());
+    supervise(start, RESTART_PAUSE, &run_token, &stop_token, &restarts).await
+}
+
+/// Runs the service, restarting it in place up to `MAX_RETRIES` times while neither token is
+/// cancelled.
+///
+/// Each restart is counted before the new service starts. A fresh service has lost what the
+/// repository applied to its devices at discovery, and the count is how the repository learns that.
+async fn supervise<F, Fut>(
+    mut start: F,
+    pause: Duration,
+    run_token: &CancellationToken,
+    stop_token: &CancellationToken,
+    restarts: &AtomicU32,
+) -> Result<()>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<()>>,
+{
     let mut tries = 0;
-    let mut result = run_python(PY_SERVICE, run_token.clone()).await;
+    let mut result = start().await;
     while run_token.is_cancelled().not() && stop_token.is_cancelled().not() && tries < MAX_RETRIES {
         warn!("liqctld exited prematurely! Restarting...");
         debug!("liqctld run result: {result:?}");
-        sleep(Duration::from_secs(2)).await;
-        result = run_python(PY_SERVICE, run_token.clone()).await;
+        sleep(pause).await;
+        restarts.fetch_add(1, Ordering::AcqRel);
+        result = start().await;
         tries += 1;
     }
+    debug_assert!(tries <= MAX_RETRIES);
     result
 }
 
@@ -257,9 +287,9 @@ async fn process_log_output(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "gated-tests")]
     use crate::cc_fs::sidecar_fs;
     use serial_test::serial;
+    use std::cell::RefCell;
     #[cfg(feature = "gated-tests")]
     use std::os::unix::process::CommandExt;
     #[cfg(feature = "gated-tests")]
@@ -275,6 +305,52 @@ mod tests {
             let result = verify_env().await;
             // Err would mean that the liquidctl package is not installed, which is fine for testing.
             assert!(result.is_ok() || result.is_err());
+        });
+    }
+
+    // Goal: every in-place restart is counted before its service starts, and the first start is
+    // not counted. Method: a service that exits at once, so the supervisor uses every retry, and
+    // each start records the count it sees.
+    #[test]
+    fn each_in_place_restart_is_counted_before_its_start() {
+        sidecar_fs::test_runtime(async {
+            let restarts = AtomicU32::new(0);
+            let counts_at_start = RefCell::new(Vec::new());
+            let start = || {
+                counts_at_start
+                    .borrow_mut()
+                    .push(restarts.load(Ordering::Acquire));
+                async { anyhow::Ok(()) }
+            };
+            let (run_token, stop_token) = (CancellationToken::new(), CancellationToken::new());
+            supervise(start, Duration::ZERO, &run_token, &stop_token, &restarts)
+                .await
+                .expect("the last start succeeds");
+            assert_eq!(*counts_at_start.borrow(), [0, 1, 2, 3]);
+            assert_eq!(restarts.load(Ordering::Acquire), MAX_RETRIES);
+        });
+    }
+
+    // Goal: a service stopped on purpose is neither restarted nor counted, so the repository never
+    // re-establishes devices for a stop of its own. Method: the stop token is cancelled while the
+    // first service runs.
+    #[test]
+    fn a_stopped_service_is_not_restarted_or_counted() {
+        sidecar_fs::test_runtime(async {
+            let restarts = AtomicU32::new(0);
+            let stop_token = CancellationToken::new();
+            let mut starts = 0;
+            let start = || {
+                starts += 1;
+                stop_token.cancel();
+                async { anyhow::Ok(()) }
+            };
+            let run_token = CancellationToken::new();
+            supervise(start, Duration::ZERO, &run_token, &stop_token, &restarts)
+                .await
+                .expect("the only start succeeds");
+            assert_eq!(starts, 1);
+            assert_eq!(restarts.load(Ordering::Acquire), 0);
         });
     }
 
