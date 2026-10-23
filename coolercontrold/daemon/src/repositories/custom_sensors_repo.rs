@@ -1811,9 +1811,9 @@ impl CustomSensorsRepo {
     /// Computes every sensor's value for this tick and writes them into the device's history,
     /// stamped `timestamp`.
     fn write_tick(&self, timestamp: DateTime<Local>) {
-        if self.custom_sensor_device.is_none() {
+        let Some(device_cell) = self.custom_sensor_device.as_ref() else {
             return;
-        }
+        };
         let start_update = Instant::now();
         let sensors = self.sensors.borrow();
         let mut values = self.tick_values.borrow_mut();
@@ -1829,7 +1829,7 @@ impl CustomSensorsRepo {
         values.truncate(count);
         debug_assert_eq!(values.len(), sensors.len());
         drop(sensors);
-        let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
+        let mut device = device_cell.borrow_mut();
         let mut writer = device.write_status(timestamp);
         for value in values.iter() {
             Self::write_value(&mut writer, value);
