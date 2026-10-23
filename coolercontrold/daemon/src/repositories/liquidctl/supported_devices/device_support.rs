@@ -40,12 +40,13 @@ fn fan_slot<'a, T>(
     let slot = usize::try_from(fan_number)
         .ok()
         .and_then(|number| fans.get_mut(number));
-    if slot.is_none()
-        && UNEXPECTED_FAN_NUMBER_LOGGED
+    if slot.is_none() {
+        if UNEXPECTED_FAN_NUMBER_LOGGED
             .swap(true, Ordering::Relaxed)
             .not()
-    {
-        warn!("Ignoring liquidctl status line for an unexpected fan number: {line}");
+        {
+            warn!("Ignoring liquidctl status line for an unexpected fan number: {line}");
+        }
     }
     slot
 }
@@ -530,7 +531,8 @@ pub trait DeviceSupport: Debug {
             let is_speed =
                 MULTIPLE_FAN_SPEED.is_match(name) || MULTIPLE_FAN_SPEED_CORSAIR.is_match(name);
             let is_duty = is_speed.not() && MULTIPLE_FAN_DUTY.is_match(name);
-            if is_speed.not() && is_duty.not() {
+            let is_fan_line = is_speed || is_duty;
+            if is_fan_line.not() {
                 continue;
             }
             let Some(fan) = fan_slot(&mut fans, fan_number, name) else {
