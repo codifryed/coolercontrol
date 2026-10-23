@@ -431,6 +431,12 @@ impl HealthState {
         &self.device_name
     }
 
+    /// Names the device in later logs, for when detection learns its name after the worker
+    /// started.
+    pub fn rename(&mut self, device_name: String) {
+        self.device_name = device_name;
+    }
+
     /// Whether a device that is not answering should be given its next probe yet.
     #[must_use]
     pub fn dispatchable(&self) -> bool {
@@ -485,6 +491,12 @@ impl HealthState {
 
     /// Lets the next dispatch through even if the device is currently unreachable.
     pub fn allow_next_dispatch(&self) {
+        self.probe_after.set(None);
+    }
+
+    /// Forgets every past timeout, for when the service behind the device was restarted.
+    pub fn reset(&self) {
+        self.consecutive_timeouts.set(0);
         self.probe_after.set(None);
     }
 

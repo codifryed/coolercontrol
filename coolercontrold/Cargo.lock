@@ -759,11 +759,9 @@ dependencies = [
  "compio-fs",
  "compio-io",
  "compio-log",
- "compio-net",
  "compio-process",
  "compio-runtime",
  "compio-signal",
- "compio-tls",
 ]
 
 [[package]]
@@ -846,12 +844,9 @@ checksum = "c3a354e085c4046dd8d2d9d514cf8c15c615eb8adf6c5f41dbf7899420457e9b"
 dependencies = [
  "compio-buf",
  "futures-util",
- "libc",
  "pastey 0.2.3",
  "pin-project-lite",
- "rustix",
  "synchrony",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -861,27 +856,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9dd867f29de59e4eff577dfeee3744cb0a264249f3faaf11945e8be79a3c3c62"
 dependencies = [
  "tracing",
-]
-
-[[package]]
-name = "compio-net"
-version = "0.12.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31737ec57865d2b46284def673cd21fe478c592ca05c1e040e10d457aac6c2a8"
-dependencies = [
- "compio-buf",
- "compio-driver",
- "compio-io",
- "compio-runtime",
- "either",
- "futures-util",
- "libc",
- "once_cell",
- "pin-project-lite",
- "socket2",
- "synchrony",
- "widestring",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -939,17 +913,6 @@ dependencies = [
  "slab",
  "synchrony",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "compio-tls"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0177c2684878d0712ccfcf22113a198f5ddf74f0bf323801488dbb47f801a471"
-dependencies = [
- "compio-buf",
- "compio-io",
- "futures-util",
 ]
 
 [[package]]
@@ -1015,12 +978,12 @@ dependencies = [
  "clap",
  "compio",
  "compio-buf",
- "cyper-core",
  "env_logger",
  "flate2",
  "futures-util",
  "heck",
  "http-body-util",
+ "httparse",
  "hyper",
  "hyper-util",
  "include_dir",
@@ -1184,18 +1147,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0369ee1ad671834580515889b80f2ea915f23b8be8d0daa4bbaf2ac5c7590835"
 dependencies = [
  "cipher",
-]
-
-[[package]]
-name = "cyper-core"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03c8847069e286c64987119637d5f08cdb71e12e85be0294fed649dc8007d32e"
-dependencies = [
- "compio",
- "futures-util",
- "hyper",
- "send_wrapper",
 ]
 
 [[package]]
@@ -3823,15 +3774,6 @@ name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
-
-[[package]]
-name = "send_wrapper"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
-dependencies = [
- "futures-core",
-]
 
 [[package]]
 name = "serde"
