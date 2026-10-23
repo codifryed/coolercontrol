@@ -40,6 +40,7 @@ const CLIENT_WALK_INTERVAL: Duration = Duration::from_secs(10);
 /// walks instead, as before the cache: more clients can cost the old per-tick walk, never the
 /// daemon's open files or an uncounted client.
 const DRM_CLIENTS_HELD_MAX: usize = 64;
+const _: () = assert!(DRM_CLIENTS_HELD_MAX > 0);
 
 /// Marks a GPU whose load is derived from DRM fdinfo. Held in `AMDDriverInfo`.
 /// `pci_slot` is the `drm-pdev` value (e.g. `0000:01:00.0`) used to match
@@ -146,7 +147,9 @@ impl FdInfoTracker {
             .await;
         let scanned_at = clock();
         debug_assert!(scanned_at >= started);
-        self.load.update(&mut self.scanned, scanned_at)
+        let percent = self.load.update(&mut self.scanned, scanned_at);
+        debug_assert!((0.0..=100.0).contains(&percent));
+        percent
     }
 }
 
@@ -247,6 +250,8 @@ impl DrmClients {
             // processes even when none of them is a DRM client.
             rt::yield_now().await;
         }
+        debug_assert!(self.held_ids.len() <= DRM_CLIENTS_HELD_MAX);
+        debug_assert!(self.overflowed.not() || self.held_ids.len() == DRM_CLIENTS_HELD_MAX);
         if self.overflowed {
             debug!(
                 "More than {DRM_CLIENTS_HELD_MAX} DRM clients on {pci_slot}; walking /proc \
@@ -265,6 +270,7 @@ impl DrmClients {
         buf: &mut Vec<u8>,
         scanned: &mut HashMap<u64, u64>,
     ) {
+        debug_assert!(self.held_ids.len() <= DRM_CLIENTS_HELD_MAX);
         let Ok(fds) = cc_fs::read_dir(proc_root.join(pid).join("fd")) else {
             return;
         };
@@ -295,6 +301,7 @@ impl DrmClients {
                 self.hold(fdinfo, client_id);
             }
         }
+        debug_assert!(self.held_ids.len() <= DRM_CLIENTS_HELD_MAX);
     }
 
     /// Holds a client's fdinfo for the ticks until the next walk, unless the client is held
