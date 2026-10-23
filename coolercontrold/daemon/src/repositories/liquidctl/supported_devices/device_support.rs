@@ -1677,4 +1677,58 @@ mod tests {
         assert_eq!(channels[0].name, format!("fan{highest}"));
         assert_eq!(channels[0].rpm, Some(800));
     }
+
+    /// Goal: init speed channels a status leaves out are reported as stopped, and a reported
+    /// one is kept as read. Method: three init names, with only fan2 reported.
+    #[test]
+    fn missing_speed_channels_are_added_as_stopped() {
+        let device_support = KrakenX3Support::new();
+        let names = ["fan1".to_string(), "fan2".to_string(), "fan3".to_string()];
+        let reported = ChannelSample {
+            rpm: Some(900),
+            duty: Some(45.0),
+            ..Default::default()
+        };
+
+        let (channels, _) = refilled(|refill| {
+            refill.channel("fan2", reported);
+            device_support.add_missing_speed_channels(&names, refill);
+        });
+
+        assert_eq!(channels.len(), 3);
+        for name in &names {
+            let channel = channels.iter().find(|c| c.name == *name).unwrap();
+            if name == "fan2" {
+                assert_eq!(channel.rpm, Some(900));
+                assert_eq!(channel.duty, Some(45.0));
+            } else {
+                assert_eq!(channel.rpm, Some(0));
+                assert_eq!(channel.duty, Some(0.0));
+            }
+        }
+    }
+
+    /// Goal: nothing is added when every init speed channel is reported. Method: both init
+    /// names reported with non-zero speeds.
+    #[test]
+    fn no_speed_channels_are_added_when_all_are_reported() {
+        let device_support = KrakenX3Support::new();
+        let names = ["fan1".to_string(), "fan2".to_string()];
+        let sample = ChannelSample {
+            rpm: Some(700),
+            duty: Some(30.0),
+            ..Default::default()
+        };
+
+        let (channels, _) = refilled(|refill| {
+            refill.channel("fan1", sample);
+            refill.channel("fan2", sample);
+            device_support.add_missing_speed_channels(&names, refill);
+        });
+
+        assert_eq!(channels.len(), 2);
+        assert!(channels
+            .iter()
+            .all(|c| c.rpm == Some(700) && c.duty == Some(30.0)));
+    }
 }
