@@ -892,8 +892,6 @@ impl LiquidctlRepo {
         status_map
     }
 
-    /// Lowercases each line's name in place, as status maps are keyed. liquidctl's names are
-    /// ASCII, which changes in place without allocating.
     /// Stores a read status, returning the one it replaces to the spares so the next read
     /// reuses its lines, and records the read with the failsafe.
     fn store_status(
@@ -922,6 +920,8 @@ impl LiquidctlRepo {
         }
     }
 
+    /// Lowercases each line's name in place, as status maps are keyed. liquidctl's names are
+    /// ASCII, which changes in place without allocating.
     fn lowercase_names(lc_statuses: &mut LCStatus) {
         for (name, _, _) in lc_statuses {
             if name.is_ascii() {
