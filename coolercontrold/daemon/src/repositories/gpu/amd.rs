@@ -962,6 +962,10 @@ impl GpuAMD {
             }
         })
         .await;
+        drop(refill);
+        // Each hwmon channel reports at most once, plus the fdinfo load.
+        debug_assert!(channels.len() <= hwmon.channels.len() + 1);
+        debug_assert!(temps.len() <= typed(HwmonChannelType::Temp).count());
     }
 
     /// Reads each load channel, calling `on_load` with the percent of each that read.
