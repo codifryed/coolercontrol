@@ -254,6 +254,9 @@ pub struct LiquidctlRepo {
     /// Registry the channel verdicts are published to.
     hardware_support: Option<Rc<HardwareSupportController>>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
+    /// The lines each device's next status is parsed into: the one before last tick's, handed
+    /// back when a new status replaces it.
+    spare_statuses: RefCell<HashMap<u8, LCStatus>>,
     /// Each device's status map, kept across ticks and refreshed in place from its preloaded
     /// lines, so a tick costs no map or key allocations: see `refresh_status_map`.
     status_maps: RefCell<HashMap<TypeIndex, StatusMap>>,
@@ -433,6 +436,7 @@ impl LiquidctlRepo {
             devices: HashMap::new(),
             hardware_support: None,
             preloaded_statuses: RefCell::new(HashMap::new()),
+            spare_statuses: RefCell::new(HashMap::new()),
             status_maps: RefCell::new(HashMap::new()),
             driver_statuses: RefCell::new(HashMap::new()),
             failsafe_statuses: RefCell::new(HashMap::new()),
@@ -864,8 +868,13 @@ impl LiquidctlRepo {
             .acquire()
             .await
             .expect("device permit never closed");
+        let recycled = self
+            .spare_statuses
+            .borrow_mut()
+            .remove(device_id)
+            .unwrap_or_default();
         let status_response = match self.device_io(*device_id) {
-            Ok(io) => io.status().await,
+            Ok(io) => io.status(recycled).await,
             Err(err) => Err(err),
         };
         // Hold the permit through the command delay so the next request to this device observes the
@@ -1940,9 +1949,13 @@ impl Repository for LiquidctlRepo {
                     match self.call_status(&device_id, delay).await {
                         Ok(mut status) => {
                             Self::lowercase_names(&mut status);
-                            self.preloaded_statuses
+                            let replaced = self
+                                .preloaded_statuses
                                 .borrow_mut()
                                 .insert(device_id, status);
+                            if let Some(replaced) = replaced {
+                                self.spare_statuses.borrow_mut().insert(device_id, replaced);
+                            }
                             let mut fsd_map = self.failsafe_statuses.borrow_mut();
                             if let Some(fsd) = fsd_map.get_mut(&device_id) {
                                 if fsd.record_success() {

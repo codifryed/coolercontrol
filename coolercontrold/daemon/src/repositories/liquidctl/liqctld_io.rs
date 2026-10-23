@@ -23,8 +23,9 @@ use crate::affinity;
 use crate::repositories::hwmon::device_io::DeviceHealth;
 use crate::repositories::hwmon::device_io::{HealthState, QUEUE_DEPTH};
 use crate::repositories::liquidctl::liqctld_client::{
-    ColorRequest, ControlModeRequest, DeviceResponse, DevicesResponse, FixedSpeedRequest,
-    InitializeRequest, ScreenRequest, SpeedProfileRequest, StatusResponse,
+    parse_status_into, ColorRequest, ControlModeRequest, DeviceResponse, DevicesResponse,
+    FixedSpeedRequest, InitializeRequest, LCStatus, ScreenRequest, SpeedProfileRequest,
+    StatusResponse,
 };
 use crate::repositories::liquidctl::liqctld_http::{
     Endpoint, LiqctldHttp, Method, LIQCTLD_RESPONSE_TIMEOUT,
@@ -50,7 +51,9 @@ type Reply<T> = oneshot::Sender<Result<T>>;
 /// shared ownership and no lock.
 #[derive(Debug)]
 pub enum Request {
+    /// `recycled` is last tick's lines, which the reply is parsed into.
     Status {
+        recycled: LCStatus,
         reply: Reply<StatusResponse>,
     },
     Initialize {
@@ -109,7 +112,7 @@ trait Job {
 impl Job for Request {
     fn is_abandoned(&self) -> bool {
         match self {
-            Self::Status { reply } | Self::Initialize { reply, .. } => reply.is_closed(),
+            Self::Status { reply, .. } | Self::Initialize { reply, .. } => reply.is_closed(),
             Self::Legacy690 { reply } => reply.is_closed(),
             Self::Reconnect { reply }
             | Self::DirectAccess { reply }
@@ -165,9 +168,10 @@ impl LiqctldIo {
         })
     }
 
-    /// The device's current status, within the poll-rate budget.
-    pub async fn status(&self) -> Result<StatusResponse> {
+    /// The device's current status, within the poll-rate budget, parsed into `recycled`.
+    pub async fn status(&self, recycled: LCStatus) -> Result<StatusResponse> {
         self.dispatch("status", self.status_timeout, |reply| Request::Status {
+            recycled,
             reply,
         })
         .await
@@ -472,8 +476,8 @@ fn run_loop<J: Job>(mut rx: mpsc::Receiver<J>, mut serve: impl FnMut(J)) {
 
 fn serve_device(http: &mut LiqctldHttp, id: u8, request: Request) {
     match request {
-        Request::Status { reply } => answer(reply, |abandoned| {
-            call(http, id, Method::Get, "status", NO_BODY, abandoned)
+        Request::Status { recycled, reply } => answer(reply, |abandoned| {
+            status_call(http, id, recycled, abandoned)
         }),
         Request::Initialize { body, reply } => answer(reply, |abandoned| {
             call(http, id, Method::Post, "initialize", Some(&body), abandoned)
@@ -555,6 +559,23 @@ where
     Ok(serde_json::from_slice(reply_body)?)
 }
 
+/// The status exchange, parsed into `lines`, last tick's, rather than into new ones.
+fn status_call(
+    http: &mut LiqctldHttp,
+    id: u8,
+    mut lines: LCStatus,
+    abandoned: &dyn Fn() -> bool,
+) -> Result<StatusResponse> {
+    let reply_body = http.exchange(
+        Method::Get,
+        format_args!("/devices/{id}/status"),
+        NO_BODY,
+        abandoned,
+    )?;
+    parse_status_into(reply_body, &mut lines)?;
+    Ok(StatusResponse { status: lines })
+}
+
 /// A device command whose reply carries nothing but success. Still parsed, so a reply that is
 /// not JSON fails loudly.
 fn put<B: Serialize>(
@@ -609,6 +630,7 @@ fn worker_gone(device_name: &str) -> anyhow::Error {
 mod tests {
     use super::*;
     use crate::repositories::hwmon::device_io::UNREACHABLE_AFTER_TIMEOUTS;
+    use crate::repositories::liquidctl::liqctld_client::SkippedUnit;
     use std::io::{BufRead, BufReader, Read, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
@@ -791,7 +813,7 @@ mod tests {
             let server = FakeLiqctld::start(|_| Action::Reply);
             let io = worker(&server, LONG, LONG);
 
-            let status = io.status().await.unwrap();
+            let status = io.status(Vec::new()).await.unwrap();
 
             assert_eq!(status.status.len(), 1);
             assert_eq!(status.status[0].0, "Liquid temperature");
@@ -801,6 +823,33 @@ mod tests {
                 Event::request("GET /devices/3/status HTTP/1.1", "")
             );
             assert_eq!(io.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: the lines a status request carries come back holding the reply, in their own
+    /// buffers, so the worker parses into them rather than into new ones. Method: send one
+    /// recycled line and compare its buffers before and after the round trip.
+    #[test]
+    fn a_status_comes_back_in_the_lines_it_was_sent() {
+        rt::test_runtime(async {
+            let server = FakeLiqctld::start(|_| Action::Reply);
+            let io = worker(&server, LONG, LONG);
+            let mut name = String::with_capacity(32);
+            name.push_str("liquid temperature");
+            let mut value = String::with_capacity(32);
+            value.push_str("30.0");
+            let buffers = (name.as_ptr(), value.as_ptr());
+            let recycled = vec![(name, value, SkippedUnit)];
+
+            let status = io.status(recycled).await.unwrap();
+
+            let line = &status.status[0];
+            assert_eq!(status.status.len(), 1);
+            assert_eq!(
+                (line.0.as_str(), line.1.as_str()),
+                ("Liquid temperature", "31.5")
+            );
+            assert_eq!((line.0.as_ptr(), line.1.as_ptr()), buffers);
         });
     }
 
@@ -841,8 +890,8 @@ mod tests {
             let server = FakeLiqctld::start(|_| Action::ReplyAndClose);
             let io = worker(&server, LONG, LONG);
 
-            io.status().await.unwrap();
-            io.status().await.unwrap();
+            io.status(Vec::new()).await.unwrap();
+            io.status(Vec::new()).await.unwrap();
 
             let accepted = server
                 .events
@@ -865,7 +914,7 @@ mod tests {
                 Duration::from_millis(500),
             );
 
-            let err = io.status().await.unwrap_err();
+            let err = io.status(Vec::new()).await.unwrap_err();
 
             assert_eq!(kind_of(&err), ErrorKind::TimedOut, "{err}");
             assert_eq!(
@@ -887,12 +936,12 @@ mod tests {
             let budget = Duration::from_millis(20);
             let io = worker(&server, budget, Duration::from_secs(1));
             for _ in 0..UNREACHABLE_AFTER_TIMEOUTS {
-                let err = io.status().await.unwrap_err();
+                let err = io.status(Vec::new()).await.unwrap_err();
                 assert_eq!(kind_of(&err), ErrorKind::TimedOut, "{err}");
             }
             assert!(matches!(io.health(), DeviceHealth::Unreachable { .. }));
 
-            let err = io.status().await.unwrap_err();
+            let err = io.status(Vec::new()).await.unwrap_err();
 
             assert_eq!(
                 kind_of(&err),
@@ -919,17 +968,17 @@ mod tests {
             });
             let mut io = worker(&server, Duration::from_millis(50), LONG);
             assert!(
-                io.status().await.is_err(),
+                io.status(Vec::new()).await.is_err(),
                 "the held first request times out"
             );
             assert!(
-                io.status().await.is_err(),
+                io.status(Vec::new()).await.is_err(),
                 "the second times out while queued"
             );
 
             release_tx.send(()).unwrap();
             io.status_timeout = LONG;
-            io.status().await.unwrap();
+            io.status(Vec::new()).await.unwrap();
 
             assert_eq!(
                 server.requests().len(),
@@ -947,7 +996,7 @@ mod tests {
         rt::test_runtime(async {
             let server = FakeLiqctld::start(|_| Action::Reply);
             let io = worker(&server, LONG, LONG);
-            io.status().await.unwrap();
+            io.status(Vec::new()).await.unwrap();
             assert_eq!(server.next_event(), Event::Accepted);
             assert!(matches!(server.next_event(), Event::Request { .. }));
 
