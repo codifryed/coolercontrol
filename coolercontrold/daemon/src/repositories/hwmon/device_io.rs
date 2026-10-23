@@ -311,11 +311,11 @@ impl DeviceIo {
                 let indices = indices.into_iter();
                 let mut values = Vec::with_capacity(indices.size_hint().0);
                 for index in indices {
+                    debug_assert!(values.len() < READ_BATCH_MAX);
                     values.push(fds.read_index(index));
                     // Each read blocks the runtime thread, so other ready tasks run between them.
                     rt::yield_now().await;
                 }
-                debug_assert!(values.len() <= READ_BATCH_MAX);
                 ReadBatch { values, home: None }
             }
             Self::Threaded(worker) => worker.read_many(indices).await,
