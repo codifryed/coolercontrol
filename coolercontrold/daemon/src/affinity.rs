@@ -46,27 +46,51 @@ const KERNEL_VERSION_PATH: &str = "/proc/sys/kernel/version";
 /// started from now on beside it. Call before the device workers start.
 pub async fn pin_main_thread() -> Result<()> {
     let (main_cpu, process_mask) = pin_to_current_cpu()?;
-    if kernel_preempts_spinning_drivers().await.not() {
+    let preempts = kernel_preempts_spinning_drivers().await;
+    let siblings = if preempts {
+        read_siblings(main_cpu).await
+    } else {
         debug!("Device workers keep every CPU: the kernel may not preempt a driver that spins");
-        return Ok(());
-    }
-    // Read on the blocking pool, whose new threads already take the process's mask back.
-    let siblings = match cc_fs::read_txt(siblings_path(main_cpu)).await {
-        Ok(siblings) => siblings,
-        Err(err) => {
-            debug!("Device workers keep every CPU: no sibling list for CPU {main_cpu}: {err}");
-            return Ok(());
-        }
+        None
     };
-    match worker_cpus(main_cpu, &siblings, &process_mask) {
+    match choose_worker_mask(preempts, main_cpu, siblings.as_deref(), &process_mask) {
         Some(workers) => {
-            let siblings = siblings.trim();
+            let siblings = siblings.as_deref().unwrap_or_default().trim();
             debug!("Device workers run beside the main thread's CPU {main_cpu}, core {siblings}");
             WORKER_MASK.get_or_init(|| workers);
         }
-        None => debug!("Device workers keep every CPU: CPU {main_cpu} has no usable sibling"),
+        None => {
+            if siblings.is_some() {
+                debug!("Device workers keep every CPU: CPU {main_cpu} has no usable sibling");
+            }
+        }
     }
     Ok(())
+}
+
+/// Read on the blocking pool, whose new threads already take the process's mask back.
+async fn read_siblings(main_cpu: usize) -> Option<String> {
+    match cc_fs::read_txt(siblings_path(main_cpu)).await {
+        Ok(siblings) => Some(siblings),
+        Err(err) => {
+            debug!("Device workers keep every CPU: no sibling list for CPU {main_cpu}: {err}");
+            None
+        }
+    }
+}
+
+/// The CPUs device workers start on: the main thread's core siblings, only when the kernel
+/// preempts spinning drivers. `None` keeps the workers on the process's CPUs.
+fn choose_worker_mask(
+    preempts: bool,
+    main_cpu: usize,
+    siblings: Option<&str>,
+    process_mask: &CpuSet,
+) -> Option<CpuSet> {
+    if preempts.not() {
+        return None;
+    }
+    worker_cpus(main_cpu, siblings?, process_mask)
 }
 
 /// Pin the calling thread to the CPU it is running on, recording the mask it had first, for the
@@ -81,15 +105,23 @@ fn pin_to_current_cpu() -> Result<(usize, CpuSet)> {
     Ok((main_cpu, process_mask))
 }
 
-/// Whether the kernel says it preempts code spinning in a driver. A dynamic kernel's active mode
-/// decides; without it, only a fixed model the build flags name counts. Unknown is no.
+/// Whether the kernel says it preempts code spinning in a driver.
 async fn kernel_preempts_spinning_drivers() -> bool {
-    if let Ok(modes) = cc_fs::read_txt(PREEMPT_MODE_PATH).await {
-        return active_mode_preempts(&modes);
-    }
-    match cc_fs::read_txt(KERNEL_VERSION_PATH).await {
-        Ok(version) => fixed_model_preempts(&version),
-        Err(_) => false,
+    let modes = cc_fs::read_txt(PREEMPT_MODE_PATH).await.ok();
+    let version = match modes {
+        Some(_) => None,
+        None => cc_fs::read_txt(KERNEL_VERSION_PATH).await.ok(),
+    };
+    preempts_spinning_drivers(modes.as_deref(), version.as_deref())
+}
+
+/// A dynamic kernel's readable active mode decides; without it, only a fixed model the build
+/// flags name counts. Unknown is no.
+fn preempts_spinning_drivers(modes: Option<&str>, version: Option<&str>) -> bool {
+    match (modes, version) {
+        (Some(modes), _) => active_mode_preempts(modes),
+        (None, Some(version)) => fixed_model_preempts(version),
+        (None, None) => false,
     }
 }
 
@@ -170,8 +202,16 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    let mask = WORKER_MASK.get().or(PROCESS_MASK.get()).copied();
-    spawn_on(builder, mask, body)
+    spawn_on(
+        builder,
+        start_mask(WORKER_MASK.get(), PROCESS_MASK.get()),
+        body,
+    )
+}
+
+/// The worker mask when chosen, else the process's.
+fn start_mask(worker: Option<&CpuSet>, process: Option<&CpuSet>) -> Option<CpuSet> {
+    worker.or(process).copied()
 }
 
 fn spawn_on<F, T>(builder: Builder, mask: Option<CpuSet>, body: F) -> std::io::Result<JoinHandle<T>>
@@ -248,6 +288,62 @@ mod tests {
         let dynamic = "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 19:55:01 +0000";
         assert!(fixed_model_preempts(dynamic).not());
         assert!(fixed_model_preempts("#38-Ubuntu SMP Thu Oct  3 10:00:00 UTC 2024").not());
+    }
+
+    const PREEMPT_BUILD: &str = "#1 SMP PREEMPT Tue Oct  1 10:00:00 UTC 2024";
+    const RT_BUILD: &str = "#1 SMP PREEMPT_RT Wed Oct  2 10:00:00 UTC 2024";
+    const DYNAMIC_BUILD: &str = "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 19:55:01 +0000";
+
+    /// Goal: a readable modes file decides alone, and the build flags stand in only when it
+    /// cannot be read; with neither, the workers spread. Method: decide over a table of modes
+    /// file and version string pairs, readable and not.
+    #[test]
+    fn a_readable_modes_file_decides_before_the_build_flags() {
+        let cases = [
+            (Some("none voluntary (full) lazy"), None, true),
+            (
+                Some("none voluntary full (lazy)"),
+                Some(DYNAMIC_BUILD),
+                true,
+            ),
+            (
+                Some("(none) voluntary full lazy"),
+                Some(PREEMPT_BUILD),
+                false,
+            ),
+            (Some("none (voluntary) full lazy"), Some(RT_BUILD), false),
+            (None, Some(PREEMPT_BUILD), true),
+            (None, Some(RT_BUILD), true),
+            (None, Some(DYNAMIC_BUILD), false),
+            (None, None, false),
+        ];
+        for (modes, version, confine) in cases {
+            let decided = preempts_spinning_drivers(modes, version);
+            assert_eq!(decided, confine, "{modes:?} {version:?}");
+        }
+    }
+
+    /// Goal: the worker mask is set only when the kernel preempts spinning drivers and the
+    /// main thread's core lists a usable sibling. Method: choose across the gate, an unreadable
+    /// sibling list, and a readable one.
+    #[test]
+    fn the_worker_mask_needs_preemption_and_a_sibling_list() {
+        let all = mask_of(&(0..32).collect::<Vec<_>>());
+        assert_eq!(choose_worker_mask(false, 25, Some("9,25"), &all), None);
+        assert_eq!(choose_worker_mask(true, 25, None, &all), None);
+        let confined = choose_worker_mask(true, 25, Some("9,25"), &all);
+        assert_eq!(confined, Some(mask_of(&[9])));
+    }
+
+    /// Goal: a worker starts on the worker mask when one is chosen, else on the process's, and
+    /// keeps its inherited mask before the pin. Method: pick the start mask from each pairing.
+    #[test]
+    fn the_worker_mask_wins_over_the_process_mask() {
+        let worker = mask_of(&[9]);
+        let process = mask_of(&[0, 1, 9, 25]);
+        assert_eq!(start_mask(Some(&worker), Some(&process)), Some(worker));
+        assert_eq!(start_mask(None, Some(&process)), Some(process));
+        assert_eq!(start_mask(None, None), None);
     }
 
     /// Goal: workers go on the other hardware threads of the main thread's core, never on the main
