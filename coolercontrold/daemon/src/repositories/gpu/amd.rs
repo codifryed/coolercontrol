@@ -399,10 +399,8 @@ impl GpuAMD {
         })
     }
 
-    /// Computes GPU load from DRM fdinfo for a sensor-less GPU. Always returns a
-    /// Load `ChannelStatus` (0 on the first sample and while idle), since once
-    /// fdinfo is the chosen source we report a value every tick.
-    /// This tick's load percent from the GPU's DRM clients.
+    /// This tick's load percent from the GPU's DRM clients: 0 on the first sample and while
+    /// idle, since once fdinfo is chosen it reports every tick.
     async fn sample_fdinfo_load(&self, fdinfo: &FdInfoLoad) -> f64 {
         // Both taken out rather than borrowed, as the scan yields. Two GPUs scanning at once
         // leaves the second with a buffer of its own, which then replaces this one. The tracker
