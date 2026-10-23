@@ -268,11 +268,22 @@ impl GpuRepo {
                             );
                         },
                         Ok(device_permit) = device_semaphore.acquire() => {
-                            let statuses = self.gpus_amd.get_amd_status(amd_driver).await;
+                            // Taken out rather than borrowed, as the reads yield, and put back
+                            // refilled, so a tick keeps last tick's names.
+                            let (mut channels, mut temps) = std::mem::take(
+                                self.gpus_amd
+                                    .amd_preloaded_statuses
+                                    .borrow_mut()
+                                    .entry(type_index)
+                                    .or_default(),
+                            );
+                            self.gpus_amd
+                                .read_amd_status(amd_driver, &mut channels, &mut temps)
+                                .await;
                             self.gpus_amd
                                 .amd_preloaded_statuses
                                 .borrow_mut()
-                                .insert(type_index, statuses);
+                                .insert(type_index, (channels, temps));
                             apply_device_command_delay(delay).await;
                             drop(device_permit);
                         },

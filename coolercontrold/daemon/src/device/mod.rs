@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pub mod health;
+mod status_refill;
 mod status_ring;
 pub mod uid;
 
@@ -17,6 +18,7 @@ use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use log::warn;
+pub use status_refill::StatusRefill;
 pub use status_ring::StatusSnapshot;
 use status_ring::{local_time, timestamp_ns, SnapshotFilter, StatusRing, MAX_NAMES};
 
