@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::cc_fs;
-use crate::cc_fs::ReadIndex;
+use crate::cc_fs::{ReadIndex, SysfsValue};
 use crate::device::ChannelStatus;
 use crate::diagnostics::support::{self, ChannelDiagnosis, ChannelEvidence};
 use crate::repositories::hwmon::device_io::DeviceIo;
@@ -347,51 +347,8 @@ pub async fn read_fan_statuses<'a>(
         };
         let pwm_raw = pwm_slot.map(|_| take_next());
         let rpm_raw = rpm_slot.map(|_| take_next());
-        let fan_rpm = rpm_raw.and_then(|raw| {
-            let raw = raw
-                .and_then(check_parsing_32)
-                .map(|rpm| guard_fan_rpm(rpm, &channel.caps));
-            interpret_fan_rpm(|| rpm_path_for(driver, channel), raw, log_error)
-        });
-        if channel_want == FanRead::RpmOnly {
-            debug_assert!(pwm_raw.is_none());
-            // An expected rpm that did not read is a miss; a channel with no rpm at all is not.
-            let reading = if channel.caps.has_rpm() && fan_rpm.is_none() {
-                FanReading::Failed
-            } else {
-                FanReading::Rpm(fan_rpm)
-            };
-            on_reading(channel, reading);
-            continue;
-        }
-        let fan_duty = match pwm_raw {
-            Some(raw) => {
-                let raw = raw.and_then(check_parsing_8).map(pwm_value_to_duty);
-                interpret_pwm_duty(
-                    &driver.io,
-                    &driver.path,
-                    &channel.number,
-                    || pwm_path_for(driver, channel),
-                    channel.read_slot.pwm_enable,
-                    raw,
-                    log_error,
-                )
-                .await
-            }
-            None => None,
-        };
-        let expected_pwm_failed = channel.caps.has_pwm() && fan_duty.is_none();
-        let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
-        let reading = if expected_pwm_failed || expected_rpm_failed {
-            FanReading::Failed
-        } else {
-            FanReading::Full(ChannelStatus {
-                name: channel.name.clone(),
-                rpm: fan_rpm,
-                duty: fan_duty,
-                ..Default::default()
-            })
-        };
+        let reading =
+            fan_reading_from(driver, channel, channel_want, pwm_raw, rpm_raw, log_error).await;
         on_reading(channel, reading);
     }
     debug_assert_eq!(
@@ -399,6 +356,60 @@ pub async fn read_fan_statuses<'a>(
         batch.len(),
         "every batched result belongs to a channel"
     );
+}
+
+/// Interprets one channel's share of a batched fan read.
+async fn fan_reading_from(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+    want: FanRead,
+    pwm_raw: Option<Result<SysfsValue>>,
+    rpm_raw: Option<Result<SysfsValue>>,
+    log_error: bool,
+) -> FanReading {
+    let fan_rpm = rpm_raw.and_then(|raw| {
+        let raw = raw
+            .and_then(check_parsing_32)
+            .map(|rpm| guard_fan_rpm(rpm, &channel.caps));
+        interpret_fan_rpm(|| rpm_path_for(driver, channel), raw, log_error)
+    });
+    if want == FanRead::RpmOnly {
+        debug_assert!(pwm_raw.is_none());
+        // An expected rpm that did not read is a miss; a channel with no rpm at all is not.
+        return if channel.caps.has_rpm() && fan_rpm.is_none() {
+            FanReading::Failed
+        } else {
+            FanReading::Rpm(fan_rpm)
+        };
+    }
+    let fan_duty = match pwm_raw {
+        Some(raw) => {
+            let raw = raw.and_then(check_parsing_8).map(pwm_value_to_duty);
+            interpret_pwm_duty(
+                &driver.io,
+                &driver.path,
+                &channel.number,
+                || pwm_path_for(driver, channel),
+                channel.read_slot.pwm_enable,
+                raw,
+                log_error,
+            )
+            .await
+        }
+        None => None,
+    };
+    let expected_pwm_failed = channel.caps.has_pwm() && fan_duty.is_none();
+    let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
+    if expected_pwm_failed || expected_rpm_failed {
+        FanReading::Failed
+    } else {
+        FanReading::Full(ChannelStatus {
+            name: channel.name.clone(),
+            rpm: fan_rpm,
+            duty: fan_duty,
+            ..Default::default()
+        })
+    }
 }
 
 /// The (pwm, rpm) slots one channel adds to a batch, in batch order. The pwm is left out when the
