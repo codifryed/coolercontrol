@@ -106,8 +106,8 @@ pub struct ScreenRequest {
 mod tests {
     use super::*;
 
-    /// Three lines as liqctld's Python `json.dumps` writes them, with the escaped degree sign.
-    const STATUS_BODY: &str = r#"{"status": [["Liquid temperature", "31.5", "°C"],
+    /// Three lines as liqctld's Python `json.dumps` writes them, degree sign escaped.
+    const STATUS_BODY: &str = r#"{"status": [["Liquid temperature", "31.5", "\u00b0C"],
         ["Pump speed", "2000", "rpm"], ["Pump duty", "70", "%"]]}"#;
 
     /// Goal: a status reply parses to its names and values with the metric skipped, and a
