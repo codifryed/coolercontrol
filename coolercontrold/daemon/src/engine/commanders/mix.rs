@@ -403,10 +403,6 @@ impl MixProfileCommander {
             "the child must be scheduled on the channel"
         );
         scheduled.iter().any(|(parent, parent_channels)| {
-            debug_assert!(
-                parent.member_mix_profile_uids.len() <= parent.member_profile_uids.len(),
-                "Mix members are a subset of all members"
-            );
             parent.member_mix_profile_uids.contains(child_uid)
                 && parent_channels.contains(&**device_channel)
         })
@@ -437,7 +433,7 @@ impl MixProfileCommander {
             member_profiles.is_empty().not(),
             "member_profiles must be validated before normalization"
         );
-        NormalizedMixProfile {
+        let normalized = NormalizedMixProfile {
             profile_uid: profile.uid.clone(),
             // Validated in schedule_setting before reaching here.
             mix_function: profile.mix_function_type().unwrap(),
@@ -452,7 +448,15 @@ impl MixProfileCommander {
                 .filter_map(|p| p.speed_fixed().map(|duty| (p.uid.clone(), duty)))
                 .collect(),
             member_profile_uids: member_profiles.iter().map(|p| p.uid.clone()).collect(),
-        }
+        };
+        debug_assert!(
+            normalized
+                .member_mix_profile_uids
+                .iter()
+                .all(|uid| normalized.member_profile_uids.contains(uid)),
+            "Mix members are a subset of all members"
+        );
+        normalized
     }
 }
 
