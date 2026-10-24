@@ -50,7 +50,7 @@ pub struct ReplyPool<T> {
 impl<T> Default for ReplyPool<T> {
     fn default() -> Self {
         Self {
-            spare: RefCell::new(Vec::new()),
+            spare: RefCell::new(Vec::with_capacity(SPARE_MAX)),
         }
     }
 }
