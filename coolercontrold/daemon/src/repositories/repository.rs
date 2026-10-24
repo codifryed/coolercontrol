@@ -185,12 +185,13 @@ impl Repositories {
 }
 
 /// A repository with no devices. Its preload counts itself finished, after waiting at `meeting`
-/// when there is one.
+/// when there is one. Its duty writes fail while `failing_writes` is set.
 #[cfg(test)]
 pub struct StubRepo {
     pub device_type: DeviceType,
     pub meeting: Option<Rc<tokio::sync::Barrier>>,
     pub finished: Rc<std::cell::Cell<u8>>,
+    pub failing_writes: Rc<std::cell::Cell<bool>>,
 }
 
 #[cfg(test)]
@@ -232,6 +233,9 @@ impl Repository for StubRepo {
     }
 
     async fn apply_setting_speed_fixed(&self, _: &UID, _: &str, _: u8) -> Result<()> {
+        if self.failing_writes.get() {
+            return Err(anyhow::anyhow!("simulated failure"));
+        }
         Ok(())
     }
 
@@ -283,6 +287,7 @@ mod tests {
             device_type,
             meeting: None,
             finished: Rc::default(),
+            failing_writes: Rc::default(),
         }))
     }
 

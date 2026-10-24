@@ -439,30 +439,15 @@ impl GraphProfileCommander {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::DutyWriter;
+    use crate::calibration::RepoWriter;
     use crate::device::{Device, DeviceInfo, DeviceType};
-    use async_trait::async_trait;
+    use crate::repositories::repository::StubRepo;
     use std::cell::Cell;
 
     const DEVICE: &str = "device-uid";
     const OTHER_DEVICE: &str = "other-device-uid";
     const FAN: &str = "fan1";
     const PUMP: &str = "pump";
-
-    /// Fails every write while `failing` is set.
-    struct ToggleWriter {
-        failing: Rc<Cell<bool>>,
-    }
-
-    #[async_trait(?Send)]
-    impl DutyWriter for ToggleWriter {
-        async fn write_device_duty(&self, _: &UID, _: &str, _: Duty) -> Result<()> {
-            if self.failing.get() {
-                return Err(anyhow!("simulated failure"));
-            }
-            Ok(())
-        }
-    }
 
     /// A commander over one hwmon device, its UID, and the writer's failure switch.
     fn commander_with_toggle_writer() -> (GraphProfileCommander, UID, Rc<Cell<bool>>) {
@@ -481,9 +466,12 @@ mod tests {
             Rc::new(RefCell::new(device)),
         )]));
         let failing = Rc::new(Cell::new(true));
-        let writer: Rc<dyn DutyWriter> = Rc::new(ToggleWriter {
-            failing: Rc::clone(&failing),
-        });
+        let writer = RepoWriter::rc(Rc::new(StubRepo {
+            device_type: DeviceType::Hwmon,
+            meeting: None,
+            finished: Rc::default(),
+            failing_writes: Rc::clone(&failing),
+        }));
         let commander = GraphProfileCommander::new(
             all_devices,
             HashMap::from([(DeviceType::Hwmon, writer)]),

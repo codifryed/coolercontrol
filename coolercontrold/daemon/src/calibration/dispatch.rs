@@ -36,7 +36,6 @@ use crate::device::{Duty, UID};
 use crate::repositories::repository::Repository;
 use crate::rt;
 use anyhow::Result;
-use async_trait::async_trait;
 use log::{debug, warn};
 use std::fmt;
 use std::rc::Rc;
@@ -61,7 +60,9 @@ const _: () = assert!((MAX_WALK_STEPS as usize) * (WALK_STEP_DUTY as usize) > 10
 ///
 /// Production code wraps `Rc<dyn Repository>` in `RepoWriter` (below).
 /// Tests implement this trait directly to capture the sequence of writes.
-#[async_trait(?Send)]
+/// Dispatched statically, so a write boxes no future of its own.
+// The daemon's runtime is single-threaded, so no caller needs the future to be `Send`.
+#[allow(async_fn_in_trait)]
 pub trait DutyWriter {
     async fn write_device_duty(
         &self,
@@ -85,14 +86,13 @@ impl RepoWriter {
         Self { repo }
     }
 
-    /// Convenience: returns an `Rc<dyn DutyWriter>` ready to hand to
+    /// Convenience: returns an `Rc<RepoWriter>` ready to hand to
     /// `dispatch`. Call sites typically use this form.
-    pub fn rc(repo: Rc<dyn Repository>) -> Rc<dyn DutyWriter> {
+    pub fn rc(repo: Rc<dyn Repository>) -> Rc<Self> {
         Rc::new(Self::new(repo))
     }
 }
 
-#[async_trait(?Send)]
 impl DutyWriter for RepoWriter {
     async fn write_device_duty(
         &self,
@@ -226,7 +226,7 @@ impl DispatchOutcome {
 pub async fn dispatch(
     state: &Rc<FanStateMap>,
     store: &CalibrationStore,
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     device_uid: &UID,
     channel_name: &str,
     true_duty: Duty,
@@ -277,7 +277,7 @@ pub async fn dispatch(
 async fn dispatch_core(
     state: &Rc<FanStateMap>,
     store: &CalibrationStore,
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     channel: ChannelRef<'_>,
     true_duty: Duty,
 ) -> Result<DispatchOutcome> {
@@ -307,7 +307,7 @@ async fn dispatch_core(
 /// in flight, or write the sustain duty when `On`.
 async fn dispatch_mapped(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     plan: DispatchPlan,
     channel: ChannelRef<'_>,
     true_duty: Duty,
@@ -342,7 +342,7 @@ async fn dispatch_mapped(
 /// Transition any state to `Off` and write 0 to hardware.
 async fn handle_write_zero(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     channel: ChannelRef<'_>,
 ) -> Result<()> {
     let prior = state.entry(&channel);
@@ -364,7 +364,7 @@ async fn handle_write_zero(
 /// write returns the channel to `Off`. No spawns inside this helper.
 async fn start_kick(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     channel: ChannelRef<'_>,
     prior: ChannelEntry,
     mapped: MappedDuty,
@@ -427,7 +427,7 @@ fn update_kick_target(
 /// sustain duty. State stays `On`.
 async fn write_sustain_on(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     channel: ChannelRef<'_>,
     prior: ChannelEntry,
     mapped: MappedDuty,
@@ -451,7 +451,7 @@ async fn write_sustain_on(
 /// at the tail of `complete_kick_with_walk` and directly by unit tests.
 pub async fn complete_kick(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     channel: ChannelRef<'_>,
     log_label: &str,
 ) {
@@ -524,7 +524,7 @@ fn next_walk_step(channel_state: FanState, walk_position: Duty) -> WalkStep {
 
 pub async fn complete_kick_with_walk(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     channel: ChannelRef<'_>,
     log_label: &str,
     kick_duty: Duty,
@@ -553,7 +553,7 @@ pub async fn complete_kick_with_walk(
 /// Intermediate walk-down write. Logs and continues on error so a
 /// transient hardware failure does not abandon the fan at the kick duty.
 async fn write_walk_step(
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     channel: ChannelRef<'_>,
     log_label: &str,
     duty: Duty,
@@ -599,11 +599,11 @@ mod tests {
     }
 
     impl MockWriter {
-        /// Returns the writer as the trait-object Rc the dispatch
-        /// signature expects, plus a handle to the captured writes.
-        fn make() -> (Rc<dyn DutyWriter>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
+        /// Returns the writer as the Rc the dispatch signature expects,
+        /// plus a handle to the captured writes.
+        fn make() -> (Rc<Self>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
             let writes = Rc::new(RefCell::new(Vec::new()));
-            let writer: Rc<dyn DutyWriter> = Rc::new(Self {
+            let writer = Rc::new(Self {
                 writes: Rc::clone(&writes),
                 fail_next: Rc::new(RefCell::new(false)),
             });
@@ -611,9 +611,9 @@ mod tests {
         }
 
         /// Like `make`, but the first write fails.
-        fn make_failing_first() -> (Rc<dyn DutyWriter>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
+        fn make_failing_first() -> (Rc<Self>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
             let writes = Rc::new(RefCell::new(Vec::new()));
-            let writer: Rc<dyn DutyWriter> = Rc::new(Self {
+            let writer = Rc::new(Self {
                 writes: Rc::clone(&writes),
                 fail_next: Rc::new(RefCell::new(true)),
             });
@@ -621,7 +621,6 @@ mod tests {
         }
     }
 
-    #[async_trait(?Send)]
     impl DutyWriter for MockWriter {
         async fn write_device_duty(
             &self,
@@ -708,7 +707,6 @@ mod tests {
     }
 
     #[cfg(feature = "gated-tests")]
-    #[async_trait(?Send)]
     impl DutyWriter for LastDutyWriter {
         async fn write_device_duty(&self, _: &UID, _: &str, device_duty: Duty) -> Result<()> {
             self.last_duty.set(Some(device_duty));
@@ -720,9 +718,8 @@ mod tests {
     #[cfg(feature = "gated-tests")]
     fn a_warm_dispatch_builds_no_channel_key() {
         // Goal: a duty write on a channel already seen clones none of its names, on both the
-        // uncalibrated passthrough and a calibrated channel that is `On`. Method: seed each
-        // channel's entry, then count one dispatch to each. Only the writer's boxed futures
-        // allocate.
+        // uncalibrated passthrough and a calibrated channel that is `On`, and boxes no writer
+        // future. Method: seed each channel's entry, then count one dispatch to each.
         let state = Rc::new(FanStateMap::new());
         let store = CalibrationStore::empty();
         let device_uid = "dev-a".to_string();
@@ -733,8 +730,7 @@ mod tests {
             commanded_true_duty: Some(30),
         };
         state.replace(ChannelRef::new(&device_uid, "fan2"), on);
-        let last_duty_writer = Rc::new(LastDutyWriter::default());
-        let writer: Rc<dyn DutyWriter> = Rc::clone(&last_duty_writer) as Rc<dyn DutyWriter>;
+        let writer = Rc::new(LastDutyWriter::default());
 
         let (applied, allocations) = crate::alloc_count::count_allocations(|| {
             let unmapped = dispatch(&state, &store, &writer, &device_uid, "fan1", 42);
@@ -747,9 +743,9 @@ mod tests {
 
         assert_eq!(applied.0, AppliedDuty::Unmapped);
         assert!(matches!(applied.1, AppliedDuty::Mapped { .. }));
-        assert!(last_duty_writer.last_duty.get().is_some());
+        assert!(writer.last_duty.get().is_some());
         assert_eq!(state.len(), 1, "the passthrough stores no entry");
-        assert_eq!(allocations, 2, "only the writer's two boxed futures");
+        assert_eq!(allocations, 0);
     }
 
     #[test]

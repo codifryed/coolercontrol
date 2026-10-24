@@ -370,6 +370,7 @@ mod tests {
                 device_type,
                 meeting: Some(Rc::clone(&meeting)),
                 finished: Rc::clone(&finished),
+                failing_writes: Rc::default(),
             }))
         };
         let repos: Repos = Rc::new(Repositories {
