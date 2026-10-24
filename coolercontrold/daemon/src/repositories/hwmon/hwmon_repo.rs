@@ -2486,7 +2486,7 @@ impl Repository for HwmonRepo {
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         self.store_preloaded_statuses(timestamp);
         Ok(())
     }
@@ -2946,9 +2946,10 @@ mod preload_tests {
         repo.store_preloaded_statuses(Local::now());
         let tick = Local::now();
 
-        let ((), allocations) =
-            crate::alloc_count::count_allocations(|| repo.store_preloaded_statuses(tick));
+        let (updated, allocations) =
+            crate::alloc_count::count_allocations(|| repo.update_statuses(tick));
 
+        assert!(updated.is_ok());
         assert_eq!(allocations, 0);
         let device = device.borrow();
         assert_eq!(device.latest_timestamp(), Some(tick));

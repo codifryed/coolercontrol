@@ -400,7 +400,7 @@ impl Repository for GpuRepo {
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         self.gpus_amd.update_all_statuses(timestamp);
         self.gpus_nvidia.update_all_statuses(timestamp);
         Ok(())
@@ -857,12 +857,12 @@ mod nvml_status_tests {
             for _ in 0..MISSING_STATUS_THRESHOLD {
                 repo.load_nvml_status().await;
             }
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             assert_eq!(device.borrow().latest_temp(GPU_TEMP_NAME), Some(60.0));
             assert!(repo.failsafing().is_empty());
 
             repo.load_nvml_status().await;
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             let device = device.borrow();
             assert_eq!(
                 device.latest_temp(GPU_TEMP_NAME),

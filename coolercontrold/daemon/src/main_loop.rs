@@ -213,7 +213,7 @@ async fn fire_snapshots_and_processes<'s>(
     // One instant for the whole tick, so every device's entry for it carries the same time.
     let timestamp = Local::now();
     for repo in repos.iter() {
-        if let Err(err) = repo.update_statuses(timestamp).await {
+        if let Err(err) = repo.update_statuses(timestamp) {
             error!("Error trying to update status: {err}");
         }
     }

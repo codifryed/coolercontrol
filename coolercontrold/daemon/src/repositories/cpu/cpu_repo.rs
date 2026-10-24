@@ -1144,7 +1144,7 @@ impl Repository for CpuRepo {
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         self.store_preloaded_statuses(timestamp);
         Ok(())
     }

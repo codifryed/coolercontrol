@@ -2011,7 +2011,7 @@ impl Repository for LiquidctlRepo {
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         let fsd_map = self.failsafe_statuses.borrow();
         for device_lock in self.devices.values() {
             let mut device = device_lock.borrow_mut();

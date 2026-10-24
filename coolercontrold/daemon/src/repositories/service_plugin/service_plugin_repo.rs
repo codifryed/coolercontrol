@@ -1071,7 +1071,7 @@ impl Repository for ServicePluginRepo {
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         let preloaded_statuses = self.preloaded_statuses.borrow();
         for (device_uid, (device_lock, _)) in &self.devices {
             let data = preloaded_statuses

@@ -36,7 +36,7 @@ pub trait Repository {
     /// This method should be called after `preload_statuses` to update the internal
     /// device status history with the last polled status, stamped `timestamp`: one instant
     /// for the whole tick, shared by every device.
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()>;
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()>;
 
     /// Hint to the repository to abort in-flight or queued work so
     /// the main loop's moro scope can exit promptly when shutdown
@@ -215,7 +215,7 @@ impl Repository for StubRepo {
         self.finished.set(self.finished.get() + 1);
     }
 
-    async fn update_statuses(&self, _timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, _timestamp: DateTime<Local>) -> Result<()> {
         Ok(())
     }
 
