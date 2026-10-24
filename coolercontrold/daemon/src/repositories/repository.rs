@@ -36,7 +36,7 @@ pub trait Repository {
     /// This method should be called after `preload_statuses` to update the internal
     /// device status history with the last polled status, stamped `timestamp`: one instant
     /// for the whole tick, shared by every device.
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()>;
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()>;
 
     /// Hint to the repository to abort in-flight or queued work so
     /// the main loop's moro scope can exit promptly when shutdown
@@ -164,34 +164,125 @@ impl Repositories {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Rc<dyn Repository>> {
-        let mut repos = Vec::new();
-        // liquidctl device can take the longest, so they should be first
-        if let Some(repo) = self.liquidctl.as_ref() {
-            repos.push(repo);
-        }
-        if let Some(repo) = self.cpu.as_ref() {
-            repos.push(repo);
-        }
-        if let Some(repo) = self.gpu.as_ref() {
-            repos.push(repo);
-        }
-        if let Some(repo) = self.hwmon.as_ref() {
-            repos.push(repo);
-        }
-        if let Some(repo) = self.external.as_ref() {
-            repos.push(repo);
-        }
-        // custom sensors should always be last
-        if let Some(repo) = self.custom_sensors.as_ref() {
-            repos.push(repo);
-        }
-        repos.into_iter()
+        [
+            // liquidctl device can take the longest, so they should be first
+            &self.liquidctl,
+            &self.cpu,
+            &self.gpu,
+            &self.hwmon,
+            &self.external,
+            // custom sensors should always be last
+            &self.custom_sensors,
+        ]
+        .into_iter()
+        .flatten()
     }
 
     #[allow(dead_code)]
     fn clone_rc(repo: Option<&Rc<dyn Repository>>) -> Option<Rc<dyn Repository>> {
         repo.map(Rc::clone)
     }
+}
+
+/// A repository with no devices. Its preload counts itself finished, after waiting at `meeting`
+/// when there is one. Its duty writes fail while `failing_writes` is set, wait at
+/// `write_meeting` when there is one, and are counted in `written`.
+#[cfg(test)]
+pub struct StubRepo {
+    pub device_type: DeviceType,
+    pub meeting: Option<Rc<tokio::sync::Barrier>>,
+    pub finished: Rc<std::cell::Cell<u8>>,
+    pub failing_writes: Rc<std::cell::Cell<bool>>,
+    pub write_meeting: Option<Rc<tokio::sync::Barrier>>,
+    pub written: Rc<std::cell::Cell<u8>>,
+}
+
+#[cfg(test)]
+impl StubRepo {
+    pub fn new(device_type: DeviceType) -> Self {
+        Self {
+            device_type,
+            meeting: None,
+            finished: Rc::default(),
+            failing_writes: Rc::default(),
+            write_meeting: None,
+            written: Rc::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+#[async_trait(?Send)]
+impl Repository for StubRepo {
+    fn device_type(&self) -> DeviceType {
+        self.device_type
+    }
+
+    async fn initialize_devices(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn devices(&self) -> DeviceList {
+        Vec::new()
+    }
+
+    async fn preload_statuses(self: Rc<Self>) {
+        if let Some(meeting) = &self.meeting {
+            meeting.wait().await;
+        }
+        self.finished.set(self.finished.get() + 1);
+    }
+
+    fn update_statuses(&self, _timestamp: DateTime<Local>) -> Result<()> {
+        Ok(())
+    }
+
+    async fn shutdown(&self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn apply_setting_reset(&self, _: &UID, _: &str) -> Result<()> {
+        Ok(())
+    }
+
+    async fn apply_setting_manual_control(&self, _: &UID, _: &str) -> Result<()> {
+        Ok(())
+    }
+
+    async fn apply_setting_speed_fixed(&self, _: &UID, _: &str, _: u8) -> Result<()> {
+        if let Some(write_meeting) = &self.write_meeting {
+            write_meeting.wait().await;
+        }
+        if self.failing_writes.get() {
+            return Err(anyhow::anyhow!("simulated failure"));
+        }
+        self.written.set(self.written.get() + 1);
+        Ok(())
+    }
+
+    async fn apply_setting_speed_profile(
+        &self,
+        _: &UID,
+        _: &str,
+        _: &TempSource,
+        _: &[(f64, u8)],
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn apply_setting_lighting(&self, _: &UID, _: &str, _: &LightingSettings) -> Result<()> {
+        Ok(())
+    }
+
+    async fn apply_setting_lcd(&self, _: &UID, _: &str, _: &LcdSettings) -> Result<()> {
+        Ok(())
+    }
+
+    async fn apply_setting_pwm_mode(&self, _: &UID, _: &str, _: u8) -> Result<()> {
+        Ok(())
+    }
+
+    async fn reinitialize_devices(&self) {}
 }
 
 /// Repository Initialization Errors
@@ -206,4 +297,67 @@ pub enum InitError {
 
     #[error("Connection Error: {msg}")]
     Connection { msg: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stub(device_type: DeviceType) -> Option<Rc<dyn Repository>> {
+        Some(Rc::new(StubRepo::new(device_type)))
+    }
+
+    fn all_repos() -> Repositories {
+        Repositories {
+            cpu: stub(DeviceType::CPU),
+            gpu: stub(DeviceType::GPU),
+            liquidctl: stub(DeviceType::Liquidctl),
+            hwmon: stub(DeviceType::Hwmon),
+            external: stub(DeviceType::ServicePlugin),
+            custom_sensors: stub(DeviceType::CustomSensors),
+        }
+    }
+
+    #[test]
+    fn liquidctl_comes_first_and_custom_sensors_last() {
+        // Goal: iteration keeps the repo order the main loop relies on. Method: list the
+        // device types of a full set.
+        let types: Vec<DeviceType> = all_repos().iter().map(|repo| repo.device_type()).collect();
+        assert_eq!(
+            types,
+            [
+                DeviceType::Liquidctl,
+                DeviceType::CPU,
+                DeviceType::GPU,
+                DeviceType::Hwmon,
+                DeviceType::ServicePlugin,
+                DeviceType::CustomSensors,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_missing_repo_is_skipped() {
+        // Goal: an absent repo is left out of iteration. Method: drop the GPU repo and check
+        // it is neither listed nor counted.
+        let repos = Repositories {
+            gpu: None,
+            ..all_repos()
+        };
+        assert!(repos
+            .iter()
+            .all(|repo| repo.device_type() != DeviceType::GPU));
+        assert_eq!(repos.iter().count(), 5);
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn iterating_allocates_nothing() {
+        // Goal: iterating the repos each tick costs no allocation. Method: count the
+        // allocations of a full iteration.
+        let repos = all_repos();
+        let (count, allocations) = crate::alloc_count::count_allocations(|| repos.iter().count());
+        assert_eq!(count, 6);
+        assert_eq!(allocations, 0);
+    }
 }

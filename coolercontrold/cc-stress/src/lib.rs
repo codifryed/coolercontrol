@@ -957,8 +957,8 @@ fn select_gpu_adapters(
 ///
 /// Synchronous by design, like the CPU, RAM, and drive entry points. An
 /// earlier version drove each adapter from a `tokio` task, which both
-/// required an ambient Tokio runtime the daemon's compio backend does not
-/// provide, and serialized the adapters: `device.poll(Wait)` blocks, so on a
+/// required an ambient Tokio runtime and serialized the adapters:
+/// `device.poll(Wait)` blocks, so on a
 /// single-threaded runtime one adapter's wait stalled every other adapter.
 /// A machine with an iGPU alongside a dGPU therefore loaded neither fully.
 ///
@@ -1571,12 +1571,12 @@ mod tests {
     #[test]
     #[cfg(feature = "gated-tests")]
     fn gpu_stress_runs_without_an_async_runtime() {
-        // The daemon's default compio backend provides no ambient Tokio
-        // runtime, and an earlier version panicked there because it called
-        // `tokio::spawn`. Calling from a plain test thread reproduces that
-        // environment. A zero timeout exercises setup and teardown without
-        // heating anything. Either outcome is fine on a machine with no GPU;
-        // what must not happen is a panic.
+        // The daemon calls this outside any runtime, and an earlier version
+        // panicked there because it called `tokio::spawn`. Calling from a
+        // plain test thread reproduces that environment. A zero timeout
+        // exercises setup and teardown without heating anything. Either
+        // outcome is fine on a machine with no GPU; what must not happen is
+        // a panic.
         let result = run_gpu_stress(0, None);
         if let Err(e) = result {
             let msg = e.to_string();

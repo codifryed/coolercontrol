@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::cc_fs;
@@ -39,9 +39,16 @@ pub async fn get_fan_control_boot_option() -> String {
     }
 }
 
-/// Reads and parses the current ppfeaturemask from sysfs.
+/// Reads and parses the current ppfeaturemask from sysfs, on the blocking pool so no sysfs read
+/// runs on the runtime thread.
 pub async fn get_pp_feature_mask() -> Result<u64> {
-    let ppfeaturemask = cc_fs::read_txt(PP_FEATURE_MASK_PATH).await?;
+    let ppfeaturemask =
+        rt::spawn_blocking(|| cc_fs::read_bytes_blocking(Path::new(PP_FEATURE_MASK_PATH)))
+            .await??;
+    parse_pp_feature_mask(&String::from_utf8(ppfeaturemask)?)
+}
+
+fn parse_pp_feature_mask(ppfeaturemask: &str) -> Result<u64> {
     let ppfeaturemask = ppfeaturemask
         .trim()
         .strip_prefix("0x")
@@ -269,8 +276,17 @@ async fn regenerate_initramfs(initramfs_type: InitramfsType) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_overdrive_mask, parse_amdgpu_configurator, AmdgpuConfigurator, InitramfsType,
+        compute_overdrive_mask, parse_amdgpu_configurator, parse_pp_feature_mask,
+        AmdgpuConfigurator, InitramfsType,
     };
+
+    // Verify the module parameter parses as the kernel prints it, and only with its hex prefix.
+    #[test]
+    fn the_pp_feature_mask_parses_as_the_kernel_prints_it() {
+        assert_eq!(parse_pp_feature_mask("0xfff7bfff\n").unwrap(), 0xfff7_bfff);
+        assert!(parse_pp_feature_mask("fff7bfff\n").is_err());
+        assert!(parse_pp_feature_mask("0xzz\n").is_err());
+    }
 
     // Verify OR'ing a zero mask produces exactly the overdrive bit.
     #[test]

@@ -3,29 +3,33 @@
 
 //! Per-device sysfs IO, isolated on a thread of its own.
 //!
-//! kernfs advertises a `.poll`, so `io_uring` issues sysfs reads inline on the submitting thread
-//! and kernfs then blocks anyway. A driver that does a USB round trip inside its read therefore
-//! parks the whole single-threaded runtime, and with it the snapshot cap, the permit timeouts and
-//! the failsafe's staleness counting: every protection the daemon has is a timer on the runtime
-//! the stall is holding.
+//! A sysfs read blocks in the driver's `show()`, and cannot be cancelled. A driver that does a
+//! USB round trip inside its read would therefore park the whole single-threaded runtime, were it
+//! read there, and with it the snapshot cap, the permit timeouts and the failsafe's staleness
+//! counting: every protection the daemon has is a timer on the runtime the stall would hold.
 //!
-//! One thread, one ring and one `SysfsFdCache` per device makes that machinery able to run. It
-//! adds no safety of its own.
+//! One thread and one `SysfsFdCache` per device makes that machinery able to run. It adds no
+//! safety of its own. The thread runs no runtime: it blocks on its queue and in plain syscalls.
 use std::cell::{Cell, RefCell};
 use std::fmt::Display;
+use std::future::Future;
 use std::io::{Error, ErrorKind};
-use std::ops::Not;
+use std::ops::{Deref, Not};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use log::{debug, error, warn};
+use log::{debug, warn};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::affinity;
 use crate::cc_fs::{self, ReadIndex, SysfsValue};
+use crate::config::Config;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::rt;
+use crate::rt::reply::{ReplyPool, ReplySender};
 
 /// Consecutive reply timeouts before a device is declared unreachable and taken out of the
 /// per-tick rotation.
@@ -59,8 +63,8 @@ const _: () = assert!(QUEUE_DEPTH > 0);
 pub const READ_BATCH_MAX: usize = 512;
 const _: () = assert!(READ_BATCH_MAX > 0);
 
-/// Stack for a worker thread. It runs one `async fn` with a fixed buffer and no recursion, so the
-/// default 8 MiB is wasted address space once there is one per device.
+/// Stack for a worker thread. It runs one blocking loop over fixed buffers with no recursion, so
+/// the default 8 MiB is wasted address space once there is one per device.
 const WORKER_STACK_BYTES: usize = 256 * 1024;
 
 /// How long one operation may take before it counts against the device's health.
@@ -75,6 +79,12 @@ pub fn reply_timeout_for(poll_rate: f64) -> Duration {
     debug_assert!(poll_rate >= 0.5);
     debug_assert!(poll_rate <= 5.0);
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
+}
+
+/// `reply_timeout_for` the configured poll rate.
+#[must_use]
+pub fn reply_timeout_from(config: &Config) -> Duration {
+    reply_timeout_for(config.poll_rate_or_default())
 }
 
 /// What the caller can observe about a device's IO.
@@ -125,17 +135,30 @@ impl DeviceIo {
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
         let thread_name = worker_thread_name(device_name);
         debug!("device IO worker starting: {thread_name}");
+        let running = Arc::new(());
+        let liveness = WorkerLiveness(Arc::downgrade(&running));
         // Detached deliberately: a wedged worker never returns, so there is no handle worth
         // keeping. Holding one would only invite a `join` that cannot be bounded.
-        std::thread::Builder::new()
+        let builder = std::thread::Builder::new()
             .name(thread_name)
-            .stack_size(WORKER_STACK_BYTES)
-            .spawn(move || run_worker(rx))?;
+            .stack_size(WORKER_STACK_BYTES);
+        affinity::spawn_worker(builder, move || {
+            run_worker(rx);
+            // Held for the thread's whole life, so its exit can be seen once every handle is
+            // gone: see `WorkerLiveness`.
+            drop(running);
+        })?;
         Ok(Self::Threaded(Rc::new(Worker {
             state: HealthState::new(device_name.to_owned()),
             tx,
             reply_timeout,
             pending_registry: RefCell::new(None),
+            spare_indices: RefCell::default(),
+            spare_values: RefCell::default(),
+            read_replies: ReplyPool::default(),
+            batch_replies: ReplyPool::default(),
+            write_replies: ReplyPool::default(),
+            liveness,
         })))
     }
 
@@ -157,33 +180,80 @@ impl DeviceIo {
         }
     }
 
-    /// Reads one numeric attribute.
+    /// Leaves the unreachable and answering-again warnings to the owner, which can name what a
+    /// stall affects. The health rules are unchanged. A no-op when not isolated, as nothing is
+    /// announced there.
+    #[must_use]
+    pub fn owner_announces_health(self) -> Self {
+        if let Self::Threaded(worker) = &self {
+            worker.state.leave_announcements_to_owner();
+        }
+        self
+    }
+
     /// Reads one attribute by path, without caching its descriptor.
     ///
-    /// For detection probes, labels and read-before-write checks: none repeat per tick, so a held
-    /// descriptor buys nothing. The per-tick set goes through `read_many`.
+    /// For detection probes, labels and read-before-write checks, none of which repeat per tick.
+    /// Custom sensor File sources are the per-tick exception: they read user-named files by path.
+    /// The hwmon per-tick set goes through `read_many`.
     pub async fn read_value(&self, path: &Path) -> Result<SysfsValue> {
         match self {
             Self::Inline(_) => cc_fs::read_sysfs_value(path).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch("reading", &path.display(), |reply| Request::Read {
-                        path: path.to_path_buf(),
-                        reply,
+                    .dispatch(
+                        "reading",
+                        &path.display(),
+                        || worker.read_replies.channel(),
+                        |reply| Request::Read {
+                            path: path.to_path_buf(),
+                            reply,
+                        },
+                    )
+                    .await
+            }
+        }
+    }
+
+    /// Reads one whole attribute by path, for what does not fit a `SysfsValue`: labels, multi-line
+    /// attributes such as `uevent` and the PMFW tables, and binary pages such as SCSI VPD.
+    ///
+    /// One-shot like `read_value`, and bounded by `cc_fs::ATTRIBUTE_MAX_BYTES` on the worker.
+    pub async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+        match self {
+            Self::Inline(_) => cc_fs::read_bytes(path).await,
+            Self::Threaded(worker) => {
+                worker
+                    .dispatch("reading", &path.display(), oneshot::channel, |reply| {
+                        Request::ReadBytes {
+                            path: path.to_path_buf(),
+                            reply,
+                        }
                     })
                     .await
             }
         }
     }
 
+    /// `read_bytes` as UTF-8 text.
+    pub async fn read_text(&self, path: &Path) -> Result<String> {
+        let bytes = self.read_bytes(path).await?;
+        Ok(String::from_utf8(bytes)?)
+    }
+
     /// Reads one attribute through its slot when the registry gave it one, by path otherwise.
     ///
     /// The per-tick single reads all want this: the slot keeps the descriptor across ticks, and
-    /// the path is the honest fallback for a device whose table never installed.
-    pub async fn read_one(&self, slot: Option<ReadIndex>, path: &Path) -> Result<SysfsValue> {
+    /// the path is the honest fallback for a device whose table never installed. The path is
+    /// built only for that fallback, so a slotted read allocates none.
+    pub async fn read_one(
+        &self,
+        slot: Option<ReadIndex>,
+        path: impl FnOnce() -> PathBuf,
+    ) -> Result<SysfsValue> {
         match slot {
-            Some(slot) => self.read_many(&[slot]).await.remove(0),
-            None => self.read_value(path).await,
+            Some(slot) => self.read_many([slot]).await.take(0),
+            None => self.read_value(&path()).await,
         }
     }
 
@@ -240,49 +310,28 @@ impl DeviceIo {
     /// Reads several attributes in one hop, so a device's whole attribute set costs one round
     /// trip rather than one each. Results are positional, with per-path errors preserved.
     ///
+    /// On the threaded path a warm batch allocates nothing: the slot and result buffers travel to
+    /// the worker and back, the result buffer comes home when the `ReadBatch` drops, and the
+    /// reply channel is a recycled one.
+    ///
     /// # Panics
     ///
-    /// Debug builds assert the batch is within `READ_BATCH_MAX` and that the reply is positional.
-    pub async fn read_many(&self, indices: &[ReadIndex]) -> Vec<Result<SysfsValue>> {
-        debug_assert!(indices.len() <= READ_BATCH_MAX);
-        if indices.is_empty() {
-            return Vec::new();
-        }
+    /// Debug builds assert the batch is within `READ_BATCH_MAX`, and on the threaded path that the
+    /// reply is positional.
+    pub async fn read_many(&self, indices: impl IntoIterator<Item = ReadIndex>) -> ReadBatch<'_> {
         match self {
             Self::Inline(fds) => {
-                let mut out = Vec::with_capacity(indices.len());
+                let indices = indices.into_iter();
+                let mut values = Vec::with_capacity(indices.size_hint().0);
                 for index in indices {
-                    out.push(fds.read_index(*index).await);
+                    debug_assert!(values.len() < READ_BATCH_MAX);
+                    values.push(fds.read_index(index));
+                    // Each read blocks the runtime thread, so other ready tasks run between them.
+                    rt::yield_now().await;
                 }
-                out
+                ReadBatch { values, home: None }
             }
-            Self::Threaded(worker) => {
-                worker.ensure_registry().await;
-                let batch = indices.to_vec();
-                let expected = batch.len();
-                let dispatched = worker
-                    .dispatch("reading", &BatchLabel(indices[0], expected), |reply| {
-                        Request::ReadMany {
-                            indices: batch,
-                            reply,
-                        }
-                    })
-                    .await;
-                match dispatched {
-                    Ok(values) => {
-                        debug_assert_eq!(values.len(), expected);
-                        values
-                    }
-                    // The device did not answer at all, so every path in the batch failed the
-                    // same way. Fanning the one error out keeps the result positional.
-                    Err(err) => {
-                        let message = err.to_string();
-                        (0..expected)
-                            .map(|_| Err(anyhow::anyhow!("{message}")))
-                            .collect()
-                    }
-                }
-            }
+            Self::Threaded(worker) => worker.read_many(indices).await,
         }
     }
 
@@ -294,11 +343,39 @@ impl DeviceIo {
             Self::Inline(_) => cc_fs::write(path, data).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch("writing", &path.display(), |reply| Request::Write {
-                        path: path.to_path_buf(),
-                        data,
-                        reply,
+                    .dispatch("writing", &path.display(), oneshot::channel, |reply| {
+                        Request::Write {
+                            path: path.to_path_buf(),
+                            data,
+                            reply,
+                        }
                     })
+                    .await
+            }
+        }
+    }
+
+    /// Writes one number to an attribute through its slot when the registry gave it one, by path
+    /// otherwise.
+    ///
+    /// For the per-tick duty write: through a slot, neither the path nor the value is copied to
+    /// the heap, and the reply channel is a recycled one. The path is built only for the
+    /// fallback. The inline path writes by path, as it has no worker to resolve a slot.
+    pub async fn write_one(
+        &self,
+        slot: Option<ReadIndex>,
+        value: u8,
+        path: impl FnOnce() -> PathBuf,
+    ) -> Result<()> {
+        match (self, slot) {
+            (Self::Threaded(worker), Some(index)) => worker.write_index(index, value).await,
+            (_, slot) => {
+                let path = path();
+                debug_assert!(path.as_os_str().is_empty().not(), "a write needs a path");
+                if let Some(index) = slot {
+                    self.debug_assert_slot(index, &path);
+                }
+                self.write_value(&path, value.to_string().into_bytes())
                     .await
             }
         }
@@ -331,14 +408,43 @@ impl DeviceIo {
     #[cfg(test)]
     #[must_use]
     pub fn wedged_for_test(reply_timeout: Duration) -> (Self, mpsc::Receiver<Request>) {
+        let (io, rx, _running) = Self::wedged_running_for_test(reply_timeout);
+        (io, rx)
+    }
+
+    /// `wedged_for_test`, with the token that stands in for the worker's thread: its
+    /// `WorkerLiveness` reports it running until the token is dropped, which is what a worker
+    /// whose read finally returned does.
+    #[cfg(test)]
+    #[must_use]
+    pub fn wedged_running_for_test(
+        reply_timeout: Duration,
+    ) -> (Self, mpsc::Receiver<Request>, Arc<()>) {
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
+        let running = Arc::new(());
         let worker = Worker {
             state: HealthState::new("wedged".to_owned()),
             tx,
             reply_timeout,
             pending_registry: RefCell::new(None),
+            spare_indices: RefCell::default(),
+            spare_values: RefCell::default(),
+            read_replies: ReplyPool::default(),
+            batch_replies: ReplyPool::default(),
+            write_replies: ReplyPool::default(),
+            liveness: WorkerLiveness(Arc::downgrade(&running)),
         };
-        (Self::Threaded(Rc::new(worker)), rx)
+        (Self::Threaded(Rc::new(worker)), rx, running)
+    }
+
+    /// Whether this device's worker thread still runs, observable after every handle is
+    /// dropped. `None` when not isolated.
+    #[must_use]
+    pub fn liveness(&self) -> Option<WorkerLiveness> {
+        match self {
+            Self::Inline(_) => None,
+            Self::Threaded(worker) => Some(worker.liveness.clone()),
+        }
     }
 
     /// Lets the next dispatch through even if the device is currently unreachable.
@@ -371,7 +477,7 @@ impl DeviceIo {
         match self {
             Self::Inline(fds) => fds.len(),
             Self::Threaded(worker) => worker
-                .dispatch("sending", &"descriptor-count", |reply| {
+                .dispatch("sending", &"descriptor-count", oneshot::channel, |reply| {
                     Request::DescriptorCount { reply }
                 })
                 .await
@@ -396,6 +502,9 @@ pub struct HealthState {
     consecutive_timeouts: Cell<u8>,
     /// `Some` while the device is unreachable: no request is dispatched until this instant.
     probe_after: Cell<Option<Instant>>,
+    /// Whether going unreachable and answering again are warned here. Off when the owner can
+    /// name what the stall affects better than `device_name` does.
+    announces: Cell<bool>,
 }
 
 impl HealthState {
@@ -405,12 +514,19 @@ impl HealthState {
             device_name,
             consecutive_timeouts: Cell::new(0),
             probe_after: Cell::new(None),
+            announces: Cell::new(true),
         }
     }
 
     #[must_use]
     pub fn device_name(&self) -> &str {
         &self.device_name
+    }
+
+    /// Names the device in later logs, for when detection learns its name after the worker
+    /// started.
+    pub fn rename(&mut self, device_name: String) {
+        self.device_name = device_name;
     }
 
     /// Whether a device that is not answering should be given its next probe yet.
@@ -427,10 +543,12 @@ impl HealthState {
             debug!("device IO recovered: {}", self.device_name);
         }
         if self.probe_after.get().is_some() {
-            warn!(
-                "Device {} is answering again after being unreachable.",
-                self.device_name
-            );
+            if self.announces.get() {
+                warn!(
+                    "Device {} is answering again after being unreachable.",
+                    self.device_name
+                );
+            }
         }
         self.consecutive_timeouts.set(0);
         self.probe_after.set(None);
@@ -452,12 +570,25 @@ impl HealthState {
             .set(Some(Instant::now() + UNREACHABLE_PROBE_INTERVAL));
         // Once, on the way in. A device that stays wedged must not log every probe.
         if was_unreachable.not() {
-            warn!("{}", unreachable_warning(&self.device_name, timeouts));
+            if self.announces.get() {
+                warn!("{}", unreachable_warning(&self.device_name, timeouts));
+            }
         }
+    }
+
+    /// Leaves the unreachable and answering-again warnings to the owner.
+    pub fn leave_announcements_to_owner(&self) {
+        self.announces.set(false);
     }
 
     /// Lets the next dispatch through even if the device is currently unreachable.
     pub fn allow_next_dispatch(&self) {
+        self.probe_after.set(None);
+    }
+
+    /// Forgets every past timeout, for when the service behind the device was restarted.
+    pub fn reset(&self) {
+        self.consecutive_timeouts.set(0);
         self.probe_after.set(None);
     }
 
@@ -485,28 +616,24 @@ impl HealthState {
     }
 }
 
-/// Splits a channel set into the slots to read and a per-channel flag saying whether it has one.
+/// Pairs each channel with its own result from a positional batch.
 ///
-/// The flags are what keep a positional reply aligned: a channel with no slot contributes nothing
-/// to the batch, so zipping the reply onto the channels directly would hand it the next channel's
-/// reading. Returning the flags alongside lets the caller skip it instead.
-pub fn slots_for<T>(
-    channels: &[T],
-    slot_of: impl Fn(&T) -> Option<ReadIndex>,
-) -> (Vec<ReadIndex>, Vec<bool>) {
-    let mut slots = Vec::with_capacity(channels.len());
-    let mut slotted = Vec::with_capacity(channels.len());
-    for channel in channels {
-        match slot_of(channel) {
-            Some(slot) => {
-                slots.push(slot);
-                slotted.push(true);
-            }
-            None => slotted.push(false),
-        }
-    }
-    debug_assert_eq!(slotted.len(), channels.len());
-    (slots, slotted)
+/// A channel with no slot added nothing to the batch, so it gets `None`. Zipping the reply onto
+/// the channels directly would hand it the next channel's reading, which a fan curve then follows
+/// with nothing logged.
+pub fn pair_with_results<T, R>(
+    channels: impl Iterator<Item = T>,
+    has_slot: impl Fn(&T) -> bool,
+    mut results: impl Iterator<Item = R>,
+) -> impl Iterator<Item = (T, Option<R>)> {
+    channels.map(move |channel| {
+        let result = if has_slot(&channel) {
+            results.next()
+        } else {
+            None
+        };
+        (channel, result)
+    })
 }
 
 /// The main-thread half of a worker: the queue into it, and what we have observed about it.
@@ -522,6 +649,30 @@ pub struct Worker {
     /// such a device still reports timeouts and still goes unreachable, rather than failing every
     /// read as unregistered and looking healthy while doing it.
     pending_registry: RefCell<Option<Vec<PathBuf>>>,
+    /// Batch buffers kept between batches, so a warm batch allocates neither. Empty while a batch
+    /// is in flight; a batch that overlaps it, or follows a timeout, allocates its own.
+    spare_indices: RefCell<Vec<ReadIndex>>,
+    spare_values: RefCell<Vec<Result<SysfsValue>>>,
+    /// Reply channels for the per-tick requests, kept so a warm one allocates nothing.
+    read_replies: ReplyPool<Result<SysfsValue>>,
+    batch_replies: ReplyPool<Result<BatchBuffers>>,
+    write_replies: ReplyPool<Result<()>>,
+    liveness: WorkerLiveness,
+}
+
+/// Whether a worker thread still runs.
+///
+/// Dropping a worker's last handle closes its queue, and the thread exits once the request it is
+/// serving returns: at once for a healthy device, never for one parked in the kernel. This tells
+/// the two apart without keeping a handle, which would keep the thread alive.
+#[derive(Clone, Debug)]
+pub struct WorkerLiveness(std::sync::Weak<()>);
+
+impl WorkerLiveness {
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.0.strong_count() > 0
+    }
 }
 
 impl Worker {
@@ -529,14 +680,17 @@ impl Worker {
     ///
     /// Only a timeout counts against the device's health. An `io::Error` coming back means the
     /// device answered and the answer was an error, which says nothing about whether it is wedged.
-    async fn dispatch<T, F>(
+    ///
+    /// `channel` makes the reply channel, and is called only once the request will be sent.
+    async fn dispatch<T, Tx, Rx, E>(
         &self,
         verb: &'static str,
         what: &dyn Display,
-        make_request: F,
+        channel: impl FnOnce() -> (Tx, Rx),
+        make_request: impl FnOnce(Tx) -> Request,
     ) -> Result<T>
     where
-        F: FnOnce(oneshot::Sender<Result<T>>) -> Request,
+        Rx: Future<Output = std::result::Result<Result<T>, E>>,
     {
         // Refuse to queue for a device that is not answering, until its next probe is due.
         // Otherwise every tick adds a request to a queue nobody drains and pays a full timeout
@@ -544,7 +698,7 @@ impl Worker {
         if self.state.dispatchable().not() {
             return Err(unreachable(self.state.device_name(), what));
         }
-        let (reply_tx, reply_rx) = oneshot::channel();
+        let (reply_tx, reply_rx) = channel();
         let request = make_request(reply_tx);
         let exchange = async {
             self.tx
@@ -572,6 +726,80 @@ impl Worker {
         }
     }
 
+    async fn read_many(&self, indices: impl IntoIterator<Item = ReadIndex>) -> ReadBatch<'_> {
+        let mut batch_indices = self.spare_indices.take();
+        batch_indices.clear();
+        batch_indices.extend(indices);
+        debug_assert!(batch_indices.len() <= READ_BATCH_MAX);
+        if batch_indices.is_empty() {
+            self.spare_indices.replace(batch_indices);
+            return ReadBatch {
+                values: Vec::new(),
+                home: None,
+            };
+        }
+        self.ensure_registry().await;
+        let expected = batch_indices.len();
+        let label = BatchLabel(batch_indices[0], expected);
+        let buffers = BatchBuffers {
+            indices: batch_indices,
+            values: self.spare_values.take(),
+        };
+        let dispatched = self
+            .dispatch(
+                "reading",
+                &label,
+                || self.batch_replies.channel(),
+                |reply| Request::ReadMany { buffers, reply },
+            )
+            .await;
+        let values = match dispatched {
+            Ok(buffers) => {
+                debug_assert_eq!(buffers.values.len(), expected);
+                debug_assert_eq!(buffers.indices.len(), expected);
+                self.spare_indices.replace(buffers.indices);
+                buffers.values
+            }
+            // The device did not answer at all, so every path in the batch failed the same way.
+            // Fanning the one error out keeps the result positional. The buffers stay with the
+            // worker, so the next batch allocates a fresh pair.
+            Err(err) => {
+                let message = err.to_string();
+                (0..expected)
+                    .map(|_| Err(anyhow::anyhow!("{message}")))
+                    .collect()
+            }
+        };
+        ReadBatch {
+            values,
+            home: Some(&self.spare_values),
+        }
+    }
+
+    /// Writes `value` to a slot's attribute. The table goes first, as a write through a slot the
+    /// worker has not been given fails as unregistered.
+    async fn write_index(&self, index: ReadIndex, value: u8) -> Result<()> {
+        debug_assert!(
+            self.pending_registry
+                .borrow()
+                .as_ref()
+                .is_none_or(|paths| usize::from(index) < paths.len()),
+            "write slot {index} is outside the read table"
+        );
+        self.ensure_registry().await;
+        self.dispatch(
+            "writing",
+            &SlotLabel(index),
+            || self.write_replies.channel(),
+            |reply| Request::WriteIndex {
+                index,
+                value,
+                reply,
+            },
+        )
+        .await
+    }
+
     fn health(&self) -> DeviceHealth {
         self.state.health()
     }
@@ -582,9 +810,8 @@ impl Worker {
             return;
         };
         if self
-            .dispatch("sending", &"install", |reply| Request::Install {
-                paths,
-                reply,
+            .dispatch("sending", &"install", oneshot::channel, |reply| {
+                Request::Install { paths, reply }
             })
             .await
             .is_ok()
@@ -600,11 +827,15 @@ impl Worker {
 pub enum Request {
     Read {
         path: PathBuf,
-        reply: oneshot::Sender<Result<SysfsValue>>,
+        reply: ReplySender<Result<SysfsValue>>,
+    },
+    ReadBytes {
+        path: PathBuf,
+        reply: oneshot::Sender<Result<Vec<u8>>>,
     },
     ReadMany {
-        indices: Vec<ReadIndex>,
-        reply: oneshot::Sender<Result<Vec<Result<SysfsValue>>>>,
+        buffers: BatchBuffers,
+        reply: ReplySender<Result<BatchBuffers>>,
     },
     /// Hands the worker its read table. Sent once, after detection settles the channel set.
     Install {
@@ -616,6 +847,13 @@ pub enum Request {
         data: Vec<u8>,
         reply: oneshot::Sender<Result<()>>,
     },
+    /// Writes a number to a slot's attribute, formatted on the worker, so nothing is copied to
+    /// the heap for it.
+    WriteIndex {
+        index: ReadIndex,
+        value: u8,
+        reply: ReplySender<Result<()>>,
+    },
     /// Counts the worker's own descriptor cache, so a test can prove it is not reopening.
     #[cfg(test)]
     DescriptorCount {
@@ -624,49 +862,109 @@ pub enum Request {
     ClearDescriptors,
 }
 
-/// The worker thread body: its own runtime, its own descriptor cache, one request at a time.
-fn run_worker(rx: mpsc::Receiver<Request>) {
-    match rt::worker_runtime(serve(rx)) {
-        Ok(()) => debug!("device IO worker stopped"),
-        // The device loses isolation, not its readings: every dispatch then times out and the
-        // device is marked unreachable, which is the same path a wedged driver takes.
-        Err(err) => error!("Device IO worker could not start its runtime: {err}"),
+/// One batch's slots and results, sent to the worker and back so a warm batch allocates neither.
+#[derive(Debug)]
+pub struct BatchBuffers {
+    pub indices: Vec<ReadIndex>,
+    pub values: Vec<Result<SysfsValue>>,
+}
+
+/// One batch's results, positional with the slots asked for.
+///
+/// Dropping it hands the result buffer back to the device's worker for the next batch.
+#[derive(Debug)]
+pub struct ReadBatch<'io> {
+    values: Vec<Result<SysfsValue>>,
+    /// `None` on the inline path and for an empty batch, which have no buffer worth keeping.
+    home: Option<&'io RefCell<Vec<Result<SysfsValue>>>>,
+}
+
+impl ReadBatch<'_> {
+    /// Moves one result out, leaving an empty value behind, which costs no heap the way an error
+    /// would. Each position is taken once, so the placeholder is never read; read anyway, it fails
+    /// to parse.
+    pub fn take(&mut self, index: usize) -> Result<SysfsValue> {
+        debug_assert!(index < self.values.len());
+        std::mem::replace(&mut self.values[index], Ok(SysfsValue::empty()))
+    }
+
+    /// Every result in order, each taken as by `take`.
+    pub fn take_all(&mut self) -> impl Iterator<Item = Result<SysfsValue>> + '_ {
+        self.values
+            .iter_mut()
+            .map(|value| std::mem::replace(value, Ok(SysfsValue::empty())))
     }
 }
 
-/// Serve requests until the last `DeviceIo` handle is dropped and the queue closes.
-async fn serve(mut rx: mpsc::Receiver<Request>) {
+impl Deref for ReadBatch<'_> {
+    type Target = [Result<SysfsValue>];
+
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+impl Drop for ReadBatch<'_> {
+    fn drop(&mut self) {
+        let Some(home) = self.home else {
+            return;
+        };
+        // Errors hold heap, so they are freed now rather than when the buffer is next filled.
+        self.values.clear();
+        home.replace(std::mem::take(&mut self.values));
+    }
+}
+
+/// The worker thread body: its own descriptor cache, one blocking request at a time, until the
+/// last `DeviceIo` handle is dropped and the queue closes.
+fn run_worker(mut rx: mpsc::Receiver<Request>) {
     let fds = cc_fs::SysfsFdCache::default();
-    while let Some(request) = rx.recv().await {
-        match request {
-            Request::Read { path, reply } => {
-                // Uncached: one-shots are detection probes, labels and pre-write reads, none of
-                // which repeat per tick. The table is for the per-tick set alone.
-                let result = cc_fs::read_sysfs_value(&path).await;
-                // A dropped receiver means the caller already timed out. Expected, not an error.
-                let _ = reply.send(result);
-            }
-            Request::ReadMany { indices, reply } => {
-                let mut values = Vec::with_capacity(indices.len());
-                for index in &indices {
-                    values.push(fds.read_index(*index).await);
-                }
-                let _ = reply.send(Ok(values));
-            }
-            Request::Install { paths, reply } => {
-                fds.install(paths);
-                let _ = reply.send(Ok(()));
-            }
-            #[cfg(test)]
-            Request::DescriptorCount { reply } => {
-                let _ = reply.send(Ok(fds.len()));
-            }
-            Request::Write { path, data, reply } => {
-                let result = cc_fs::write(&path, data).await;
-                let _ = reply.send(result);
-            }
-            Request::ClearDescriptors => fds.clear(),
+    while let Some(request) = rx.blocking_recv() {
+        serve_one(&fds, request);
+    }
+    debug!("device IO worker stopped");
+}
+
+fn serve_one(fds: &cc_fs::SysfsFdCache, request: Request) {
+    match request {
+        Request::Read { path, reply } => {
+            // Uncached: one-shots are detection probes, labels and pre-write reads, none of
+            // which repeat per tick. The table is for the per-tick set alone.
+            // A caller that already timed out never reads it. Expected, not an error.
+            reply.send(cc_fs::read_sysfs_value_blocking(&path));
         }
+        Request::ReadBytes { path, reply } => {
+            let _ = reply.send(cc_fs::read_bytes_blocking(&path));
+        }
+        Request::ReadMany { mut buffers, reply } => {
+            buffers.values.clear();
+            buffers
+                .values
+                .extend(buffers.indices.iter().map(|index| fds.read_index(*index)));
+            debug_assert_eq!(buffers.values.len(), buffers.indices.len());
+            reply.send(Ok(buffers));
+        }
+        Request::Install { paths, reply } => {
+            fds.install(paths);
+            let _ = reply.send(Ok(()));
+        }
+        #[cfg(test)]
+        Request::DescriptorCount { reply } => {
+            let _ = reply.send(Ok(fds.len()));
+        }
+        Request::Write { path, data, reply } => {
+            let result = cc_fs::write_blocking(&path, &data);
+            let _ = reply.send(result);
+        }
+        Request::WriteIndex {
+            index,
+            value,
+            reply,
+        } => {
+            let mut digits = [0; 3];
+            reply.send(fds.write_index(index, decimal_digits(value, &mut digits)));
+        }
+        Request::ClearDescriptors => fds.clear(),
     }
 }
 
@@ -697,28 +995,82 @@ fn unreachable_warning(device_name: &str, timeouts: u8) -> String {
     )
 }
 
+/// Whether `err` means the worker never answered, rather than answered with an error.
+///
+/// The kind alone cannot tell them apart: a driver that fails its own read with `ETIMEDOUT`
+/// answered. Callers that must not mistake a stall for a missing attribute ask here.
+#[must_use]
+pub fn is_unanswered(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<Error>()
+            .and_then(Error::get_ref)
+            .is_some_and(<dyn std::error::Error + Send + Sync>::is::<Unanswered>)
+    })
+}
+
+/// The payload of every error that means no answer came: a timeout, an unreachable device, or a
+/// worker that is gone. Carried inside the `io::Error`, so its kind and message stay as they were.
+#[derive(Debug)]
+struct Unanswered(String);
+
+impl Display for Unanswered {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Unanswered {}
+
+fn unanswered(kind: ErrorKind, message: String) -> anyhow::Error {
+    Error::new(kind, Unanswered(message)).into()
+}
+
 fn timed_out(
     device_name: &str,
     verb: &'static str,
     what: &dyn Display,
     budget: Duration,
 ) -> anyhow::Error {
-    Error::new(
+    unanswered(
         ErrorKind::TimedOut,
         format!(
             "device {device_name} did not answer within {} ms {verb} {what}",
             budget.as_millis()
         ),
     )
-    .into()
 }
 
 fn unreachable(device_name: &str, what: &dyn Display) -> anyhow::Error {
-    Error::new(
+    unanswered(
         ErrorKind::HostUnreachable,
         format!("device {device_name} is unreachable, skipping {what}"),
     )
-    .into()
+}
+
+/// `value` in decimal, written into `digits`, as a sysfs attribute takes a number.
+fn decimal_digits(value: u8, digits: &mut [u8; 3]) -> &[u8] {
+    let mut start = digits.len();
+    let mut rest = value;
+    loop {
+        start -= 1;
+        digits[start] = b'0' + rest % 10;
+        rest /= 10;
+        if rest == 0 {
+            break;
+        }
+    }
+    debug_assert!(start < digits.len());
+    &digits[start..]
+}
+
+/// Names a slot in a timeout message without carrying a path across the boundary.
+struct SlotLabel(ReadIndex);
+
+impl Display for SlotLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the attribute in slot {}", self.0)
+    }
 }
 
 /// Names a batch in a timeout message without carrying a path across the boundary.
@@ -731,16 +1083,27 @@ impl Display for BatchLabel {
 }
 
 fn worker_gone(device_name: &str) -> anyhow::Error {
-    Error::new(
+    unanswered(
         ErrorKind::BrokenPipe,
         format!("device {device_name} IO worker is gone"),
     )
-    .into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reply_timeout_from_follows_the_configured_poll_rate() {
+        // Goal: the reply timeout scales with the configured poll rate. Method: set a non-default
+        // rate and compare against the timeout derived from it.
+        let config = Config::init_default_config().unwrap();
+        let mut settings = config.get_settings().unwrap();
+        settings.poll_rate = 2.5;
+        config.set_settings(&settings);
+        assert_eq!(reply_timeout_from(&config), reply_timeout_for(2.5));
+        assert_ne!(reply_timeout_for(2.5), reply_timeout_for(1.0));
+    }
 
     /// Goal: the descriptor cache is the reason a device thread is cheaper than a pool, but it
     /// lives on the worker where nothing could see it, so the no-leak claim was only ever proven
@@ -763,10 +1126,10 @@ mod tests {
                 "nothing open before the first read"
             );
 
-            io.read_many(&slots).await;
+            io.read_many(slots.iter().copied()).await;
             assert_eq!(io.descriptor_count().await, 2);
 
-            io.read_many(&slots).await;
+            io.read_many(slots.iter().copied()).await;
             assert_eq!(
                 io.descriptor_count().await,
                 2,
@@ -786,7 +1149,7 @@ mod tests {
                 .await
                 .expect("install never reports failure, it retries");
 
-            let results = io.read_many(&[0]).await;
+            let results = io.read_many([0]).await;
 
             assert_eq!(results.len(), 1);
             let message = results[0].as_ref().unwrap_err().to_string();
@@ -799,36 +1162,227 @@ mod tests {
         });
     }
 
-    // --- slots_for: keeping a positional reply aligned ---
+    // --- pair_with_results: keeping a positional reply aligned ---
 
-    /// Goal: slots are positional, so a channel with no slot must be marked, not skipped silently.
-    /// Zipping a short reply onto the full channel list reports one sensor's value under another
-    /// sensor's name, which a fan curve then follows with nothing logged. The debug assertion in
-    /// the readers catches a missing slot in tests; this is what keeps release builds correct.
+    /// Goal: slots are positional, so a channel with no slot must get nothing, not the next
+    /// channel's value. The debug assertion in the readers catches a missing slot in tests; this
+    /// is what keeps release builds correct.
     ///
-    /// Method: gaps at both ends and in the middle, then walk the reply back onto the channels the
-    /// way the readers do and check each value lands on its own channel.
+    /// Method: gaps at both ends and in the middle, then pair the reply the way the readers do and
+    /// check each value lands on its own channel.
     #[test]
-    fn an_unslotted_channel_is_flagged_so_the_reply_stays_aligned() {
+    fn an_unslotted_channel_gets_no_result_so_the_reply_stays_aligned() {
         let channels = [None, Some(7), None, Some(3), None];
-        let (slots, slotted) = slots_for(&channels, |slot| *slot);
-
-        assert_eq!(slots, vec![7, 3], "only real slots go into the batch");
-        assert_eq!(slotted, vec![false, true, false, true, false]);
-
-        // The reply comes back in slot order; walk it back the way the readers do.
         let reply = ["value-for-7", "value-for-3"];
-        let mut reply = reply.into_iter();
-        let landed: Vec<Option<&str>> = slotted
-            .into_iter()
-            .map(|has_slot| has_slot.then(|| reply.next()).flatten())
-            .collect();
+
+        let landed: Vec<Option<&str>> =
+            pair_with_results(channels.iter(), |slot| slot.is_some(), reply.into_iter())
+                .map(|(_, value)| value)
+                .collect();
 
         assert_eq!(
             landed,
             vec![None, Some("value-for-7"), None, Some("value-for-3"), None],
             "each value must land on the channel that asked for it"
         );
+    }
+
+    /// Goal: a per-tick single read through its slot must not build the fallback path, which
+    /// costs a heap allocation per read. Method: read once with a slot and once without, counting
+    /// how often each builds its path, and check both read the file.
+    #[test]
+    fn only_an_unslotted_read_builds_its_path() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("temp1_input");
+            std::fs::write(&path, "45000\n").unwrap();
+            let io = DeviceIo::default();
+            io.install_registry(vec![path.clone()]).await.unwrap();
+            let built = Cell::new(0);
+            let path_for = || {
+                built.set(built.get() + 1);
+                path.clone()
+            };
+
+            let slotted = io.read_one(Some(0), path_for).await.unwrap();
+            assert_eq!(built.get(), 0, "a slotted read must not build its path");
+            let unslotted = io.read_one(None, path_for).await.unwrap();
+
+            assert_eq!(built.get(), 1);
+            assert_eq!(slotted.trimmed_str().unwrap(), "45000");
+            assert_eq!(unslotted.trimmed_str().unwrap(), "45000");
+        });
+    }
+
+    // --- ReadBatch: buffers that come home ---
+
+    /// Plays the worker for one batch: fills every slot and replies, returning where the two
+    /// buffers live so a test can tell a reused buffer from a new one.
+    async fn serve_one_batch_by_hand(rx: &mut mpsc::Receiver<Request>) -> (usize, usize) {
+        let Some(Request::ReadMany { mut buffers, reply }) = rx.recv().await else {
+            panic!("expected a batch");
+        };
+        buffers.values.clear();
+        buffers.values.extend(
+            buffers
+                .indices
+                .iter()
+                .map(|_| Ok(SysfsValue::from_bytes(b"41000\n"))),
+        );
+        let addresses = (
+            buffers.indices.as_ptr() as usize,
+            buffers.values.as_ptr() as usize,
+        );
+        reply.send(Ok(buffers));
+        addresses
+    }
+
+    /// Goal: a warm batch must travel in the buffers the last one brought back, which is what
+    /// keeps the per-tick read path from allocating. Method: play the worker by hand, note where
+    /// each batch's buffers live, and check the second batch arrives in the first one's. Also
+    /// check the result buffer is out while a batch is alive and home once it drops.
+    #[test]
+    fn a_warm_batch_travels_in_the_last_batchs_buffers() {
+        crate::rt::test_runtime(async {
+            let (io, mut rx) = DeviceIo::wedged_for_test(WORKER_TIMEOUT);
+            let worker = worker_of(&io);
+            let mut addresses = Vec::with_capacity(2);
+            for _ in 0..2 {
+                let (batch, served) = futures_util::future::join(
+                    io.read_many([0, 1, 2]),
+                    serve_one_batch_by_hand(&mut rx),
+                )
+                .await;
+                assert_eq!(batch.len(), 3);
+                assert!(batch.iter().all(Result::is_ok));
+                assert_eq!(
+                    worker.spare_values.borrow().capacity(),
+                    0,
+                    "the result buffer is with the batch while it lives"
+                );
+                drop(batch);
+                assert!(worker.spare_values.borrow().capacity() >= 3);
+                assert!(
+                    worker.spare_values.borrow().is_empty(),
+                    "results are cleared"
+                );
+                assert_eq!(
+                    worker.batch_replies.spare_count(),
+                    1,
+                    "the reply channel is kept for the next batch"
+                );
+                addresses.push(served);
+            }
+            assert_eq!(
+                addresses[0], addresses[1],
+                "the second batch must reuse the first one's buffers"
+            );
+        });
+    }
+
+    /// Goal: a batch that times out must not leave the next batch without results; it just
+    /// loses the buffers and its reply slot, so a late reply can never reach the next batch.
+    /// Method: time a batch out, let its late reply land, then serve the next by hand.
+    #[test]
+    fn a_batch_after_a_timeout_still_reads() {
+        crate::rt::test_runtime(async {
+            let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let worker = worker_of(&io);
+            let lost = io.read_many([0]).await;
+            assert!(lost[0].is_err());
+            drop(lost);
+            assert_eq!(
+                worker.batch_replies.spare_count(),
+                0,
+                "a timed-out batch orphans its reply slot"
+            );
+            let Ok(Request::ReadMany { mut buffers, reply }) = rx.try_recv() else {
+                panic!("the timed-out batch left its request queued");
+            };
+            buffers.values.clear();
+            buffers.values.push(Ok(SysfsValue::from_bytes(b"99000\n")));
+            reply.send(Ok(buffers));
+
+            let (batch, _) =
+                futures_util::future::join(io.read_many([0]), serve_one_batch_by_hand(&mut rx))
+                    .await;
+
+            assert_eq!(batch.len(), 1);
+            assert_eq!(batch[0].as_ref().unwrap().trimmed_str().unwrap(), "41000");
+        });
+    }
+
+    /// Goal: a warm batch costs the worker thread no heap, so the `ccio-*` threads stop
+    /// allocating per tick. Method: serve the same batch twice against real files on the test
+    /// thread, and count the second.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_batch_allocates_nothing_on_the_worker() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths: Vec<PathBuf> = (1..=3)
+            .map(|n| dir.path().join(format!("temp{n}_input")))
+            .collect();
+        for path in &paths {
+            std::fs::write(path, "41000\n").unwrap();
+        }
+        let fds = cc_fs::SysfsFdCache::default();
+        fds.install(paths);
+        let replies = ReplyPool::default();
+        let (reply, reply_rx) = replies.channel();
+        let cold = BatchBuffers {
+            indices: vec![0, 1, 2],
+            values: Vec::new(),
+        };
+        serve_one(
+            &fds,
+            Request::ReadMany {
+                buffers: cold,
+                reply,
+            },
+        );
+        let warm = crate::rt::poll_to_end(reply_rx).0.unwrap().unwrap();
+        let (reply, reply_rx) = replies.channel();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            serve_one(
+                &fds,
+                Request::ReadMany {
+                    buffers: warm,
+                    reply,
+                },
+            );
+        });
+
+        assert_eq!(allocations, 0);
+        let served = crate::rt::poll_to_end(reply_rx).0.unwrap().unwrap();
+        assert_eq!(served.values.len(), 3);
+        for value in &served.values {
+            assert_eq!(value.as_ref().unwrap().trimmed_str().unwrap(), "41000");
+        }
+    }
+
+    /// Goal: taking values out of a batch allocates nothing, and a position taken twice still
+    /// reads as an error, never as a number. Method: count the allocations of two takes, then
+    /// parse what a second take of the same position returns.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn taking_a_batched_result_allocates_nothing() {
+        let mut batch = ReadBatch {
+            values: vec![
+                Ok(SysfsValue::from_bytes(b"1200\n")),
+                Ok(SysfsValue::from_bytes(b"128\n")),
+            ],
+            home: None,
+        };
+
+        let ((pwm, rpm), allocations) =
+            crate::alloc_count::count_allocations(|| (batch.take(1), batch.take(0)));
+
+        assert_eq!(allocations, 0);
+        assert_eq!(pwm.unwrap().parse::<u8>().unwrap(), 128);
+        assert_eq!(rpm.unwrap().parse::<u32>().unwrap(), 1200);
+        let again = batch.take(0).and_then(|value| value.parse::<u32>());
+        assert!(again.is_err());
     }
 
     // --- HealthState: the rules both workers share ---
@@ -917,7 +1471,7 @@ mod tests {
             io.install_registry(vec![good.clone(), absent.clone(), other.clone()])
                 .await
                 .unwrap();
-            let results = io.read_many(&[0, 1, 2]).await;
+            let results = io.read_many([0, 1, 2]).await;
 
             assert_eq!(results.len(), 3);
             assert_eq!(results[0].as_ref().unwrap().trimmed_str().unwrap(), "41000");
@@ -939,7 +1493,7 @@ mod tests {
             let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             let slots: Vec<ReadIndex> = (0..12).collect();
 
-            let results = io.read_many(&slots).await;
+            let results = io.read_many(slots.iter().copied()).await;
 
             assert_eq!(results.len(), 12, "every slot still gets a result");
             let mut queued = 0;
@@ -959,7 +1513,7 @@ mod tests {
             let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             let slots: Vec<ReadIndex> = (0..4).collect();
 
-            let results = io.read_many(&slots).await;
+            let results = io.read_many(slots.iter().copied()).await;
 
             assert_eq!(results.len(), 4);
             assert!(results.iter().all(Result::is_err), "no slot may look fresh");
@@ -972,7 +1526,7 @@ mod tests {
     fn an_empty_batch_dispatches_nothing() {
         crate::rt::test_runtime(async {
             let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
-            assert!(io.read_many(&[]).await.is_empty());
+            assert!(io.read_many(std::iter::empty()).await.is_empty());
             assert!(rx.try_recv().is_err(), "an empty batch must not be sent");
         });
     }
@@ -992,13 +1546,13 @@ mod tests {
                 .install_registry(vec![good.clone(), absent.clone()])
                 .await
                 .unwrap();
-            let inline = inline_io.read_many(&[0, 1]).await;
+            let inline = inline_io.read_many([0, 1]).await;
             let threaded_io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             threaded_io
                 .install_registry(vec![good, absent])
                 .await
                 .unwrap();
-            let threaded = threaded_io.read_many(&[0, 1]).await;
+            let threaded = threaded_io.read_many([0, 1]).await;
 
             assert_eq!(inline.len(), threaded.len());
             assert_eq!(
@@ -1049,6 +1603,29 @@ mod tests {
         });
     }
 
+    /// Goal: the inline path reads on the runtime thread, so it must give other tasks a turn
+    /// between reads rather than hold the thread for a whole batch. Method: poll a three-slot
+    /// batch with a no-op waker and count the polls: one yield per read, then the result.
+    #[test]
+    fn an_inline_batch_yields_after_each_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths: Vec<PathBuf> = (1..=3)
+            .map(|n| dir.path().join(format!("temp{n}_input")))
+            .collect();
+        for path in &paths {
+            std::fs::write(path, "41000\n").unwrap();
+        }
+        let io = DeviceIo::default();
+        let (installed, _) = crate::rt::poll_to_end(io.install_registry(paths));
+        installed.unwrap();
+
+        let (values, polls) = crate::rt::poll_to_end(io.read_many([0, 1, 2]));
+
+        assert_eq!(values.len(), 3);
+        assert!(values.iter().all(Result::is_ok));
+        assert_eq!(polls, 4, "three reads must yield three times, then finish");
+    }
+
     /// Goal: a real worker thread must return the same bytes the inline path would, so isolating a
     /// device changes only where the read runs. Method: start a worker, read a file written from
     /// the test thread, and read it again after a rewrite to prove the descriptor stays live.
@@ -1087,6 +1664,201 @@ mod tests {
             assert_eq!(written, "128");
             assert_eq!(io.health(), DeviceHealth::Healthy);
         });
+    }
+
+    /// Goal: a duty written through a slot reaches the file the slot was registered with, and
+    /// only an unslotted write builds its path. Method: register two files on a real worker,
+    /// write each way, and read both back.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_slotted_write_reaches_its_registered_file() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let slotted = dir.path().join("pwm1");
+            let unslotted = dir.path().join("pwm2");
+            std::fs::write(&slotted, "0\n").unwrap();
+            std::fs::write(&unslotted, "0\n").unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
+            io.install_registry(vec![slotted.clone()]).await.unwrap();
+
+            io.write_one(Some(0), 128, || panic!("a slotted write builds no path"))
+                .await
+                .unwrap();
+            io.write_one(None, 7, || unslotted.clone()).await.unwrap();
+
+            assert_eq!(std::fs::read_to_string(&slotted).unwrap(), "128");
+            assert_eq!(std::fs::read_to_string(&unslotted).unwrap(), "7");
+            assert_eq!(io.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: a write through a slot the table does not have fails, and touches no file.
+    /// Method: write through slot 1 of a one-entry table.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_write_through_an_unregistered_slot_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pwm1");
+        std::fs::write(&path, "0\n").unwrap();
+        let fds = cc_fs::SysfsFdCache::default();
+        fds.install(vec![path.clone()]);
+
+        let written = fds.write_index(1, b"128");
+
+        assert!(written.is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "0\n");
+    }
+
+    /// Goal: a slotted write costs the worker thread no heap. Method: serve one write against a
+    /// real file on the test thread, then count a second.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_slotted_write_allocates_nothing_on_the_worker() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pwm1");
+        std::fs::write(&path, "0\n").unwrap();
+        let fds = cc_fs::SysfsFdCache::default();
+        fds.install(vec![path.clone()]);
+        let replies = ReplyPool::default();
+        let (reply, reply_rx) = replies.channel();
+        serve_one(
+            &fds,
+            Request::WriteIndex {
+                index: 0,
+                value: 64,
+                reply,
+            },
+        );
+        crate::rt::poll_to_end(reply_rx).0.unwrap().unwrap();
+        let (reply, reply_rx) = replies.channel();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            serve_one(
+                &fds,
+                Request::WriteIndex {
+                    index: 0,
+                    value: 255,
+                    reply,
+                },
+            );
+        });
+
+        assert_eq!(allocations, 0);
+        crate::rt::poll_to_end(reply_rx).0.unwrap().unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "255");
+    }
+
+    /// Goal: a value is written as the decimal a sysfs attribute parses, at every width.
+    /// Method: format the bounds and a value of each digit count.
+    #[test]
+    fn a_value_is_written_in_decimal() {
+        let mut digits = [0; 3];
+        for (value, expected) in [(0, "0"), (7, "7"), (42, "42"), (128, "128"), (255, "255")] {
+            assert_eq!(decimal_digits(value, &mut digits), expected.as_bytes());
+        }
+    }
+
+    /// Goal: whole-attribute reads cross the thread boundary unchanged, past the 64 bytes of a
+    /// `SysfsValue`, so moving a label or `uevent` read onto the worker changes only where it runs.
+    /// Method: read a multi-line text file and a binary file through a real worker and inline, and
+    /// compare both with what was written.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn threaded_whole_attribute_reads_match_inline() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let uevent =
+                "OF_NAME=fan\nOF_FULLNAME=/soc/fan\nOF_COMPATIBLE_0=pwm-fan\nMODALIAS=of\n";
+            assert!(uevent.len() > cc_fs::SYSFS_VALUE_MAX_BYTES);
+            let text = dir.path().join("uevent");
+            std::fs::write(&text, uevent).unwrap();
+            let binary = dir.path().join("vpd_pg80");
+            std::fs::write(&binary, [0x80, 0x00, 0x01, b'S']).unwrap();
+            let threaded = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
+
+            for io in [&threaded, &DeviceIo::default()] {
+                assert_eq!(io.read_text(&text).await.unwrap(), uevent);
+                assert_eq!(
+                    io.read_bytes(&binary).await.unwrap(),
+                    [0x80, 0x00, 0x01, b'S']
+                );
+                assert!(io.read_text(&binary).await.is_err());
+            }
+            assert_eq!(threaded.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: a caller can tell a worker that never answered from a driver that answered with an
+    /// error, its own `ETIMEDOUT` included, without changing what either error says. Method: time
+    /// out, gate and lose a wedged worker, and compare with answered errors of every kind.
+    #[test]
+    fn only_a_missing_answer_reads_as_unanswered() {
+        crate::rt::test_runtime(async {
+            let path = Path::new("/sys/class/hwmon/hwmon0/temp1_input");
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let timed_out = io.read_text(path).await.unwrap_err();
+            worker_of(&io).state.force_unreachable_at(
+                UNREACHABLE_AFTER_TIMEOUTS,
+                Instant::now() + UNREACHABLE_PROBE_INTERVAL,
+            );
+            let gated = io.read_value(path).await.unwrap_err();
+            let (gone_io, gone_rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            drop(gone_rx);
+            let gone = gone_io.read_bytes(path).await.unwrap_err();
+
+            for err in [&timed_out, &gated, &gone] {
+                assert!(is_unanswered(err), "{err}");
+            }
+            assert!(timed_out.to_string().contains("did not answer within"));
+            let driver_timeout = anyhow::Error::from(Error::from(ErrorKind::TimedOut));
+            let dir = tempfile::tempdir().unwrap();
+            let missing = DeviceIo::default()
+                .read_text(&dir.path().join("temp1_label"))
+                .await
+                .unwrap_err();
+            let wrapped = gone.context("reading a label");
+            assert!(is_unanswered(&driver_timeout).not());
+            assert!(is_unanswered(&missing).not());
+            assert!(is_unanswered(&wrapped), "context must not hide it");
+        });
+    }
+
+    /// Goal: a worker's liveness outlives its handle and follows its thread alone, so an owner
+    /// can drop a stalled worker and still tell when its thread is gone. Method: drop the handle
+    /// of a wedged worker, then the token standing in for its thread; and ask an inline one.
+    #[test]
+    fn liveness_follows_the_thread_not_the_handle() {
+        let (io, _rx, running) = DeviceIo::wedged_running_for_test(TEST_TIMEOUT);
+        let liveness = io.liveness().unwrap();
+        assert!(liveness.is_running());
+
+        drop(io);
+        assert!(liveness.is_running(), "a parked thread outlives its handle");
+        drop(running);
+
+        assert!(liveness.is_running().not());
+        assert!(DeviceIo::default().liveness().is_none());
+    }
+
+    /// Goal: a real worker's thread ends once its last handle is dropped and it is idle, and its
+    /// liveness says so. Method: start a worker, drop it, and wait a bounded time for the thread.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn an_idle_worker_exits_once_its_last_handle_drops() {
+        let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
+        let liveness = io.liveness().unwrap();
+        assert!(liveness.is_running());
+
+        drop(io);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while liveness.is_running() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        assert!(
+            liveness.is_running().not(),
+            "the worker thread did not exit"
+        );
     }
 
     /// Goal: a device that answers with an error is alive, and must not be counted as wedged.
@@ -1199,6 +1971,32 @@ mod tests {
             let err = result.unwrap_err();
             let io_err = err.downcast_ref::<Error>().unwrap();
             assert_eq!(io_err.kind(), ErrorKind::HostUnreachable);
+        });
+    }
+
+    /// Goal: leaving the warnings to the owner must change only who logs, never the health rules
+    /// the owner reads back. Method: wedge a worker that leaves its announcements to the owner,
+    /// time it out to the threshold and check it went unreachable as any other does.
+    #[test]
+    fn an_owner_announced_device_keeps_the_health_rules() {
+        crate::rt::test_runtime(async {
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let io = io.owner_announces_health();
+            assert!(worker_of(&io).state.announces.get().not());
+            let path = Path::new("/sys/class/hwmon/hwmon0/temp1_input");
+
+            for _ in 0..UNREACHABLE_AFTER_TIMEOUTS {
+                assert!(io.read_value(path).await.is_err());
+            }
+
+            assert_eq!(
+                io.health(),
+                DeviceHealth::Unreachable {
+                    consecutive_timeouts: UNREACHABLE_AFTER_TIMEOUTS
+                }
+            );
+            let inline = DeviceIo::default().owner_announces_health();
+            assert!(matches!(inline, DeviceIo::Inline(_)));
         });
     }
 

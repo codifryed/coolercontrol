@@ -49,16 +49,16 @@ pub struct AppleSmcLegacy {
 }
 
 impl AppleSmcLegacy {
-    pub async fn new(path: &Path, channels: &Vec<HwmonChannelInfo>) -> Self {
+    pub async fn new(path: &Path, channels: &Vec<HwmonChannelInfo>, io: &DeviceIo) -> Self {
         let mut fans = HashMap::new();
         for channel in channels {
             if channel.hwmon_type != HwmonChannelType::Fan || channel.caps.is_apple_smc().not() {
                 continue;
             }
-            let max_rpm = Self::get_fan_max(path, channel.number, false)
+            let max_rpm = Self::get_fan_max(path, channel.number, false, io)
                 .await
                 .unwrap_or(DEFAULT_MAX_FAN_SPEED);
-            let default_min_rpm = Self::get_fan_min(path, channel.number, false)
+            let default_min_rpm = Self::get_fan_min(path, channel.number, false, io)
                 .await
                 .unwrap_or(DEFAULT_MIN_FAN_SPEED);
             fans.insert(
@@ -77,7 +77,7 @@ impl AppleSmcLegacy {
 
     /// Says why a fan cannot be controlled, or cannot be stopped. Repository init only, so it
     /// is logged once per start and never by a hardware report.
-    pub async fn log_fan_limits(base_path: &Path, channels: &[HwmonChannelInfo]) {
+    pub async fn log_fan_limits(base_path: &Path, channels: &[HwmonChannelInfo], io: &DeviceIo) {
         for channel in channels {
             if channel.hwmon_type != HwmonChannelType::Fan {
                 continue;
@@ -86,7 +86,7 @@ impl AppleSmcLegacy {
                 let _ = Self::fan_min_is_writable(base_path, channel.number);
             } else if cc_fs::metadata(base_path.join(format_fan_output!(channel.number))).is_ok() {
                 // Detection turned this fan down. Asking again, aloud, names what is missing.
-                let _ = Self::is_controllable(base_path, channel.number, true).await;
+                let _ = Self::is_controllable(base_path, channel.number, true, io).await;
             }
         }
     }
@@ -102,10 +102,10 @@ impl AppleSmcLegacy {
         for entry in dir_entries {
             let os_file_name = entry?.file_name();
             let file_name = os_file_name.to_str().context("File Name should be a str")?;
-            Self::detect_apple_smc_fans(base_path, file_name, &mut fan_caps).await?;
+            Self::detect_apple_smc_fans(base_path, file_name, &mut fan_caps, io).await?;
             fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
         }
-        let mut fans = Self::caps_to_hwmon_fans(base_path, fan_caps).await?;
+        let mut fans = Self::caps_to_hwmon_fans(base_path, fan_caps, io).await?;
         fans.sort_by_key(|c| c.number);
         debug!(
             "Apple SMC fans detected: {fans:?} for {}",
@@ -119,6 +119,7 @@ impl AppleSmcLegacy {
         base_path: &Path,
         file_name: &str,
         fan_caps: &mut HashMap<u8, HwmonChannelCapabilities>,
+        io: &DeviceIo,
     ) -> Result<()> {
         let regex_output_file = Regex::new(PATTERN_FAN_OUTPUT_FILE_NUMBER)?;
         if regex_output_file.is_match(file_name).not() {
@@ -132,7 +133,7 @@ impl AppleSmcLegacy {
             .as_str()
             .parse()?;
         // Quiet: the hardware report detects too. `log_fan_limits` gives the reason at start.
-        if Self::is_controllable(base_path, channel_number, false)
+        if Self::is_controllable(base_path, channel_number, false, io)
             .await
             .not()
         {
@@ -152,13 +153,17 @@ impl AppleSmcLegacy {
 
     /// Whether the fan behind a `fanN_output` file has everything control needs. With
     /// `log_error`, says what is missing.
-    async fn is_controllable(base_path: &Path, channel_number: u8, log_error: bool) -> bool {
+    async fn is_controllable(
+        base_path: &Path,
+        channel_number: u8,
+        log_error: bool,
+        io: &DeviceIo,
+    ) -> bool {
         if Self::fan_output_is_writable(base_path, channel_number, log_error).not() {
             return false;
         }
-        // Detection reads each attribute once, so this cache closes with the probe.
         let rpm = fans::get_fan_rpm(
-            &DeviceIo::default(),
+            io,
             base_path,
             &channel_number,
             &HwmonChannelCapabilities::empty(),
@@ -174,10 +179,10 @@ impl AppleSmcLegacy {
             return false;
         }
         // Both limits are needed to map a duty onto a speed.
-        Self::get_fan_max(base_path, channel_number, log_error)
+        Self::get_fan_max(base_path, channel_number, log_error, io)
             .await
             .is_some()
-            && Self::get_fan_min(base_path, channel_number, log_error)
+            && Self::get_fan_min(base_path, channel_number, log_error, io)
                 .await
                 .is_some()
     }
@@ -253,11 +258,12 @@ impl AppleSmcLegacy {
     async fn caps_to_hwmon_fans(
         base_path: &Path,
         fan_caps: HashMap<u8, HwmonChannelCapabilities>,
+        io: &DeviceIo,
     ) -> Result<Vec<HwmonChannelInfo>> {
         let mut fans = vec![];
         for (channel_number, fan_cap) in fan_caps {
             let channel_name = fans::get_fan_channel_name(channel_number);
-            let label = fans::get_fan_channel_label(base_path, &channel_number).await;
+            let label = fans::get_fan_channel_label(base_path, &channel_number, io).await;
             let rpm_path = fan_cap
                 .has_rpm()
                 .then(|| base_path.join(format_fan_input!(channel_number)));
@@ -424,9 +430,14 @@ impl AppleSmcLegacy {
         })
     }
 
-    async fn get_fan_min(base_path: &Path, channel_number: u8, log_error: bool) -> Option<RPM> {
+    async fn get_fan_min(
+        base_path: &Path,
+        channel_number: u8,
+        log_error: bool,
+        io: &DeviceIo,
+    ) -> Option<RPM> {
         let fan_min_path = base_path.join(format_fan_min!(channel_number));
-        cc_fs::read_sysfs_value(&fan_min_path)
+        io.read_value(&fan_min_path)
             .await
             .and_then(fans::check_parsing_32)
             // Edge case where on spin-up the output is max value until it begins moving
@@ -442,9 +453,14 @@ impl AppleSmcLegacy {
             .ok()
     }
 
-    async fn get_fan_max(base_path: &Path, channel_number: u8, log_error: bool) -> Option<RPM> {
+    async fn get_fan_max(
+        base_path: &Path,
+        channel_number: u8,
+        log_error: bool,
+        io: &DeviceIo,
+    ) -> Option<RPM> {
         let fan_max_path = base_path.join(format_fan_max!(channel_number));
-        cc_fs::read_sysfs_value(&fan_max_path)
+        io.read_value(&fan_max_path)
             .await
             .and_then(fans::check_parsing_32)
             // Edge case where on spin-up the output is max value until it begins moving
@@ -785,9 +801,13 @@ mod tests {
             let mut fan_caps = HashMap::new();
 
             // when:
-            let result =
-                AppleSmcLegacy::detect_apple_smc_fans(test_base_path, "fan1_input", &mut fan_caps)
-                    .await;
+            let result = AppleSmcLegacy::detect_apple_smc_fans(
+                test_base_path,
+                "fan1_input",
+                &mut fan_caps,
+                &DeviceIo::default(),
+            )
+            .await;
 
             // then:
             assert!(result.is_ok());
@@ -820,9 +840,13 @@ mod tests {
             let mut fan_caps = HashMap::new();
 
             // when:
-            let result =
-                AppleSmcLegacy::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps)
-                    .await;
+            let result = AppleSmcLegacy::detect_apple_smc_fans(
+                test_base_path,
+                "fan1_output",
+                &mut fan_caps,
+                &DeviceIo::default(),
+            )
+            .await;
 
             // then:
             assert!(result.is_ok());
@@ -856,9 +880,13 @@ mod tests {
             let mut fan_caps = HashMap::new();
 
             // when:
-            let result =
-                AppleSmcLegacy::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps)
-                    .await;
+            let result = AppleSmcLegacy::detect_apple_smc_fans(
+                test_base_path,
+                "fan1_output",
+                &mut fan_caps,
+                &DeviceIo::default(),
+            )
+            .await;
 
             // then:
             assert!(result.is_ok());
@@ -870,8 +898,8 @@ mod tests {
     /// does.
     async fn both_verdicts(dir: &Path) -> (bool, bool) {
         (
-            AppleSmcLegacy::is_controllable(dir, 1, false).await,
-            AppleSmcLegacy::is_controllable(dir, 1, true).await,
+            AppleSmcLegacy::is_controllable(dir, 1, false, &DeviceIo::default()).await,
+            AppleSmcLegacy::is_controllable(dir, 1, true, &DeviceIo::default()).await,
         )
     }
 
@@ -1041,7 +1069,8 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleSmcLegacy::get_fan_min(test_base_path, 1, false).await;
+            let result =
+                AppleSmcLegacy::get_fan_min(test_base_path, 1, false, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, Some(600));
@@ -1063,7 +1092,8 @@ mod tests {
             .unwrap();
 
             // when:
-            let result = AppleSmcLegacy::get_fan_min(test_base_path, 1, false).await;
+            let result =
+                AppleSmcLegacy::get_fan_min(test_base_path, 1, false, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, Some(0));
@@ -1082,7 +1112,8 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleSmcLegacy::get_fan_max(test_base_path, 1, false).await;
+            let result =
+                AppleSmcLegacy::get_fan_max(test_base_path, 1, false, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, Some(6500));
@@ -1104,7 +1135,8 @@ mod tests {
             .unwrap();
 
             // when:
-            let result = AppleSmcLegacy::get_fan_max(test_base_path, 1, false).await;
+            let result =
+                AppleSmcLegacy::get_fan_max(test_base_path, 1, false, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(result, Some(0));
@@ -1385,7 +1417,8 @@ mod tests {
             }];
 
             // when:
-            let apple_smc = AppleSmcLegacy::new(test_base_path, &channels).await;
+            let apple_smc =
+                AppleSmcLegacy::new(test_base_path, &channels, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(apple_smc.fans.len(), 1);
@@ -1419,7 +1452,8 @@ mod tests {
             }];
 
             // when:
-            let apple_smc = AppleSmcLegacy::new(test_base_path, &channels).await;
+            let apple_smc =
+                AppleSmcLegacy::new(test_base_path, &channels, &DeviceIo::default()).await;
 
             // then:
             assert_eq!(apple_smc.fans.len(), 1);
@@ -1575,7 +1609,9 @@ mod tests {
             fan_caps.insert(2, HwmonChannelCapabilities::RPM);
 
             // when:
-            let result = AppleSmcLegacy::caps_to_hwmon_fans(test_base_path, fan_caps).await;
+            let result =
+                AppleSmcLegacy::caps_to_hwmon_fans(test_base_path, fan_caps, &DeviceIo::default())
+                    .await;
 
             // then:
             assert!(result.is_ok());
@@ -1603,7 +1639,9 @@ mod tests {
             );
 
             // when:
-            let result = AppleSmcLegacy::caps_to_hwmon_fans(test_base_path, fan_caps).await;
+            let result =
+                AppleSmcLegacy::caps_to_hwmon_fans(test_base_path, fan_caps, &DeviceIo::default())
+                    .await;
 
             // then:
             assert!(result.is_ok());
@@ -1650,7 +1688,8 @@ mod tests {
             ];
 
             // when:
-            let apple_smc = AppleSmcLegacy::new(test_base_path, &channels).await;
+            let apple_smc =
+                AppleSmcLegacy::new(test_base_path, &channels, &DeviceIo::default()).await;
 
             // then:
             assert!(apple_smc.fans.is_empty());

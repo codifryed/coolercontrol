@@ -1219,6 +1219,17 @@ impl Config {
         Ok(profile_uid)
     }
 
+    /// The configured poll rate, or the default 1.0 when the settings can't be read.
+    pub fn poll_rate_or_default(&self) -> f64 {
+        self.get_settings().map_or_else(
+            |err| {
+                debug!("Using the default poll rate, the settings could not be read: {err}");
+                1.0
+            },
+            |settings| settings.poll_rate,
+        )
+    }
+
     /// Returns `CoolerControl` general settings
     #[allow(
         clippy::cast_sign_loss,
@@ -3133,6 +3144,22 @@ mod tests {
         };
         assert_eq!(config.device_name("uid1"), Some("NZXT Kraken".to_string()));
         assert_eq!(config.device_name("unknown"), None);
+    }
+
+    #[test]
+    fn poll_rate_or_default_reads_the_configured_rate() {
+        // Goal: a readable poll rate is returned as configured. Method: a document that sets it.
+        let config = config_from("[settings]\npoll_rate = 2.5\n");
+        assert_eq!(config.poll_rate_or_default(), 2.5);
+    }
+
+    #[test]
+    fn poll_rate_or_default_falls_back_when_settings_are_unreadable() {
+        // Goal: unreadable settings fall back to the default rate instead of failing. Method: a
+        // document whose poll rate has the wrong type.
+        let config = config_from("[settings]\npoll_rate = \"fast\"\n");
+        assert!(config.get_settings().is_err());
+        assert_eq!(config.poll_rate_or_default(), 1.0);
     }
 
     const LEGACY_UID: &str = "8ef08515338cc1f7727415a1d6bc45e84d5a818e94bd2072ac34b9d8d87f4210";

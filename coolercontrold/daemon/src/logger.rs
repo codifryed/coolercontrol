@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::diagnostics::support::SystemInfo;
+use crate::log_writer::{LogWriter, QueuedRecord, DRAIN_TIMEOUT};
 use crate::repositories::liquidctl::liqctld_service;
 use crate::rt;
 use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
-use env_logger::Logger;
+use env_logger::fmt::TimestampPrecision;
+use env_logger::{Logger, WriteStyle};
 use log::{debug, info, trace, Level, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use nix::NixPath;
 use nu_glob::{glob, Uninterruptible};
@@ -14,9 +17,13 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
+use std::io::Write as _;
 use std::ops::Not;
 use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::thread::ThreadId;
+use std::time::Duration;
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -49,7 +56,13 @@ pub async fn setup_logging(
         source,
         journal: connected_to_journal(),
     };
-    let (logger, log_buf_handle) = CCLogger::new(level_info, VERSION, run_token)?;
+    // Connecting sends to journald, which can be slow to read.
+    let journal = if level_info.journal {
+        Some(rt::spawn_blocking(JournalLog::new).await??)
+    } else {
+        None
+    };
+    let (logger, log_buf_handle) = CCLogger::new(level_info, journal, VERSION, run_token)?;
     logger.init()?;
     if cmd_args.wants_system_info_banner() {
         info!("Log level: {level} ({})", source.description());
@@ -152,74 +165,82 @@ fn env_log_level() -> Option<LevelFilter> {
 }
 
 /// Logs the daemon/host banner (version, OS, board, BIOS, desktop) to the journal.
+///
+/// Read on the blocking pool: the desktop scan reads every process's environment, and each of
+/// those reads waits on that process's memory map lock, which a stuck process can hold.
 async fn log_system_info() {
-    info!("System Info:");
-    info!("  {}", "-".repeat(60));
-    info!("  {:<20} {}", "CoolerControlD", VERSION);
-    info!(
-        "  {:<20} {}",
-        "Name",
-        sysinfo::System::name().unwrap_or_default()
-    );
-    info!(
-        "  {:<20} {}",
-        "OS",
-        sysinfo::System::long_os_version().unwrap_or_default()
-    );
-    info!(
-        "  {:<20} {}",
-        "Host",
-        sysinfo::System::host_name().unwrap_or_default()
-    );
-    info!(
-        "  {:<20} {}",
-        "Kernel",
-        sysinfo::System::kernel_version().unwrap_or_default()
-    );
-    info!("  {:<20} {}", "Arch", sysinfo::System::cpu_arch());
-    info!(
-        "  {:<20} {}",
-        "Board Manufacturer",
-        get_dmi_system_info("board_vendor").await
-    );
-    info!(
-        "  {:<20} {}",
-        "Board Name",
-        get_dmi_system_info("board_name").await
-    );
-    info!(
-        "  {:<20} {}",
-        "Board Version",
-        get_dmi_system_info("board_version").await
-    );
-    info!(
-        "  {:<20} {}",
-        "BIOS Manufacturer",
-        get_dmi_system_info("bios_vendor").await
-    );
-    info!(
-        "  {:<20} {}",
-        "BIOS Version",
-        get_dmi_system_info("bios_release").await
-    );
-    match get_xdg_desktop_info().await {
-        Ok((desktops, sessions)) => {
-            info!("  {:<20} {}", "XDG Desktops", desktops);
-            info!("  {:<20} {}", "XDG Session Types", sessions);
-        }
-        Err(err) => debug!("Failed to get XDG desktop info: {err}"),
+    match rt::spawn_blocking(SystemBanner::read).await {
+        Ok(banner) => banner.log(),
+        Err(err) => debug!("Failed to read the system info: {err}"),
     }
 }
 
-pub async fn get_dmi_system_info(name: &str) -> String {
-    cc_fs::read_txt(format!("/sys/devices/virtual/dmi/id/{name}"))
-        .await
-        .unwrap_or_default()
-        .trim()
-        .to_owned()
+/// What the startup banner shows, read in one go off the runtime thread.
+struct SystemBanner {
+    name: String,
+    os: String,
+    host: String,
+    kernel: String,
+    arch: String,
+    board: SystemInfo,
+    desktops: Result<(String, String)>,
 }
 
-async fn get_xdg_desktop_info() -> Result<(String, String)> {
+impl SystemBanner {
+    /// Blocking calls, for the blocking pool.
+    fn read() -> Self {
+        Self {
+            name: sysinfo::System::name().unwrap_or_default(),
+            os: sysinfo::System::long_os_version().unwrap_or_default(),
+            host: sysinfo::System::host_name().unwrap_or_default(),
+            kernel: sysinfo::System::kernel_version().unwrap_or_default(),
+            arch: sysinfo::System::cpu_arch(),
+            board: SystemInfo::read_blocking(),
+            desktops: read_xdg_desktop_info(),
+        }
+    }
+
+    fn log(&self) {
+        info!("System Info:");
+        info!("  {}", "-".repeat(60));
+        info!("  {:<20} {}", "CoolerControlD", VERSION);
+        info!("  {:<20} {}", "Name", self.name);
+        info!("  {:<20} {}", "OS", self.os);
+        info!("  {:<20} {}", "Host", self.host);
+        info!("  {:<20} {}", "Kernel", self.kernel);
+        info!("  {:<20} {}", "Arch", self.arch);
+        info!("  {:<20} {}", "Board Manufacturer", self.board.board_vendor);
+        info!("  {:<20} {}", "Board Name", self.board.board_name);
+        info!("  {:<20} {}", "Board Version", self.board.board_version);
+        info!("  {:<20} {}", "BIOS Manufacturer", self.board.bios_vendor);
+        info!("  {:<20} {}", "BIOS Version", self.board.bios_release);
+        match &self.desktops {
+            Ok((desktops, sessions)) => {
+                info!("  {:<20} {}", "XDG Desktops", desktops);
+                info!("  {:<20} {}", "XDG Session Types", sessions);
+            }
+            Err(err) => debug!("Failed to get XDG desktop info: {err}"),
+        }
+    }
+}
+
+/// One DMI identity attribute, trimmed, or empty when it does not read as text.
+///
+/// Blocking calls: callers run it on the blocking pool.
+pub fn read_dmi_system_info(name: &str) -> String {
+    let path = PathBuf::from(format!("/sys/devices/virtual/dmi/id/{name}"));
+    cc_fs::read_bytes_blocking(&path)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .map(|text| text.trim().to_owned())
+        .unwrap_or_default()
+}
+
+/// The desktops and session types named in any process's environment.
+///
+/// Blocking calls, for the blocking pool. An environment past `cc_fs::ATTRIBUTE_MAX_BYTES` is
+/// skipped, as is one that is not text.
+fn read_xdg_desktop_info() -> Result<(String, String)> {
     let mut desktops = HashSet::new();
     let mut sessions_types = HashSet::new();
     let environ_paths = glob("/proc/*/environ", Uninterruptible)?
@@ -231,7 +252,10 @@ async fn get_xdg_desktop_info() -> Result<(String, String)> {
         if path.is_empty() {
             continue;
         }
-        let Ok(content) = cc_fs::read_txt(&path).await else {
+        let Some(content) = cc_fs::read_bytes_blocking(&path)
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+        else {
             continue;
         };
         if let Some(desktop_captures) = regex_desktop.captures(&content) {
@@ -264,31 +288,34 @@ async fn get_xdg_desktop_info() -> Result<(String, String)> {
 struct CCLogger {
     max_level: LevelFilter,
     log_filter: Logger,
-    logger: Box<dyn Log>,
+    sink: SinkFeed,
     buf_logger: Box<dyn Log>,
 }
 
 impl CCLogger {
+    /// Logs to `journal` when given, to stderr otherwise.
     fn new(
         level_info: LogLevelInfo,
+        journal: Option<JournalLog>,
         version: &str,
         run_token: CancellationToken,
     ) -> Result<(Self, LogBufHandle)> {
         let max_level = level_info.level;
         let timestamp_precision = if max_level >= LevelFilter::Debug {
-            env_logger::fmt::TimestampPrecision::Millis
+            TimestampPrecision::Millis
         } else {
-            env_logger::fmt::TimestampPrecision::Seconds
+            TimestampPrecision::Seconds
         };
         let log_filter = Self::build_log_filter(max_level);
-        let logger: Box<dyn Log> = if level_info.journal {
-            Box::new(JournalLog::new()?.with_extra_fields(vec![("VERSION", version)]))
+        let sink = if let Some(journal) = journal {
+            SinkFeed::journal(journal.with_extra_fields(vec![("VERSION", version)]))?
         } else {
-            Box::new(
-                env_logger::Builder::new()
-                    .filter_level(max_level)
-                    .format_timestamp(Some(timestamp_precision))
-                    .build(),
+            let write_style = stderr_write_style();
+            SinkFeed::stderr(
+                max_level,
+                timestamp_precision,
+                write_style,
+                stderr_writer(timestamp_precision, write_style)?,
             )
         };
         let log_buf_handle = LogBufHandle::new(run_token).with_level_info(level_info);
@@ -305,7 +332,7 @@ impl CCLogger {
             Self {
                 max_level,
                 log_filter,
-                logger,
+                sink,
                 buf_logger,
             },
             log_buf_handle,
@@ -351,9 +378,13 @@ impl CCLogger {
             .build()
     }
 
+    /// Called on the main runtime thread, which the panic hook tells apart by it.
     fn init(self) -> Result<(), SetLoggerError> {
+        let drainer = self.sink.drainer();
         log::set_max_level(self.max_level);
-        log::set_boxed_logger(Box::new(self))
+        log::set_boxed_logger(Box::new(self))?;
+        drain_on_panic(drainer, std::thread::current().id());
+        Ok(())
     }
 }
 
@@ -366,17 +397,181 @@ impl Log for CCLogger {
     /// Logs the messages and filters them by matching against the `env_logger` filter
     fn log(&self, record: &Record) {
         if self.log_filter.matches(record) {
-            self.logger.log(record);
+            self.sink.log(record);
             if is_ui_buffered(record.level()) {
                 self.buf_logger.log(record);
             }
         }
     }
 
-    /// Flush log records.
-    ///
-    /// A no-op for this implementation.
-    fn flush(&self) {}
+    /// Waits, for at most `log_writer::DRAIN_TIMEOUT`, until the lines logged so far reach the
+    /// journal or stderr. The process exiting would lose them.
+    fn flush(&self) {
+        self.sink.drain();
+    }
+}
+
+/// How long a panic on the main runtime thread waits for the log queue. The runtime catches task
+/// panics and carries on, so a longer wait would stall fan ticks and heartbeats.
+const MAIN_THREAD_PANIC_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
+const _: () = assert!(MAIN_THREAD_PANIC_DRAIN_TIMEOUT.as_millis() < DRAIN_TIMEOUT.as_millis());
+
+/// Waits, for at most the timeout given, until the lines logged so far reach the sink.
+type Drainer = Box<dyn Fn(Duration) + Send + Sync>;
+
+/// Drains the log queue before a panic is reported, so the lines that led up to it reach the
+/// journal ahead of the panic message.
+fn drain_on_panic(drainer: Drainer, main_thread: ThreadId) {
+    let report = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        drain_for_panic(&drainer, main_thread);
+        report(info);
+    }));
+}
+
+fn drain_for_panic(drainer: &Drainer, main_thread: ThreadId) {
+    drainer(panic_drain_timeout(
+        std::thread::current().id(),
+        main_thread,
+    ));
+}
+
+fn panic_drain_timeout(current: ThreadId, main_thread: ThreadId) -> Duration {
+    if current == main_thread {
+        MAIN_THREAD_PANIC_DRAIN_TIMEOUT
+    } else {
+        DRAIN_TIMEOUT
+    }
+}
+
+/// How a record reaches the `cc-log` thread, which owns the journal or stderr.
+enum SinkFeed {
+    /// The journal takes records, and stamps each one as it arrives.
+    Journal(LogWriter<QueuedRecord>),
+    /// stderr takes lines formatted, and so stamped, on the thread that logged them, which keeps
+    /// their time true while stderr stalls. `format` writes into `writer`.
+    Stderr {
+        format: Logger,
+        writer: LogWriter<Vec<u8>>,
+    },
+}
+
+impl SinkFeed {
+    fn journal(journal: JournalLog) -> Result<Self> {
+        let writer = LogWriter::start(
+            "the journal",
+            move |record: QueuedRecord| record.log_to(&journal),
+            QueuedRecord::of,
+        )?;
+        Ok(Self::Journal(writer))
+    }
+
+    fn stderr(
+        max_level: LevelFilter,
+        timestamp_precision: TimestampPrecision,
+        write_style: WriteStyle,
+        writer: LogWriter<Vec<u8>>,
+    ) -> Self {
+        let format = env_logger::Builder::new()
+            .filter_level(max_level)
+            .format_timestamp(Some(timestamp_precision))
+            .write_style(write_style)
+            .target(env_logger::Target::Pipe(Box::new(writer.clone())))
+            .build();
+        Self::Stderr { format, writer }
+    }
+
+    fn log(&self, record: &Record) {
+        match self {
+            Self::Journal(writer) => writer.push(QueuedRecord::of(record)),
+            Self::Stderr { format, .. } => format.log(record),
+        }
+    }
+
+    fn drain(&self) {
+        match self {
+            Self::Journal(writer) => writer.drain(),
+            Self::Stderr { writer, .. } => writer.drain(),
+        }
+    }
+
+    /// Drains this feed's queue from wherever it is held, the panic hook included.
+    fn drainer(&self) -> Drainer {
+        match self {
+            Self::Journal(writer) => {
+                let writer = writer.clone();
+                Box::new(move |timeout| writer.drain_within(timeout))
+            }
+            Self::Stderr { writer, .. } => {
+                let writer = writer.clone();
+                Box::new(move |timeout| writer.drain_within(timeout))
+            }
+        }
+    }
+}
+
+fn stderr_writer(
+    timestamp_precision: TimestampPrecision,
+    write_style: WriteStyle,
+) -> Result<LogWriter<Vec<u8>>> {
+    let mut stderr = std::io::stderr();
+    let writer = LogWriter::start(
+        "stderr",
+        move |line: Vec<u8>| {
+            // A failed write has nowhere left to be reported.
+            let _ = stderr.write_all(&line);
+        },
+        report_formatter(timestamp_precision, write_style),
+    )?;
+    Ok(writer)
+}
+
+/// Formats the dropped-lines report as stderr's lines are formatted, but into a buffer of its
+/// own: the report skips the queue. It passes at INFO whatever the log level.
+fn report_formatter(
+    timestamp_precision: TimestampPrecision,
+    write_style: WriteStyle,
+) -> impl FnMut(&Record) -> Vec<u8> + Send + 'static {
+    let line = LineBuf::default();
+    let format = env_logger::Builder::new()
+        .filter_level(LevelFilter::Info)
+        .format_timestamp(Some(timestamp_precision))
+        .write_style(write_style)
+        .target(env_logger::Target::Pipe(Box::new(line.clone())))
+        .build();
+    move |record| {
+        format.log(record);
+        line.take()
+    }
+}
+
+/// A pipe target whose writes are taken back out with `take`.
+#[derive(Clone, Default)]
+struct LineBuf(Arc<Mutex<Vec<u8>>>);
+
+impl LineBuf {
+    fn take(&self) -> Vec<u8> {
+        std::mem::take(&mut *self.0.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+}
+
+impl std::io::Write for LineBuf {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The colour choice `env_logger` makes for its own stderr target, which a pipe target skips.
+fn stderr_write_style() -> WriteStyle {
+    anstream::AutoStream::choice(&std::io::stderr()).into()
 }
 
 /// DEBUG and TRACE stay out of the UI ring buffer and its SSE stream: their volume would evict
@@ -627,10 +822,55 @@ impl std::io::Write for LogBufHandle {
     }
 }
 
+/// Test-only: sets the process-wide max log level and restores the previous one on drop, so a
+/// panicking test cannot leave it changed for the rest of the run.
+#[cfg(test)]
+pub struct MaxLevelGuard {
+    previous: LevelFilter,
+}
+
+#[cfg(test)]
+impl MaxLevelGuard {
+    pub fn set(level: LevelFilter) -> Self {
+        let previous = log::max_level();
+        log::set_max_level(level);
+        Self { previous }
+    }
+}
+
+#[cfg(test)]
+impl Drop for MaxLevelGuard {
+    fn drop(&mut self) {
+        log::set_max_level(self.previous);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::io::Write;
+
+    // Goal: the guard restores the previous max level even when the test panics while it is held.
+    #[test]
+    #[serial]
+    fn max_level_guard_restores_the_level_on_panic() {
+        let before = log::max_level();
+        let raised = if before == LevelFilter::Trace {
+            LevelFilter::Error
+        } else {
+            LevelFilter::Trace
+        };
+
+        let result = std::panic::catch_unwind(|| {
+            let _guard = MaxLevelGuard::set(raised);
+            assert_eq!(log::max_level(), raised);
+            panic!("while the level is raised");
+        });
+
+        assert!(result.is_err());
+        assert_eq!(log::max_level(), before);
+    }
 
     // Goal: the synchronous `Write` impl delivers a line to the buffer actor via `try_send` (no
     // runtime handle), and `get_logs` returns it. The actor drains the bounded channel FIFO, so the
@@ -780,18 +1020,6 @@ mod tests {
         assert!(is_ui_buffered(Level::Trace).not());
     }
 
-    #[cfg(feature = "gated-tests")]
-    struct NullLog;
-
-    #[cfg(feature = "gated-tests")]
-    impl Log for NullLog {
-        fn enabled(&self, _metadata: &Metadata) -> bool {
-            true
-        }
-        fn log(&self, _record: &Record) {}
-        fn flush(&self) {}
-    }
-
     // Goal: at DEBUG level, a debug record still skips the UI buffer while an info record
     // lands in it, and the handle reports the level it was built with. Methodology: build
     // the real logger, swap its journal/stderr sink for a no-op, log one of each, then read
@@ -806,8 +1034,10 @@ mod tests {
                 journal: false,
             };
             let (mut cc_logger, handle) =
-                CCLogger::new(level_info, VERSION, CancellationToken::new()).unwrap();
-            cc_logger.logger = Box::new(NullLog);
+                CCLogger::new(level_info, None, VERSION, CancellationToken::new()).unwrap();
+            cc_logger.sink = SinkFeed::Journal(
+                LogWriter::start("nowhere", drop::<QueuedRecord>, QueuedRecord::of).unwrap(),
+            );
             cc_logger.log(
                 &Record::builder()
                     .level(Level::Info)
@@ -827,6 +1057,199 @@ mod tests {
             assert!(logs.contains("debug line").not(), "logs were: {logs:?}");
             assert_eq!(handle.level_info(), level_info);
         });
+    }
+
+    // Goal: a stderr line carries the time it was logged, not the later time a stalled stderr
+    // took it. Method: wedge the sink on a first line, log a second at millisecond precision,
+    // hold the sink well past that, then read the second line's timestamp back.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn stderr_lines_keep_the_time_they_were_logged() {
+        use std::sync::{mpsc, Arc, Mutex};
+        let lines = Arc::new(Mutex::new(Vec::new()));
+        let sink_lines = Arc::clone(&lines);
+        let (started_tx, started) = mpsc::sync_channel(4);
+        let (gate, gate_rx) = mpsc::sync_channel::<()>(0);
+        let writer = LogWriter::start(
+            "the test sink",
+            move |line: Vec<u8>| {
+                let _ = started_tx.try_send(());
+                let _ = gate_rx.recv();
+                sink_lines.lock().unwrap().push(line);
+            },
+            |_: &Record| Vec::new(),
+        )
+        .unwrap();
+        let feed = SinkFeed::stderr(
+            LevelFilter::Info,
+            TimestampPrecision::Millis,
+            WriteStyle::Never,
+            writer.clone(),
+        );
+        writer.push(b"first\n".to_vec());
+        started.recv().unwrap();
+
+        feed.log(
+            &Record::builder()
+                .level(Level::Info)
+                .target("coolercontrold")
+                .args(format_args!("held line"))
+                .build(),
+        );
+        let logged_by = chrono::Utc::now();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        drop(gate);
+        feed.drain();
+
+        let lines = lines.lock().unwrap();
+        let held = String::from_utf8(lines[1].clone()).unwrap();
+        assert!(held.contains("held line"), "{held:?}");
+        let stamp = held.trim_start_matches('[').split(' ').next().unwrap();
+        let stamped = DateTime::parse_from_rfc3339(stamp).unwrap();
+        assert!(
+            stamped < logged_by + chrono::Duration::milliseconds(100),
+            "{held:?} was stamped after {logged_by}"
+        );
+    }
+
+    /// A journal feed whose sink records each message. The sink signals `started` as it takes a
+    /// record, then waits `delay`, and holds until the returned gate drops when `hold` is set.
+    fn recording_journal(
+        delay: std::time::Duration,
+        hold: bool,
+    ) -> (
+        SinkFeed,
+        Arc<Mutex<Vec<String>>>,
+        std::sync::mpsc::Receiver<()>,
+        Option<std::sync::mpsc::SyncSender<()>>,
+    ) {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let sink_messages = Arc::clone(&messages);
+        let (started_tx, started) = std::sync::mpsc::sync_channel(16);
+        let (gate, gate_rx) = std::sync::mpsc::sync_channel::<()>(0);
+        let writer = LogWriter::start(
+            "the test sink",
+            move |record: QueuedRecord| {
+                let _ = started_tx.try_send(());
+                std::thread::sleep(delay);
+                let _ = gate_rx.recv();
+                let fields = FirstMessage(Mutex::new(None));
+                record.log_to(&fields);
+                sink_messages
+                    .lock()
+                    .unwrap()
+                    .extend(fields.0.into_inner().unwrap());
+            },
+            QueuedRecord::of,
+        )
+        .unwrap();
+        let gate = if hold { Some(gate) } else { None };
+        (SinkFeed::Journal(writer), messages, started, gate)
+    }
+
+    /// Keeps the message of the record it is given.
+    struct FirstMessage(Mutex<Option<String>>);
+
+    impl Log for FirstMessage {
+        fn enabled(&self, _metadata: &Metadata) -> bool {
+            true
+        }
+
+        fn log(&self, record: &Record) {
+            *self.0.lock().unwrap() = Some(record.args().to_string());
+        }
+
+        fn flush(&self) {}
+    }
+
+    fn log_info(feed: &SinkFeed, message: &str) {
+        feed.log(
+            &Record::builder()
+                .level(Level::Info)
+                .target("coolercontrold")
+                .args(format_args!("{message}"))
+                .build(),
+        );
+    }
+
+    // Goal: a panic off the main thread waits for the lines queued before it, so they reach the
+    // sink ahead of the panic report. Method: queue a line to a slow sink, run the hook's drain
+    // as a thread other than the main one, and read the sink.
+    #[test]
+    fn a_panic_drains_queued_lines_first() {
+        let (feed, messages, _started, _gate) =
+            recording_journal(std::time::Duration::from_millis(50), false);
+        let other_thread = std::thread::spawn(|| std::thread::current().id())
+            .join()
+            .unwrap();
+        log_info(&feed, "before the panic");
+
+        drain_for_panic(&feed.drainer(), other_thread);
+
+        assert_eq!(*messages.lock().unwrap(), vec!["before the panic"]);
+    }
+
+    // Goal: only the main thread gets the short panic drain bound; every other thread waits the
+    // full one. Method: ask for the bound as the main thread and as a spawned thread.
+    #[test]
+    fn only_the_main_thread_gets_the_short_panic_drain() {
+        let main_thread = std::thread::current().id();
+        let other_thread = std::thread::spawn(|| std::thread::current().id())
+            .join()
+            .unwrap();
+
+        assert_eq!(
+            panic_drain_timeout(main_thread, main_thread),
+            MAIN_THREAD_PANIC_DRAIN_TIMEOUT
+        );
+        assert_eq!(
+            panic_drain_timeout(other_thread, main_thread),
+            DRAIN_TIMEOUT
+        );
+    }
+
+    // Goal: a panic on the main runtime thread, which carries on afterwards, waits only briefly
+    // for a stalled sink. Method: wedge the sink, queue a line, run the hook's drain as the main
+    // thread, and time it.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_main_thread_panic_waits_briefly_for_a_stalled_sink() {
+        let (feed, messages, started, gate) = recording_journal(std::time::Duration::ZERO, true);
+        log_info(&feed, "wedges the sink");
+        started.recv().unwrap();
+        log_info(&feed, "queued");
+        let start = std::time::Instant::now();
+
+        drain_for_panic(&feed.drainer(), std::thread::current().id());
+
+        let elapsed = start.elapsed();
+        assert!(elapsed >= MAIN_THREAD_PANIC_DRAIN_TIMEOUT, "{elapsed:?}");
+        assert!(elapsed < DRAIN_TIMEOUT, "{elapsed:?}");
+        assert!(messages.lock().unwrap().is_empty());
+        drop(gate);
+    }
+
+    // Goal: the stderr report comes out as one whole formatted line per call, nothing carried
+    // over. Method: format two records and compare each line's message and ending.
+    #[test]
+    fn the_stderr_report_is_one_formatted_line_per_call() {
+        let mut report = report_formatter(TimestampPrecision::Seconds, WriteStyle::Never);
+        let mut record = |message: &str| {
+            report(
+                &Record::builder()
+                    .level(Level::Info)
+                    .target("coolercontrold::log_writer")
+                    .args(format_args!("{message}"))
+                    .build(),
+            )
+        };
+
+        let first = String::from_utf8(record("first report")).unwrap();
+        let second = String::from_utf8(record("second report")).unwrap();
+
+        assert!(first.ends_with("first report\n"), "{first:?}");
+        assert!(second.ends_with("second report\n"), "{second:?}");
+        assert!(second.contains("first").not(), "{second:?}");
     }
 
     // Goal: a handle built without level info reports the INFO default, so tests and any

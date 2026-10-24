@@ -10,26 +10,15 @@ use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::time::Duration;
 
 /// Upper bound for one sysfs value read by `read_sysfs_value`. Every numeric sysfs value the
 /// daemon reads is a short number or flag; 64 bytes covers all of them with headroom.
 pub const SYSFS_VALUE_MAX_BYTES: usize = 64;
 
-/// Attempts at a read the kernel aborted before it produced anything.
-///
-/// `io_uring` turns the kernel's `-ERESTARTSYS` into `EINTR` rather than restarting the read
-/// (`io_uring/rw.c:io_fixup_restart_res`), so the restart is ours to make. compio already
-/// re-issues inside `read_to_end_at` and friends; the fixed-buffer readers here do not.
+/// Attempts at a read the kernel aborted before it produced anything. A blocking `pread` sees
+/// `EINTR` from a signal handler without `SA_RESTART`, and the restart is ours to make.
 pub const INTERRUPTED_READ_ATTEMPTS: u8 = 3;
 const _: () = assert!(INTERRUPTED_READ_ATTEMPTS > 0);
-
-/// Base pause before re-issuing an interrupted read, multiplied by the attempts already spent.
-///
-/// An immediate re-issue mostly fails again: the interrupting condition persists for as long as
-/// the tick's other reads take to drain. Awaiting fixes it rather than merely delaying, since the
-/// sleep yields the runtime so the completions that clear the flag get to run.
-pub const INTERRUPTED_READ_BACKOFF: Duration = Duration::from_millis(2);
 
 /// Whether a failed read should be re-issued, given the attempts left after this one.
 ///
@@ -57,15 +46,6 @@ pub fn log_reissue_exhausted(path: &Path) {
         "sysfs read at {} still interrupted after {INTERRUPTED_READ_ATTEMPTS} attempts, giving up",
         path.display()
     );
-}
-
-/// How long to wait before the next re-issue, growing with the attempts already spent.
-#[must_use]
-pub fn reissue_backoff(attempts_left: u8) -> Duration {
-    debug_assert!(attempts_left < INTERRUPTED_READ_ATTEMPTS);
-    let spent = INTERRUPTED_READ_ATTEMPTS - attempts_left;
-    debug_assert!(spent > 0);
-    INTERRUPTED_READ_BACKOFF * u32::from(spent)
 }
 
 /// One sysfs value in a fixed stack buffer. Avoids the per-read heap ceremony of `read_sysfs`
@@ -127,6 +107,15 @@ impl SysfsValue {
         self.len == 0
     }
 
+    /// A value of no bytes. It fails to parse, so as a placeholder it cannot pass for a reading.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            buf: [0; SYSFS_VALUE_MAX_BYTES],
+            len: 0,
+        }
+    }
+
     /// Wraps a filled read buffer. `len` is the byte count the read reported.
     #[must_use]
     pub fn from_read(buf: [u8; SYSFS_VALUE_MAX_BYTES], len: usize) -> Self {
@@ -148,78 +137,120 @@ impl SysfsValue {
     }
 }
 
-/// Reads one small sysfs value into a fixed stack buffer.
+/// Reads one small sysfs value into a fixed stack buffer, on the blocking pool.
 ///
-/// This is the hot numeric read path (every sensor, every tick). See `read_sysfs` for why a
-/// shared buffer pool is not an option here; a per-call stack buffer sidesteps that class of
-/// corruption entirely while avoiding the Vec + UTF-8 + String ceremony per scalar. Contents
-/// beyond `SYSFS_VALUE_MAX_BYTES` are cut off; `SysfsValue::parse` rejects a full buffer.
+/// Contents beyond `SYSFS_VALUE_MAX_BYTES` are cut off; `SysfsValue::parse` rejects a full buffer.
+/// The daemon's own reads go through a device worker; this serves the inline `DeviceIo` tests use.
 pub async fn read_sysfs_value(path: impl AsRef<Path>) -> Result<SysfsValue> {
-    use compio::buf::{IntoInner, IoBuf};
-    use compio::io::AsyncReadAt;
-    let file = compio::fs::File::open(path.as_ref()).await?;
+    let path = path.as_ref().to_path_buf();
+    rt::spawn_blocking(move || read_sysfs_value_blocking(&path)).await?
+}
+
+/// Reads one small sysfs value into a fixed stack buffer, as blocking calls, for a device's IO
+/// thread, which has no runtime.
+pub fn read_sysfs_value_blocking(path: &Path) -> Result<SysfsValue> {
+    let file = std::fs::File::open(path)?;
     let mut buf = [0u8; SYSFS_VALUE_MAX_BYTES];
     let mut len = 0;
     let mut attempts = INTERRUPTED_READ_ATTEMPTS;
     // Bounded on both axes: every pass reads at least one byte, ends the read, or spends one of
-    // `INTERRUPTED_READ_ATTEMPTS`, so passes are capped at the sum of the two. The array
-    // round-trips through the op by value; no buffer allocation.
+    // `INTERRUPTED_READ_ATTEMPTS`, so passes are capped at the sum of the two.
     while len < SYSFS_VALUE_MAX_BYTES {
-        let compio::BufResult(result, slice) = file.read_at(buf.slice(len..), len as u64).await;
-        buf = slice.into_inner();
-        match result {
-            Ok(0) => break,
-            Ok(bytes_read) => len += bytes_read,
-            Err(err) => {
-                debug_assert!(attempts > 0);
-                attempts -= 1;
-                if should_reissue(attempts, &err).not() {
-                    if err.kind() == ErrorKind::Interrupted {
-                        log_reissue_exhausted(path.as_ref());
-                    }
-                    return Err(err.into());
-                }
-                log_reissue(path.as_ref(), attempts);
-                rt::sleep(reissue_backoff(attempts)).await;
-            }
+        match pread_reissuing(path, &file, &mut buf[len..], len as u64, &mut attempts)? {
+            0 => break,
+            bytes_read => len += bytes_read,
         }
     }
     debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
     Ok(SysfsValue { buf, len })
 }
 
+/// Most bytes a one-shot attribute read keeps. sysfs hands out at most one page per attribute, and
+/// the largest page size Linux runs with is 64 KiB.
+pub const ATTRIBUTE_MAX_BYTES: usize = 64 * 1024;
+
+/// Reads a whole attribute as blocking calls, for a device's IO thread, which has no runtime: text
+/// such as labels and `uevent`, or a binary page such as SCSI VPD.
+///
+/// # Errors
+///
+/// The open or read error, or `FileTooLarge` past `ATTRIBUTE_MAX_BYTES`.
+pub fn read_bytes_blocking(path: &Path) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let mut contents = Vec::new();
+    // One past the cap, so a file longer than it is told apart from one exactly at it. `read_to_end`
+    // re-issues an interrupted read itself.
+    let limit = u64::try_from(ATTRIBUTE_MAX_BYTES)? + 1;
+    let read = file.take(limit).read_to_end(&mut contents)?;
+    debug_assert_eq!(read, contents.len());
+    if read > ATTRIBUTE_MAX_BYTES {
+        return Err(Error::new(
+            ErrorKind::FileTooLarge,
+            format!("{} exceeds {ATTRIBUTE_MAX_BYTES} bytes", path.display()),
+        )
+        .into());
+    }
+    Ok(contents)
+}
+
+/// One blocking `pread`, re-issued while `should_reissue` allows, spending from `attempts`.
+///
+/// An interrupted `pread` read nothing, so it is re-issued at once.
+///
+/// # Errors
+///
+/// The read's error, once it is not worth re-issuing or `attempts` is spent.
+pub fn pread_reissuing(
+    path: &Path,
+    file: &std::fs::File,
+    buf: &mut [u8],
+    offset: u64,
+    attempts: &mut u8,
+) -> std::io::Result<usize> {
+    use std::os::unix::fs::FileExt;
+    // Bounded by `attempts`, which drops by one per failure and returns the error at zero.
+    loop {
+        match file.read_at(buf, offset) {
+            Ok(len) => {
+                debug_assert!(len <= buf.len());
+                return Ok(len);
+            }
+            Err(err) => {
+                debug_assert!(*attempts > 0);
+                *attempts -= 1;
+                if should_reissue(*attempts, &err).not() {
+                    if err.kind() == ErrorKind::Interrupted {
+                        log_reissue_exhausted(path);
+                    }
+                    return Err(err);
+                }
+                log_reissue(path, *attempts);
+            }
+        }
+    }
+}
+
 /// Reads the entire contents of a sysfs file into a UTF-8 encoded string.
 ///
-/// Tailored for sysfs files, which are typically small and contain few values. Returns an error if
-/// the file cannot be opened or read, or if the contents are not valid UTF-8. Numeric hot-path
-/// reads belong on `read_sysfs_value`; this remains for genuine text reads (names, labels,
-/// serials).
-///
-/// The idle-CPU win comes from compio's completion-based IO. A managed buffer pool was tried here
-/// for registered buffers, but it corrupts/fails the per-tick concurrent fan-out (many reads share
-/// one pool over the `io_uring` buffer ring: cross-contaminated data or "flags are invalid"). The
-/// plain read is correct and still completion-based.
+/// Tests only, to check what a write left behind: the daemon's own text reads (names, labels,
+/// serials) go through a device worker, `DeviceIo::read_text`.
+#[cfg(test)]
 pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
-    {
-        Ok(String::from_utf8(compio::fs::read(path.as_ref()).await?)?)
-    }
+    Ok(tokio::fs::read_to_string(path).await?)
 }
 
 /// Reads the entire contents of a text file into a UTF-8 encoded string.
 ///
 /// Returns an error if the file cannot be opened or read, or if the contents are not valid UTF-8.
 pub async fn read_txt(path: impl AsRef<Path>) -> Result<String> {
-    {
-        Ok(String::from_utf8(compio::fs::read(path.as_ref()).await?)?)
-    }
+    Ok(tokio::fs::read_to_string(path).await?)
 }
 
 /// For small sysfs attributes that are not valid UTF-8, so cannot go through `read_sysfs`.
 /// SCSI VPD page 0x80 is the motivating case: it opens with `0x80`, an invalid lead byte.
 pub async fn read_bytes(path: impl AsRef<Path>) -> Result<Vec<u8>> {
-    {
-        Ok(compio::fs::read(path.as_ref()).await?)
-    }
+    Ok(tokio::fs::read(path).await?)
 }
 
 /// Reads the entire contents of a file into a vector of bytes. Tailored for reading images, which
@@ -227,9 +258,7 @@ pub async fn read_bytes(path: impl AsRef<Path>) -> Result<Vec<u8>> {
 ///
 /// Returns an error if the file cannot be opened or read.
 pub async fn read_image(path: impl AsRef<Path>) -> Result<Vec<u8>> {
-    {
-        Ok(compio::fs::read(path.as_ref()).await?)
-    }
+    Ok(tokio::fs::read(path).await?)
 }
 
 /// Reads the contents of a directory.
@@ -243,8 +272,8 @@ pub fn read_dir(path: impl AsRef<Path>) -> Result<ReadDir> {
 
 /// Reads a symbolic link, returning the path it points to.
 ///
-/// Sync `std::fs` wrapper: compio exposes no async `read_link`. Used by the AMD DRM fdinfo scan to
-/// resolve `/proc/<pid>/fd` entries to their targets.
+/// Sync `std::fs` wrapper. Used by the AMD DRM fdinfo scan to resolve `/proc/<pid>/fd` entries to
+/// their targets.
 pub fn read_link(path: impl AsRef<Path>) -> Result<PathBuf> {
     Ok(std::fs::read_link(path)?)
 }
@@ -255,9 +284,9 @@ mod tests {
     #[cfg(feature = "gated-tests")]
     use std::ops::Not;
 
-    /// Goal: an interrupted read must be re-issued. `io_uring` hands us `EINTR` for a read the
-    /// kernel aborted before it produced anything, instead of restarting it the way a plain
-    /// `read(2)` does, so giving up loses a sensor value that was never actually read. Method:
+    /// Goal: an interrupted read must be re-issued. A `pread` interrupted by a signal whose handler
+    /// lacks `SA_RESTART` returns `EINTR` for a read the kernel aborted before it produced
+    /// anything, so giving up loses a sensor value that was never actually read. Method:
     /// exercise the policy directly; a real `EINTR` needs a driver that sleeps interruptibly
     /// inside its sysfs read and cannot be produced from a regular file.
     #[test]
@@ -265,26 +294,6 @@ mod tests {
         let interrupted = Error::from(ErrorKind::Interrupted);
         assert!(should_reissue(INTERRUPTED_READ_ATTEMPTS - 1, &interrupted));
         assert!(should_reissue(1, &interrupted));
-    }
-
-    /// Goal: the wait before a re-issue must grow, and must never be zero. An immediate re-issue
-    /// lands inside the same burst of completions that caused the interrupt, so it fails again;
-    /// the wait is what lets that burst drain. Method: walk every reachable attempt count.
-    #[test]
-    fn the_reissue_backoff_grows_and_is_never_zero() {
-        let mut previous = Duration::ZERO;
-        for attempts_left in (0..INTERRUPTED_READ_ATTEMPTS).rev() {
-            let wait = reissue_backoff(attempts_left);
-            assert!(
-                wait > previous,
-                "backoff must grow, got {wait:?} after {previous:?}"
-            );
-            previous = wait;
-        }
-        assert_eq!(
-            reissue_backoff(INTERRUPTED_READ_ATTEMPTS - 1),
-            INTERRUPTED_READ_BACKOFF
-        );
     }
 
     /// Goal: the re-issue must be bounded, or a persistently interrupted read spins forever on
@@ -314,6 +323,53 @@ mod tests {
                 "{kind:?} must not be re-issued"
             );
         }
+    }
+
+    /// Goal: a one-shot attribute read on a worker returns the whole file, past what a
+    /// `SysfsValue` holds, binary bytes included. Method: read back a multi-line text file longer
+    /// than `SYSFS_VALUE_MAX_BYTES`, a file holding a non-UTF-8 byte, and one exactly at the cap.
+    #[test]
+    fn a_blocking_attribute_read_returns_the_whole_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let uevent = "DRIVER=nvme\nPCI_ID=144D:A80A\nPCI_SUBSYS_ID=144D:A801\nMODALIAS=pci:v0\n";
+        assert!(uevent.len() > SYSFS_VALUE_MAX_BYTES);
+        let text = dir.path().join("uevent");
+        std::fs::write(&text, uevent).unwrap();
+        let binary = dir.path().join("vpd_pg80");
+        std::fs::write(&binary, [0x80, 0x00, 0x01, b'S']).unwrap();
+        let full = dir.path().join("full");
+        std::fs::write(&full, vec![b'x'; ATTRIBUTE_MAX_BYTES]).unwrap();
+
+        assert_eq!(read_bytes_blocking(&text).unwrap(), uevent.as_bytes());
+        assert_eq!(
+            read_bytes_blocking(&binary).unwrap(),
+            [0x80, 0x00, 0x01, b'S']
+        );
+        assert_eq!(
+            read_bytes_blocking(&full).unwrap().len(),
+            ATTRIBUTE_MAX_BYTES
+        );
+    }
+
+    /// Goal: the read is bounded, and a missing file is an error rather than empty contents.
+    /// Method: read a file one byte past the cap, and a path that does not exist.
+    #[test]
+    fn a_blocking_attribute_read_refuses_past_the_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let long = dir.path().join("long");
+        std::fs::write(&long, vec![b'x'; ATTRIBUTE_MAX_BYTES + 1]).unwrap();
+
+        let too_large = read_bytes_blocking(&long).unwrap_err();
+        let missing = read_bytes_blocking(&dir.path().join("absent")).unwrap_err();
+
+        assert_eq!(
+            too_large.downcast_ref::<Error>().unwrap().kind(),
+            ErrorKind::FileTooLarge
+        );
+        assert_eq!(
+            missing.downcast_ref::<Error>().unwrap().kind(),
+            ErrorKind::NotFound
+        );
     }
 
     /// Goal: `read_sysfs` must return EXACTLY the file's bytes, no stale/garbage tail. A wrong
@@ -383,7 +439,7 @@ mod tests {
     #[cfg(feature = "gated-tests")]
     fn read_sysfs_concurrent_reads_are_not_cross_contaminated() {
         crate::rt::test_runtime(async {
-            const N: usize = 256; // high concurrency to stress io_uring ring reuse
+            const N: usize = 256; // many reads in flight at once
             let dir = tempfile::tempdir().unwrap();
             let mut expected = Vec::with_capacity(N);
             for i in 0..N {
@@ -516,6 +572,41 @@ mod tests {
         });
     }
 
+    /// Goal: the blocking reader serves the device threads' one-shot reads, so it must return
+    /// exactly what `read_sysfs_value` returns, at the buffer boundary and for a missing file.
+    /// Method: read short, boundary and oversize files through both readers and compare bytes,
+    /// then read a missing path through both and compare error kinds.
+    #[test]
+    fn read_sysfs_value_blocking_matches_the_async_reader() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let cases = [
+                ("short", "42\n".to_owned()),
+                ("no_newline", "0".to_owned()),
+                ("fits", format!("{}\n", "7".repeat(62))),
+                ("exact", format!("{}\n", "7".repeat(SYSFS_VALUE_MAX_BYTES))),
+                ("over", format!("{}\n", "7".repeat(100))),
+            ];
+            for (name, contents) in &cases {
+                let path = dir.path().join(name);
+                std::fs::write(&path, contents).unwrap();
+                let blocking = read_sysfs_value_blocking(&path).unwrap();
+                let pooled = read_sysfs_value(&path).await.unwrap();
+                assert_eq!(
+                    blocking.as_bytes(),
+                    pooled.as_bytes(),
+                    "bytes differ for {name}"
+                );
+            }
+            let missing = dir.path().join("missing");
+            let blocking = read_sysfs_value_blocking(&missing).unwrap_err();
+            let pooled = read_sysfs_value(&missing).await.unwrap_err();
+            let kind = |err: &anyhow::Error| err.downcast_ref::<Error>().map(Error::kind);
+            assert_eq!(kind(&blocking), Some(ErrorKind::NotFound));
+            assert_eq!(kind(&blocking), kind(&pooled));
+        });
+    }
+
     /// Goal: a missing file must surface `io::ErrorKind::NotFound` through the anyhow chain.
     /// `verify_file_exists` (custom sensors) and the kernel-refusal check (fans) downcast for it.
     /// Method: read a nonexistent path and walk the error chain.
@@ -537,13 +628,12 @@ mod tests {
 
     /// Goal: concurrent `read_sysfs_value` calls (as the hwmon hot path does each tick) must each
     /// return their own file's bytes. Stack buffers make cross-contamination impossible by
-    /// construction, but this guards io_uring ring regressions. Method: port of the `read_sysfs`
-    /// fan-out test.
+    /// construction, but this guards the fan-out. Method: port of the `read_sysfs` fan-out test.
     #[test]
     #[cfg(feature = "gated-tests")]
     fn read_sysfs_value_concurrent_reads_are_not_cross_contaminated() {
         crate::rt::test_runtime(async {
-            const N: usize = 256; // high concurrency to stress io_uring ring reuse
+            const N: usize = 256; // many reads in flight at once
             let dir = tempfile::tempdir().unwrap();
             let mut expected = Vec::with_capacity(N);
             for i in 0..N {

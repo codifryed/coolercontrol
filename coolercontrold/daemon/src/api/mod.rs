@@ -173,8 +173,8 @@ pub async fn start_server<'s>(
     )
     .await;
     let tls_config = tls_config(&settings).await;
-    // admin uses `sidecar_fs` (always Tokio); this runs during main-thread API init, so dispatch
-    // it to the sidecar (no Tokio reactor on the compio main thread).
+    // admin uses `sidecar_fs`, which the auth subsystem awaits on the sidecar; this runs during
+    // main-thread API init, so dispatch it there.
     let session_key = crate::sidecar::handle()
         .run(admin::load_or_generate_session_key)
         .await??;
@@ -378,15 +378,15 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
             allow_unencrypted: config.allow_unencrypted,
             protocol_header: config.protocol_header,
         };
-        let router_with_redirect = base_router.layer(redirect_layer);
+        let router_with_redirect = redirect_layer.layer(base_router);
         let normalized_router =
-            NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
+            NormalizePathLayer::trim_trailing_slash().layer(from_hyper(router_with_redirect));
 
         let acceptor = dual_protocol::DualProtocolAcceptor::new(tls);
         connection::server(listener, acceptor, connection_limiter)?
             .handle(handle)
             .serve(
-                ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
+                ServiceExt::<HyperRequest>::into_make_service_with_connect_info::<SocketAddr>(
                     normalized_router,
                 ),
             )
@@ -394,14 +394,15 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
     } else {
         // Plain HTTP server (no redirect needed)
         info!("Serving HTTP and gRPC API on {addr}");
-        let normalized_router = NormalizePathLayer::trim_trailing_slash().layer(base_router);
+        let normalized_router =
+            NormalizePathLayer::trim_trailing_slash().layer(from_hyper(base_router));
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
         // (TLS-disabled) configuration.
         connection::server(listener, DefaultAcceptor::new(), connection_limiter)?
             .handle(handle)
             .serve(
-                ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
+                ServiceExt::<HyperRequest>::into_make_service_with_connect_info::<SocketAddr>(
                     normalized_router,
                 ),
             )
@@ -409,6 +410,15 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
     }
     Ok(())
 }
+
+/// The stack takes axum's request body, and the server hands it hyper's.
+fn from_hyper<S>(service: S) -> tower::util::MapRequest<S, fn(HyperRequest) -> Request> {
+    tower::util::MapRequest::new(service, |request: HyperRequest| {
+        request.map(axum::body::Body::new)
+    })
+}
+
+type HyperRequest = axum::http::Request<hyper::body::Incoming>;
 
 /// A server handle that shuts down gracefully once `cancel_token` fires.
 fn shutdown_handle(cancel_token: CancellationToken) -> axum_server::Handle<SocketAddr> {
@@ -421,13 +431,23 @@ fn shutdown_handle(cancel_token: CancellationToken) -> axum_server::Handle<Socke
     handle
 }
 
-/// The API routes, with the client address resolved before anything reads it.
-async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxies>) -> Router {
+/// The API routes, and what the layers around them need.
+struct ApiRoutes {
+    router: Router,
+    token_handle: TokenHandle,
+    trusted_proxies: Arc<peer::TrustedProxies>,
+}
+
+async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxies>) -> ApiRoutes {
     aide::generate::on_error(|error| {
         debug!("OpenApi Generation Error: {error}");
     });
-    let router = finish_api(router::init(app_state).await);
-    with_client_addr(router, trusted_proxies)
+    let token_handle = app_state.token_handle.clone();
+    ApiRoutes {
+        router: finish_api(router::init(app_state).await),
+        token_handle,
+        trusted_proxies,
+    }
 }
 
 /// Debug builds serve the `OpenAPI` document at `/api.json`, so they build and keep it.
@@ -446,43 +466,88 @@ fn finish_api(router: ApiRouter) -> Router {
     Router::from(router)
 }
 
-/// Outside the router, so the client is known before its auth throttles read it.
-fn with_client_addr(router: Router, trusted_proxies: Arc<peer::TrustedProxies>) -> Router {
-    router.layer(middleware::from_fn_with_state(
-        trusted_proxies,
-        peer::client_addr_middleware,
-    ))
+/// Outside the routes, so the client is known before its auth throttles read it.
+fn with_client_addr<S>(
+    service: S,
+    trusted_proxies: Arc<peer::TrustedProxies>,
+) -> impl tower::Service<
+    Request,
+    Response = Response,
+    Error = std::convert::Infallible,
+    Future: Send + 'static,
+> + Clone
+       + Send
+       + Sync
+       + 'static
+where
+    S: tower::Service<Request, Error = std::convert::Infallible> + Clone + Send + Sync + 'static,
+    S::Response: IntoResponse,
+    S::Future: Send + 'static,
+{
+    middleware::from_fn_with_state(trusted_proxies, peer::client_addr_middleware).layer(service)
 }
 
-/// The layers every listener shares.
+/// The layers every listener shares, outermost first.
 ///
-/// Layers are processed bottom to top: (last is first in the chain)
-/// See: <https://docs.rs/axum/latest/axum/middleware/index.html#ordering>
+/// These wrap the router rather than go on it. `Router::layer` copies a layer into every
+/// route, boxed, and each request then deep-clones the boxed stack below it once per layer
+/// it passes, which was over half of a request's allocations. Out here they are one plain
+/// service. Route layers stay on the router, since they skip unmatched paths.
+///
+/// The shared layers keep their order. The route layers (session, body limits) run
+/// innermost, after the token `Extension`.
 fn with_base_layers(
-    router: Router,
+    api: ApiRoutes,
     compression_layer: Option<ApiCompressionLayer>,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     cors_layer: cors::CorsLayer,
-) -> Router {
-    optional_layers(compression_layer, router)
+) -> impl tower::Service<
+    Request,
+    Response = Response,
+    Error = std::convert::Infallible,
+    Future: Send + 'static,
+> + Clone
+       + Send
+       + Sync
+       + 'static {
+    let router = api
+        .router
         // Limits the size of the payload in bytes: (Max 50MB for image files)
         .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
         // 2MB is the default payload limit:
         .route_layer(DefaultBodyLimit::disable())
-        .route_layer(session_layer)
-        .layer(cors_layer)
-        .layer(middleware::from_fn(security_headers_middleware))
-        .layer((
-            TraceLayer::new_for_http(),
-            TimeoutLayer::with_status_code(
-                StatusCode::REQUEST_TIMEOUT,
-                Duration::from_secs(API_TIMEOUT_SECS),
-            ),
+        .route_layer(session_layer);
+    let service = tower::ServiceBuilder::new()
+        // Outside the token check, so a throttled peer is turned away before any token
+        // validation runs.
+        .layer(middleware::from_fn(
+            auth_throttle::token_throttle_middleware,
         ))
+        // What the `from_fn` auth middleware reads the tokens from.
+        .layer(axum::Extension(api.token_handle))
+        .service(router);
+    let service = with_client_addr(service, api.trusted_proxies);
+    // Either arm must answer what the bare stack does.
+    let compression_layer = compression_layer.map(|layer| {
+        tower::ServiceBuilder::new()
+            .map_response(IntoResponse::into_response)
+            .layer(layer)
+            .into_inner()
+    });
+    tower::ServiceBuilder::new()
         // Outermost of everything, so the timeout's 408 and the throttle's 429 both reach
         // gRPC clients as statuses they can read. Inside the timeout layer it would never
         // see a 408 at all.
         .layer(middleware::from_fn(router::grpc_error_middleware))
+        .layer(TraceLayer::new_for_http())
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(API_TIMEOUT_SECS),
+        ))
+        .layer(middleware::from_fn(security_headers_middleware))
+        .layer(cors_layer)
+        .option_layer(compression_layer)
+        .service(service)
 }
 
 /// The `OpenAPI` spec, built straight from the route table. Needs no `AppState`, no hardware and
@@ -820,14 +885,6 @@ async fn empty_app_state<'s>(
     .await
 }
 
-fn optional_layers(compression_layer: Option<ApiCompressionLayer>, router: Router) -> Router {
-    if let Some(layer) = compression_layer {
-        router.layer(layer)
-    } else {
-        router
-    }
-}
-
 type ApiCompressionLayer = CompressionLayer<And<DefaultPredicate, NotStaticAsset>>;
 
 /// Response compression for everything except the embedded web app. See `base::StaticAsset`.
@@ -943,8 +1000,8 @@ async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
         tls::set_served_fingerprint(fingerprint);
     }
     // `RustlsConfig::from_pem_file` reads the cert/key via `tokio::fs` and parses via
-    // `spawn_blocking`, both of which need a Tokio reactor. This runs during main-thread API init
-    // (no reactor on the compio main thread), so load it on the sidecar. Harmless on Tokio too.
+    // `spawn_blocking`. This runs during main-thread API init, so load it on the sidecar, which
+    // serves the API it configures.
     match crate::sidecar::handle()
         .run(move || RustlsConfig::from_pem_file(cert_path, key_path))
         .await
@@ -1015,8 +1072,8 @@ pub fn is_forbidden_name_char(c: char) -> bool {
 }
 
 /// Probes whether `address` can be bound, the same way the server binds it. The bind is
-/// synchronous so it needs no reactor: it runs on the main thread (which may be compio) during
-/// API init, before the server moves to the sidecar.
+/// synchronous: it runs on the main thread during API init, before the server moves to the
+/// sidecar.
 /// The actual server listener is bound on the sidecar (see `create_api_server`).
 fn can_bind_tcp(address: impl Into<SocketAddr>) -> bool {
     connection::listener(address.into()).is_ok()
@@ -1455,7 +1512,7 @@ mod tests {
             let cancel_token = CancellationToken::new();
             moro_local::async_scope!(|main_scope| -> Result<()> {
                 let state = empty_app_state(&cancel_token, main_scope).await;
-                let app = api_router(state, Arc::default()).await;
+                let app = api_router(state, Arc::default()).await.router;
                 let request = Request::get("/api.json").body(axum::body::Body::empty())?;
                 let response = app.oneshot(request).await?;
                 if cfg!(debug_assertions) {
@@ -1589,7 +1646,7 @@ mod tests {
                 "/static",
                 axum::routing::get(|| async { (Extension(base::StaticAsset), large_json()) }),
             );
-        optional_layers(Some(api_compression_layer()), router)
+        router.layer(api_compression_layer())
     }
 
     async fn content_encoding(accept_encoding: Option<&str>, uri: &str) -> Option<String> {
@@ -2148,14 +2205,32 @@ mod tests {
             .is_none());
     }
 
-    /// The headers the production stack answers each of `paths` with: the real routes and
-    /// fallback over `state`, behind every base layer, compression aside. Runs on the
-    /// sidecar, as the servers do, since the timeout layer needs its reactor.
+    /// Plain `GET`s of `paths`.
     #[cfg(feature = "gated-tests")]
-    async fn served_headers(
+    fn get_requests(paths: &[&str]) -> Vec<axum::http::Request<axum::body::Body>> {
+        paths
+            .iter()
+            .map(|path| {
+                axum::http::Request::get(*path)
+                    .body(axum::body::Body::empty())
+                    .unwrap()
+            })
+            .collect()
+    }
+
+    /// The status and headers the production stack answers each of `requests` with: the real
+    /// routes and fallback over `state`, behind every base layer and `compression`. Runs on
+    /// the sidecar, as the servers do, since the timeout layer needs its reactor.
+    ///
+    /// The status is the caller's to check: the fallback answers 404 when the build embedded
+    /// no UI, as in CI, and its headers still apply.
+    #[cfg(feature = "gated-tests")]
+    async fn served_heads(
         state: AppState,
-        paths: &'static [&'static str],
-    ) -> Vec<axum::http::HeaderMap> {
+        compression: Option<ApiCompressionLayer>,
+        requests: Vec<axum::http::Request<axum::body::Body>>,
+    ) -> Vec<axum::http::response::Parts> {
+        let request_count = requests.len();
         let sessions_dir = tempfile::tempdir().unwrap();
         let sessions_path = sessions_dir.path().to_path_buf();
         let serve = move || async move {
@@ -2167,23 +2242,92 @@ mod tests {
                 .with_private(tower_sessions::cookie::Key::generate());
             let app = with_base_layers(
                 api_router(state, Arc::default()).await,
-                None,
+                compression,
                 session_layer,
                 cors_layer(None, None, Vec::new()),
             );
-            let mut headers = Vec::with_capacity(paths.len());
-            for path in paths {
-                let request = axum::http::Request::get(*path)
-                    .body(axum::body::Body::empty())
-                    .unwrap();
+            let mut heads = Vec::with_capacity(requests.len());
+            for request in requests {
                 let response = app.clone().oneshot(request).await.unwrap();
-                headers.push(response.headers().clone());
+                heads.push(response.into_parts().0);
             }
-            headers
+            heads
         };
-        let headers = crate::sidecar::handle().run(serve).await.unwrap();
-        assert_eq!(headers.len(), paths.len());
-        headers
+        let heads = crate::sidecar::handle().run(serve).await.unwrap();
+        assert_eq!(heads.len(), request_count);
+        heads
+    }
+
+    /// A read-only bearer token: the raw value a client sends and the record that accepts it.
+    #[cfg(feature = "gated-tests")]
+    fn read_only_token() -> (String, crate::auth::token::StoredToken) {
+        let raw_token = crate::auth::token::generate_token();
+        let stored = crate::auth::token::StoredToken {
+            id: "test-token".to_string(),
+            label: "Test Token".to_string(),
+            hash: String::new(),
+            digest: Some(crate::auth::token::digest_token(&raw_token)),
+            created_at: chrono::Local::now(),
+            expires_at: None,
+            last_used: None,
+            write_access: false,
+        };
+        (raw_token, stored)
+    }
+
+    /// Goal: the production compression arm of `with_base_layers` compresses API responses
+    /// and leaves the embedded web app alone. Method: the real stack with the API
+    /// compression layer, a deflate offer to an authenticated `/health` and to the `/`
+    /// fallback document. Deflate, since the fallback serves its build-time gzip copies to
+    /// a gzip offer itself.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
+    fn the_served_stack_compresses_api_responses_only() {
+        let (raw_token, stored) = read_only_token();
+        let mut requests = Vec::with_capacity(2);
+        for (path, bearer) in [("/health", true), ("/", false)] {
+            let mut builder = axum::http::Request::get(path)
+                .header(axum::http::header::ACCEPT_ENCODING, "deflate");
+            if bearer {
+                builder = builder.header(
+                    axum::http::header::AUTHORIZATION,
+                    format!("Bearer {raw_token}"),
+                );
+            }
+            let mut request = builder.body(axum::body::Body::empty()).unwrap();
+            request
+                .extensions_mut()
+                .insert(axum::extract::ConnectInfo(SocketAddr::from((
+                    [127, 0, 0, 1],
+                    40000,
+                ))));
+            requests.push(request);
+        }
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = AppState {
+                    token_handle: TokenHandle::with_tokens(vec![stored]),
+                    ..empty_app_state(&cancel_token, main_scope).await
+                };
+                let heads = served_heads(state, Some(api_compression_layer()), requests).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+
+                let (api, document) = (&heads[0], &heads[1]);
+                assert!(api.status.is_success(), "{}", api.status);
+                assert_eq!(api.headers[axum::http::header::CONTENT_ENCODING], "deflate");
+                // Built with or without the UI, the fallback's answer stays uncompressed.
+                assert!(document
+                    .headers
+                    .get(axum::http::header::CONTENT_ENCODING)
+                    .is_none());
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
     }
 
     /// Goal: what a browser receives decides who may frame the UI, so pin it on the
@@ -2204,35 +2348,123 @@ mod tests {
                     frame_policy: FramePolicy::from_config(&[ANCESTOR.to_string()]),
                     ..state.clone()
                 };
-                let unframed = served_headers(state, &PATHS).await;
-                let framed = served_headers(framed_state, &PATHS).await;
+                let unframed = served_heads(state, None, get_requests(&PATHS)).await;
+                let framed = served_heads(framed_state, None, get_requests(&PATHS)).await;
                 // Stops the actors so the scope can finish.
                 cancel_token.cancel();
 
                 for document in &unframed[..2] {
                     assert_eq!(
-                        document["content-security-policy"],
+                        document.headers["content-security-policy"],
                         base::CONTENT_SECURITY_POLICY
                     );
-                    assert_eq!(document["x-frame-options"], "SAMEORIGIN");
+                    assert_eq!(document.headers["x-frame-options"], "SAMEORIGIN");
                 }
                 for document in &framed[..2] {
-                    let csp = document["content-security-policy"].to_str().unwrap();
+                    let csp = document.headers["content-security-policy"]
+                        .to_str()
+                        .unwrap();
                     assert!(csp.contains(&format!("; frame-ancestors {ANCESTOR}; ")));
                     assert_eq!(csp.matches("frame-ancestors").count(), 1);
                     // Browsers ignore this where the policy names ancestors. It keeps the
                     // document same-origin only if that policy is ever lost.
-                    assert_eq!(document["x-frame-options"], "SAMEORIGIN");
+                    assert_eq!(document.headers["x-frame-options"], "SAMEORIGIN");
                 }
                 for api_response in [&unframed[2], &framed[2]] {
-                    assert_eq!(api_response["x-frame-options"], "SAMEORIGIN");
-                    assert!(api_response.get("content-security-policy").is_none());
+                    assert!(api_response.status.is_success(), "{}", api_response.status);
+                    assert_eq!(api_response.headers["x-frame-options"], "SAMEORIGIN");
+                    assert!(api_response
+                        .headers
+                        .get("content-security-policy")
+                        .is_none());
                 }
                 Ok(())
             })
             .await
             .unwrap();
         });
+    }
+
+    /// What serving `request()` costs the sidecar through the production stack, compression
+    /// aside. Served twice first, so the counted one meets a warm stack, as in a client's
+    /// steady polling.
+    #[cfg(feature = "gated-tests")]
+    async fn served_request_allocations<R>(state: AppState, request: R) -> u64
+    where
+        R: Fn() -> axum::http::Request<axum::body::Body> + Send + 'static,
+    {
+        let sessions_dir = tempfile::tempdir().unwrap();
+        let sessions_path = sessions_dir.path().to_path_buf();
+        let serve = move || async move {
+            let session_store = CachingSessionStore::new(
+                MemorySessionStore::new(4),
+                FileSessionStore::new(sessions_path),
+            );
+            let session_layer = SessionManagerLayer::new(session_store)
+                .with_private(tower_sessions::cookie::Key::generate());
+            let app = with_base_layers(
+                api_router(state, Arc::default()).await,
+                None,
+                session_layer,
+                cors_layer(None, None, Vec::new()),
+            );
+            for _ in 0..2 {
+                let response = app.clone().oneshot(request()).await.unwrap();
+                assert!(response.status().is_success(), "{}", response.status());
+            }
+            let counted = request();
+            let (response, allocations) =
+                crate::alloc_count::count_allocations_async(app.clone().oneshot(counted)).await;
+            assert!(response.unwrap().status().is_success());
+            allocations
+        };
+        crate::sidecar::handle().run(serve).await.unwrap()
+    }
+
+    /// Goal: pin what one token-authenticated status poll costs the sidecar, the request a
+    /// polling client such as a plugin makes every tick. Method: serve `POST /status` with a
+    /// read-only bearer token through the real stack over an empty app state, and count.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
+    fn a_status_poll_allocates_a_bounded_amount() {
+        let (raw_token, stored) = read_only_token();
+        let request = move || {
+            let mut request = axum::http::Request::post("/status")
+                .header(
+                    axum::http::header::AUTHORIZATION,
+                    format!("Bearer {raw_token}"),
+                )
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from("{}"))
+                .unwrap();
+            request
+                .extensions_mut()
+                .insert(axum::extract::ConnectInfo(SocketAddr::from((
+                    [127, 0, 0, 1],
+                    40000,
+                ))));
+            request
+        };
+        let allocations = crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            let mut allocations = 0;
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = AppState {
+                    token_handle: TokenHandle::with_tokens(vec![stored]),
+                    ..empty_app_state(&cancel_token, main_scope).await
+                };
+                allocations = served_request_allocations(state, request).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+            allocations
+        });
+        // 210 with the shared layers on the router, where each request deep-cloned them.
+        assert!(allocations <= 100, "{allocations} allocations");
     }
 
     #[test]
@@ -2248,7 +2480,7 @@ mod tests {
         // Goal: verify that the watcher clears the in-memory session
         // cache when the password file's mtime changes (simulating a
         // CLI `--reset-password` against a running daemon). Runs on the
-        // active runtime (Tokio or compio) since the watcher uses the rt facade.
+        // main runtime, since the watcher uses the rt facade.
         use std::collections::HashMap;
         use time::OffsetDateTime;
         use tower_sessions::session::Record;

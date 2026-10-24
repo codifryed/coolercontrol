@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::ops::{Div, Not, Sub};
+use std::ops::{Div, Not};
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
@@ -12,10 +12,10 @@ use log::error;
 use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 
-use crate::device::{ChannelName, DeviceUID, Duty, UID};
+use crate::device::{Duty, UID};
 use crate::engine::commanders::graph::GraphProfileCommander;
-use crate::engine::commanders::OutputDedupState;
-use crate::engine::DeviceChannelProfileSetting;
+use crate::engine::commanders::{spawn_duty_writes, DutyBuffer, OutputDedupState};
+use crate::engine::{ChannelDuty, DeviceChannelProfileSetting, ScheduledChannel};
 use crate::setting::{Profile, ProfileMixFunctionType, ProfileType, ProfileUID};
 
 type MixProfile = Profile;
@@ -25,13 +25,13 @@ type MixProfile = Profile;
 /// scheduling, caching, as well as processing of the `MixProfileFunction`.
 pub struct MixProfileCommander {
     graph_commander: Rc<GraphProfileCommander>,
-    scheduled_settings:
-        RefCell<HashMap<Rc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>>>,
+    scheduled_settings: RefCell<HashMap<Rc<NormalizedMixProfile>, HashSet<ScheduledChannel>>>,
     all_last_applied_duties: RefCell<HashMap<ProfileUID, Duty>>,
     /// The last calculated Option<Duty> for each Mix Profile.
     /// This allows other Profiles to use the output of a Mix Profile.
     pub process_output_cache: RefCell<HashMap<ProfileUID, Option<Duty>>>,
     output_dedup: RefCell<HashMap<ProfileUID, OutputDedupState>>,
+    duty_buffer: DutyBuffer,
 }
 
 impl MixProfileCommander {
@@ -42,6 +42,7 @@ impl MixProfileCommander {
             all_last_applied_duties: RefCell::new(HashMap::new()),
             process_output_cache: RefCell::new(HashMap::new()),
             output_dedup: RefCell::new(HashMap::new()),
+            duty_buffer: DutyBuffer::default(),
         }
     }
 
@@ -71,7 +72,7 @@ impl MixProfileCommander {
         if let Some(mut existing_device_channels) = settings_lock.remove(&normalized_mix_setting) {
             // We replace the existing NormalizedMixProfile if it exists to make sure it's
             // internal settings are up to date
-            existing_device_channels.insert(device_channel);
+            existing_device_channels.insert(Rc::new(device_channel));
             settings_lock.insert(Rc::new(normalized_mix_setting), existing_device_channels);
             // Reset the dedup state so the newly-added device_channel
             // gets the current duty applied on the next tick. Without
@@ -84,7 +85,7 @@ impl MixProfileCommander {
                 .insert(mix_profile.uid.clone(), OutputDedupState::new());
         } else {
             let mut new_device_channels = HashSet::new();
-            new_device_channels.insert(device_channel);
+            new_device_channels.insert(Rc::new(device_channel));
             settings_lock.insert(Rc::new(normalized_mix_setting), new_device_channels);
             self.process_output_cache
                 .borrow_mut()
@@ -133,11 +134,11 @@ impl MixProfileCommander {
                     if let Some(mut existing_device_channels) =
                         settings_lock.remove(&normalized_child)
                     {
-                        existing_device_channels.insert(device_channel.clone());
+                        existing_device_channels.insert(Rc::new(device_channel.clone()));
                         settings_lock.insert(Rc::new(normalized_child), existing_device_channels);
                     } else {
                         let mut new_device_channels = HashSet::new();
-                        new_device_channels.insert(device_channel.clone());
+                        new_device_channels.insert(Rc::new(device_channel.clone()));
                         settings_lock.insert(Rc::new(normalized_child), new_device_channels);
                         self.process_output_cache
                             .borrow_mut()
@@ -202,61 +203,39 @@ impl MixProfileCommander {
     /// - Pass 1: Process child Mix profiles (those with no Mix sub-members)
     /// - Pass 2: Process parent Mix profiles (those with Mix sub-members),
     ///   reading child Mix output from the `process_output_cache` populated in pass 1
+    ///
+    /// Each result is written in place. A child reads no Mix output, and a parent reads only
+    /// its children's (nesting is single-level), so no write is read later in its own pass.
     pub fn process_all_profiles(&self) {
         self.update_last_applied_duties();
         let graph_duties = self.graph_commander.process_output_cache.borrow();
         let last_applied_duties = self.all_last_applied_duties.borrow();
         let scheduled = self.scheduled_settings.borrow();
-
-        // Pass 1: Process children (Mix profiles with no Mix sub-members)
-        let mut pass1_results: HashMap<ProfileUID, Option<Duty>> =
-            HashMap::with_capacity(scheduled.len());
-        for mix_profile in scheduled.keys() {
-            if mix_profile.member_mix_profile_uids.is_empty().not() {
-                continue; // Skip parents in pass 1
-            }
-            let result = Self::process_single_mix_profile(
-                mix_profile,
-                &graph_duties,
-                &HashMap::new(), // No mix outputs needed for children
-                &last_applied_duties,
-            );
-            pass1_results.insert(mix_profile.profile_uid.clone(), result);
-        }
-
-        // Write pass 1 results into the output cache
-        {
-            let mut output_cache_lock = self.process_output_cache.borrow_mut();
-            for (uid, result) in &pass1_results {
-                if let Some(cache) = output_cache_lock.get_mut(uid) {
-                    *cache = *result;
+        let mut output_cache = self.process_output_cache.borrow_mut();
+        for parents_pass in [false, true] {
+            for mix_profile in scheduled.keys() {
+                let is_parent = mix_profile.member_mix_profile_uids.is_empty().not();
+                if is_parent != parents_pass {
+                    continue;
                 }
-            }
-        }
-
-        // Pass 2: Process parents (Mix profiles with Mix sub-members)
-        let mix_duties = self.process_output_cache.borrow();
-        let mut pass2_results: HashMap<ProfileUID, Option<Duty>> =
-            HashMap::with_capacity(scheduled.len());
-        for mix_profile in scheduled.keys() {
-            if mix_profile.member_mix_profile_uids.is_empty() {
-                continue; // Skip children in pass 2
-            }
-            let result = Self::process_single_mix_profile(
-                mix_profile,
-                &graph_duties,
-                &mix_duties,
-                &last_applied_duties,
-            );
-            pass2_results.insert(mix_profile.profile_uid.clone(), result);
-        }
-        drop(mix_duties);
-
-        // Write pass 2 results into the output cache
-        let mut output_cache_lock = self.process_output_cache.borrow_mut();
-        for (uid, result) in pass2_results {
-            if let Some(cache) = output_cache_lock.get_mut(&uid) {
-                *cache = result;
+                debug_assert!(
+                    mix_profile.member_mix_profile_uids.iter().all(|child_uid| {
+                        scheduled
+                            .keys()
+                            .filter(|child| &child.profile_uid == child_uid)
+                            .all(|child| child.member_mix_profile_uids.is_empty())
+                    }),
+                    "Mix nesting must be single-level"
+                );
+                let result = Self::process_single_mix_profile(
+                    mix_profile,
+                    &graph_duties,
+                    &output_cache,
+                    &last_applied_duties,
+                );
+                if let Some(cache) = output_cache.get_mut(&mix_profile.profile_uid) {
+                    *cache = result;
+                }
             }
         }
     }
@@ -268,16 +247,16 @@ impl MixProfileCommander {
         mix_duties: &HashMap<ProfileUID, Option<Duty>>,
         last_applied_duties: &HashMap<ProfileUID, Duty>,
     ) -> Option<Duty> {
-        let mut member_duties = Vec::with_capacity(mix_profile.member_profile_uids.len());
+        let mut fold = MixFold::default();
         let mut members_have_no_output = true;
         for member_profile_uid in &mix_profile.member_profile_uids {
             // Fixed members have a constant duty - no cache lookup needed.
-            if let Some(fixed_duty) = mix_profile
+            if let Some(&fixed_duty) = mix_profile
                 .member_fixed_profile_duties
                 .get(member_profile_uid)
             {
                 members_have_no_output = false;
-                member_duties.push(fixed_duty);
+                fold.push(fixed_duty);
                 continue;
             }
             // Look up the member's output from the appropriate cache
@@ -313,29 +292,20 @@ impl MixProfileCommander {
                 };
                 last_duty
             };
-            member_duties.push(duty_value_for_calculation);
+            fold.push(*duty_value_for_calculation);
         }
         if members_have_no_output {
             return None;
         }
-        Some(Self::apply_mix_function(
-            &member_duties,
-            mix_profile.mix_function,
-        ))
+        Some(fold.finish(mix_profile.mix_function))
     }
 
     /// Processes all the member Profiles and applies the appropriate output per Mix Profile.
     /// Normally triggered by a loop/timer.
     pub fn update_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, Result<()>>) {
-        for (device_uid, channel_duties_to_apply) in self.collect_duties_to_apply() {
-            scope.spawn(async move {
-                for (channel_name, duty) in channel_duties_to_apply {
-                    self.graph_commander
-                        .set_device_speed(&device_uid, &channel_name, duty)
-                        .await;
-                }
-            });
-        }
+        let mut duties = self.duty_buffer.take();
+        self.collect_duties_to_apply(&mut duties);
+        spawn_duty_writes(scope, &self.graph_commander, &self.duty_buffer, duties);
     }
 
     /// Updates the last applied duties for all profiles. This is done somewhat proactively so
@@ -368,34 +338,25 @@ impl MixProfileCommander {
         }
     }
 
-    /// Collects the duties to apply for all scheduled Mix Profiles from the output cache.
-    /// Duties that haven't changed since the last application are suppressed unless the
-    /// safety latch counter has been reached.
-    fn collect_duties_to_apply(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
+    /// Collects the duties to apply for all scheduled Mix Profiles from the output cache into
+    /// `duties`. Duties that haven't changed since the last application are suppressed unless
+    /// the safety latch counter has been reached.
+    fn collect_duties_to_apply(&self, duties: &mut Vec<ChannelDuty>) {
         let output_cache = self.process_output_cache.borrow();
         let mut dedup_lock = self.output_dedup.borrow_mut();
-        // Build a filtered view with only the profiles that should apply this tick.
-        // Size is bounded by the number of scheduled profiles.
-        let filtered_cache: HashMap<ProfileUID, Option<Duty>> = output_cache
-            .iter()
-            .map(|(uid, duty_opt)| {
-                let effective = match duty_opt {
-                    Some(duty) => {
-                        let apply = dedup_lock
-                            .get_mut(uid)
-                            .is_none_or(|state| state.should_apply(*duty));
-                        if apply {
-                            Some(*duty)
-                        } else {
-                            None
-                        }
-                    }
-                    None => None,
-                };
-                (uid.clone(), effective)
-            })
-            .collect();
-        Self::collect_duties_from_scheduled(&self.scheduled_settings.borrow(), &filtered_cache)
+        // Each scheduled profile is asked once per tick, so each dedup state counts one tick.
+        let duty_to_apply = |uid: &ProfileUID| {
+            let duty = output_cache[uid]?;
+            dedup_lock
+                .get_mut(uid)
+                .is_none_or(|state| state.should_apply(duty))
+                .then_some(duty)
+        };
+        Self::collect_duties_from_scheduled(
+            &self.scheduled_settings.borrow(),
+            duty_to_apply,
+            duties,
+        );
     }
 
     /// For child Mix profiles (those referenced by a parent's `member_mix_profile_uids`),
@@ -403,81 +364,61 @@ impl MixProfileCommander {
     /// assigned channels are still applied. This allows a Mix Profile to be both directly
     /// applied to a channel AND used as a member of another Mix Profile.
     fn collect_duties_from_scheduled(
-        scheduled: &HashMap<Rc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>>,
-        output_cache: &HashMap<ProfileUID, Option<Duty>>,
-    ) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
-        let mut output_to_apply = HashMap::new();
-        // For each child Mix profile, collect the device channels that belong to its
-        // parent(s). These channels should not be applied by the child directly.
-        let mut parent_owned_channels: HashMap<&ProfileUID, HashSet<&DeviceChannelProfileSetting>> =
-            HashMap::new();
-        for (mix_profile, parent_device_channels) in scheduled {
-            for child_uid in &mix_profile.member_mix_profile_uids {
-                parent_owned_channels
-                    .entry(child_uid)
-                    .or_default()
-                    .extend(parent_device_channels);
-            }
-        }
+        scheduled: &HashMap<Rc<NormalizedMixProfile>, HashSet<ScheduledChannel>>,
+        mut duty_to_apply: impl FnMut(&ProfileUID) -> Option<Duty>,
+        duties: &mut Vec<ChannelDuty>,
+    ) {
         for (mix_profile, device_channels) in scheduled {
-            let optional_duty_to_set = output_cache[&mix_profile.profile_uid].as_ref().copied();
-            let Some(duty_to_set) = optional_duty_to_set else {
+            let Some(duty_to_set) = duty_to_apply(&mix_profile.profile_uid) else {
                 continue;
             };
-            let skip_channels = parent_owned_channels.get(&mix_profile.profile_uid);
             for device_channel in device_channels {
                 // Skip channels owned by a parent Mix - the parent applies its own
                 // calculated duty to those channels.
-                if let Some(channels) = skip_channels {
-                    if channels.contains(device_channel) {
-                        continue;
-                    }
+                if Self::is_owned_by_a_parent(scheduled, &mix_profile.profile_uid, device_channel) {
+                    continue;
                 }
                 // We only apply Mix Profiles directly applied to fan channels, as we
                 // can also schedule Overlay Member Profiles,
                 // which need to be handled properly upstream.
-                if let DeviceChannelProfileSetting::Mix {
-                    device_uid,
-                    channel_name,
-                } = device_channel
-                {
-                    output_to_apply
-                        .entry(device_uid.clone())
-                        .or_insert_with(Vec::new)
-                        .push((channel_name.clone(), duty_to_set));
+                if let DeviceChannelProfileSetting::Mix { .. } = **device_channel {
+                    duties.push((Rc::clone(device_channel), duty_to_set));
                 }
             }
         }
-        output_to_apply
     }
 
-    /// Applies the mix function to the collected member duties.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn apply_mix_function(member_duties: &[&Duty], mix_function: ProfileMixFunctionType) -> Duty {
+    /// Whether a parent of the Mix `child_uid` is applied to `device_channel`, which the child
+    /// then leaves to it. A scan rather than a lookup map: a child's duty changes on most ticks,
+    /// so a map built per tick allocated on most ticks, and there are only a few Mix profiles.
+    fn is_owned_by_a_parent(
+        scheduled: &HashMap<Rc<NormalizedMixProfile>, HashSet<ScheduledChannel>>,
+        child_uid: &ProfileUID,
+        device_channel: &ScheduledChannel,
+    ) -> bool {
         debug_assert!(
-            member_duties.is_empty().not(),
-            "apply_mix_function called with empty member duties"
+            scheduled.iter().any(|(child, channels)| {
+                &child.profile_uid == child_uid && channels.contains(&**device_channel)
+            }),
+            "the child must be scheduled on the channel"
         );
-        match mix_function {
-            ProfileMixFunctionType::Min => **member_duties.iter().min().unwrap(),
-            ProfileMixFunctionType::Max => **member_duties.iter().max().unwrap(),
-            ProfileMixFunctionType::Avg => member_duties
-                .iter()
-                .map(|d| **d as usize)
-                .sum::<usize>()
-                .div(member_duties.len()) as Duty,
-            ProfileMixFunctionType::Diff => member_duties
-                .iter()
-                .map(|d| **d as isize)
-                .reduce(Sub::sub)
-                .unwrap_or_default()
-                .clamp(0, 100) as Duty,
-            ProfileMixFunctionType::Sum => member_duties
-                .iter()
-                .map(|d| **d as usize)
-                .sum::<usize>()
-                .clamp(0, 100) as Duty,
+        scheduled.iter().any(|(parent, parent_channels)| {
+            parent.member_mix_profile_uids.contains(child_uid)
+                && parent_channels.contains(&**device_channel)
+        })
+    }
+
+    /// Applies the mix function to the member duties.
+    #[cfg(test)]
+    fn apply_mix_function(
+        member_duties: impl IntoIterator<Item = Duty>,
+        mix_function: ProfileMixFunctionType,
+    ) -> Duty {
+        let mut fold = MixFold::default();
+        for duty in member_duties {
+            fold.push(duty);
         }
+        fold.finish(mix_function)
     }
 
     fn normalize_mix_setting(
@@ -492,7 +433,7 @@ impl MixProfileCommander {
             member_profiles.is_empty().not(),
             "member_profiles must be validated before normalization"
         );
-        NormalizedMixProfile {
+        let normalized = NormalizedMixProfile {
             profile_uid: profile.uid.clone(),
             // Validated in schedule_setting before reaching here.
             mix_function: profile.mix_function_type().unwrap(),
@@ -507,7 +448,15 @@ impl MixProfileCommander {
                 .filter_map(|p| p.speed_fixed().map(|duty| (p.uid.clone(), duty)))
                 .collect(),
             member_profile_uids: member_profiles.iter().map(|p| p.uid.clone()).collect(),
-        }
+        };
+        debug_assert!(
+            normalized
+                .member_mix_profile_uids
+                .iter()
+                .all(|uid| normalized.member_profile_uids.contains(uid)),
+            "Mix members are a subset of all members"
+        );
+        normalized
     }
 }
 
@@ -550,14 +499,58 @@ impl Hash for NormalizedMixProfile {
     }
 }
 
+/// Every mix function's running result over the member duties, taken one at a time.
+#[derive(Default)]
+struct MixFold {
+    count: usize,
+    min: Duty,
+    max: Duty,
+    sum: usize,
+    /// The first duty minus each later one.
+    diff: isize,
+}
+
+impl MixFold {
+    fn push(&mut self, duty: Duty) {
+        if self.count == 0 {
+            self.min = duty;
+            self.max = duty;
+            self.diff = isize::from(duty);
+        } else {
+            self.min = self.min.min(duty);
+            self.max = self.max.max(duty);
+            self.diff -= isize::from(duty);
+        }
+        self.sum += usize::from(duty);
+        self.count += 1;
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn finish(&self, mix_function: ProfileMixFunctionType) -> Duty {
+        assert!(self.count > 0, "a mix needs at least one member duty");
+        match mix_function {
+            ProfileMixFunctionType::Min => self.min,
+            ProfileMixFunctionType::Max => self.max,
+            ProfileMixFunctionType::Avg => self.sum.div(self.count) as Duty,
+            ProfileMixFunctionType::Diff => self.diff.clamp(0, 100) as Duty,
+            ProfileMixFunctionType::Sum => self.sum.clamp(0, 100) as Duty,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::calibration::{CalibrationStore, FanStateMap};
+    use crate::config::Config;
+    use crate::device::{ChannelName, DeviceUID, Duty};
+    use crate::engine::commanders::graph::GraphProfileCommander;
     use crate::engine::commanders::mix::{
         MixProfileCommander, NormalizedMixProfile, OutputDedupState,
     };
-    use crate::engine::commanders::DEFAULT_SAFETY_LATCH_COUNT;
-    use crate::engine::DeviceChannelProfileSetting;
+    use crate::engine::commanders::{by_device, DEFAULT_SAFETY_LATCH_COUNT};
+    use crate::engine::{DeviceChannelProfileSetting, ScheduledChannel};
     use crate::setting::ProfileMixFunctionType;
+    use crate::setting::ProfileUID;
     use std::collections::{HashMap, HashSet};
     use std::ops::Not;
     use std::rc::Rc;
@@ -566,7 +559,10 @@ mod tests {
     fn apply_mix_function_test_min() {
         let member_duties = vec![&20, &21, &22, &23, &24];
         let mix_function = ProfileMixFunctionType::Min;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 20);
     }
 
@@ -574,7 +570,10 @@ mod tests {
     fn apply_mix_function_test_max() {
         let member_duties = vec![&0, &1, &2, &3, &4];
         let mix_function = ProfileMixFunctionType::Max;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 4);
     }
 
@@ -582,7 +581,10 @@ mod tests {
     fn apply_mix_function_test_avg() {
         let member_duties = vec![&0, &1, &2, &3, &4];
         let mix_function = ProfileMixFunctionType::Avg;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 2);
     }
 
@@ -590,7 +592,10 @@ mod tests {
     fn apply_mix_function_test_avg_large() {
         let member_duties = vec![&120, &121, &122, &123, &124];
         let mix_function = ProfileMixFunctionType::Avg;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 122);
     }
 
@@ -598,7 +603,10 @@ mod tests {
     fn apply_mix_function_test_diff() {
         let member_duties = vec![&50, &20];
         let mix_function = ProfileMixFunctionType::Diff;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 30);
     }
 
@@ -606,7 +614,10 @@ mod tests {
     fn apply_mix_function_test_diff_neg() {
         let member_duties = vec![&20, &50];
         let mix_function = ProfileMixFunctionType::Diff;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 0);
     }
 
@@ -615,7 +626,10 @@ mod tests {
         // Sum of two values within range.
         let member_duties = vec![&30, &40];
         let mix_function = ProfileMixFunctionType::Sum;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 70);
     }
 
@@ -624,7 +638,10 @@ mod tests {
         // Sum exceeds 100% — must clamp to 100.
         let member_duties = vec![&70, &60];
         let mix_function = ProfileMixFunctionType::Sum;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 100);
     }
 
@@ -633,7 +650,10 @@ mod tests {
         // Sum of three values, exact total in range.
         let member_duties = vec![&20, &30, &25];
         let mix_function = ProfileMixFunctionType::Sum;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 75);
     }
 
@@ -642,7 +662,10 @@ mod tests {
         // Sum exactly at 100% — no clamping needed.
         let member_duties = vec![&50, &50];
         let mix_function = ProfileMixFunctionType::Sum;
-        let result = MixProfileCommander::apply_mix_function(&member_duties, mix_function);
+        let result = MixProfileCommander::apply_mix_function(
+            member_duties.into_iter().copied(),
+            mix_function,
+        );
         assert_eq!(result, 100);
     }
 
@@ -863,11 +886,31 @@ mod tests {
     /// Helper to build a scheduled settings map entry.
     fn make_scheduled(
         entries: Vec<(NormalizedMixProfile, Vec<DeviceChannelProfileSetting>)>,
-    ) -> HashMap<Rc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>> {
+    ) -> HashMap<Rc<NormalizedMixProfile>, HashSet<ScheduledChannel>> {
         entries
             .into_iter()
-            .map(|(profile, channels)| (Rc::new(profile), channels.into_iter().collect()))
+            .map(|(profile, channels)| {
+                let channels = channels.into_iter().map(Rc::new).collect();
+                (Rc::new(profile), channels)
+            })
             .collect()
+    }
+
+    /// `collect_duties_from_scheduled` into a new buffer, by device.
+    fn collect_from_scheduled(
+        scheduled: &HashMap<Rc<NormalizedMixProfile>, HashSet<ScheduledChannel>>,
+        duty_to_apply: impl FnMut(&ProfileUID) -> Option<Duty>,
+    ) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
+        let mut duties = Vec::new();
+        MixProfileCommander::collect_duties_from_scheduled(scheduled, duty_to_apply, &mut duties);
+        by_device(&duties)
+    }
+
+    /// `collect_duties_to_apply` into a new buffer, by device.
+    fn collected(commander: &MixProfileCommander) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
+        let mut duties = Vec::new();
+        commander.collect_duties_to_apply(&mut duties);
+        by_device(&duties)
     }
 
     fn mix_channel(device_uid: &str, channel_name: &str) -> DeviceChannelProfileSetting {
@@ -891,7 +934,7 @@ mod tests {
             vec![mix_channel("dev1", "fan1")],
         )]);
         let output_cache = HashMap::from([("mix_a".to_string(), Some(55u8))]);
-        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        let result = collect_from_scheduled(&scheduled, |uid| output_cache[uid]);
         assert_eq!(result.len(), 1);
         assert_eq!(result["dev1"], vec![("fan1".to_string(), 55)]);
     }
@@ -930,7 +973,7 @@ mod tests {
             ("child_mix".to_string(), Some(60u8)),
             ("parent_mix".to_string(), Some(70u8)),
         ]);
-        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        let result = collect_from_scheduled(&scheduled, |uid| output_cache[uid]);
         // child_mix should apply to dev1/fan1 (its own) but NOT dev2/fan2 (parent's)
         assert!(result.contains_key("dev1"));
         let dev1_duties = &result["dev1"];
@@ -973,7 +1016,7 @@ mod tests {
             ("child_mix".to_string(), Some(40u8)),
             ("parent_mix".to_string(), Some(50u8)),
         ]);
-        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        let result = collect_from_scheduled(&scheduled, |uid| output_cache[uid]);
         // Only parent_mix applies to dev2/fan2. child_mix is fully skipped.
         assert_eq!(result.len(), 1);
         let dev2_duties = &result["dev2"];
@@ -995,7 +1038,7 @@ mod tests {
             vec![mix_channel("dev1", "fan1")],
         )]);
         let output_cache = HashMap::from([("mix_a".to_string(), None)]);
-        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        let result = collect_from_scheduled(&scheduled, |uid| output_cache[uid]);
         assert!(result.is_empty());
     }
 
@@ -1016,7 +1059,7 @@ mod tests {
             }],
         )]);
         let output_cache = HashMap::from([("mix_a".to_string(), Some(80u8))]);
-        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        let result = collect_from_scheduled(&scheduled, |uid| output_cache[uid]);
         assert!(result.is_empty());
     }
 
@@ -1218,5 +1261,191 @@ mod tests {
             assert!(state.should_apply(70).not());
         }
         assert!(state.should_apply(70)); // safety latch
+    }
+
+    /// A Mix commander over no devices, with its graph commander's outputs set by hand.
+    fn mix_commander() -> MixProfileCommander {
+        let graph_commander = GraphProfileCommander::new(
+            Rc::new(HashMap::new()),
+            HashMap::new(),
+            Rc::new(Config::init_default_config().unwrap()),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+        );
+        MixProfileCommander::new(Rc::new(graph_commander))
+    }
+
+    /// Schedules a child Max of g1 (30) and g2 (40) on fan1, and a parent Sum of the child and
+    /// g3 (20) on fan2.
+    fn schedule_child_and_parent(commander: &MixProfileCommander) {
+        let child = NormalizedMixProfile {
+            profile_uid: "child".to_string(),
+            mix_function: ProfileMixFunctionType::Max,
+            member_profile_uids: vec!["g1".to_string(), "g2".to_string()],
+            member_mix_profile_uids: vec![],
+            member_fixed_profile_duties: HashMap::new(),
+        };
+        let parent = NormalizedMixProfile {
+            profile_uid: "parent".to_string(),
+            mix_function: ProfileMixFunctionType::Sum,
+            member_profile_uids: vec!["child".to_string(), "g3".to_string()],
+            member_mix_profile_uids: vec!["child".to_string()],
+            member_fixed_profile_duties: HashMap::new(),
+        };
+        commander
+            .scheduled_settings
+            .borrow_mut()
+            .extend(make_scheduled(vec![
+                (child, vec![mix_channel("dev1", "fan1")]),
+                (parent, vec![mix_channel("dev1", "fan2")]),
+            ]));
+        for uid in ["child", "parent"] {
+            commander
+                .process_output_cache
+                .borrow_mut()
+                .insert(uid.to_string(), None);
+            commander
+                .output_dedup
+                .borrow_mut()
+                .insert(uid.to_string(), OutputDedupState::new());
+        }
+        commander
+            .graph_commander
+            .process_output_cache
+            .borrow_mut()
+            .extend([
+                ("g1".to_string(), Some(30)),
+                ("g2".to_string(), Some(40)),
+                ("g3".to_string(), Some(20)),
+            ]);
+    }
+
+    #[test]
+    fn a_parent_reads_its_childs_output_from_the_same_tick() {
+        // Goal: the in-place write gives a parent its child's fresh output. Method: process a
+        // child and parent once from empty caches and check both results.
+        let commander = mix_commander();
+        schedule_child_and_parent(&commander);
+
+        commander.process_all_profiles();
+
+        let cache = commander.process_output_cache.borrow();
+        assert_eq!(cache["child"], Some(40));
+        assert_eq!(cache["parent"], Some(60));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "Mix nesting must be single-level")]
+    fn a_parent_of_a_parent_is_refused() {
+        // Goal: the in-place write must never see nesting deeper than one level. Method:
+        // schedule a Mix whose Mix member is itself a parent, then process.
+        let commander = mix_commander();
+        schedule_child_and_parent(&commander);
+        let grandparent = NormalizedMixProfile {
+            profile_uid: "grandparent".to_string(),
+            mix_function: ProfileMixFunctionType::Max,
+            member_profile_uids: vec!["parent".to_string()],
+            member_mix_profile_uids: vec!["parent".to_string()],
+            member_fixed_profile_duties: HashMap::new(),
+        };
+        commander
+            .scheduled_settings
+            .borrow_mut()
+            .extend(make_scheduled(vec![(
+                grandparent,
+                vec![mix_channel("dev1", "fan3")],
+            )]));
+
+        commander.process_all_profiles();
+    }
+
+    #[test]
+    fn each_mix_applies_to_its_own_channel() {
+        // Goal: a child and its parent each apply only to their own channel. Method: process
+        // once and collect the duties to apply.
+        let commander = mix_commander();
+        schedule_child_and_parent(&commander);
+        commander.process_all_profiles();
+
+        let mut applied = collected(&commander).remove("dev1").unwrap();
+
+        applied.sort();
+        assert_eq!(
+            applied,
+            vec![("fan1".to_string(), 40), ("fan2".to_string(), 60)]
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_child_left_to_its_parent_allocates_nothing() {
+        // Goal: a child Mix whose duty changes every tick, on a channel its parent owns, costs
+        // a collect nothing. Method: count a collect where only the child has a new duty.
+        let scheduled = make_scheduled(vec![
+            (
+                NormalizedMixProfile {
+                    profile_uid: "child_mix".to_string(),
+                    mix_function: ProfileMixFunctionType::Max,
+                    member_profile_uids: vec!["g1".to_string()],
+                    member_mix_profile_uids: vec![],
+                    member_fixed_profile_duties: HashMap::new(),
+                },
+                vec![mix_channel("dev2", "fan2")],
+            ),
+            (
+                NormalizedMixProfile {
+                    profile_uid: "parent_mix".to_string(),
+                    mix_function: ProfileMixFunctionType::Avg,
+                    member_profile_uids: vec!["child_mix".to_string(), "g2".to_string()],
+                    member_mix_profile_uids: vec!["child_mix".to_string()],
+                    member_fixed_profile_duties: HashMap::new(),
+                },
+                vec![mix_channel("dev2", "fan2")],
+            ),
+        ]);
+        let output_cache = HashMap::from([
+            ("child_mix".to_string(), Some(40u8)),
+            ("parent_mix".to_string(), None),
+        ]);
+        let mut duties = Vec::new();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            MixProfileCommander::collect_duties_from_scheduled(
+                &scheduled,
+                |uid| output_cache[uid],
+                &mut duties,
+            );
+        });
+
+        assert!(
+            duties.is_empty(),
+            "the parent owns the child's only channel"
+        );
+        assert_eq!(allocations, 0);
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_tick_with_unchanged_duties_allocates_nothing() {
+        // Goal: steady state costs no allocation. Method: one tick applies both mixes, and the
+        // next records their outputs as last applied, a first sight. Then count the third, whose
+        // duties match and are suppressed.
+        let commander = mix_commander();
+        schedule_child_and_parent(&commander);
+        commander.process_all_profiles();
+        assert_eq!(collected(&commander)["dev1"].len(), 2);
+        commander.process_all_profiles();
+        assert!(collected(&commander).is_empty());
+        let mut duties = Vec::new();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            commander.process_all_profiles();
+            commander.collect_duties_to_apply(&mut duties);
+        });
+
+        assert!(duties.is_empty());
+        assert_eq!(allocations, 0);
+        assert_eq!(commander.process_output_cache.borrow()["parent"], Some(60));
     }
 }

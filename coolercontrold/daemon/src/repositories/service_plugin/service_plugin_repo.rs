@@ -32,6 +32,7 @@ use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
+use futures_util::future::join_all;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -120,17 +121,25 @@ fn upsert_temp(temps: &mut Vec<TempStatus>, fresh: TempStatus) {
 }
 
 /// Emits the one-shot logs at the per-channel failsafe engage / recover edges.
-fn log_failsafe_transition(device_name: &str, newly_failsafing: bool, just_recovered: bool) {
+/// `device_name` is called only for a transition: formatting the name allocates, and most ticks
+/// have none.
+fn log_failsafe_transition(
+    device_name: impl Fn() -> String,
+    newly_failsafing: bool,
+    just_recovered: bool,
+) {
     if newly_failsafing {
         error!(
-            "Significant issue retrieving status for device: {device_name}. \
-             Substituting failsafe values for stale sensors."
+            "Significant issue retrieving status for device: {}. \
+             Substituting failsafe values for stale sensors.",
+            device_name()
         );
     }
     if just_recovered {
         info!(
-            "Recovered from failsafe for device: {device_name}. \
-             Resuming normal status reads."
+            "Recovered from failsafe for device: {}. \
+             Resuming normal status reads.",
+            device_name()
         );
     }
 }
@@ -796,7 +805,7 @@ impl ServicePluginRepo {
     /// advances the per-channel staleness path so every sensor moves toward its
     /// failsafe. The preload cache is left intact, so last-known-good values are
     /// served during the grace window before the threshold.
-    fn note_status_failure(&self, device_uid: &DeviceUID, device_name: &str) {
+    fn note_status_failure(&self, device_uid: &DeviceUID) {
         let mut failsafe_lock = self.failsafe_statuses.borrow_mut();
         let Some(fsd) = failsafe_lock.get_mut(device_uid) else {
             return;
@@ -808,29 +817,31 @@ impl ServicePluginRepo {
         fsd.reset_fresh_this_tick();
         let (newly_failsafing, just_recovered) =
             fsd.tick_per_channel_staleness(&mut cache.channels, &mut cache.temps);
-        log_failsafe_transition(device_name, newly_failsafing, just_recovered);
+        log_failsafe_transition(
+            || self.log_device_name(device_uid),
+            newly_failsafing,
+            just_recovered,
+        );
     }
 
     async fn preload_device_status(
-        self: Rc<Self>,
-        device_uid: DeviceUID,
+        &self,
+        device_uid: &DeviceUID,
         service: &Rc<DeviceServiceConnection>,
     ) {
-        let delay = self.device_delay(&device_uid);
-        let device_name = self.log_device_name(&device_uid);
-        let Ok((mut channel_statuses, mut temp_statuses)) =
-            service.client.status(&device_uid).await
+        let delay = self.device_delay(device_uid);
+        let Ok((mut channel_statuses, mut temp_statuses)) = service.client.status(device_uid).await
         else {
-            self.note_status_failure(&device_uid, &device_name);
+            self.note_status_failure(device_uid);
             apply_device_command_delay(delay).await;
             return;
         };
-        let disabled_channels_for_device = self.disabled_channels.get(&device_uid);
+        let disabled_channels_for_device = self.disabled_channels.get(device_uid);
         channel_statuses
             .retain(|s| Self::retain_enabled_channels(&s.name, disabled_channels_for_device));
         temp_statuses
             .retain(|s| Self::retain_enabled_channels(&s.name, disabled_channels_for_device));
-        self.record_fresh_statuses(&device_uid, &device_name, channel_statuses, temp_statuses);
+        self.record_fresh_statuses(device_uid, channel_statuses, temp_statuses);
         apply_device_command_delay(delay).await;
     }
 
@@ -841,7 +852,6 @@ impl ServicePluginRepo {
     fn record_fresh_statuses(
         &self,
         device_uid: &DeviceUID,
-        device_name: &str,
         channel_statuses: Vec<ChannelStatus>,
         temp_statuses: Vec<TempStatus>,
     ) {
@@ -873,7 +883,11 @@ impl ServicePluginRepo {
         }
         let (newly_failsafing, just_recovered) =
             fsd.tick_per_channel_staleness(&mut cache.channels, &mut cache.temps);
-        log_failsafe_transition(device_name, newly_failsafing, just_recovered);
+        log_failsafe_transition(
+            || self.log_device_name(device_uid),
+            newly_failsafing,
+            just_recovered,
+        );
     }
 
     fn retain_enabled_channels(
@@ -1043,12 +1057,13 @@ impl Repository for ServicePluginRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-        moro_local::async_scope!(|status_scope| {
-            for (device_uid, (_device_lock, service)) in &self.devices {
-                let self = Rc::clone(&self);
-                status_scope.spawn(self.preload_device_status(device_uid.clone(), service));
-            }
-        })
+        join_all(
+            self.devices
+                .iter()
+                .map(|(device_uid, (_device_lock, service))| {
+                    self.preload_device_status(device_uid, service)
+                }),
+        )
         .await;
         trace!(
             "STATUS PRELOAD Time taken for all Device Service devices: {:?}",
@@ -1056,7 +1071,7 @@ impl Repository for ServicePluginRepo {
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         let preloaded_statuses = self.preloaded_statuses.borrow();
         for (device_uid, (device_lock, _)) in &self.devices {
             let data = preloaded_statuses
@@ -1370,8 +1385,8 @@ impl Repository for ServicePluginRepo {
 #[cfg(test)]
 mod tests {
     use super::{
-        synthesize_failsafe_seed, upsert_channel, upsert_temp, ServicePluginRepo,
-        SERVICE_MANIFEST_FILE_NAME,
+        log_failsafe_transition, synthesize_failsafe_seed, upsert_channel, upsert_temp,
+        ServicePluginRepo, SERVICE_MANIFEST_FILE_NAME,
     };
     use crate::device::{
         ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, SpeedOptions, TempInfo, TempStatus,
@@ -1379,6 +1394,32 @@ mod tests {
     use crate::repositories::failsafe::{self, MISSING_TEMP_FAILSAFE};
     use std::ops::Not;
     use std::path::Path;
+
+    /// Goal: a tick with no failsafe transition never formats the device's name, since every
+    /// tick passes through here and the name allocates, while each transition still names it.
+    /// Method: with info logs enabled, report a tick with neither transition, then one with
+    /// each, through a name builder that counts its calls.
+    #[test]
+    #[serial_test::serial]
+    fn a_device_is_named_only_on_a_failsafe_transition() {
+        let level = crate::logger::MaxLevelGuard::set(log::LevelFilter::Info);
+        let built = std::cell::Cell::new(0);
+        let name = || {
+            built.set(built.get() + 1);
+            "Remote Device".to_string()
+        };
+
+        log_failsafe_transition(name, false, false);
+        let built_quiet = built.get();
+        log_failsafe_transition(name, true, false);
+        let built_failsafing = built.get();
+        log_failsafe_transition(name, false, true);
+        drop(level);
+
+        assert_eq!(built_quiet, 0);
+        assert_eq!(built_failsafing, 1);
+        assert_eq!(built.get(), 2);
+    }
 
     #[test]
     #[cfg(feature = "gated-tests")]

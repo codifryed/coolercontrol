@@ -4,10 +4,10 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
+use crate::repositories::liquidctl::liqctld_schema::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{
     ColorMode, DeviceSupport, StatusMap,
 };
@@ -83,12 +83,12 @@ impl DeviceSupport for AuraLedSupport {
         self.convert_to_channel_lighting_modes(color_modes)
     }
 
-    fn get_channel_statuses(
+    fn refill_channel_statuses(
         &self,
         _status_map: &StatusMap,
         _device_index: u8,
-    ) -> Vec<ChannelStatus> {
+        _refill: &mut StatusRefill<'_>,
+    ) {
         // no standard statuses for AuraLed (RGB only)
-        Vec::new()
     }
 }

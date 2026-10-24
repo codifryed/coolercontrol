@@ -4,9 +4,13 @@
 //! File utilities for `CoolerControl`.
 //!
 //! Specific to `CoolerControl`'s use cases and intended only for ordinary files. Async reads and
-//! writes go through compio (completion-based). Files the kernel generates from memory, like
-//! `/proc/stat`, are the exception: see `ProcFile`. Directory and metadata helpers fall back to
-//! `std` where appropriate and should be used sparingly.
+//! writes go through tokio's file utilities, which run on its blocking pool. Files the kernel
+//! generates from memory, like `/proc/stat`, are the exception: see `ProcFile`. So are the device
+//! IO threads, which have no runtime and use the `_blocking` helpers and `SysfsFdCache`. Directory
+//! and metadata helpers fall back to `std` where appropriate and should be used sparingly.
+//!
+//! tokio replaced compio as the main runtime once device IO left the main thread: `io_uring`
+//! then had nothing to batch, so wakeups measured even and compio allocated about 80 more per tick.
 
 mod errno;
 pub use self::errno::*;

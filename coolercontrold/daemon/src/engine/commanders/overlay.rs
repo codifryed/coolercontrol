@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::device::{ChannelName, DeviceUID, Duty, UID};
+use crate::device::{Duty, UID};
 use crate::engine::commanders::graph::GraphProfileCommander;
 use crate::engine::commanders::mix::MixProfileCommander;
-use crate::engine::commanders::OutputDedupState;
-use crate::engine::{utils, DeviceChannelProfileSetting};
+use crate::engine::commanders::{spawn_duty_writes, DutyBuffer, OutputDedupState};
+use crate::engine::{utils, ChannelDuty, DeviceChannelProfileSetting, ScheduledChannel};
 use crate::setting::{Offset, Profile, ProfileType, ProfileUID};
 use anyhow::anyhow;
 use log::error;
@@ -22,11 +22,11 @@ type OverlayProfile = Profile;
 pub struct OverlayProfileCommander {
     graph_commander: Rc<GraphProfileCommander>,
     mix_commander: Rc<MixProfileCommander>,
-    scheduled_settings:
-        RefCell<HashMap<Rc<NormalizedOverlayProfile>, HashSet<DeviceChannelProfileSetting>>>,
+    scheduled_settings: RefCell<HashMap<Rc<NormalizedOverlayProfile>, HashSet<ScheduledChannel>>>,
     /// The last calculated Option<Duty> for each Overlay Profile.
     pub process_output_cache: RefCell<HashMap<ProfileUID, Option<Duty>>>,
     output_dedup: RefCell<HashMap<ProfileUID, OutputDedupState>>,
+    duty_buffer: DutyBuffer,
 }
 
 impl OverlayProfileCommander {
@@ -40,6 +40,7 @@ impl OverlayProfileCommander {
             mix_commander,
             scheduled_settings: RefCell::new(HashMap::new()),
             process_output_cache: RefCell::new(HashMap::new()),
+            duty_buffer: DutyBuffer::default(),
         }
     }
 
@@ -80,7 +81,7 @@ impl OverlayProfileCommander {
         {
             // We replace the existing NormalizedOverlayProfile if it exists to make sure it's
             // internal settings are up to date
-            existing_device_channels.insert(device_channel);
+            existing_device_channels.insert(Rc::new(device_channel));
             settings_lock.insert(
                 Rc::new(normalized_overlay_setting),
                 existing_device_channels,
@@ -96,7 +97,7 @@ impl OverlayProfileCommander {
                 .insert(overlay_profile.uid.clone(), OutputDedupState::new());
         } else {
             let mut new_device_channels = HashSet::new();
-            new_device_channels.insert(device_channel);
+            new_device_channels.insert(Rc::new(device_channel));
             settings_lock.insert(Rc::new(normalized_overlay_setting), new_device_channels);
             self.process_output_cache
                 .borrow_mut()
@@ -212,23 +213,16 @@ impl OverlayProfileCommander {
     /// Processes all the member Profiles and applies the appropriate output per Overlay Profile.
     /// Normally triggered by a loop/timer.
     pub fn update_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, anyhow::Result<()>>) {
-        for (device_uid, channel_duties_to_apply) in self.collect_duties_to_apply() {
-            scope.spawn(async move {
-                for (channel_name, duty) in channel_duties_to_apply {
-                    self.graph_commander
-                        .set_device_speed(&device_uid, &channel_name, duty)
-                        .await;
-                }
-            });
-        }
+        let mut duties = self.duty_buffer.take();
+        self.collect_duties_to_apply(&mut duties);
+        spawn_duty_writes(scope, &self.graph_commander, &self.duty_buffer, duties);
     }
 
-    /// Collects the duties to apply for all scheduled Overlay Profiles from the output cache.
-    /// Duties that haven't changed since the last application are suppressed unless the
-    /// safety latch counter has been reached.
-    fn collect_duties_to_apply(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
+    /// Collects the duties to apply for all scheduled Overlay Profiles from the output cache
+    /// into `duties`. Duties that haven't changed since the last application are suppressed
+    /// unless the safety latch counter has been reached.
+    fn collect_duties_to_apply(&self, duties: &mut Vec<ChannelDuty>) {
         let settings = self.scheduled_settings.borrow();
-        let mut output_to_apply = HashMap::with_capacity(settings.len());
         let output_cache_lock = self.process_output_cache.borrow();
         let mut dedup_lock = self.output_dedup.borrow_mut();
         for (overlay_profile, device_channels) in settings.iter() {
@@ -246,19 +240,11 @@ impl OverlayProfileCommander {
             }
             for device_channel in device_channels {
                 // We only apply Overlay Profiles directly applied to fan channels
-                if let DeviceChannelProfileSetting::Overlay {
-                    device_uid,
-                    channel_name,
-                } = device_channel
-                {
-                    output_to_apply
-                        .entry(device_uid.clone())
-                        .or_insert_with(Vec::new)
-                        .push((channel_name.clone(), duty_to_set));
+                if let DeviceChannelProfileSetting::Overlay { .. } = **device_channel {
+                    duties.push((Rc::clone(device_channel), duty_to_set));
                 }
             }
         }
-        output_to_apply
     }
 
     /// This function expects a non-empty `member_values` vector
@@ -315,5 +301,81 @@ impl Eq for NormalizedOverlayProfile {}
 impl Hash for NormalizedOverlayProfile {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.profile_uid.hash(state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::calibration::{CalibrationStore, FanStateMap};
+    use crate::config::Config;
+    use crate::engine::commanders::by_device;
+
+    /// An Overlay commander with `o1` on dev1's fan1, its latest duty `output`.
+    fn commander_with_o1(output: Option<Duty>) -> OverlayProfileCommander {
+        let graph_commander = Rc::new(GraphProfileCommander::new(
+            Rc::new(HashMap::new()),
+            HashMap::new(),
+            Rc::new(Config::init_default_config().unwrap()),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+        ));
+        let mix_commander = Rc::new(MixProfileCommander::new(Rc::clone(&graph_commander)));
+        let commander = OverlayProfileCommander::new(graph_commander, mix_commander);
+        let profile = Rc::new(NormalizedOverlayProfile {
+            profile_uid: "o1".to_string(),
+            ..Default::default()
+        });
+        let channel = DeviceChannelProfileSetting::Overlay {
+            device_uid: "dev1".to_string(),
+            channel_name: "fan1".to_string(),
+        };
+        commander
+            .scheduled_settings
+            .borrow_mut()
+            .insert(profile, HashSet::from([Rc::new(channel)]));
+        commander
+            .process_output_cache
+            .borrow_mut()
+            .insert("o1".to_string(), output);
+        commander
+            .output_dedup
+            .borrow_mut()
+            .insert("o1".to_string(), OutputDedupState::new());
+        commander
+    }
+
+    #[test]
+    fn a_new_duty_is_collected_once() {
+        // Goal: a new duty applies once and an unchanged one is suppressed. Method: collect
+        // twice with the same output.
+        let commander = commander_with_o1(Some(50));
+        let mut first = Vec::new();
+        let mut second = Vec::new();
+
+        commander.collect_duties_to_apply(&mut first);
+        commander.collect_duties_to_apply(&mut second);
+
+        assert_eq!(by_device(&first)["dev1"], vec![("fan1".to_string(), 50)]);
+        assert!(second.is_empty(), "an unchanged duty is applied once");
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn collecting_an_unchanged_duty_allocates_nothing() {
+        // Goal: a tick whose duty is suppressed costs no allocation. Method: apply the duty
+        // once, then count the allocations of the next collect.
+        let commander = commander_with_o1(Some(50));
+        let mut duties = Vec::new();
+        commander.collect_duties_to_apply(&mut duties);
+        assert!(duties.is_empty().not());
+        duties.clear();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            commander.collect_duties_to_apply(&mut duties);
+        });
+
+        assert!(duties.is_empty());
+        assert_eq!(allocations, 0);
     }
 }

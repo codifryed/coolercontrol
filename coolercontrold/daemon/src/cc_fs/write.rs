@@ -17,22 +17,19 @@ pub async fn write_string(path: impl AsRef<Path>, txt: String) -> Result<()> {
 /// Opens (or creates/truncates) the file at `path` and writes all of `data` to it. Returns an error
 /// if any of the operations fail.
 pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
-    {
-        // compio takes ownership of the buffer for the duration of the write and hands it back in
-        // the `BufResult`; we only care about the io result.
-        let compio::BufResult(res, _buf) = compio::fs::write(path.as_ref(), data).await;
-        res?;
-        Ok(())
-    }
+    Ok(tokio::fs::write(path, data).await?)
+}
+
+/// `write` as a blocking call, for a device's IO thread, which has no runtime.
+pub fn write_blocking(path: &Path, data: &[u8]) -> Result<()> {
+    Ok(std::fs::write(path, data)?)
 }
 
 /// Atomically renames `from` to `to` on the same filesystem (a metadata-only
 /// operation). Used to publish a fully written temp file over its target so a
 /// crash mid-write cannot leave a partial file at `to`.
 pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Result<()> {
-    {
-        Ok(compio::fs::rename(from.as_ref(), to.as_ref()).await?)
-    }
+    Ok(tokio::fs::rename(from, to).await?)
 }
 
 /// Recursively creates a directory and all of its parent components if they
@@ -52,9 +49,7 @@ pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Result<()> 
 /// cannot be created. Possible reasons include lack of permissions, or if a
 /// non-directory file exists at one of the parent component paths.
 pub async fn create_dir_all(path: impl AsRef<Path>) -> Result<()> {
-    {
-        Ok(compio::fs::create_dir_all(path.as_ref()).await?)
-    }
+    Ok(tokio::fs::create_dir_all(path).await?)
 }
 
 /// Removes a file from the filesystem.
@@ -72,9 +67,7 @@ pub async fn create_dir_all(path: impl AsRef<Path>) -> Result<()> {
 /// This function will return an error if the file cannot be removed. Possible
 /// reasons include lack of permissions, or if the file is a directory.
 pub async fn remove_file(path: impl AsRef<Path>) -> Result<()> {
-    {
-        Ok(compio::fs::remove_file(path.as_ref()).await?)
-    }
+    Ok(tokio::fs::remove_file(path).await?)
 }
 
 /// Recursively removes a directory and all of its contents.
@@ -93,12 +86,6 @@ pub async fn remove_file(path: impl AsRef<Path>) -> Result<()> {
 /// Possible reasons include lack of permissions, or if a non-directory file
 /// exists at the specified path.
 ///
-// `async` for parity with the Tokio backend; the compio branch's body is a sync std call.
-#[allow(clippy::unused_async)]
 pub async fn remove_dir_all(path: impl AsRef<Path>) -> Result<()> {
-    {
-        // compio has no async remove_dir_all; this is a test-only helper, so a direct std call
-        // (briefly blocking the single thread during cleanup) is acceptable.
-        Ok(std::fs::remove_dir_all(path.as_ref())?)
-    }
+    Ok(tokio::fs::remove_dir_all(path).await?)
 }

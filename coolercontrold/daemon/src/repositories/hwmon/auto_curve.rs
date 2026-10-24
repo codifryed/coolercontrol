@@ -80,7 +80,7 @@ pub async fn init_auto_curve_fans(
     device_name: &str,
     io: &DeviceIo,
 ) -> Result<()> {
-    if let Some(driver_name) = devices::get_device_driver_name(base_path).await {
+    if let Some(driver_name) = devices::get_device_driver_name(base_path) {
         if DISABLED_DRIVER_NAMES.contains(&driver_name.as_str()) {
             return Ok(());
         }

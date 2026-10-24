@@ -31,7 +31,10 @@ const PATTERN_RAPL_PACKAGE_NUMBER: &str = r"^package-(?P<number>\d+)$";
 /// [Powercap C bindings and utils](https://github.com/powercap/powercap)
 /// [Kubernetes Power Monitoring](https://sustainable-computing.io/design/kepler-energy-sources/#rapl-running-average-power-limit)
 /// [RAPL Support Info](https://web.eece.maine.edu/~vweaver/projects/rapl/)
-pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
+///
+/// The zone reads go through the CPU device's worker: `energy_uj` is an MSR read, which takes an
+/// IPI to the package.
+pub async fn find_power_cap_paths(io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
     let mut power_cap_devices = Vec::new();
     let base_paths = glob(GLOB_RAPL_ENERGY_PATH, Uninterruptible)?
         .filter_map(Result::ok)
@@ -40,7 +43,7 @@ pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
         .collect::<Vec<PathBuf>>();
     let regex_package_number = Regex::new(PATTERN_RAPL_PACKAGE_NUMBER)?;
     for path in base_paths {
-        let rapl_name = get_rapl_name(&path).await;
+        let rapl_name = get_rapl_name(&path, io).await;
         let Some(captures) = regex_package_number.captures(&rapl_name) else {
             debug!(
                 "PowerCap driver Name at location: {} is not a package, skipping",
@@ -53,7 +56,7 @@ pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
             .context("Number Group should exist")?
             .as_str()
             .parse()?;
-        if energy_is_not_usable(&path).await {
+        if energy_is_not_usable(&path, io).await {
             continue;
         }
         power_cap_devices.push(HwmonChannelInfo {
@@ -73,14 +76,13 @@ pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
 /// a legitimate 0-joule counter.
 pub async fn extract_power_joule_counter(io: &DeviceIo, channel: &HwmonChannelInfo) -> Option<f64> {
     // Through its slot, so the counter keeps its descriptor across ticks like every other per-tick
-    // attribute. The path is only rebuilt if detection never registered one.
-    io.read_one(
-        channel.read_slot.value,
-        Path::new(&format!(
+    // attribute. The path is only built if detection never registered one.
+    io.read_one(channel.read_slot.value, || {
+        PathBuf::from(format!(
             "/sys/class/powercap/intel-rapl:{}/energy_uj",
             channel.number
-        )),
-    )
+        ))
+    })
     .await
     .and_then(check_parsing_f64)
     .map(microjoules_to_joules)
@@ -96,8 +98,8 @@ pub fn calculate_power_watts(joule_count: f64, previous_joule_count: f64, poll_r
 /// Get the name of the `RAPL` package.
 /// This is often `package-0`. Note that for multi-physical-cpu systems this is a better
 /// indication of which CPU this belongs to than the `RAPL` zone number.
-async fn get_rapl_name(base_path: &Path) -> String {
-    if let Ok(contents) = cc_fs::read_sysfs(base_path.join("name")).await {
+async fn get_rapl_name(base_path: &Path, io: &DeviceIo) -> String {
+    if let Ok(contents) = io.read_text(&base_path.join("name")).await {
         contents.trim().to_string()
     } else {
         let captures = Regex::new(PATTERN_RAPL_ZONE_NUMBER)
@@ -116,8 +118,8 @@ async fn get_rapl_name(base_path: &Path) -> String {
 }
 
 /// Check if the energy channel is usable.
-async fn energy_is_not_usable(base_path: &Path) -> bool {
-    cc_fs::read_sysfs_value(base_path.join("energy_uj"))
+async fn energy_is_not_usable(base_path: &Path, io: &DeviceIo) -> bool {
+    io.read_value(&base_path.join("energy_uj"))
         .await
         .and_then(check_parsing_f64)
         .map(microjoules_to_joules)

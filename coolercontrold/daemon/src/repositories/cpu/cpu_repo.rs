@@ -4,6 +4,7 @@
 use crate::device::health::UnreachableRef;
 use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use chrono::{DateTime, Local};
+use futures_util::future::join_all;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
@@ -13,8 +14,9 @@ use std::rc::Rc;
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelAttribute, ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts, MAX_CHANNEL_ATTRIBUTES, UID,
+    ChannelAttribute, ChannelInfo, ChannelKind, ChannelSample, ChannelStatus, Device, DeviceInfo,
+    DeviceType, DriverInfo, DriverType, Mhz, Status, StatusRefill, Temp, TempInfo, TempStatus,
+    Watts, MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::overrides::OverridesController;
 use crate::repositories::cpu::apple_silicon::{self, AppleSilicon};
@@ -29,6 +31,7 @@ use crate::repositories::hwmon::chip_name::{self, ChipName};
 use crate::repositories::hwmon::hwmon_repo::{
     install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
+use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{attributes, devices, power_cap, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
@@ -56,6 +59,15 @@ struct CpuDevice {
     driver: Rc<HwmonDriverInfo>,
 }
 
+/// One CPU device's status as a tick reads it, kept across ticks so a tick allocates nothing.
+#[derive(Default)]
+struct CpuStatusBuffers {
+    channels: Vec<ChannelStatus>,
+    temps: Vec<TempStatus>,
+    /// This tick's temp reads in channel order, before the missing ones are filled.
+    read_temps: Vec<Option<Temp>>,
+}
+
 /// A CPU Repository for CPU status
 pub struct CpuRepo {
     config: Rc<Config>,
@@ -73,6 +85,11 @@ pub struct CpuRepo {
     /// Keyed by association, so a zone-keyed device cannot be confused with the socket whose
     /// physical id happens to be the same number.
     preloaded_statuses: RefCell<HashMap<CpuAssociation, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    /// The buffers each device's next status is read into, so last tick's stays readable in
+    /// `preloaded_statuses` until the two swap.
+    spare_statuses: RefCell<HashMap<CpuAssociation, CpuStatusBuffers>>,
+    /// Each poll's package frequencies, read into last poll's map. Empty while a poll runs.
+    poll_freqs: RefCell<HashMap<PhysicalID, CpuFreqs>>,
     energy_counters: HashMap<PhysicalID, Cell<f64>>,
     poll_rate: f64,
     /// Set on an Apple Silicon machine only, whose frequencies come from its clusters.
@@ -90,6 +107,8 @@ impl CpuRepo {
             cpuinfo: cc_fs::ProcFile::new(Path::new(CPUINFO_PATH), CPUINFO_MAX_BYTES),
             cpu_percent_collector: CpuPercentCollector::new()?,
             preloaded_statuses: RefCell::new(HashMap::new()),
+            spare_statuses: RefCell::new(HashMap::new()),
+            poll_freqs: RefCell::new(HashMap::new()),
             energy_counters: HashMap::new(),
             poll_rate: 0.,
         })
@@ -146,16 +165,17 @@ impl CpuRepo {
         channels: Vec<HwmonChannelInfo>,
         cc_device_setting: Option<&CCDeviceSettings>,
         path: &Path,
-    ) -> Vec<HwmonChannelInfo> {
+        identity: &IdentityReader,
+    ) -> Result<Vec<HwmonChannelInfo>, Stalled> {
         let disabled_channels =
             cc_device_setting.map_or_else(Vec::new, CCDeviceSettings::get_disabled_channels);
         let mut channels = channels
             .into_iter()
             .filter(|channel| disabled_channels.contains(&channel.name).not())
             .collect::<Vec<HwmonChannelInfo>>();
-        let chip = chip_name::derive(path).await;
+        let chip = chip_name::derive(path, identity).await?;
         self.drop_ignored_channels(chip.as_ref(), &mut channels);
-        channels
+        Ok(channels)
     }
 
     /// Drops the CPU channels the user's lm-sensors configuration ignores. Relabelling and hiding
@@ -184,7 +204,12 @@ impl CpuRepo {
         let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
         let apple_silicon_model = apple_silicon::board_model().await;
         self.apple_silicon = if apple_silicon_model.is_some() {
-            Some(AppleSilicon::find(apple_silicon::CPUFREQ_POLICY_PATH.as_ref()).await)
+            // Before any cpufreq read, so cluster discovery is isolated too.
+            let io = DeviceIo::isolated_or_inline(
+                apple_silicon::DRIVER_NAME,
+                device_io::reply_timeout_from(&self.config),
+            );
+            Some(AppleSilicon::find(apple_silicon::CPUFREQ_POLICY_PATH.as_ref(), io).await)
         } else {
             None
         };
@@ -234,17 +259,18 @@ impl CpuRepo {
     async fn driver_census(
         driver_name: &str,
         potential_cpu_paths: &[(String, PathBuf)],
-    ) -> DriverCensus {
+        identity: &IdentityReader,
+    ) -> Result<DriverCensus, Stalled> {
         let driver_paths = potential_cpu_paths
             .iter()
             .filter(|(device_name, _)| device_name == driver_name)
             .map(|(_, path)| path);
         if CpuDriver::of(driver_name) == CpuDriver::Amd {
-            return DriverCensus {
+            return Ok(DriverCensus {
                 device_count: driver_paths.count(),
                 all_zones_online: true,
                 multi_die: false,
-            };
+            });
         }
         let zone_ids = driver_paths
             .filter_map(|path| devices::get_platform_device_id(path))
@@ -252,12 +278,12 @@ impl CpuRepo {
         let platform_zone_count = devices::count_platform_devices(INTEL_DEVICE_NAME);
         let all_zones_online = association::zones_all_online(&zone_ids, platform_zone_count);
         // The die check reads every online CPU, and only the offline fallback needs it.
-        let multi_die = all_zones_online.not() && Self::any_cpu_on_a_later_die().await;
-        DriverCensus {
+        let multi_die = all_zones_online.not() && Self::any_cpu_on_a_later_die(identity).await?;
+        Ok(DriverCensus {
             device_count: zone_ids.len(),
             all_zones_online,
             multi_die,
-        }
+        })
     }
 
     /// The driver's own id for this device, read from where that driver puts it: a `coretemp`
@@ -273,20 +299,20 @@ impl CpuRepo {
     /// A kernel without `die_id` (before 5.2) predates multi-die support, so it reads as single.
     /// Only asked for `coretemp`: on current AMD a die is a CCD, which a single desktop part
     /// already has two of.
-    async fn any_cpu_on_a_later_die() -> bool {
+    async fn any_cpu_on_a_later_die(identity: &IdentityReader) -> Result<bool, Stalled> {
         let pattern = "/sys/devices/system/cpu/cpu[0-9]*/topology/die_id";
         let Ok(paths) = nu_glob::glob(pattern, nu_glob::Uninterruptible) else {
-            return false;
+            return Ok(false);
         };
         for path in paths.filter_map(Result::ok) {
-            let Ok(die_id) = cc_fs::read_txt(&path).await else {
+            let Some(die_id) = identity.text(&path).await? else {
                 continue;
             };
             if die_id.trim().parse::<u32>().is_ok_and(|die_id| die_id > 0) {
-                return true;
+                return Ok(true);
             }
         }
-        false
+        Ok(false)
     }
 
     /// The channels that only make sense once a device is tied to a processor: load, frequency
@@ -295,6 +321,7 @@ impl CpuRepo {
         &self,
         physical_id: PhysicalID,
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+        io: &DeviceIo,
     ) -> Vec<HwmonChannelInfo> {
         let mut channels = Vec::with_capacity(5); // one load, up to three freqs, one power
         match self.init_cpu_load(physical_id) {
@@ -307,7 +334,7 @@ impl CpuRepo {
                 Err(err) => error!("Error matching cpu frequencies to processors: {err}"),
             }
         }
-        match power_cap::find_power_cap_paths().await {
+        match power_cap::find_power_cap_paths(io).await {
             Ok(power_channels) => {
                 if let Some(channel) = power_channels
                     .into_iter()
@@ -327,52 +354,40 @@ impl CpuRepo {
     /// Every status carries every channel the device has, so a package with no reading this poll
     /// reports 0 rather than leaving the channel out. That happens when all its processors are
     /// offline, which is a true 0, or for the one poll after they come back online.
-    fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> ChannelStatus {
-        let load = self
-            .topology
+    fn package_load(&self, physical_id: PhysicalID) -> f64 {
+        self.topology
             .package_load_percent(&self.cpu_percent_collector.percents(), physical_id)
-            .unwrap_or(0.0);
-        ChannelStatus {
-            name: channel_name.to_string(),
-            duty: Some(load),
-            ..Default::default()
-        }
+            .unwrap_or(0.0)
     }
 
     /// The frequencies of every package, read fresh from cpuinfo.
     async fn collect_freq(&self) -> HashMap<PhysicalID, CpuFreqs> {
-        if let Some(apple_silicon) = &self.apple_silicon {
-            return apple_silicon.read_freqs().await;
-        }
-        self.cpuinfo
-            .read_with(topology::parse_freqs)
-            .await
-            .unwrap_or_default()
+        let mut freqs = HashMap::new();
+        self.collect_freq_into(&mut freqs).await;
+        freqs
     }
 
-    fn get_status_from_freq_output(
-        physical_id: PhysicalID,
-        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
-    ) -> Option<Vec<ChannelStatus>> {
-        cpu_freqs.remove(&physical_id).map(|freqs| {
-            vec![
-                ChannelStatus {
-                    name: SINGLE_CPU_FREQ_AVG_NAME.to_string(),
-                    freq: Some(freqs.avg),
-                    ..Default::default()
-                },
-                ChannelStatus {
-                    name: SINGLE_CPU_FREQ_MAX_NAME.to_string(),
-                    freq: Some(freqs.max),
-                    ..Default::default()
-                },
-                ChannelStatus {
-                    name: SINGLE_CPU_FREQ_MIN_NAME.to_string(),
-                    freq: Some(freqs.min),
-                    ..Default::default()
-                },
-            ]
-        })
+    /// `collect_freq` into `freqs`, keeping its room, except on Apple Silicon, which replaces
+    /// it. A failed read leaves it empty.
+    async fn collect_freq_into(&self, freqs: &mut HashMap<PhysicalID, CpuFreqs>) {
+        if let Some(apple_silicon) = &self.apple_silicon {
+            *freqs = apple_silicon.read_freqs().await;
+            return;
+        }
+        let parse = |cpu_info_data: &str| topology::parse_freqs_into(cpu_info_data, freqs);
+        if self.cpuinfo.read_with(parse).await.is_err() {
+            freqs.clear();
+        }
+    }
+
+    /// The cpuinfo frequency a single-CPU frequency channel reports, by its name.
+    fn freq_named(freqs: &CpuFreqs, name: &str) -> Option<Mhz> {
+        match name {
+            SINGLE_CPU_FREQ_AVG_NAME => Some(freqs.avg),
+            SINGLE_CPU_FREQ_MAX_NAME => Some(freqs.max),
+            SINGLE_CPU_FREQ_MIN_NAME => Some(freqs.min),
+            _ => None,
+        }
     }
 
     /// The load channel exists only if the package had a load reading at initialization. From
@@ -393,7 +408,7 @@ impl CpuRepo {
         physical_id: PhysicalID,
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
     ) -> Result<Vec<HwmonChannelInfo>> {
-        if Self::get_status_from_freq_output(physical_id, cpu_freqs).is_none() {
+        if cpu_freqs.remove(&physical_id).is_none() {
             Err(anyhow!("Error: no frequency found!"))
         } else {
             Ok(vec![
@@ -423,11 +438,7 @@ impl CpuRepo {
         }
     }
 
-    /// Every channel a CPU device has, for this poll.
-    ///
-    /// Load, frequency and power exist only on a device tied to a processor, so a zone-keyed
-    /// device reports its temps alone. That is enforced by the channels it was built with, and
-    /// again here by the physical id its association does not have.
+    /// Every channel a CPU device has, for this poll. See `read_status`.
     async fn request_status(
         &self,
         association: CpuAssociation,
@@ -435,45 +446,115 @@ impl CpuRepo {
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
         init: bool,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
-        let status_channels = match association.physical_id() {
-            // Only temps, which are read below, belong to a zone-keyed device.
-            None => Vec::new(),
-            Some(physical_id) => {
-                self.collect_socket_channels(physical_id, association, driver, cpu_freqs, init)
-                    .await
-            }
-        };
-        let (read_temps, _) = temps::extract_temp_statuses(driver).await;
-        let temp_names = driver
+        let freqs = association
+            .physical_id()
+            .and_then(|physical_id| cpu_freqs.remove(&physical_id));
+        let mut buffers = CpuStatusBuffers::default();
+        self.read_status(association, driver, freqs.as_ref(), init, &mut buffers)
+            .await;
+        (buffers.channels, buffers.temps)
+    }
+
+    /// Every channel a CPU device has, for this poll, refilled into `buffers` in place. Last
+    /// tick's status is read from `preloaded_statuses`, so `buffers` must not be that status.
+    ///
+    /// Load, frequency and power exist only on a device tied to a processor, so a zone-keyed
+    /// device reports its temps alone. That is enforced by the channels it was built with, and
+    /// again here by the physical id its association does not have.
+    async fn read_status(
+        &self,
+        association: CpuAssociation,
+        driver: &HwmonDriverInfo,
+        freqs: Option<&CpuFreqs>,
+        init: bool,
+        buffers: &mut CpuStatusBuffers,
+    ) {
+        let CpuStatusBuffers {
+            channels,
+            temps,
+            read_temps,
+        } = buffers;
+        let mut refill = StatusRefill::new(channels, temps);
+        // Only temps, which are read below, belong to a zone-keyed device.
+        if let Some(physical_id) = association.physical_id() {
+            self.refill_socket_channels(physical_id, association, driver, freqs, init, &mut refill)
+                .await;
+        }
+        let temp_channels = driver
             .channels
             .iter()
-            .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
-            .map(|channel| channel.name.as_str());
+            .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp);
+        read_temps.clear();
+        temps::read_temps(driver, temp_channels.clone(), |_, temp| {
+            read_temps.push(temp);
+        })
+        .await;
         // The last known temps are only needed when nothing could be read.
         let preloaded_statuses = self.preloaded_statuses.borrow();
         let last_known_temps = preloaded_statuses
             .get(&association)
             .map_or(&[][..], |(_, temps)| temps.as_slice());
-        let temps = Self::fill_missing_temps(temp_names, &read_temps, last_known_temps);
-        (status_channels, temps)
+        let temp_names = temp_channels.map(|channel| channel.name.as_str());
+        Self::fill_missing_temps(temp_names, read_temps, last_known_temps, |name, temp| {
+            refill.temp(name, temp);
+        });
+    }
+
+    /// Reads one device's status for this poll into its spare buffers, then swaps them with last
+    /// tick's, which become the spare. So `read_status` sees last tick's status unchanged, and a
+    /// tick reading the same channels as the one before last keeps every name.
+    async fn preload_status(
+        &self,
+        association: CpuAssociation,
+        driver: &HwmonDriverInfo,
+        freqs: Option<&CpuFreqs>,
+    ) {
+        let mut buffers = std::mem::take(
+            self.spare_statuses
+                .borrow_mut()
+                .entry(association)
+                .or_default(),
+        );
+        self.read_status(association, driver, freqs, false, &mut buffers)
+            .await;
+        let CpuStatusBuffers {
+            channels,
+            temps,
+            read_temps,
+        } = buffers;
+        let (channels, temps) = self
+            .preloaded_statuses
+            .borrow_mut()
+            .insert(association, (channels, temps))
+            .unwrap_or_default();
+        let spare = CpuStatusBuffers {
+            channels,
+            temps,
+            read_temps,
+        };
+        self.spare_statuses.borrow_mut().insert(association, spare);
     }
 
     /// The load, frequency and power channels of a device tied to a processor.
-    async fn collect_socket_channels(
+    async fn refill_socket_channels(
         &self,
         physical_id: PhysicalID,
         association: CpuAssociation,
         driver: &HwmonDriverInfo,
-        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+        freqs: Option<&CpuFreqs>,
         init: bool,
-    ) -> Vec<ChannelStatus> {
+        refill: &mut StatusRefill<'_>,
+    ) {
         debug_assert_eq!(association.physical_id(), Some(physical_id));
-        let mut status_channels = Vec::with_capacity(driver.channels.len());
         let mut contains_freq = false;
         for channel in &driver.channels {
             match channel.hwmon_type {
                 HwmonChannelType::Load => {
-                    status_channels.push(self.collect_load(physical_id, &channel.name));
+                    let sample = ChannelSample {
+                        duty: Some(self.package_load(physical_id)),
+                        ..Default::default()
+                    };
+                    refill.channel(&channel.name, sample);
                 }
                 HwmonChannelType::Freq => contains_freq = true,
                 HwmonChannelType::PowerCap => {
@@ -481,25 +562,25 @@ impl CpuRepo {
                         power_cap::extract_power_joule_counter(&driver.io, channel).await;
                     let mut watts = self.power_watts_or_zero(physical_id, joule_count);
                     self.use_cached_value_if_zero(&mut watts, init, association, &channel.name);
-                    status_channels.push(ChannelStatus {
-                        name: channel.name.clone(),
+                    let sample = ChannelSample {
                         watts: Some(watts),
                         ..Default::default()
-                    });
+                    };
+                    refill.channel(&channel.name, sample);
                 }
                 _ => (),
             }
         }
         if contains_freq {
-            Self::get_filtered_freqs(physical_id, driver, cpu_freqs, &mut status_channels);
+            Self::refill_freqs(driver, freqs, refill);
             if let Some(apple_silicon) = &self.apple_silicon {
-                apple_silicon.fill_cluster_freqs(&mut status_channels);
+                apple_silicon.fill_cluster_freqs(refill.channels_mut());
             }
         }
-        status_channels
     }
 
-    /// Every temp channel the device has, for this poll, in channel order.
+    /// Every temp channel the device has, for this poll, in channel order, each passed to
+    /// `on_temp`. `read_temps` holds each channel's read, in the same order.
     ///
     /// Every status carries every channel, so a temp that could not be read is still reported.
     /// An offline core's temp is removed with the core, but the core is only parked in an idle
@@ -509,31 +590,25 @@ impl CpuRepo {
     /// `coretemp` removes the device, each temp keeps its last known value: the package still
     /// draws idle power, so 0 would understate it.
     fn fill_missing_temps<'a>(
-        temp_names: impl Iterator<Item = &'a str>,
-        read_temps: &[TempStatus],
+        temp_names: impl Iterator<Item = &'a str> + Clone,
+        read_temps: &[Option<Temp>],
         last_known_temps: &[TempStatus],
-    ) -> Vec<TempStatus> {
-        let hottest_temp = read_temps
-            .iter()
-            .map(|temp_status| temp_status.temp)
-            .max_by(f64::total_cmp);
-        let mut temps = Vec::with_capacity(read_temps.len().max(last_known_temps.len()));
-        for temp_name in temp_names {
-            let find = |temps: &[TempStatus]| temps.iter().find(|t| t.name == temp_name).cloned();
-            let temp_status = find(read_temps)
-                .or_else(|| {
-                    hottest_temp.map(|temp| TempStatus {
-                        name: temp_name.to_owned(),
-                        temp,
-                    })
-                })
-                .or_else(|| find(last_known_temps));
+        mut on_temp: impl FnMut(&'a str, Temp),
+    ) {
+        debug_assert_eq!(temp_names.clone().count(), read_temps.len());
+        let hottest_temp = read_temps.iter().flatten().copied().max_by(f64::total_cmp);
+        for (temp_name, read_temp) in temp_names.zip(read_temps) {
+            let temp = read_temp.or(hottest_temp).or_else(|| {
+                last_known_temps
+                    .iter()
+                    .find(|temp_status| temp_status.name == temp_name)
+                    .map(|temp_status| temp_status.temp)
+            });
             // No reading and nothing known before, which only happens at initialization.
-            if let Some(temp_status) = temp_status {
-                temps.push(temp_status);
+            if let Some(temp) = temp {
+                on_temp(temp_name, temp);
             }
         }
-        temps
     }
 
     /// The watts to report for a power channel this poll.
@@ -590,38 +665,34 @@ impl CpuRepo {
         }
     }
 
-    /// Retrieves the CPU freqs and filters out the ones that are not enabled/present.
+    /// Refills the package's frequency channels from its cpuinfo frequencies.
     ///
     /// Every status carries every channel, so a package cpuinfo has no frequency for this poll
     /// reports 0 MHz. That only happens with every processor of the package offline, where 0 is
     /// the true value.
-    fn get_filtered_freqs(
-        phys_cpu_id: PhysicalID,
-        driver: &HwmonDriverInfo,
-        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
-        status_channels: &mut Vec<ChannelStatus>,
-    ) {
-        let mut freq_status =
-            Self::get_status_from_freq_output(phys_cpu_id, cpu_freqs).unwrap_or_default();
+    fn refill_freqs(driver: &HwmonDriverInfo, freqs: Option<&CpuFreqs>, refill: &mut StatusRefill) {
         for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Freq {
                 continue;
             }
-            match freq_status.iter().position(|s| s.name == channel.name) {
-                Some(freq_index) => status_channels.push(freq_status.swap_remove(freq_index)),
-                None => status_channels.push(ChannelStatus {
-                    name: channel.name.clone(),
-                    freq: Some(0),
-                    ..Default::default()
-                }),
-            }
+            let freq = freqs
+                .and_then(|freqs| Self::freq_named(freqs, &channel.name))
+                .unwrap_or(0);
+            let sample = ChannelSample {
+                freq: Some(freq),
+                ..Default::default()
+            };
+            refill.channel(&channel.name, sample);
         }
     }
 
-    async fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
+    async fn get_potential_cpu_paths(identity: &IdentityReader) -> Vec<(String, PathBuf)> {
         let mut potential_cpu_paths = Vec::new();
         for path in devices::find_all_hwmon_device_paths() {
-            let device_name = devices::get_device_name(&path).await;
+            let Ok(device_name) = devices::get_device_name(&path, identity).await else {
+                identity::log_skipped(&"a hwmon device", &path);
+                continue;
+            };
             if CPU_DEVICE_NAMES_ORDERED.contains(&device_name.as_str()) {
                 potential_cpu_paths.push((device_name, path));
             }
@@ -632,6 +703,7 @@ impl CpuRepo {
     async fn init_hwmon_cpu_devices(
         &mut self,
         potential_cpu_paths: Vec<(String, PathBuf)>,
+        identity: &IdentityReader,
     ) -> HashMap<CpuAssociation, HwmonDriverInfo> {
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.topology.package_count();
@@ -646,7 +718,12 @@ impl CpuRepo {
             log!(lvl, "No CPU frequencies found in cpuinfo");
         }
         for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
-            let census = Self::driver_census(cpu_device_name, &potential_cpu_paths).await;
+            let Ok(census) =
+                Self::driver_census(cpu_device_name, &potential_cpu_paths, identity).await
+            else {
+                identity::log_driver_skipped(cpu_device_name, "which die each CPU is on");
+                continue;
+            };
             if census.all_zones_online.not() {
                 info!(
                     "A {cpu_device_name} zone has no online CPU, so its CPU devices are matched by \
@@ -663,7 +740,7 @@ impl CpuRepo {
                     continue;
                 };
                 let Some(hwmon_driver_info) = self
-                    .init_cpu_device(device_name, path, association, &mut cpu_freqs)
+                    .init_cpu_device(device_name, path, association, &mut cpu_freqs, identity)
                     .await
                 else {
                     continue;
@@ -731,6 +808,7 @@ impl CpuRepo {
         path: &Path,
         association: CpuAssociation,
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+        identity: &IdentityReader,
     ) -> Option<HwmonDriverInfo> {
         let Some(type_index) = association::device_type_index(&self.topology, association) else {
             error!(
@@ -755,30 +833,31 @@ impl CpuRepo {
         }
         let mut channels = Vec::new();
         // Before any value read, so detection is isolated too.
-        let io = DeviceIo::isolated_or_inline(
-            device_name,
-            device_io::reply_timeout_for(self.config.get_settings().map_or(1.0, |s| s.poll_rate)),
-        );
+        let io =
+            DeviceIo::isolated_or_inline(device_name, device_io::reply_timeout_from(&self.config));
         match Self::init_cpu_temp(path, &io).await {
             Ok(temps) => channels.extend(temps),
             Err(err) => error!("Error initializing CPU Temps: {err}"),
         }
         if let Some(physical_id) = association.physical_id() {
-            channels.extend(self.init_socket_channels(physical_id, cpu_freqs).await);
+            channels.extend(self.init_socket_channels(physical_id, cpu_freqs, &io).await);
         }
-        let mut channels = self
-            .retain_visible_channels(channels, cc_device_setting.as_ref(), path)
-            .await;
+        let Ok(mut channels) = self
+            .retain_visible_channels(channels, cc_device_setting.as_ref(), path, identity)
+            .await
+        else {
+            identity::log_skipped(&device_name, path);
+            return None;
+        };
         // Detection is done with this device's channel set, so the per-tick pass can address the
         // worker's table by slot from here on.
         if let Err(err) = install_read_registry(path, None, &mut channels, &io).await {
             error!("Could not install the read table for {cpu_name}: {err}");
         }
-        let pci_device_names = devices::get_device_pci_names(path).await;
-        let model = devices::get_device_model_name(path).await.or_else(|| {
-            pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
-        });
-        let u_id = devices::get_device_unique_id(path, device_name).await;
+        let Ok((model, u_id)) = Self::read_model_and_id(path, device_name, identity).await else {
+            identity::log_skipped(&device_name, path);
+            return None;
+        };
         Some(HwmonDriverInfo {
             name: device_name.to_owned(),
             path: path.to_path_buf(),
@@ -793,7 +872,8 @@ impl CpuRepo {
     /// The CPU device of an Apple Silicon machine, which has no CPU hwmon device to build one
     /// from. None on any other machine, and when the user disabled the device.
     async fn init_apple_silicon_cpu_device(&self) -> Option<HwmonDriverInfo> {
-        let cluster_channels = self.apple_silicon.as_ref()?.cluster_channels();
+        let apple_silicon = self.apple_silicon.as_ref()?;
+        let cluster_channels = apple_silicon.cluster_channels();
         let association = CpuAssociation::Socket(apple_silicon::PACKAGE);
         let type_index = association::device_type_index(&self.topology, association)?;
         let cpu_name = self.topology.model_name(association.physical_id())?;
@@ -808,13 +888,14 @@ impl CpuRepo {
         }
         let mut cpu_freqs = self.collect_freq().await;
         let mut channels = self
-            .init_socket_channels(apple_silicon::PACKAGE, &mut cpu_freqs)
+            .init_socket_channels(apple_silicon::PACKAGE, &mut cpu_freqs, apple_silicon.io())
             .await;
         channels.extend(cluster_channels);
         Some(HwmonDriverInfo {
             name: apple_silicon::DRIVER_NAME.to_owned(),
             path: PathBuf::from(apple_silicon::CPU_SYSFS_PATH),
             channels,
+            io: apple_silicon.io().clone(),
             ..Default::default()
         })
     }
@@ -834,14 +915,50 @@ impl CpuRepo {
         }
     }
 
-    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    /// The device's model, from its own attribute or its PCI ids, and its identifier.
+    async fn read_model_and_id(
+        path: &Path,
+        device_name: &str,
+        identity: &IdentityReader,
+    ) -> Result<(Option<String>, UID), Stalled> {
+        let pci_device_names = devices::get_device_pci_names(path, identity).await?;
+        let model = devices::get_device_model_name(path, identity)
+            .await?
+            .or_else(|| {
+                pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
+            });
+        let u_id = devices::get_device_unique_id(path, device_name, identity).await?;
+        Ok((model, u_id))
+    }
+
+    /// For display only, read once the device is accepted: a stalled read leaves out its entry.
+    async fn get_driver_locations(base_path: &Path, identity: &IdentityReader) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
         let device_path = devices::get_static_device_path_str(base_path);
         let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+        if let Ok(Some(mod_alias)) = devices::get_device_mod_alias(base_path, identity).await {
             locations.push(mod_alias);
         }
         locations
+    }
+
+    /// The kernel driver behind a CPU device, as its device info shows it.
+    async fn driver_info(driver: &HwmonDriverInfo, identity: &IdentityReader) -> DriverInfo {
+        if driver.name == apple_silicon::DRIVER_NAME {
+            DriverInfo {
+                drv_type: DriverType::Kernel,
+                name: apple_silicon::scaling_driver(&driver.io).await,
+                version: sysinfo::System::kernel_version(),
+                locations: vec![driver.path.display().to_string()],
+            }
+        } else {
+            DriverInfo {
+                drv_type: DriverType::Kernel,
+                name: devices::get_device_driver_name(&driver.path),
+                version: sysinfo::System::kernel_version(),
+                locations: Self::get_driver_locations(&driver.path, identity).await,
+            }
+        }
     }
 }
 
@@ -859,10 +976,15 @@ impl Repository for CpuRepo {
         self.set_topology(CPUINFO_PATH.as_ref()).await?;
         // The first load status is read during initialization, so it needs a sample already.
         self.sample_cpu_load().await;
-        let potential_cpu_paths = Self::get_potential_cpu_paths().await;
+        // Dropped at the end of init, which ends its thread.
+        let identity =
+            IdentityReader::start("cpu-init", device_io::reply_timeout_from(&self.config));
+        let potential_cpu_paths = Self::get_potential_cpu_paths(&identity).await;
 
         let num_of_cpus = self.topology.package_count();
-        let mut hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
+        let mut hwmon_devices = self
+            .init_hwmon_cpu_devices(potential_cpu_paths, &identity)
+            .await;
         if hwmon_devices.is_empty() {
             if let Some(driver) = self.init_apple_silicon_cpu_device().await {
                 hwmon_devices.insert(CpuAssociation::Socket(apple_silicon::PACKAGE), driver);
@@ -899,6 +1021,12 @@ impl Repository for CpuRepo {
                 error!("No device number left for {association:?}. Skipping device.");
                 continue;
             };
+            // Derived when the device was built, so a stall here is the device going quiet since.
+            // Read before anything is stored for the device, so skipping it leaves nothing behind.
+            let Ok(chip) = chip_name::derive(&driver.path, &identity).await else {
+                identity::log_skipped(&driver.name, &driver.path);
+                continue;
+            };
             // Only a processor's own device has a package power channel, and the counter is per
             // processor, so a zone-keyed device seeds nothing.
             if let Some(physical_id) = association.physical_id() {
@@ -910,7 +1038,6 @@ impl Repository for CpuRepo {
             self.preloaded_statuses
                 .borrow_mut()
                 .insert(association, (channels.clone(), temps.clone()));
-            let chip = chip_name::derive(&driver.path).await;
             let temp_infos = driver
                 .channels
                 .iter()
@@ -951,21 +1078,7 @@ impl Repository for CpuRepo {
                     channels: channel_infos,
                     temps: temp_infos,
                     temp_max: 100,
-                    driver_info: if driver.name == apple_silicon::DRIVER_NAME {
-                        DriverInfo {
-                            drv_type: DriverType::Kernel,
-                            name: apple_silicon::scaling_driver().await,
-                            version: sysinfo::System::kernel_version(),
-                            locations: vec![driver.path.display().to_string()],
-                        }
-                    } else {
-                        DriverInfo {
-                            drv_type: DriverType::Kernel,
-                            name: devices::get_device_driver_name(&driver.path).await,
-                            version: sysinfo::System::kernel_version(),
-                            locations: Self::get_driver_locations(&driver.path).await,
-                        }
-                    },
+                    driver_info: Self::driver_info(&driver, &identity).await,
                     ..Default::default()
                 },
                 None,
@@ -1023,37 +1136,30 @@ impl Repository for CpuRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-        let mut cpu_freqs = self.collect_freq().await;
+        // Taken out, since the reads below await.
+        let mut cpu_freqs = self.poll_freqs.take();
+        self.collect_freq_into(&mut cpu_freqs).await;
         self.sample_cpu_load().await;
-        moro_local::async_scope!(|scope| {
-            for cpu_device in self.devices.values() {
-                let association = cpu_device.association;
-                let driver = &cpu_device.driver;
-                let mut cpu_freq = HashMap::new();
-                if let Some(physical_id) = association.physical_id() {
-                    if let Some(freq) = cpu_freqs.remove(&physical_id) {
-                        cpu_freq.insert(physical_id, freq);
-                    }
-                }
-                let self = Rc::clone(&self);
-                scope.spawn(async move {
-                    let (channels, temps) = self
-                        .request_status(association, driver, &mut cpu_freq, false)
-                        .await;
-                    self.preloaded_statuses
-                        .borrow_mut()
-                        .insert(association, (channels, temps));
-                });
+        join_all(self.devices.values().map(|cpu_device| {
+            let association = cpu_device.association;
+            let freqs = association
+                .physical_id()
+                .and_then(|physical_id| cpu_freqs.get(&physical_id));
+            let self = &self;
+            async move {
+                self.preload_status(association, &cpu_device.driver, freqs)
+                    .await;
             }
-        })
+        }))
         .await;
+        self.poll_freqs.replace(cpu_freqs);
         trace!(
             "STATUS PRELOAD Time taken for all CPU devices: {:?}",
             start_update.elapsed()
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         self.store_preloaded_statuses(timestamp);
         Ok(())
     }
@@ -1190,7 +1296,7 @@ mod tests {
     use crate::config::Config;
     #[cfg(feature = "gated-tests")]
     use crate::device::ChannelStatus;
-    use crate::device::TempStatus;
+    use crate::device::{StatusRefill, TempStatus};
     #[cfg(feature = "gated-tests")]
     use crate::overrides::OverridesController;
     #[cfg(feature = "gated-tests")]
@@ -1251,13 +1357,12 @@ mod tests {
             );
 
             // when:
-            let package_0 = cpu_repo.collect_load(0, "CPU Load");
-            let package_1 = cpu_repo.collect_load(1, "CPU Load");
+            let package_0 = cpu_repo.package_load(0);
+            let package_1 = cpu_repo.package_load(1);
 
             // then:
-            assert_eq!(package_0.duty, Some(50.0));
-            assert_eq!(package_1.duty, Some(0.0));
-            assert_eq!(package_1.name, "CPU Load");
+            assert_eq!(package_0, 50.0);
+            assert_eq!(package_1, 0.0);
             // then: had this been the sample at initialization, only package 0 gets the channel.
             assert!(cpu_repo.init_cpu_load(0).is_some());
             assert!(cpu_repo.init_cpu_load(1).is_none());
@@ -1322,6 +1427,73 @@ mod tests {
         }
     }
 
+    /// Goal: a poll reads into the spare buffers while last tick's status stays readable, then
+    /// the two swap. So a poll reading the same temps as the one before last keeps every name,
+    /// and a poll that reads nothing still keeps the last known temps. Method: a zone device with
+    /// two temps on a temp dir through three polls, checking the first poll's buffers become the
+    /// spare and then the status again, then a fourth poll with every temp unreadable.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn a_poll_swaps_its_status_with_last_ticks() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let write = |file: &str, value: &str| std::fs::write(dir.path().join(file), value);
+            write("temp1_input", "40000").unwrap();
+            write("temp2_input", "50000").unwrap();
+            let temp_channel = |number: u8| HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Temp,
+                number,
+                name: format!("temp{number}"),
+                ..Default::default()
+            };
+            let driver = HwmonDriverInfo {
+                name: "k10temp".to_string(),
+                path: dir.path().to_path_buf(),
+                channels: vec![temp_channel(1), temp_channel(2)],
+                ..Default::default()
+            }
+            .with_read_registry()
+            .await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
+            let zone = CpuAssociation::Zone(0);
+            let stored_temps = || cpu_repo.preloaded_statuses.borrow()[&zone].1.clone();
+            let name_buffers = || {
+                let preloaded = cpu_repo.preloaded_statuses.borrow();
+                let names = preloaded[&zone].1.iter().map(|temp| temp.name.as_ptr());
+                names.collect::<Vec<_>>()
+            };
+
+            cpu_repo.preload_status(zone, &driver, None).await;
+            let first_names = name_buffers();
+            write("temp1_input", "41000").unwrap();
+            cpu_repo.preload_status(zone, &driver, None).await;
+            let spare_names: Vec<_> = cpu_repo.spare_statuses.borrow()[&zone]
+                .temps
+                .iter()
+                .map(|temp| temp.name.as_ptr())
+                .collect();
+            assert_eq!(spare_names, first_names, "the first poll is spare");
+            write("temp1_input", "42000").unwrap();
+            cpu_repo.preload_status(zone, &driver, None).await;
+
+            assert_eq!(first_names.len(), 2);
+            assert_eq!(name_buffers(), first_names);
+            let polled = vec![temp("temp1", 42.0), temp("temp2", 50.0)];
+            assert_eq!(stored_temps(), polled);
+            assert!(cpu_repo.preloaded_statuses.borrow()[&zone].0.is_empty());
+
+            write("temp1_input", "not a temp").unwrap();
+            write("temp2_input", "not a temp").unwrap();
+            cpu_repo.preload_status(zone, &driver, None).await;
+            assert_eq!(
+                stored_temps(),
+                polled,
+                "nothing read keeps the last known temps"
+            );
+        });
+    }
+
     /// Goal: every temp channel is in every status. An unreadable temp takes the hottest temp
     /// read on the same device, since an offline core is parked on the same die as the rest. With
     /// nothing read at all, as for an Intel package with every core offline, each keeps its last
@@ -1335,20 +1507,26 @@ mod tests {
             temp("temp3", 60.0),
         ];
 
+        let fill = |read_temps: &[Option<f64>], last_known: &[TempStatus]| {
+            let mut temps = Vec::new();
+            CpuRepo::fill_missing_temps(names.into_iter(), read_temps, last_known, |name, t| {
+                temps.push(temp(name, t));
+            });
+            temps
+        };
+
         // then: all read, so nothing is filled and the cache is ignored.
-        let all_read = vec![
-            temp("temp1", 50.0),
-            temp("temp2", 45.0),
-            temp("temp3", 40.0),
-        ];
         assert_eq!(
-            CpuRepo::fill_missing_temps(names.into_iter(), &all_read, &last_known),
-            all_read
+            fill(&[Some(50.0), Some(45.0), Some(40.0)], &last_known),
+            vec![
+                temp("temp1", 50.0),
+                temp("temp2", 45.0),
+                temp("temp3", 40.0)
+            ]
         );
         // then: an offline core takes the hottest temp read this poll, not its last value or 0.
-        let core_offline = vec![temp("temp1", 50.0), temp("temp3", 40.0)];
         assert_eq!(
-            CpuRepo::fill_missing_temps(names.into_iter(), &core_offline, &last_known),
+            fill(&[Some(50.0), None, Some(40.0)], &last_known),
             vec![
                 temp("temp1", 50.0),
                 temp("temp2", 50.0),
@@ -1356,12 +1534,9 @@ mod tests {
             ]
         );
         // then: nothing read, so every temp keeps its last known value.
-        assert_eq!(
-            CpuRepo::fill_missing_temps(names.into_iter(), &[], &last_known),
-            last_known.to_vec()
-        );
+        assert_eq!(fill(&[None, None, None], &last_known), last_known.to_vec());
         // then: nothing read and nothing known, as at initialization, reports nothing.
-        assert!(CpuRepo::fill_missing_temps(names.into_iter(), &[], &[]).is_empty());
+        assert!(fill(&[None, None, None], &[]).is_empty());
     }
 
     /// Goal: a package's frequency channels are in every status, and report 0 MHz in a poll
@@ -1381,7 +1556,7 @@ mod tests {
                 .collect(),
             ..Default::default()
         };
-        let mut cpu_freqs = HashMap::from([(
+        let cpu_freqs = HashMap::from([(
             1,
             CpuFreqs {
                 min: 800,
@@ -1390,14 +1565,23 @@ mod tests {
             },
         )]);
 
+        let refilled = |freqs: Option<&CpuFreqs>| {
+            let mut channels = Vec::new();
+            let mut temps = Vec::new();
+            CpuRepo::refill_freqs(
+                &driver,
+                freqs,
+                &mut StatusRefill::new(&mut channels, &mut temps),
+            );
+            channels
+        };
+
         // then: online, so the real frequencies are reported.
-        let mut online = Vec::new();
-        CpuRepo::get_filtered_freqs(1, &driver, &mut cpu_freqs, &mut online);
+        let online = refilled(cpu_freqs.get(&1));
         let freqs: Vec<Option<u32>> = online.iter().map(|status| status.freq).collect();
         assert_eq!(freqs, vec![Some(1900), Some(3000), Some(800)]);
         // then: offline, so each channel is still there, at 0 MHz.
-        let mut offline = Vec::new();
-        CpuRepo::get_filtered_freqs(1, &driver, &mut HashMap::new(), &mut offline);
+        let offline = refilled(None);
         let names: Vec<&str> = offline.iter().map(|status| status.name.as_str()).collect();
         assert_eq!(names, vec!["CPU Freq Avg", "CPU Freq Max", "CPU Freq Min"]);
         assert!(offline.iter().all(|status| status.freq == Some(0)));
@@ -1433,7 +1617,8 @@ mod tests {
                         .unwrap();
                 }
             }
-            let apple_silicon = AppleSilicon::find(&base).await;
+            let io = crate::repositories::hwmon::device_io::DeviceIo::default();
+            let apple_silicon = AppleSilicon::find(&base, io).await;
             let mut channels: Vec<HwmonChannelInfo> =
                 ["CPU Freq Avg", "CPU Freq Max", "CPU Freq Min"]
                     .into_iter()
@@ -1454,16 +1639,21 @@ mod tests {
             cpu_repo.apple_silicon = Some(apple_silicon);
 
             // when:
-            let mut cpu_freqs = cpu_repo.collect_freq().await;
-            let statuses = cpu_repo
-                .collect_socket_channels(
+            let cpu_freqs = cpu_repo.collect_freq().await;
+            let mut statuses = Vec::new();
+            let mut temps = Vec::new();
+            let mut refill = StatusRefill::new(&mut statuses, &mut temps);
+            cpu_repo
+                .refill_socket_channels(
                     0,
                     CpuAssociation::Socket(0),
                     &driver,
-                    &mut cpu_freqs,
+                    cpu_freqs.get(&0),
                     true,
+                    &mut refill,
                 )
                 .await;
+            drop(refill);
 
             // then:
             let freqs: Vec<(&str, Option<u32>)> = statuses

@@ -5,15 +5,17 @@ use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::string::ToString;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
+use futures_util::future::join_all;
+use tokio_util::sync::CancellationToken;
 
 use crate::api::CCError;
 use crate::config::Config;
@@ -28,6 +30,10 @@ use crate::repositories::failsafe::{
     MISSING_TEMP_FAILSAFE, MISSING_WATTS_FAILSAFE,
 };
 use crate::repositories::hwmon::attributes::{MICROWATTS_MAX, MICROWATTS_PER_WATT};
+use crate::repositories::hwmon::device_io::{
+    self as device_io, reply_timeout_for, DeviceHealth, DeviceIo, WorkerLiveness,
+    UNREACHABLE_PROBE_INTERVAL,
+};
 use crate::repositories::hwmon::fans::pwm_value_to_duty;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
@@ -51,6 +57,11 @@ const _: () = assert!(MICROWATTS_MAX <= 1 << 53);
 /// Upper bound on window slots: the max `time_window_seconds` (300) at the fastest
 /// `poll_rate` (0.5 s).
 const SAMPLE_WINDOW_MAX_SLOTS: usize = 600;
+/// Retired check workers still running at once, each parked in the kernel on a file that has
+/// not answered. Past this a check fails at once, so a client repeating a check of a file that
+/// blocks cannot park threads without bound. A worker whose read returns exits and frees its
+/// place, so checks that were only slow never lock checks out.
+const CHECK_WORKERS_MAX: usize = 8;
 
 type CustomSensors = RefCell<Vec<CustomSensor>>;
 type Relationships = RefCell<HashMap<ChildId, Vec<ParentId>>>;
@@ -107,6 +118,32 @@ pub struct CustomSensorsRepo {
     sample_windows: RefCell<HashMap<CustomSensorId, SampleWindow>>,
     /// Transient read state for `File` sensors. See [`FileReadState`].
     file_read_state: RefCell<HashMap<CustomSensorId, FileReadState>>,
+    /// Every sensor's value this tick, in processing order, kept across ticks so each id is
+    /// written over the last tick's in place.
+    tick_values: RefCell<Vec<SensorValue>>,
+    /// One Mix or Scale & Offset sensor's source values, reused by each in turn.
+    source_data: RefCell<Vec<SourceData>>,
+    /// Every File sensor's source, rebuilt whenever the sensors change. A read pass keeps the
+    /// list it started with, so a pass that outlives a change can tell and drops its results.
+    file_sources: RefCell<Rc<[FileSource]>>,
+    /// Where File sources are read during preload. Inline until `with_isolated_file_reads`.
+    io: DeviceIo,
+    /// Whether `io` was last announced unreachable, so going and coming back log once each.
+    file_io_unreachable: Cell<bool>,
+    /// Set while a read pass is in flight, so a file that has not answered skips the next pass
+    /// instead of queueing a second read behind the first.
+    file_pass_in_flight: Cell<bool>,
+    /// Where create and update checks read, apart from `io`. Started on the first check, and
+    /// again after a check that got no answer.
+    check_worker: RefCell<Option<DeviceIo>>,
+    /// Check workers retired after a check got no answer, kept until their threads exit. At most
+    /// `CHECK_WORKERS_MAX`.
+    retired_check_workers: RefCell<Vec<WorkerLiveness>>,
+    /// Starts a check worker. A field so tests can count starts without a thread.
+    start_check_worker: fn(&str, Duration) -> Result<DeviceIo>,
+    /// Cancelled by `abort_pending`, so an in-flight read pass cannot hold the main loop's
+    /// scope open at shutdown.
+    abort_token: CancellationToken,
 }
 
 /// The held value is emitted for up to `MISSING_STATUS_THRESHOLD` consecutive failures, so one
@@ -116,6 +153,26 @@ pub struct CustomSensorsRepo {
 struct FileReadState {
     consecutive_failures: u16,
     last_good_value: Option<f64>,
+    /// The newest read to land since the last snapshot, which takes it. A failed read leaves
+    /// nothing, and nothing counts as a failure.
+    fresh: Option<f64>,
+}
+
+/// One File sensor's source, as the read pass needs it.
+struct FileSource {
+    id: CustomSensorId,
+    metric: CustomSensorMetric,
+    path: PathBuf,
+}
+
+/// Clears `file_pass_in_flight` however the pass ends, so a cancelled pass cannot leave every
+/// later one skipped.
+struct FilePassGuard<'a>(&'a Cell<bool>);
+
+impl Drop for FilePassGuard<'_> {
+    fn drop(&mut self) {
+        self.0.set(false);
+    }
 }
 
 /// One Custom Sensor's value for a tick, already bounded for its metric, so a parent sensor
@@ -124,6 +181,18 @@ struct SensorValue {
     id: CustomSensorId,
     metric: CustomSensorMetric,
     value: f64,
+}
+
+/// A File sensor's read state, created on its first use, so a sensor already tracked costs no
+/// copy of its id.
+fn file_read_state_of<'a>(
+    states: &'a mut HashMap<CustomSensorId, FileReadState>,
+    id: &CustomSensorId,
+) -> &'a mut FileReadState {
+    if states.contains_key(id).not() {
+        states.insert(id.clone(), FileReadState::default());
+    }
+    states.get_mut(id).expect("inserted above when absent")
 }
 
 impl CustomSensorsRepo {
@@ -149,8 +218,29 @@ impl CustomSensorsRepo {
             overrides,
             failsafing_sensors: RefCell::new(HashMap::new()),
             file_read_state: RefCell::new(HashMap::new()),
+            tick_values: RefCell::new(Vec::new()),
+            source_data: RefCell::new(Vec::new()),
+            file_sources: RefCell::new(Rc::new([])),
+            io: DeviceIo::default(),
+            file_io_unreachable: Cell::new(false),
+            file_pass_in_flight: Cell::new(false),
+            check_worker: RefCell::new(None),
+            retired_check_workers: RefCell::new(Vec::with_capacity(CHECK_WORKERS_MAX)),
+            start_check_worker: DeviceIo::threaded,
+            abort_token: CancellationToken::new(),
             sample_windows: RefCell::new(HashMap::new()),
         })
+    }
+
+    /// Reads File sources on a thread of their own, so a file that blocks in its read (a FIFO,
+    /// a hung network mount, a driver attribute) parks that thread instead of the main loop.
+    /// Every File sensor shares the one thread, so a wedged file fails safe all of them. The
+    /// thread's stall warnings come from here, where the File sensors can be named.
+    #[must_use]
+    pub fn with_isolated_file_reads(mut self) -> Self {
+        self.io = DeviceIo::isolated_or_inline("custom-sensors", reply_timeout_for(self.poll_rate))
+            .owner_announces_health();
+        self
     }
 
     pub fn get_device_uid(&self) -> UID {
@@ -196,16 +286,21 @@ impl CustomSensorsRepo {
         self.sensors.borrow_mut().push(custom_sensor);
         self.update_device_info();
         self.reconstruct_relationships();
+        self.refresh_file_sources();
         Ok(())
     }
 
     pub async fn update_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
         self.verify_metric_is_unchanged(&custom_sensor)?;
         self.verify_sensor_relationships(&custom_sensor)?;
-        if let CustomSensorKind::File { file_path } = &custom_sensor.kind {
+        let file_value = match &custom_sensor.kind {
             // Make sure the file exists and its value is properly formatted
-            Self::read_file_value(custom_sensor.metric, file_path).await?;
-        }
+            CustomSensorKind::File { file_path } => Some(
+                self.check_file_value(custom_sensor.metric, file_path)
+                    .await?,
+            ),
+            _ => None,
+        };
         // A reconfigured sensor starts fresh: drop any prior failsafing state so the
         // first tick after the update logs a transition cleanly if it failsafes again.
         self.failsafing_sensors
@@ -213,8 +308,12 @@ impl CustomSensorsRepo {
             .remove(&custom_sensor.id);
         // The window or source may have changed; the next tick reseeds from history.
         self.sample_windows.borrow_mut().remove(&custom_sensor.id);
-        // A repointed File sensor must not ride out failures on the old file's value.
+        // A repointed File sensor must not ride out failures on the old file's value. It holds
+        // the new file's checked value instead, so it reports before its first read pass lands.
         self.file_read_state.borrow_mut().remove(&custom_sensor.id);
+        if let Some(raw) = file_value {
+            self.seed_file_read(&custom_sensor.id, custom_sensor.metric, raw);
+        }
         self.config.update_custom_sensor(custom_sensor.clone())?;
         {
             let mut sensors = self.sensors.borrow_mut();
@@ -226,6 +325,7 @@ impl CustomSensorsRepo {
             sensors[pos] = custom_sensor;
         }
         self.reconstruct_relationships();
+        self.refresh_file_sources();
         Ok(())
     }
 
@@ -306,6 +406,7 @@ impl CustomSensorsRepo {
         self.file_read_state.borrow_mut().remove(custom_sensor_id);
         self.update_device_info();
         self.reconstruct_relationships();
+        self.refresh_file_sources();
         Ok(())
     }
 
@@ -393,7 +494,7 @@ impl CustomSensorsRepo {
         // failsafe substitution).
         let file_value = match &sensor.kind {
             CustomSensorKind::File { file_path } => {
-                Some(Self::read_file_value(sensor.metric, file_path).await?)
+                Some(self.check_file_value(sensor.metric, file_path).await?)
             }
             _ => None,
         };
@@ -439,6 +540,12 @@ impl CustomSensorsRepo {
                 .map(|value| Self::channel_sample(sensor.metric, *value))
                 .collect();
             device.add_channel_column(&sensor.id, &samples);
+        }
+        drop(device);
+        // The check read is the sensor's first good read. Held, it lets the first snapshot
+        // report before the sensor's first read pass lands.
+        if let Some(raw) = file_value {
+            self.seed_file_read(&sensor.id, sensor.metric, raw);
         }
         Ok(())
     }
@@ -608,8 +715,9 @@ impl CustomSensorsRepo {
         sources: &[SensorSource],
         values: &[SensorValue],
         reduce: impl Fn(&[SourceData]) -> f64,
-    ) -> SensorValue {
-        let mut source_data = Vec::with_capacity(sources.len());
+    ) -> f64 {
+        let mut source_data = self.source_data.borrow_mut();
+        source_data.clear();
         for source in sources {
             let Some(value) = self.source_value(sensor.metric, source, values) else {
                 return self.emit_source_missing_failsafe(sensor, source);
@@ -627,16 +735,10 @@ impl CustomSensorsRepo {
         self.emit_real(&sensor.id, sensor.metric, reduce(&source_data))
     }
 
-    /// Computes one sensor's current-tick value and pushes it to `values`. `File` sensors
-    /// are deferred into `file_sensors` so their async read happens outside the sensors borrow.
-    /// Shared by the children-first and parents passes of `update_statuses`; parents are never
-    /// `File`, so that arm is inert for them.
-    fn process_live_sensor(
-        &self,
-        sensor: &CustomSensor,
-        values: &mut Vec<SensorValue>,
-        file_sensors: &mut Vec<(CustomSensorId, CustomSensorMetric, PathBuf)>,
-    ) {
+    /// Computes one sensor's current-tick value from the sensors processed before it, in
+    /// `values`. Shared by the children-first and parents passes of `update_statuses`; parents
+    /// are never `File`, so that arm is inert for them.
+    fn process_live_sensor(&self, sensor: &CustomSensor, values: &[SensorValue]) -> f64 {
         let metric = sensor.metric;
         let value = match &sensor.kind {
             CustomSensorKind::Mix {
@@ -652,11 +754,7 @@ impl CustomSensorsRepo {
             } => self.process_reduced_current(sensor, sources, values, |data| {
                 Self::process_scale_offset(metric, *scale, *offset, data)
             }),
-            CustomSensorKind::File { file_path } => {
-                // Clone into owned data to avoid holding the sensors borrow over the await.
-                file_sensors.push((sensor.id.clone(), metric, file_path.clone()));
-                return;
-            }
+            CustomSensorKind::File { .. } => self.process_file_current(&sensor.id, metric),
             CustomSensorKind::TimeAverage {
                 time_window_seconds,
                 sources,
@@ -678,7 +776,34 @@ impl CustomSensorsRepo {
                 true,
             ),
         };
-        values.push(value);
+        debug_assert!(value.is_finite());
+        value
+    }
+
+    /// Writes `sensor`'s value into `values` at `index`, over the entry the same position held
+    /// last tick, so an unchanged sensor order keeps every id.
+    fn refill_value(
+        values: &mut Vec<SensorValue>,
+        index: usize,
+        sensor: &CustomSensor,
+        value: f64,
+    ) {
+        debug_assert!(index <= values.len());
+        match values.get_mut(index) {
+            Some(entry) => {
+                if entry.id != sensor.id {
+                    entry.id.clone_from(&sensor.id);
+                }
+                entry.metric = sensor.metric;
+                entry.value = value;
+            }
+            None => values.push(SensorValue {
+                id: sensor.id.clone(),
+                metric: sensor.metric,
+                value,
+            }),
+        }
+        debug_assert_eq!(values[index].id, sensor.id);
     }
 
     /// Current-tick processing for the windowed sensors: `TimeAverage` (the arithmetic mean
@@ -696,7 +821,7 @@ impl CustomSensorsRepo {
         window_seconds: u16,
         values: &[SensorValue],
         is_ema: bool,
-    ) -> SensorValue {
+    ) -> f64 {
         let id = &sensor.id;
         let metric = sensor.metric;
         if window_seconds == 0 {
@@ -1002,40 +1127,39 @@ impl CustomSensorsRepo {
         Self::readable_temp(metric, source_data[0].value * scale.get() + offset)
     }
 
-    /// Reads the current value for a File-type Custom Sensor. An unreadable / malformed file
-    /// holds the last good value for `MISSING_STATUS_THRESHOLD` consecutive failures, then
-    /// emits the metric's failsafe (and a once-per-occurrence warn log): a fan curve rides
-    /// out a writer caught mid-truncate but still reacts to a genuinely lost source.
-    /// Live-tick path only; backfill reads `read_file_value` directly so it does not
-    /// interact with the failsafing-state set.
-    async fn process_file_current(
-        &self,
-        id: &CustomSensorId,
-        metric: CustomSensorMetric,
-        file_path: &Path,
-    ) -> SensorValue {
-        match Self::read_file_value(metric, file_path).await {
-            Ok(raw) => {
-                let sensor_value = self.emit_real(id, metric, raw);
+    /// Takes a File-type Custom Sensor's newest read from the preload pass. An unreadable or
+    /// malformed file, or a read that has not landed, holds the last good value for
+    /// `MISSING_STATUS_THRESHOLD` consecutive failures, then emits the metric's failsafe (and a
+    /// once-per-occurrence warn log): a fan curve rides out a writer caught mid-truncate, or a
+    /// slow read, but still reacts to a genuinely lost source. Live-tick path only; backfill
+    /// reads `check_file_value` directly so it does not interact with the failsafing-state set.
+    fn process_file_current(&self, id: &CustomSensorId, metric: CustomSensorMetric) -> f64 {
+        let fresh = self
+            .file_read_state
+            .borrow_mut()
+            .get_mut(id)
+            .and_then(|state| state.fresh.take());
+        debug_assert!(fresh.is_none_or(f64::is_finite));
+        let value = match fresh {
+            Some(raw) => {
+                let value = self.emit_real(id, metric, raw);
                 // Held as reported, so a held value equals the one it stands in for.
-                self.record_file_read_success(id, sensor_value.value);
-                sensor_value
+                self.record_file_read_success(id, value);
+                value
             }
-            Err(_) => match self.tolerate_file_read_failure(id) {
-                Some(value) => SensorValue {
-                    id: id.clone(),
-                    metric,
-                    value,
-                },
+            None => match self.tolerate_file_read_failure(id) {
+                Some(value) => value,
                 None => self.emit_failsafe(id, metric, "file unreadable"),
             },
-        }
+        };
+        debug_assert!(value.is_finite());
+        value
     }
 
     /// Clears the failure run and holds `value` as the value to emit if the next reads fail.
     fn record_file_read_success(&self, id: &CustomSensorId, value: f64) {
         let mut states = self.file_read_state.borrow_mut();
-        let state = states.entry(id.clone()).or_default();
+        let state = file_read_state_of(&mut states, id);
         state.consecutive_failures = 0;
         state.last_good_value = Some(value);
     }
@@ -1044,7 +1168,7 @@ impl CustomSensorsRepo {
     /// of failures passes `MISSING_STATUS_THRESHOLD` and the caller must failsafe.
     fn tolerate_file_read_failure(&self, id: &CustomSensorId) -> Option<f64> {
         let mut states = self.file_read_state.borrow_mut();
-        let state = states.entry(id.clone()).or_default();
+        let state = file_read_state_of(&mut states, id);
         state.consecutive_failures = state.consecutive_failures.saturating_add(1);
         if usize::from(state.consecutive_failures) > MISSING_STATUS_THRESHOLD {
             return None;
@@ -1052,11 +1176,222 @@ impl CustomSensorsRepo {
         state.last_good_value
     }
 
-    /// Reads a File sensor's value: a whole number in the hwmon unit of the sensor's metric.
-    async fn read_file_value(metric: CustomSensorMetric, file_path: &Path) -> Result<f64> {
-        cc_fs::read_sysfs_value(file_path)
-            .await
-            .map_err(Self::verify_file_exists)
+    /// Holds a checked File value as the sensor's last good one, so it reports before its first
+    /// read pass lands.
+    fn seed_file_read(&self, id: &CustomSensorId, metric: CustomSensorMetric, raw: f64) {
+        debug_assert!(raw.is_finite());
+        debug_assert!(raw >= 0.);
+        let state = FileReadState {
+            last_good_value: Self::reported_value(metric, raw),
+            ..Default::default()
+        };
+        debug_assert!(state.last_good_value.is_some());
+        self.file_read_state.borrow_mut().insert(id.clone(), state);
+    }
+
+    /// Rebuilds the File source list from the sensors. Called wherever the sensor set changes,
+    /// beside `reconstruct_relationships`.
+    fn refresh_file_sources(&self) {
+        let sources: Rc<[FileSource]> = self
+            .sensors
+            .borrow()
+            .iter()
+            .filter_map(|sensor| match &sensor.kind {
+                CustomSensorKind::File { file_path } => Some(FileSource {
+                    id: sensor.id.clone(),
+                    metric: sensor.metric,
+                    path: file_path.clone(),
+                }),
+                _ => None,
+            })
+            .collect();
+        debug_assert!(sources.len() <= self.sensors.borrow().len());
+        debug_assert!(sources
+            .iter()
+            .enumerate()
+            .all(|(i, source)| sources[..i].iter().all(|other| other.id != source.id)));
+        *self.file_sources.borrow_mut() = sources;
+    }
+
+    /// Reads every File source through `io`, all queued at once, and leaves each result for the
+    /// next snapshot as it lands.
+    ///
+    /// Skipped while the previous pass is still in flight: another read queued behind a file
+    /// that has not answered is a read nobody waits for. A skipped pass leaves nothing fresh,
+    /// which the snapshot counts as a failure.
+    async fn read_file_sources(&self) {
+        if self.file_pass_in_flight.replace(true) {
+            return;
+        }
+        let _in_flight = FilePassGuard(&self.file_pass_in_flight);
+        debug_assert!(self.file_pass_in_flight.get());
+        let sources = Rc::clone(&self.file_sources.borrow());
+        if sources.is_empty() {
+            return;
+        }
+        // One shared worker serializes the reads anyway, so a join queues them all at once for
+        // one allocation where a scope costs about nine.
+        let pass_sources = &sources;
+        let pass = join_all(pass_sources.iter().map(|source| async move {
+            debug_assert!(self.file_pass_in_flight.get());
+            let read = self.io.read_value(&source.path).await;
+            let value = Self::parse_file_value(source.metric, read);
+            self.store_file_read(pass_sources, &source.id, value);
+        }));
+        tokio::select! {
+            () = self.abort_token.cancelled() => {}
+            _ = pass => self.announce_file_io_health(&sources),
+        }
+    }
+
+    /// Logs the File worker going unreachable and answering again, once each, naming the File
+    /// sensors it reads. The worker leaves this to us, as only we know them.
+    fn announce_file_io_health(&self, sources: &[FileSource]) {
+        let timeouts = match self.io.health() {
+            DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } => Some(consecutive_timeouts),
+            DeviceHealth::Healthy | DeviceHealth::Degraded { .. } => None,
+        };
+        let unreachable = timeouts.is_some();
+        if self.file_io_unreachable.replace(unreachable) == unreachable {
+            return;
+        }
+        debug_assert!(sources.is_empty().not());
+        let sensors = sources
+            .iter()
+            .map(|source| self.sensor_log_name(&source.id))
+            .collect::<Vec<_>>()
+            .join(", ");
+        match timeouts {
+            Some(timeouts) => warn!(
+                "Custom Sensor File reads stopped answering after {timeouts} timed out requests. \
+                 Failing safe until a read succeeds: {sensors}. Retrying every {} seconds.",
+                UNREACHABLE_PROBE_INTERVAL.as_secs()
+            ),
+            None => info!("Custom Sensor File reads are answering again: {sensors}"),
+        }
+    }
+
+    /// Leaves a landed read for the next snapshot, unless the sensors changed since its pass
+    /// began: the read may then be of a file the sensor no longer names, or of a sensor that is
+    /// gone.
+    fn store_file_read(
+        &self,
+        pass_sources: &Rc<[FileSource]>,
+        id: &CustomSensorId,
+        read: Result<f64>,
+    ) {
+        debug_assert!(pass_sources.iter().any(|source| &source.id == id));
+        if Rc::ptr_eq(pass_sources, &self.file_sources.borrow()).not() {
+            return;
+        }
+        let fresh = read.ok();
+        debug_assert!(fresh.is_none_or(f64::is_finite));
+        let mut states = self.file_read_state.borrow_mut();
+        // Looked up before inserting, so the id is cloned once per sensor rather than per read.
+        if let Some(state) = states.get_mut(id) {
+            state.fresh = fresh;
+            return;
+        }
+        let state = FileReadState {
+            fresh,
+            ..Default::default()
+        };
+        states.insert(id.clone(), state);
+    }
+
+    /// Reads a File sensor's value for a create or update check, on the check worker.
+    ///
+    /// The File worker serves every File sensor's tick read, so a new file that blocks (a FIFO
+    /// with no writer) would fail them all; on the check worker it costs only the request. A
+    /// check that gets no answer retires the worker, parked in the kernel, for a fresh one.
+    async fn check_file_value(&self, metric: CustomSensorMetric, file_path: &Path) -> Result<f64> {
+        let io = self.check_io()?;
+        let read = io.read_value(file_path).await;
+        if read.as_ref().is_err_and(device_io::is_unanswered) {
+            self.retire_check_worker(&io);
+        }
+        Self::parse_file_value(metric, read)
+    }
+
+    /// The check worker, started if there is none. Inline when File reads are, as in tests.
+    ///
+    /// # Errors
+    ///
+    /// While `CHECK_WORKERS_MAX` retired workers are still parked, or when the OS refuses the
+    /// thread. A check never falls back to reading on the main thread.
+    fn check_io(&self) -> Result<DeviceIo> {
+        if matches!(self.io, DeviceIo::Inline(_)) {
+            return Ok(DeviceIo::default());
+        }
+        let mut worker = self.check_worker.borrow_mut();
+        if let Some(io) = worker.as_ref() {
+            return Ok(io.clone());
+        }
+        let parked = self.parked_check_workers();
+        if parked >= CHECK_WORKERS_MAX {
+            return Err(CCError::UserError {
+                msg: format!(
+                    "File checks are paused: {parked} earlier checks are still waiting on files \
+                     that have not answered. Checks resume as those reads return."
+                ),
+            }
+            .into());
+        }
+        let io =
+            (self.start_check_worker)("custom-sensor-check", reply_timeout_for(self.poll_rate))?;
+        *worker = Some(io.clone());
+        Ok(io)
+    }
+
+    /// Retired check workers still parked, after letting go of those whose read has returned.
+    fn parked_check_workers(&self) -> usize {
+        let mut retired = self.retired_check_workers.borrow_mut();
+        retired.retain(WorkerLiveness::is_running);
+        debug_assert!(retired.len() <= CHECK_WORKERS_MAX);
+        retired.len()
+    }
+
+    /// Drops `stalled` as the check worker. Checks that stalled together on one worker retire it
+    /// once, so the next check starts one worker, not one per stall.
+    fn retire_check_worker(&self, stalled: &DeviceIo) {
+        let mut worker = self.check_worker.borrow_mut();
+        let is_current = match (worker.as_ref(), stalled) {
+            (Some(DeviceIo::Threaded(current)), DeviceIo::Threaded(stalled)) => {
+                Rc::ptr_eq(current, stalled)
+            }
+            _ => false,
+        };
+        if is_current.not() {
+            return;
+        }
+        *worker = None;
+        if let Some(liveness) = stalled.liveness() {
+            let mut retired = self.retired_check_workers.borrow_mut();
+            // A worker starts only below the cap, and each one is retired at most once.
+            debug_assert!(retired.len() < CHECK_WORKERS_MAX);
+            retired.push(liveness);
+        }
+    }
+
+    /// Reads a File sensor's value through `io`: a whole number in the hwmon unit of the sensor's
+    /// metric.
+    #[cfg(test)]
+    async fn read_file_value(
+        io: &DeviceIo,
+        metric: CustomSensorMetric,
+        file_path: &Path,
+    ) -> Result<f64> {
+        Self::parse_file_value(metric, io.read_value(file_path).await)
+    }
+
+    /// Checks a File sensor's read and converts it, whichever path read it.
+    fn parse_file_value(
+        metric: CustomSensorMetric,
+        read: Result<cc_fs::SysfsValue>,
+    ) -> Result<f64> {
+        read.map_err(Self::verify_file_exists)
             .and_then(Self::verify_file_size)
             .and_then(Self::verify_i64)
             .and_then(|raw| Self::convert_file_value(metric, raw))
@@ -1438,37 +1773,19 @@ impl CustomSensorsRepo {
     /// Failsafes a sensor whose source is gone. The reason names the source, for the user
     /// by its labels and for the log with its raw keys. Both are built on entry only: this
     /// runs on every tick for as long as the source stays missing.
-    fn emit_source_missing_failsafe(
-        &self,
-        sensor: &CustomSensor,
-        source: &SensorSource,
-    ) -> SensorValue {
+    fn emit_source_missing_failsafe(&self, sensor: &CustomSensor, source: &SensorSource) -> f64 {
         if self.failsafing_sensors.borrow().contains_key(&sensor.id) {
-            return Self::failsafe_sensor_value(&sensor.id, sensor.metric);
+            return Self::failsafe_value(sensor.metric);
         }
         let reason = format!("source missing: {}", self.source_label(source));
         let log_reason = format!("source missing: {}", self.source_log_name(source));
         self.emit_failsafe_logged(&sensor.id, sensor.metric, &reason, &log_reason)
     }
 
-    /// The value a failsafing sensor reports.
-    fn failsafe_sensor_value(sensor_id: &str, metric: CustomSensorMetric) -> SensorValue {
-        SensorValue {
-            id: sensor_id.to_string(),
-            metric,
-            value: Self::failsafe_value(metric),
-        }
-    }
-
     /// Builds the failsafe value and emits the entry log line on the first occurrence.
     /// `reason` is included in the log so a future operator can tell the cs_type-specific
     /// cause apart (for example "all sources missing" vs "file unreadable").
-    fn emit_failsafe(
-        &self,
-        sensor_id: &str,
-        metric: CustomSensorMetric,
-        reason: &str,
-    ) -> SensorValue {
+    fn emit_failsafe(&self, sensor_id: &str, metric: CustomSensorMetric, reason: &str) -> f64 {
         self.emit_failsafe_logged(sensor_id, metric, reason, reason)
     }
 
@@ -1479,24 +1796,56 @@ impl CustomSensorsRepo {
         metric: CustomSensorMetric,
         reason: &str,
         log_reason: &str,
-    ) -> SensorValue {
-        let sensor_value = Self::failsafe_sensor_value(sensor_id, metric);
+    ) -> f64 {
+        let value = Self::failsafe_value(metric);
         if self.note_failsafing_sensor(sensor_id, reason) {
-            let value = sensor_value.value;
             let unit = if metric.is_temp() { "°C" } else { "" };
             warn!(
                 "Custom Sensor {} entering failsafe ({value}{unit}): {log_reason}",
                 self.sensor_log_name(sensor_id)
             );
         }
-        sensor_value
+        value
+    }
+
+    /// Computes every sensor's value for this tick and writes them into the device's history,
+    /// stamped `timestamp`.
+    fn write_tick(&self, timestamp: DateTime<Local>) {
+        let Some(device_cell) = self.custom_sensor_device.as_ref() else {
+            return;
+        };
+        let start_update = Instant::now();
+        let sensors = self.sensors.borrow();
+        let mut values = self.tick_values.borrow_mut();
+        // Children and standalone sensors first, so parents can read child values this tick.
+        let not_parents = sensors.iter().filter(|s| s.children.is_empty());
+        let parents = sensors.iter().filter(|s| s.children.is_empty().not());
+        let mut count = 0;
+        for sensor in not_parents.chain(parents) {
+            let value = self.process_live_sensor(sensor, &values[..count]);
+            Self::refill_value(&mut values, count, sensor, value);
+            count += 1;
+        }
+        values.truncate(count);
+        debug_assert_eq!(values.len(), sensors.len());
+        drop(sensors);
+        let mut device = device_cell.borrow_mut();
+        let mut writer = device.write_status(timestamp);
+        for value in values.iter() {
+            Self::write_value(&mut writer, value);
+        }
+        drop(device);
+        trace!(
+            "STATUS SNAPSHOT Time taken for CUSTOM_SENSORS device: {:?}",
+            start_update.elapsed()
+        );
     }
 
     /// Wraps a computed value as the sensor reports it and emits the recovery log line on the
     /// first non-failsafing tick after a failsafe state. Cheap to call on every successful
     /// tick: `HashMap::remove` returns `None` when the id is absent. A result that is not a
     /// number is no reading, so it failsafes instead.
-    fn emit_real(&self, sensor_id: &str, metric: CustomSensorMetric, raw: f64) -> SensorValue {
+    fn emit_real(&self, sensor_id: &str, metric: CustomSensorMetric, raw: f64) -> f64 {
         let Some(value) = Self::reported_value(metric, raw) else {
             return self.emit_failsafe(sensor_id, metric, "result is not a number");
         };
@@ -1506,11 +1855,7 @@ impl CustomSensorsRepo {
                 self.sensor_log_name(sensor_id)
             );
         }
-        SensorValue {
-            id: sensor_id.to_string(),
-            metric,
-            value,
-        }
+        value
     }
 }
 
@@ -1580,9 +1925,12 @@ impl Repository for CustomSensorsRepo {
         self.sensors.borrow_mut().extend(custom_sensors);
         self.device_uid.clone_from(&custom_sensor_device.uid);
         self.reconstruct_relationships();
+        self.refresh_file_sources();
         // not allowed to blacklist this device, otherwise things can get strange
         self.custom_sensor_device = Some(Rc::new(RefCell::new(custom_sensor_device)));
-        self.update_statuses(Local::now()).await?;
+        // The first status needs File values too, and no tick has preloaded them yet.
+        self.read_file_sources().await;
+        self.update_statuses(Local::now())?;
         self.custom_sensor_device
             .as_ref()
             .unwrap()
@@ -1619,9 +1967,15 @@ impl Repository for CustomSensorsRepo {
         }
     }
 
-    /// For composite/sensor repos, there is no need to preload as other device statuses
-    /// have already been updated.
-    async fn preload_statuses(self: Rc<Self>) {}
+    /// Reads the File sources, the one source this repository reads itself. Every other source
+    /// is a device status the other repositories have already updated.
+    async fn preload_statuses(self: Rc<Self>) {
+        self.read_file_sources().await;
+    }
+
+    async fn abort_pending(&self) {
+        self.abort_token.cancel();
+    }
 
     /// Drops all rolling sample windows. `zero_status_history` flattens every history on
     /// wake, so the post-wake reseed reads the zeroed entries exactly as the old per-tick
@@ -1630,44 +1984,8 @@ impl Repository for CustomSensorsRepo {
         self.sample_windows.borrow_mut().clear();
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
-        if self.custom_sensor_device.is_none() {
-            return Ok(());
-        }
-        let start_update = Instant::now();
-        let sensor_count = self.sensors.borrow().len();
-        let mut values: Vec<SensorValue> = Vec::with_capacity(sensor_count);
-        let mut file_sensors: Vec<(CustomSensorId, CustomSensorMetric, PathBuf)> = Vec::new();
-        // Children and standalone sensors first, so parents can read child values this tick.
-        self.sensors
-            .borrow()
-            .iter()
-            .filter(|s| s.children.is_empty()) // not parents
-            .for_each(|sensor| {
-                self.process_live_sensor(sensor, &mut values, &mut file_sensors);
-            });
-        for (id, metric, file_path) in &file_sensors {
-            let value = self.process_file_current(id, *metric, file_path).await;
-            values.push(value);
-        }
-        self.sensors
-            .borrow()
-            .iter()
-            .filter(|s| s.children.is_empty().not()) // parents
-            .for_each(|sensor| {
-                self.process_live_sensor(sensor, &mut values, &mut file_sensors);
-            });
-        debug_assert_eq!(values.len(), sensor_count);
-        let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
-        let mut writer = device.write_status(timestamp);
-        for value in &values {
-            Self::write_value(&mut writer, value);
-        }
-        drop(device);
-        trace!(
-            "STATUS SNAPSHOT Time taken for CUSTOM_SENSORS device: {:?}",
-            start_update.elapsed()
-        );
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+        self.write_tick(timestamp);
         Ok(())
     }
 
@@ -1763,9 +2081,13 @@ mod tests {
     };
     use crate::overrides::OverridesController;
     use crate::repositories::custom_sensors_repo::{
-        CustomSensorsRepo, SampleWindow, SourceData, SAMPLE_WINDOW_MAX_SLOTS,
+        CustomSensorsRepo, FileReadState, SampleWindow, SourceData, CHECK_WORKERS_MAX,
+        SAMPLE_WINDOW_MAX_SLOTS,
     };
     use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILSAFE};
+    #[cfg(feature = "gated-tests")]
+    use crate::repositories::hwmon::device_io::DeviceHealth;
+    use crate::repositories::hwmon::device_io::{DeviceIo, Request, UNREACHABLE_AFTER_TIMEOUTS};
     use crate::repositories::repository::{DeviceLock, Repository};
     use crate::setting::{
         CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
@@ -1775,11 +2097,15 @@ mod tests {
     use serial_test::serial;
     use std::cell::RefCell;
     use std::collections::{HashMap, VecDeque};
+    use std::future::Future;
     use std::ops::Not;
-    #[cfg(feature = "gated-tests")]
-    use std::path::Path;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use std::pin::{pin, Pin};
     use std::rc::Rc;
+    use std::sync::Arc;
+    use std::task::Poll;
+    use std::time::Duration;
+    use tokio::sync::mpsc;
 
     fn file_sensor(id: &str, file_path: PathBuf) -> CustomSensor {
         CustomSensor {
@@ -2313,42 +2639,41 @@ mod tests {
             .await
             .unwrap();
             let cs_name = "test_sensor1".to_string();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+            let repo = repo_with(vec![]).await;
+            repo.set_custom_sensor(file_sensor(&cs_name, test_file))
+                .await
+                .unwrap();
 
             // when:
-            let temp = repo
-                .process_file_current(&cs_name, CustomSensorMetric::Temp, &test_file)
-                .await;
+            tick(&repo).await;
 
             // then:
-            assert_eq!(temp.id, cs_name);
-            assert_eq!(temp.value, 30.);
+            assert_eq!(current_temp_for(&repo, &cs_name), 30.);
         });
     }
 
-    // An unreadable file emits MISSING_TEMP_FAILSAFE (not 0.) so a fan curve driven by
-    // this sensor reacts to the lost source rather than a fake-cool value. The sensor is
-    // also recorded in the failsafing-sensors set so the once-per-occurrence warn fires.
+    // A failed read emits MISSING_TEMP_FAILSAFE (not 0.) when nothing is held, so a fan curve
+    // driven by this sensor reacts to the lost source rather than a fake-cool value. The
+    // sensor is also recorded in the failsafing-sensors set so the once-per-occurrence warn
+    // fires. The read is planted as the pass would leave it, so no file is involved.
     #[test]
     #[serial]
-    #[cfg(feature = "gated-tests")]
     fn test_file_temp_status_invalid() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
             let cs_name = "test_sensor1".to_string();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+            let failed = FileReadState::default();
+            repo.file_read_state
+                .borrow_mut()
+                .insert(cs_name.clone(), failed);
 
             // when:
-            let temp = repo
-                .process_file_current(&cs_name, CustomSensorMetric::Temp, &test_file)
-                .await;
+            let temp = repo.process_file_current(&cs_name, CustomSensorMetric::Temp);
 
             // then:
-            assert_eq!(temp.id, cs_name);
-            assert!((temp.value - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+            assert!((temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert_eq!(
                 repo.failsafing_sensors.borrow()[cs_name.as_str()],
                 "file unreadable"
@@ -2371,8 +2696,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_ok());
@@ -2393,8 +2722,12 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_ok());
@@ -2412,8 +2745,12 @@ mod tests {
             let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
 
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2437,8 +2774,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2464,8 +2805,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2486,8 +2831,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2510,8 +2859,12 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2538,8 +2891,12 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             // println!("{temp_result:?}");
@@ -2559,8 +2916,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2579,8 +2940,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2599,8 +2964,12 @@ mod tests {
             let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();
             // when:
-            let temp_result =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let temp_result = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             // then:
             assert!(temp_result.is_err());
@@ -3071,7 +3440,8 @@ mod tests {
                 .await
                 .expect("Failed to set second parent sensor");
             repo.sensors.borrow_mut().reverse(); // put the parents first, to be sure.
-            let result = repo.update_statuses(Local::now()).await;
+            repo.read_file_sources().await;
+            let result = repo.update_statuses(Local::now());
 
             // then:
             assert!(result.is_ok());
@@ -3414,6 +3784,12 @@ mod tests {
         (uid, Rc::new(RefCell::new(device)))
     }
 
+    /// One poll as the main loop runs it: the File read pass, then the snapshot.
+    async fn tick(repo: &CustomSensorsRepo) {
+        repo.read_file_sources().await;
+        repo.update_statuses(Local::now()).unwrap();
+    }
+
     /// Reads the latest temp the Custom Sensors device is reporting for `cs_id`.
     fn current_temp_for(repo: &CustomSensorsRepo, cs_id: &str) -> f64 {
         let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
@@ -3464,7 +3840,7 @@ mod tests {
             .unwrap();
             let tick = Local::now() - chrono::TimeDelta::milliseconds(1_234);
 
-            repo.update_statuses(tick).await.unwrap();
+            repo.update_statuses(tick).unwrap();
 
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
             assert_eq!(device.latest_timestamp(), Some(tick));
@@ -3493,11 +3869,77 @@ mod tests {
             // Backfill skips a missing source device and falls through to the empty
             // source_data dummy (0); set_custom_sensor therefore succeeds.
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             assert!((current_temp_for(&repo, "mix1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("mix1"));
         });
+    }
+
+    /// Goal: once warm, a tick of Mix sensors allocates nothing: the values and their ids are
+    /// kept across ticks, and each sensor's sources are gathered into a kept buffer. Method: two
+    /// Mix sensors over a source device's temps, ticked twice to warm, then a third counted.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_tick_allocates_nothing() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![
+                TempStatus {
+                    name: "cpu".to_string(),
+                    temp: 70.0,
+                },
+                TempStatus {
+                    name: "gpu".to_string(),
+                    temp: 60.0,
+                },
+            ]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sources = || {
+                vec![
+                    temp_source(&source_uid, "cpu"),
+                    temp_source(&source_uid, "gpu"),
+                ]
+            };
+            repo.set_custom_sensor(mix_sensor("mix1", sources()))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(mix_sensor("mix2", sources()))
+                .await
+                .unwrap();
+            repo.write_tick(Local::now());
+            repo.write_tick(Local::now());
+            let tick = Local::now();
+
+            let ((), allocations) = crate::alloc_count::count_allocations(|| repo.write_tick(tick));
+
+            assert_eq!(allocations, 0);
+            assert!((current_temp_for(&repo, "mix1") - 70.0).abs() < f64::EPSILON);
+            assert!((current_temp_for(&repo, "mix2") - 70.0).abs() < f64::EPSILON);
+        });
+    }
+
+    /// Goal: a File sensor's read bookkeeping copies its id only when the sensor is first
+    /// tracked. Method: record a good read, then count a second one and a tolerated failure.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn tracked_file_reads_copy_no_id() {
+        let test_config = Rc::new(Config::init_default_config().unwrap());
+        let repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+        let id = "file1".to_string();
+        repo.record_file_read_success(&id, 40.0);
+
+        let (held, allocations) = crate::alloc_count::count_allocations(|| {
+            repo.record_file_read_success(&id, 41.0);
+            repo.tolerate_file_read_failure(&id)
+        });
+
+        assert_eq!(allocations, 0);
+        assert_eq!(held, Some(41.0));
     }
 
     // Mix sensor with all sources present emits the real Max value and does not enter the
@@ -3529,7 +3971,7 @@ mod tests {
             );
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             // Max(70, 60) = 70
             assert!((current_temp_for(&repo, "mix1") - 70.0).abs() < f64::EPSILON);
@@ -3667,7 +4109,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             assert!(
                 (current_temp_for(&repo, "delta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3699,7 +4141,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             // -25 offset on the failsafe would have been 75 under arithmetic substitution;
             // short-circuit must produce exactly MISSING_TEMP_FAILSAFE.
@@ -3734,7 +4176,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             assert!((current_temp_for(&repo, "ta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("ta1"));
@@ -3769,7 +4211,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             assert!((current_temp_for(&repo, "ema1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("ema1"));
@@ -3803,7 +4245,7 @@ mod tests {
             };
             repo.sensors.borrow_mut().push(sensor);
 
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             assert!(
                 (current_temp_for(&repo, "ema_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3841,7 +4283,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             let temp = current_temp_for(&repo, "ema_ok");
             assert!(
@@ -3890,7 +4332,7 @@ mod tests {
             };
             repo.sensors.borrow_mut().push(sensor);
 
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             assert!(
                 (current_temp_for(&repo, "ta_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3918,7 +4360,7 @@ mod tests {
             repo.set_custom_sensor(sensor).await.unwrap();
 
             // Tick 1: file readable, real value
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
             assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
 
@@ -3926,14 +4368,14 @@ mod tests {
             // rather than commanding a fan curve to 100 C on one unlucky read.
             cc_fs::remove_file(&test_file).await.ok();
             for _ in 0..MISSING_STATUS_THRESHOLD {
-                repo.update_statuses(Local::now()).await.unwrap();
+                tick(&repo).await;
                 assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
                 assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
             }
 
             // One more failure passes the threshold: now it failsafes, and the repository
             // must report the ref with the reason from the entry transition.
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
             assert!(
                 (current_temp_for(&repo, "file1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
             );
@@ -3945,7 +4387,7 @@ mod tests {
 
             // Restore the file with a new value: next tick recovers.
             cc_fs::write(&test_file, b"55000".to_vec()).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
         });
@@ -3967,11 +4409,11 @@ mod tests {
             repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
                 .await
                 .unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
 
             // A truncated file reads as unparseable, exactly like the mid-write race.
             cc_fs::write(&test_file, Vec::new()).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
 
             assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
@@ -3980,30 +4422,49 @@ mod tests {
 
     // Goal: negative space for the tolerance window. A sensor that has never read
     // successfully has nothing to hold, so it must failsafe on its first failed tick
-    // instead of reporting a stale-but-plausible value it never had.
+    // instead of reporting a stale-but-plausible value it never had. Adding a sensor reads
+    // its file, so only a stored sensor can start without a good read. Method: store a
+    // sensor whose file is absent, then start the repository.
     #[test]
     #[serial]
     fn file_sensor_failsafes_immediately_when_never_read_successfully() {
         cc_fs::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
-            let test_file = dir.path().join("sensor");
-            cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
-            repo.initialize_devices().await.unwrap();
-            // set_custom_sensor validates the file, so it must exist here. Removing it
-            // before the first live tick means no tick ever recorded a good value.
-            repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
-                .await
+            test_config
+                .set_custom_sensor(file_sensor("file1", dir.path().join("absent")))
                 .unwrap();
-            cc_fs::remove_file(&test_file).await.ok();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
 
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.initialize_devices().await.unwrap();
 
             assert!(
                 (current_temp_for(&repo, "file1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
             );
             assert!(repo.failsafing_sensors.borrow().contains_key("file1"));
+        });
+    }
+
+    // Goal: a stored File sensor whose file is readable reports its value in the first
+    // status after startup, before any tick has read it. Method: store a sensor whose file
+    // exists, then start the repository.
+    #[test]
+    #[serial]
+    fn stored_file_sensor_reports_its_value_on_startup() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
+            cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            test_config
+                .set_custom_sensor(file_sensor("file1", test_file))
+                .unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+
+            repo.initialize_devices().await.unwrap();
+
+            assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().is_empty());
         });
     }
 
@@ -4023,20 +4484,20 @@ mod tests {
             repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
                 .await
                 .unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
 
             for _ in 0..MISSING_STATUS_THRESHOLD {
                 cc_fs::write(&test_file, Vec::new()).await.unwrap();
-                repo.update_statuses(Local::now()).await.unwrap();
+                tick(&repo).await;
             }
             // A good read clears the run.
             cc_fs::write(&test_file, b"55000".to_vec()).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
 
             // The very next failure is therefore the first of a fresh run, not the ninth.
             cc_fs::write(&test_file, Vec::new()).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
         });
@@ -4274,7 +4735,7 @@ mod tests {
             ];
             for temp in stream {
                 push_source_tick(&source_dev, "cpu", Some(temp));
-                repo.update_statuses(Local::now()).await.unwrap();
+                repo.update_statuses(Local::now()).unwrap();
                 for (label, window) in windows {
                     let sample_count = usize::from(window);
                     let avg_ref =
@@ -4348,7 +4809,7 @@ mod tests {
             ];
             for temp in stream {
                 push_source_tick(&source_dev, "cpu", temp);
-                repo.update_statuses(Local::now()).await.unwrap();
+                repo.update_statuses(Local::now()).unwrap();
                 let avg_ref = reference_windowed(&source_dev, "cpu", 5, false).unwrap();
                 let ema_ref = reference_windowed(&source_dev, "cpu", 5, true).unwrap();
                 assert_eq!(current_temp_for(&repo, "avg").to_bits(), avg_ref.to_bits());
@@ -4357,7 +4818,7 @@ mod tests {
             // Drain the whole window with gaps: all-None slots must failsafe.
             for _ in 0..5 {
                 push_source_tick(&source_dev, "cpu", None);
-                repo.update_statuses(Local::now()).await.unwrap();
+                repo.update_statuses(Local::now()).unwrap();
             }
             for id in ["avg", "ema"] {
                 assert!(
@@ -4396,7 +4857,7 @@ mod tests {
             .unwrap();
             for temp in [70.0, 72.0, 74.0, 76.0] {
                 push_source_tick(&source_dev, "cpu", Some(temp));
-                repo.update_statuses(Local::now()).await.unwrap();
+                repo.update_statuses(Local::now()).unwrap();
             }
             repo.update_custom_sensor(time_average_sensor(
                 "avg",
@@ -4407,7 +4868,7 @@ mod tests {
             .unwrap();
             assert!(repo.sample_windows.borrow().contains_key("avg").not());
             push_source_tick(&source_dev, "cpu", Some(78.0));
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             let avg_ref = reference_windowed(&source_dev, "cpu", 3, false).unwrap();
             assert_eq!(current_temp_for(&repo, "avg").to_bits(), avg_ref.to_bits());
             assert_eq!(
@@ -4444,7 +4905,7 @@ mod tests {
                     sample_count: 5,
                 },
             );
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             assert!((current_temp_for(&repo, "avg") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.sample_windows.borrow().contains_key("avg").not());
             assert!(repo.failsafing_sensors.borrow().contains_key("avg"));
@@ -4471,11 +4932,11 @@ mod tests {
                 .unwrap();
             for temp in [70.0, 71.0, 72.0, 73.0, 74.0, 75.0] {
                 push_source_tick(&source_dev, "cpu", Some(temp));
-                repo.update_statuses(Local::now()).await.unwrap();
+                repo.update_statuses(Local::now()).unwrap();
             }
             repo.sample_windows.borrow_mut().clear();
             push_source_tick(&source_dev, "cpu", Some(69.5));
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             let ema_ref = reference_windowed(&source_dev, "cpu", 5, true).unwrap();
             assert_eq!(current_temp_for(&repo, "ema").to_bits(), ema_ref.to_bits());
         });
@@ -4504,7 +4965,7 @@ mod tests {
             .await
             .unwrap();
             push_source_tick(&source_dev, "cpu", Some(70.0));
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             assert!(repo.sample_windows.borrow().is_empty().not());
             repo.prepare_for_sleep().await;
             assert!(repo.sample_windows.borrow().is_empty());
@@ -4535,7 +4996,7 @@ mod tests {
             .unwrap();
             for tick in 0..15 {
                 push_source_tick(&source_dev, "cpu", Some(70.0 + f64::from(tick)));
-                repo.update_statuses(Local::now()).await.unwrap();
+                repo.update_statuses(Local::now()).unwrap();
                 let windows = repo.sample_windows.borrow();
                 let window = windows.get("avg").unwrap();
                 assert!(window.samples.len() <= window.sample_count);
@@ -4674,7 +5135,7 @@ mod tests {
             ))
             .await
             .unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             let channel = current_channel_for(&repo, "pressure");
             assert_eq!(channel.rpm, Some(438));
@@ -4708,7 +5169,7 @@ mod tests {
                     .await
                     .unwrap();
             }
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             let blank = |name: &str| ChannelStatus {
                 name: name.to_string(),
@@ -4767,7 +5228,7 @@ mod tests {
                 },
             );
             repo.set_custom_sensor(total).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             assert_eq!(current_channel_for(&repo, "total").watts, Some(345.75));
         });
@@ -4792,7 +5253,7 @@ mod tests {
             ] {
                 repo.set_custom_sensor(sensor).await.unwrap();
             }
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             assert_eq!(current_channel_for(&repo, "duty_high").duty, Some(100.));
             assert_eq!(current_channel_for(&repo, "duty_low").duty, Some(0.));
@@ -4835,17 +5296,17 @@ mod tests {
             repo.set_custom_sensor(scaled("rpm", CustomSensorMetric::RPM, 1., 50., source))
                 .await
                 .unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(1250));
 
             // The fan channel is gone from the source's newest status.
             push_channel_tick(&dev, Vec::new());
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(0));
             assert!(repo.failsafing_sensors.borrow().contains_key("rpm"));
 
             push_channel_tick(&dev, channel_tick(900, 40., 3600, 65.5));
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(950));
             assert!(repo.failsafing_sensors.borrow().is_empty());
         });
@@ -4903,7 +5364,7 @@ mod tests {
             repo.set_custom_sensor(window("ema", true)).await.unwrap();
             for rpm in [1000, 1100, 1300] {
                 push_channel_tick(&dev, channel_tick(rpm, 40., 3600, 65.5));
-                repo.update_statuses(Local::now()).await.unwrap();
+                repo.update_statuses(Local::now()).unwrap();
             }
 
             // (1000 + 1100 + 1300) / 3 = 1133.33
@@ -4929,7 +5390,7 @@ mod tests {
             repo.set_custom_sensor(scaled("parent", CustomSensorMetric::RPM, 10., 0., child()))
                 .await
                 .unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             // The child reports 438, not 438.4, and that is what the parent scales.
             assert_eq!(current_channel_for(&repo, "child").rpm, Some(438));
@@ -5030,7 +5491,7 @@ mod tests {
             repo.set_custom_sensor(scaled("rpm", CustomSensorMetric::RPM, 1., 0., gone()))
                 .await
                 .unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             let failsafing = repo.failsafing();
             assert_eq!(failsafing.len(), 2);
@@ -5070,7 +5531,7 @@ mod tests {
 
             let rescaled = scaled("fan", CustomSensorMetric::RPM, 2., 0., fan());
             repo.update_custom_sensor(rescaled).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             assert_eq!(current_channel_for(&repo, "fan").rpm, Some(2400));
         });
     }
@@ -5224,7 +5685,7 @@ mod tests {
             name_channel(&overrides, &source_uid, "temp1", "Coolant").await;
             source_dev.borrow_mut().set_status(Status::default());
 
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
 
             let failsafing = repo.failsafing();
             assert_eq!(failsafing.len(), 1);
@@ -5356,7 +5817,7 @@ mod tests {
                 source_names(&test_config.get_custom_sensors().unwrap()),
                 ["temp1"]
             );
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             assert_eq!(current_temp_for(&repo, "parent"), 40.);
         });
     }
@@ -5418,10 +5879,18 @@ mod tests {
                 .await
                 .unwrap();
 
-            let watts =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Watts, &test_file).await;
-            let as_temp =
-                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+            let watts = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Watts,
+                &test_file,
+            )
+            .await;
+            let as_temp = CustomSensorsRepo::read_file_value(
+                &DeviceIo::default(),
+                CustomSensorMetric::Temp,
+                &test_file,
+            )
+            .await;
 
             assert_eq!(watts.unwrap(), 100_000.);
             assert!(as_temp.is_err());
@@ -5449,17 +5918,17 @@ mod tests {
                 },
             );
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
             assert_eq!(current_channel_for(&repo, "freq").freq, Some(3601));
 
             cc_fs::remove_file(&test_file).await.unwrap();
             for _ in 0..MISSING_STATUS_THRESHOLD {
-                repo.update_statuses(Local::now()).await.unwrap();
+                tick(&repo).await;
                 assert_eq!(current_channel_for(&repo, "freq").freq, Some(3601));
             }
             assert!(repo.failsafing_sensors.borrow().is_empty());
 
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
             assert_eq!(current_channel_for(&repo, "freq").freq, Some(0));
             assert!(repo.failsafing_sensors.borrow().contains_key("freq"));
         });
@@ -5492,8 +5961,443 @@ mod tests {
             repo.set_custom_sensor(file("rpm", CustomSensorMetric::RPM))
                 .await
                 .unwrap();
-            repo.update_statuses(Local::now()).await.unwrap();
+            tick(&repo).await;
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(1200));
+        });
+    }
+
+    /// Polls `future` once, leaving it where it stopped.
+    async fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
+        let mut future = Some(future);
+        std::future::poll_fn(|cx| Poll::Ready(future.take().unwrap().poll(cx))).await
+    }
+
+    /// A started repository with one File sensor, "file1", that has read `contents` once.
+    /// From then on its reads never land: nothing drains the returned queue, so a read pass
+    /// stays in flight for as long as the caller keeps the receiver.
+    async fn repo_with_wedged_file(
+        dir: &Path,
+        contents: &str,
+    ) -> (CustomSensorsRepo, mpsc::Receiver<Request>) {
+        let test_file = dir.join("sensor");
+        std::fs::write(&test_file, contents).unwrap();
+        let mut repo = repo_with(vec![]).await;
+        repo.set_custom_sensor(file_sensor("file1", test_file))
+            .await
+            .unwrap();
+        tick(&repo).await;
+        let (io, rx) = DeviceIo::wedged_for_test(Duration::from_secs(60));
+        repo.io = io;
+        (repo, rx)
+    }
+
+    // Goal: the check reads on create and update run on a worker of their own, not the shared
+    // File worker, so a file that blocks costs only that request and never the File sensors
+    // already ticking. Method: wedge the File worker, then repoint a sensor and create one, and
+    // require both to succeed with nothing reaching the wedged worker's queue. Gated: the check
+    // worker is a real thread.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn create_and_update_check_reads_skip_the_file_worker() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut repo, _first_rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            let (io, mut rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+            repo.io = io;
+            let repointed = dir.path().join("repointed");
+            let created = dir.path().join("created");
+            std::fs::write(&repointed, "46000").unwrap();
+            std::fs::write(&created, "47000").unwrap();
+
+            let update = repo
+                .update_custom_sensor(file_sensor("file1", repointed))
+                .await;
+            let create = repo.set_custom_sensor(file_sensor("file2", created)).await;
+
+            assert!(update.is_ok(), "{update:?}");
+            assert!(create.is_ok(), "{create:?}");
+            assert!(
+                rx.try_recv().is_err(),
+                "a check read reached the File worker"
+            );
+            assert_eq!(repo.get_custom_sensors().len(), 2);
+        });
+    }
+
+    thread_local! {
+        /// The queue and the running token of each check worker `start_wedged_check_worker`
+        /// started, kept so each worker stays wedged and running rather than gone or exited.
+        static CHECK_QUEUES: RefCell<Vec<(mpsc::Receiver<Request>, Option<Arc<()>>)>> =
+            const { RefCell::new(Vec::new()) };
+    }
+
+    fn start_wedged_check_worker(_name: &str, _timeout: Duration) -> anyhow::Result<DeviceIo> {
+        let (io, rx, running) = DeviceIo::wedged_running_for_test(Duration::from_millis(10));
+        CHECK_QUEUES.with_borrow_mut(|queues| queues.push((rx, Some(running))));
+        Ok(io)
+    }
+
+    /// The check reads that reached any wedged check worker, drained.
+    fn check_reads_queued() -> usize {
+        CHECK_QUEUES.with_borrow_mut(|queues| {
+            queues
+                .iter_mut()
+                .map(|(rx, _)| std::iter::from_fn(|| rx.try_recv().ok()).count())
+                .sum()
+        })
+    }
+
+    /// Check workers `start_wedged_check_worker` started.
+    fn check_workers_started() -> usize {
+        CHECK_QUEUES.with_borrow(Vec::len)
+    }
+
+    /// A started repository whose File reads and check reads are both on wedged workers.
+    async fn repo_with_wedged_checks(dir: &Path) -> (CustomSensorsRepo, mpsc::Receiver<Request>) {
+        CHECK_QUEUES.with_borrow_mut(Vec::clear);
+        let (mut repo, rx) = repo_with_wedged_file(dir, "45000").await;
+        repo.start_check_worker = start_wedged_check_worker;
+        (repo, rx)
+    }
+
+    // Goal: repeated checks of a file that never answers park at most `CHECK_WORKERS_MAX`
+    // workers, and past that a check fails without a read. Method: wedge every check worker,
+    // run checks past the cap, and count the workers started and the reads queued.
+    #[test]
+    #[serial]
+    fn stalled_checks_start_at_most_the_cap_of_workers() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_checks(dir.path()).await;
+            let file = dir.path().join("blocking");
+            std::fs::write(&file, "46000").unwrap();
+
+            for _ in 0..CHECK_WORKERS_MAX {
+                let check = repo
+                    .set_custom_sensor(file_sensor("file2", file.clone()))
+                    .await;
+                assert!(check.is_err());
+            }
+            assert_eq!(check_reads_queued(), CHECK_WORKERS_MAX);
+            let refused = repo.set_custom_sensor(file_sensor("file2", file)).await;
+
+            assert!(refused.unwrap_err().to_string().contains("paused"));
+            assert_eq!(check_workers_started(), CHECK_WORKERS_MAX);
+            assert_eq!(repo.retired_check_workers.borrow().len(), CHECK_WORKERS_MAX);
+            assert_eq!(check_reads_queued(), 0, "a check read past the cap");
+        });
+    }
+
+    // Goal: the cap counts workers still parked, not workers ever started, so checks that were
+    // only slow cannot lock checks out until a restart. Method: park workers up to the cap, let
+    // one of them exit as a worker whose read returned does, and check again.
+    #[test]
+    #[serial]
+    fn a_parked_check_worker_that_exits_frees_its_place() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_checks(dir.path()).await;
+            let file = dir.path().join("slow");
+            std::fs::write(&file, "46000").unwrap();
+            for _ in 0..CHECK_WORKERS_MAX {
+                let check = repo
+                    .set_custom_sensor(file_sensor("file2", file.clone()))
+                    .await;
+                assert!(check.is_err());
+            }
+            assert!(repo
+                .set_custom_sensor(file_sensor("file2", file.clone()))
+                .await
+                .is_err_and(|err| err.to_string().contains("paused")));
+            let _ = check_reads_queued();
+
+            CHECK_QUEUES.with_borrow_mut(|queues| queues[0].1 = None);
+            let resumed = repo.set_custom_sensor(file_sensor("file2", file)).await;
+
+            assert!(
+                resumed.is_err_and(|err| err.to_string().contains("paused").not()),
+                "the check must run again, here to time out on a wedged worker"
+            );
+            assert_eq!(check_workers_started(), CHECK_WORKERS_MAX + 1);
+            assert_eq!(check_reads_queued(), 1);
+            assert_eq!(repo.retired_check_workers.borrow().len(), CHECK_WORKERS_MAX);
+        });
+    }
+
+    // Goal: checks that stall together on one worker replace it once, not once each. Method:
+    // run several checks at once on a wedged check worker, then one more, and count starts.
+    #[test]
+    #[serial]
+    fn concurrent_stalled_checks_replace_the_worker_once() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_checks(dir.path()).await;
+            let file = dir.path().join("blocking");
+            std::fs::write(&file, "46000").unwrap();
+            let checks =
+                (0..4).map(|n| repo.set_custom_sensor(file_sensor(&format!("c{n}"), file.clone())));
+
+            let results = futures_util::future::join_all(checks).await;
+            assert!(results.iter().all(Result::is_err));
+            assert_eq!(check_workers_started(), 1);
+            assert_eq!(repo.retired_check_workers.borrow().len(), 1);
+            assert!(repo.check_worker.borrow().is_none());
+            let next = repo.set_custom_sensor(file_sensor("c4", file)).await;
+
+            assert!(next.is_err());
+            assert_eq!(check_workers_started(), 2);
+            assert_eq!(repo.retired_check_workers.borrow().len(), 2);
+        });
+    }
+
+    fn refuse_check_worker(_name: &str, _timeout: Duration) -> anyhow::Result<DeviceIo> {
+        Err(anyhow::anyhow!("thread refused"))
+    }
+
+    // Goal: when the check worker cannot start, the check fails rather than reading on the
+    // main thread. Method: refuse every check worker, create a File sensor over a readable,
+    // valid file, and require the create to fail with no worker counted or kept.
+    #[test]
+    #[serial]
+    fn a_refused_check_worker_fails_the_check() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut repo, _rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            repo.start_check_worker = refuse_check_worker;
+            let valid = dir.path().join("valid");
+            std::fs::write(&valid, "46000").unwrap();
+
+            let create = repo.set_custom_sensor(file_sensor("file2", valid)).await;
+
+            assert!(create.is_err(), "{create:?}");
+            assert!(repo.retired_check_workers.borrow().is_empty());
+            assert!(repo.check_worker.borrow().is_none());
+            assert_eq!(repo.get_custom_sensors().len(), 1);
+        });
+    }
+
+    // Goal: a read that has not landed by the snapshot is a miss like a failed read: held for
+    // the tolerance window, then the failsafe. Method: one good tick, then keep a read pass in
+    // flight on a queue nobody drains and take snapshots past the threshold.
+    #[test]
+    #[serial]
+    fn a_read_not_landed_holds_then_failsafes() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            let mut pass = pin!(repo.read_file_sources());
+            assert!(poll_once(pass.as_mut()).await.is_pending());
+
+            for _ in 0..MISSING_STATUS_THRESHOLD {
+                repo.update_statuses(Local::now()).unwrap();
+                assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
+            }
+            assert!(repo.failsafing_sensors.borrow().is_empty());
+            repo.update_statuses(Local::now()).unwrap();
+
+            assert!(
+                (current_temp_for(&repo, "file1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
+            );
+            assert_eq!(repo.failsafing_sensors.borrow()["file1"], "file unreadable");
+        });
+    }
+
+    // Goal: while a pass is in flight, the next one must not queue a second read behind the
+    // file that has not answered. Method: keep one pass in flight on a queue nobody drains,
+    // run another to its end, and count what reached the queue.
+    #[test]
+    #[serial]
+    fn an_in_flight_pass_enqueues_nothing() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, mut rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            let mut first = pin!(repo.read_file_sources());
+            assert!(poll_once(first.as_mut()).await.is_pending());
+
+            repo.read_file_sources().await;
+
+            assert!(
+                rx.try_recv().is_ok(),
+                "the first pass did not queue its read"
+            );
+            assert!(rx.try_recv().is_err(), "the second pass queued a read");
+        });
+    }
+
+    // Goal: shutdown must not wait out a read that never lands, or the main loop's scope stays
+    // open past liqctld's grace window. Method: keep a pass in flight on a queue nobody
+    // drains, abort, and poll the pass again.
+    #[test]
+    #[serial]
+    fn abort_pending_ends_an_in_flight_pass() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, _rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            let mut pass = pin!(repo.read_file_sources());
+            assert!(poll_once(pass.as_mut()).await.is_pending());
+
+            repo.abort_pending().await;
+
+            assert!(poll_once(pass.as_mut()).await.is_ready());
+            assert!(repo.file_pass_in_flight.get().not());
+        });
+    }
+
+    // Goal: the File worker going unreachable and answering again must each be announced once,
+    // not on every pass. Method: time a wedged worker out to the threshold one pass at a time,
+    // run a pass it refuses, then let a probe through and answer it.
+    #[test]
+    #[serial]
+    fn the_file_worker_announces_each_transition_once() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut repo, _first_rx) = repo_with_wedged_file(dir.path(), "45000").await;
+            let (io, mut rx) = DeviceIo::wedged_for_test(Duration::from_millis(100));
+            repo.io = io.owner_announces_health();
+
+            for _ in 1..UNREACHABLE_AFTER_TIMEOUTS {
+                repo.read_file_sources().await;
+                assert!(repo.file_io_unreachable.get().not());
+            }
+            repo.read_file_sources().await;
+            assert!(repo.file_io_unreachable.get());
+            repo.read_file_sources().await;
+            assert!(repo.file_io_unreachable.get());
+
+            repo.io.allow_probe_now();
+            let mut probe = pin!(repo.read_file_sources());
+            assert!(poll_once(probe.as_mut()).await.is_pending());
+            // Every read before the probe timed out, so only the probe's reply is waited for.
+            while let Ok(request) = rx.try_recv() {
+                if let Request::Read { reply, .. } = request {
+                    reply.send(Ok(cc_fs::SysfsValue::from_bytes(b"47000")));
+                }
+            }
+            probe.await;
+
+            assert!(repo.file_io_unreachable.get().not());
+            let fresh = repo.file_read_state.borrow()["file1"].fresh;
+            assert!(fresh.is_some_and(|value| (value - 47.0).abs() < f64::EPSILON));
+        });
+    }
+
+    // Goal: a sensor added or repointed between ticks must report its file on its first
+    // snapshot, before any read pass included it, instead of failsafing. Method: add a sensor
+    // and take a snapshot with no read pass, then repoint it at another file and do the same.
+    #[test]
+    #[serial]
+    fn a_new_or_repointed_sensor_reports_on_its_first_snapshot() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let first_file = dir.path().join("first");
+            let second_file = dir.path().join("second");
+            std::fs::write(&first_file, "45000").unwrap();
+            std::fs::write(&second_file, "61000").unwrap();
+            let repo = repo_with(vec![]).await;
+
+            repo.set_custom_sensor(file_sensor("file1", first_file))
+                .await
+                .unwrap();
+            repo.update_statuses(Local::now()).unwrap();
+            assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
+
+            repo.update_custom_sensor(file_sensor("file1", second_file))
+                .await
+                .unwrap();
+            repo.update_statuses(Local::now()).unwrap();
+            assert!((current_temp_for(&repo, "file1") - 61.0).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().is_empty());
+        });
+    }
+
+    // Goal: a read pass that began before the sensors changed must not deliver into the new
+    // set, as its read may be of a file the sensor no longer names. Method: keep the list a
+    // pass would hold, change the sensors, then deliver a read against the old and new lists.
+    #[test]
+    #[serial]
+    fn a_pass_that_outlives_a_sensor_change_is_dropped() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
+            std::fs::write(&test_file, "45000").unwrap();
+            let repo = repo_with(vec![]).await;
+            repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
+                .await
+                .unwrap();
+            let id = "file1".to_string();
+            let stale = Rc::clone(&repo.file_sources.borrow());
+            repo.set_custom_sensor(file_sensor("file2", test_file))
+                .await
+                .unwrap();
+
+            repo.store_file_read(&stale, &id, Ok(99.));
+            assert!(repo.file_read_state.borrow()[&id].fresh.is_none());
+
+            let current = Rc::clone(&repo.file_sources.borrow());
+            repo.store_file_read(&current, &id, Ok(99.));
+            assert!(repo.file_read_state.borrow()[&id].fresh.is_some());
+        });
+    }
+
+    /// A started repository whose File sources are read on a worker thread.
+    #[cfg(feature = "gated-tests")]
+    async fn isolated_repo() -> CustomSensorsRepo {
+        let test_config = Rc::new(Config::init_default_config().unwrap());
+        let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides())
+            .unwrap()
+            .with_isolated_file_reads();
+        assert!(matches!(repo.io, DeviceIo::Threaded(_)));
+        repo.initialize_devices().await.unwrap();
+        repo
+    }
+
+    // Goal: on the worker thread, each poll reads the file as it is now. Method: start a
+    // repository with isolated reads, add a File sensor, rewrite the file in place and poll.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn a_rewritten_file_is_read_on_the_next_poll() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
+            std::fs::write(&test_file, "45000").unwrap();
+            let repo = isolated_repo().await;
+            repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
+                .await
+                .unwrap();
+
+            std::fs::write(&test_file, "52000").unwrap();
+            tick(&repo).await;
+
+            assert!((current_temp_for(&repo, "file1") - 52.0).abs() < f64::EPSILON);
+            assert_eq!(repo.io.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    // Goal: a file replaced by rename, as editors and scripts write it, must be read on the
+    // next poll: File sources are read uncached, never through a held descriptor. Method:
+    // start a repository with isolated reads, add a File sensor, rename a new file over it
+    // and poll.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn a_file_replaced_by_rename_is_read_on_the_next_poll() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
+            let replacement = dir.path().join("sensor.new");
+            std::fs::write(&test_file, "45000").unwrap();
+            let repo = isolated_repo().await;
+            repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
+                .await
+                .unwrap();
+
+            std::fs::write(&replacement, "58000").unwrap();
+            std::fs::rename(&replacement, &test_file).unwrap();
+            tick(&repo).await;
+
+            assert!((current_temp_for(&repo, "file1") - 58.0).abs() < f64::EPSILON);
         });
     }
 }

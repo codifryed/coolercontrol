@@ -63,7 +63,7 @@ mod engine_tests {
 
         async fn preload_statuses(self: Rc<Self>) {}
 
-        async fn update_statuses(&self, _timestamp: chrono::DateTime<chrono::Local>) -> Result<()> {
+        fn update_statuses(&self, _timestamp: chrono::DateTime<chrono::Local>) -> Result<()> {
             Ok(())
         }
 
@@ -3145,7 +3145,7 @@ mod engine_tests {
             let device_uid = h.device.borrow().uid.clone();
             let key = (device_uid, "fan1".to_string());
             h.fan_state_map.replace(
-                key.clone(),
+                (&key).into(),
                 ChannelEntry {
                     state: FanState::On,
                     under_diagnosis: false,
@@ -3240,7 +3240,7 @@ mod lcd_shutdown_tests {
             Vec::new()
         }
         async fn preload_statuses(self: Rc<Self>) {}
-        async fn update_statuses(&self, _timestamp: chrono::DateTime<chrono::Local>) -> Result<()> {
+        fn update_statuses(&self, _timestamp: chrono::DateTime<chrono::Local>) -> Result<()> {
             Ok(())
         }
         async fn shutdown(&self) -> Result<()> {

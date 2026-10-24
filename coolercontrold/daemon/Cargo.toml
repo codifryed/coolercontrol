@@ -3,7 +3,6 @@ name = "coolercontrold"
 version = "5.1.1"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2024"
-# MSRV. Set by compio, which needs 1.95.
 rust-version = "1.95"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://coolercontrol.org"
@@ -24,31 +23,11 @@ gated-tests = []
 cc-detect = { path = "../cc-detect" }
 cc-image = { path = "../cc-image" }
 cc-stress = { path = "../cc-stress" }
-# compio is the daemon's only main-thread runtime. 0.19 needs Rust 1.95 (`cfg_select`), which
-# sets our MSRV.
-# Taken for `IORING_ENTER_NO_IOWAIT` (compio-driver 0.12.5): without it the idle
-# `io_uring_enter(GETEVENTS)` wait is accounted as iowait on kernel 6.5+, pinning a core at 100%
-# on per-core monitors (issue 606). The flag needs kernel 6.15+, so `CC_RUNTIME_DRIVER=epoll`
-# remains the escape hatch for 6.5 through 6.14.
-# Fusion driver = the io-uring and polling features together: auto-falls-back to epoll when
-# io_uring is unavailable (e.g. kernel.io_uring_disabled=2).
-compio = { version = "=0.19.2", default-features = false, features = [
-  "runtime",
-  "time",
-  "signal",
-  "fs",
-  "net",
-  "process",
-  "io-uring",
-  "polling",
-] }
-# cyper-core bridges a compio stream (our UDS to liqctld) into hyper's IO traits via `HyperStream`.
-# Pinned to 0.9: it must resolve to the same compio 0.19 as above, or the stream types will not match.
-cyper-core = { version = "=0.9.0", default-features = false }
-# Must resolve to the same compio-buf as compio 0.19 above, or the buffer traits will not match.
-compio-buf = { version = "=0.8.3", default-features = false }
 log = "0.4"
 env_logger = "0.11"
+# The colour check env_logger makes for its own stderr target, which the log writer thread's pipe
+# target skips. Already in the tree through env_logger 0.11, with the same features.
+anstream = "1.0"
 systemd-journal-logger = "2.2"
 clap = { version = "4.6", features = [
   "derive",
@@ -147,6 +126,9 @@ hyper-util = { version = "0.1", default-features = false, features = [
   "tokio",
 ] }
 http-body-util = "0.1"
+# Parses liqctld's reply heads on its blocking workers. Already in the tree through hyper. Any
+# 1.x: only the basic response parser is used, so hyper's own requirement sets the floor.
+httparse = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 zbus = { version = "5.18", default-features = false, features = [

@@ -282,6 +282,10 @@ was logged at a given level.
   `commander.update_speeds`, `fire_preloads`, `fire_lcd_update`, and similar paths. Use the scope
   for top-level spawn sites (a sync function called from the scope's body before any await point)
   like those listed above.
+- **Fixed fan-outs awaited in place use `join_all`:** when every task is known up front and awaited
+  right there (one preload per device each tick), use `futures_util::future::join_all` or `join`
+  instead of a scope. It borrows just as a scope does, but allocates once per call, where a scope
+  allocates about six times plus three per spawn. Keep scopes for work spawned from a running body.
 - **Nested-spawn caveat (moro_local 0.4.0):** `Scope::poll_jobs` holds `RefCell::borrow_mut()` on
   its `futures` field for the entire duration of `FuturesUnordered::poll_next`. Any task being
   polled in that scope that calls `scope.spawn` on the **same** scope panics with

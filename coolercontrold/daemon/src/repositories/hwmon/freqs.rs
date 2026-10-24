@@ -3,7 +3,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Mhz};
-use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
+use crate::repositories::hwmon::device_io::{pair_with_results, DeviceIo};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
@@ -34,7 +34,7 @@ pub async fn init_freqs(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonC
                 continue;
             }
             let channel_name = get_freq_channel_name(channel_number);
-            let label = get_freq_channel_label(base_path, &channel_number).await;
+            let label = get_freq_channel_label(base_path, &channel_number, io).await;
             freqs.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Freq,
                 number: channel_number,
@@ -52,46 +52,37 @@ pub async fn init_freqs(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonC
     Ok(freqs)
 }
 
-/// Extract frequency statuses. Failed reads are omitted from the
-/// returned vector rather than reported as 0 MHz so downstream does not
-/// see a fabricated frequency.
-pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
-    let freq_channel_count = driver
+/// Reads every frequency channel in one hop, calling `on_freq` once per channel that read, in
+/// order. A failed read is left out rather than reported as 0 MHz, so downstream does not see a
+/// fabricated frequency.
+pub async fn read_freqs<'a>(
+    driver: &'a HwmonDriverInfo,
+    mut on_freq: impl FnMut(&'a HwmonChannelInfo, Mhz),
+) {
+    let channels = driver
         .channels
         .iter()
-        .filter(|c| c.hwmon_type == HwmonChannelType::Freq)
-        .count();
-    let mut freqs = Vec::with_capacity(freq_channel_count);
-    let channels: Vec<&HwmonChannelInfo> = driver
-        .channels
-        .iter()
-        .filter(|channel| channel.hwmon_type == HwmonChannelType::Freq)
-        .collect();
-    if channels.is_empty() {
-        return freqs;
-    }
-    // One hop for the device's whole frequency set.
-    // See `temps::read_temp_statuses` for why the reply is not zipped straight onto `channels`.
-    let (slots, slotted) = slots_for(&channels, |channel| channel.read_slot.value);
-    debug_assert_eq!(
-        slots.len(),
-        channels.len(),
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Freq);
+    debug_assert!(
+        channels
+            .clone()
+            .all(|channel| channel.read_slot.value.is_some()),
         "every freq channel needs a read slot; was the registry installed?"
     );
-    let mut results = driver.io.read_many(&slots).await.into_iter();
-    for (channel, has_slot) in channels.iter().zip(slotted) {
-        let Some(result) = has_slot.then(|| results.next()).flatten() else {
+    // One hop for the device's whole frequency set.
+    let slots = channels
+        .clone()
+        .filter_map(|channel| channel.read_slot.value);
+    let mut batch = driver.io.read_many(slots).await;
+    let has_slot = |channel: &&HwmonChannelInfo| channel.read_slot.value.is_some();
+    for (channel, result) in pair_with_results(channels, has_slot, batch.take_all()) {
+        let Some(result) = result else {
             continue;
         };
         if let Ok(freq) = result.and_then(check_parsing_64).map(hertz_to_megahertz) {
-            freqs.push(ChannelStatus {
-                name: channel.name.clone(),
-                freq: Some(freq),
-                ..Default::default()
-            });
+            on_freq(channel, freq);
         }
     }
-    freqs
 }
 
 #[allow(dead_code)]
@@ -161,8 +152,13 @@ fn check_parsing_64(value: cc_fs::SysfsValue) -> Result<u64> {
     value.parse()
 }
 
-async fn get_freq_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
-    cc_fs::read_txt(base_path.join(format!("freq{channel_number}_label")))
+async fn get_freq_channel_label(
+    base_path: &Path,
+    channel_number: &u8,
+    io: &DeviceIo,
+) -> Option<String> {
+    // On the device's thread: the label comes from the driver, which may have to ask the hardware.
+    io.read_text(&base_path.join(format!("freq{channel_number}_label")))
         .await
         .ok()
         .and_then(|label| {
@@ -189,6 +185,19 @@ mod tests {
     use serial_test::serial;
     use std::ops::Not;
     use std::path::PathBuf;
+
+    async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
+        let mut freqs = Vec::new();
+        read_freqs(driver, |channel, freq| {
+            freqs.push(ChannelStatus {
+                name: channel.name.clone(),
+                freq: Some(freq),
+                ..Default::default()
+            });
+        })
+        .await;
+        freqs
+    }
 
     struct HwmonFileContext {
         /// Owns the fixture directory, which is removed when the context drops.

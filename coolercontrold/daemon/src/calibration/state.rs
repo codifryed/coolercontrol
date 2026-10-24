@@ -7,10 +7,11 @@
 //! `dispatch.rs`; this file only owns the data structures and the
 //! protected read/write primitives.
 
-use super::ChannelKey;
+use super::{ChannelKey, ChannelRef};
 use crate::device::Duty;
+use indexmap::{Equivalent, IndexMap};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::hash::Hash;
 
 /// Snapshot of a channel's relationship to the calibrated dispatcher.
 ///
@@ -74,8 +75,9 @@ impl FanState {
     }
 }
 
+/// Looked up by `&ChannelKey` or by `&ChannelRef`, so the duty write path builds no owned key.
 pub struct FanStateMap {
-    inner: RefCell<HashMap<ChannelKey, ChannelEntry>>,
+    inner: RefCell<IndexMap<ChannelKey, ChannelEntry>>,
 }
 
 impl Default for FanStateMap {
@@ -87,13 +89,16 @@ impl Default for FanStateMap {
 impl FanStateMap {
     pub fn new() -> Self {
         Self {
-            inner: RefCell::new(HashMap::new()),
+            inner: RefCell::new(IndexMap::new()),
         }
     }
 
     /// Read a channel's entry. Returns the default (`Off`, not under
     /// diagnosis) for channels never touched before.
-    pub fn entry(&self, key: &ChannelKey) -> ChannelEntry {
+    pub fn entry<Q>(&self, key: &Q) -> ChannelEntry
+    where
+        Q: Hash + Equivalent<ChannelKey> + ?Sized,
+    {
         self.inner
             .borrow()
             .get(key)
@@ -102,13 +107,23 @@ impl FanStateMap {
     }
 
     /// Write a channel's entry. Always replaces; the dispatcher decides
-    /// the new value before calling.
-    pub fn replace(&self, key: ChannelKey, entry: ChannelEntry) {
-        self.inner.borrow_mut().insert(key, entry);
+    /// the new value before calling. Only a channel's first entry builds an
+    /// owned key.
+    pub fn replace(&self, key: ChannelRef<'_>, entry: ChannelEntry) {
+        let mut inner = self.inner.borrow_mut();
+        if let Some(stored) = inner.get_mut(&key) {
+            *stored = entry;
+        } else {
+            inner.insert(key.to_key(), entry);
+        }
+        debug_assert_eq!(inner.get(&key), Some(&entry));
     }
 
     /// Whether a channel is currently under a diagnosis sweep.
-    pub fn is_under_diagnosis(&self, key: &ChannelKey) -> bool {
+    pub fn is_under_diagnosis<Q>(&self, key: &Q) -> bool
+    where
+        Q: Hash + Equivalent<ChannelKey> + ?Sized,
+    {
         self.inner
             .borrow()
             .get(key)
@@ -146,7 +161,10 @@ impl FanStateMap {
     /// Last true-duty the dispatcher commanded for this channel.
     /// `None` for channels never written by us (uncalibrated pass-through,
     /// post-diagnosis, fresh startup) or written externally.
-    pub fn commanded_true_duty(&self, key: &ChannelKey) -> Option<Duty> {
+    pub fn commanded_true_duty<Q>(&self, key: &Q) -> Option<Duty>
+    where
+        Q: Hash + Equivalent<ChannelKey> + ?Sized,
+    {
         self.inner
             .borrow()
             .get(key)
@@ -155,7 +173,7 @@ impl FanStateMap {
 
     /// Drop the entry. Used when calibration is cleared.
     pub fn forget(&self, key: &ChannelKey) {
-        self.inner.borrow_mut().remove(key);
+        self.inner.borrow_mut().swap_remove(key);
     }
 
     #[allow(dead_code)] // test-only; useful production API.
@@ -203,7 +221,7 @@ mod tests {
             under_diagnosis: false,
             commanded_true_duty: None,
         };
-        map.replace(key.clone(), target);
+        map.replace((&key).into(), target);
         assert_eq!(map.entry(&key), target);
         assert_eq!(map.len(), 1);
     }
@@ -216,7 +234,7 @@ mod tests {
         let map = FanStateMap::new();
         let key = k("dev-a", "fan1");
         map.replace(
-            key.clone(),
+            (&key).into(),
             ChannelEntry {
                 state: FanState::Kicking { sustain_target: 30 },
                 under_diagnosis: false,
@@ -224,7 +242,7 @@ mod tests {
             },
         );
         map.replace(
-            key.clone(),
+            (&key).into(),
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,
@@ -233,6 +251,56 @@ mod tests {
         );
         assert_eq!(map.entry(&key).state, FanState::On);
         assert_eq!(map.len(), 1);
+    }
+
+    #[test]
+    fn a_borrowed_key_reaches_the_entry_an_owned_key_stored() {
+        // Goal: `ChannelRef` hashes and compares as the `ChannelKey` it names, so either form
+        // reaches the same entry. Method: write under one form and read under the other, both
+        // ways, then look up a sibling channel that was never stored.
+        let map = FanStateMap::new();
+        let key = k("dev-a", "fan1");
+        let on = ChannelEntry {
+            state: FanState::On,
+            under_diagnosis: false,
+            commanded_true_duty: Some(40),
+        };
+
+        map.replace(ChannelRef::new(&key.0, "fan1"), on);
+        map.set_under_diagnosis(key.clone(), true);
+
+        assert_eq!(map.entry(&key).state, FanState::On);
+        assert!(map.is_under_diagnosis(&ChannelRef::from(&key)));
+        assert_eq!(map.commanded_true_duty(&ChannelRef::from(&key)), Some(40));
+        assert!(map
+            .is_under_diagnosis(&ChannelRef::new(&key.0, "fan2"))
+            .not());
+        assert_eq!(map.len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn replacing_a_known_channels_entry_allocates_nothing() {
+        // Goal: only a channel's first entry builds an owned key, so the per-write state update
+        // allocates nothing. Method: insert once, then count a second replace and its reads.
+        let map = FanStateMap::new();
+        let device_uid = "dev-a".to_string();
+        let channel = ChannelRef::new(&device_uid, "fan1");
+        map.replace(channel, ChannelEntry::default_off());
+        let on = ChannelEntry {
+            state: FanState::On,
+            under_diagnosis: false,
+            commanded_true_duty: Some(55),
+        };
+
+        let (entry, allocations) = crate::alloc_count::count_allocations(|| {
+            map.replace(channel, on);
+            map.entry(&channel)
+        });
+
+        assert_eq!(entry, on);
+        assert_eq!(map.len(), 1);
+        assert_eq!(allocations, 0);
     }
 
     #[test]
@@ -256,7 +324,7 @@ mod tests {
         let map = FanStateMap::new();
         let key = k("dev-a", "fan1");
         map.replace(
-            key.clone(),
+            (&key).into(),
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,
@@ -277,7 +345,7 @@ mod tests {
         let map = FanStateMap::new();
         let key = k("dev-a", "fan1");
         map.replace(
-            key.clone(),
+            (&key).into(),
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,
@@ -299,7 +367,7 @@ mod tests {
         let map = FanStateMap::new();
         let key = k("dev-a", "fan1");
         map.replace(
-            key.clone(),
+            (&key).into(),
             ChannelEntry {
                 state: FanState::Kicking { sustain_target: 60 },
                 under_diagnosis: false,
@@ -321,7 +389,7 @@ mod tests {
         let map = FanStateMap::new();
         let key = k("dev-a", "fan1");
         map.replace(
-            key.clone(),
+            (&key).into(),
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,

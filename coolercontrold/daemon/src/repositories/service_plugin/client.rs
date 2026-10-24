@@ -544,9 +544,15 @@ impl DeviceServiceClient {
     fn map_status(
         status_response: tonic::Response<StatusResponse>,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
-        let mut channel_status = vec![];
-        let mut temp_status = vec![];
-        for status in status_response.into_inner().status {
+        let statuses = status_response.into_inner().status;
+        // Sized up front, so no push regrows either list.
+        let temp_count = statuses
+            .iter()
+            .filter(|status| matches!(status.metric, Some(Metric::Temp(_))))
+            .count();
+        let mut channel_status = Vec::with_capacity(statuses.len() - temp_count);
+        let mut temp_status = Vec::with_capacity(temp_count);
+        for status in statuses {
             let Some(metric) = status.metric else {
                 error!("Status Metric is missing for {}", status.id);
                 continue;
@@ -582,6 +588,7 @@ impl DeviceServiceClient {
                 }
             }
         }
+        debug_assert_eq!(temp_status.len(), temp_count);
         (channel_status, temp_status)
     }
 
@@ -1114,5 +1121,202 @@ mod credential_tests {
         // The timeout arm of `health` never sees a status at all.
         let timeout = anyhow!("TIMEOUT Device Service Plugin test_service");
         assert_eq!(credential_refusal(&timeout), None);
+    }
+}
+
+/// A `Status` call against a stub plugin served from another thread, so the counter on this
+/// thread sees only the client's allocations.
+#[cfg(test)]
+#[cfg(feature = "gated-tests")]
+mod status_call_tests {
+    use super::*;
+    use crate::grpc_api::device_service::v1::device_service_server::{
+        DeviceService, DeviceServiceServer,
+    };
+    use crate::grpc_api::device_service::v1::{
+        CustomFunctionOneResponse, EnableManualFanControlResponse, FixedDutyResponse,
+        InitializeDeviceResponse, LcdResponse, LightingResponse, ResetChannelResponse,
+        ShutdownResponse, SpeedProfileResponse,
+    };
+    use crate::grpc_api::models::v1::status::FanSpeed;
+    use tonic::Response;
+
+    type Reply<T> = std::result::Result<Response<T>, Status>;
+
+    struct StubPlugin;
+
+    impl StubPlugin {
+        /// A status of `count` temps followed by `count` fans.
+        fn reply(count: usize) -> Response<StatusResponse> {
+            let temps = (1..=count).map(|number| models::v1::Status {
+                id: format!("temp{number}"),
+                metric: Some(Metric::Temp(40.0)),
+            });
+            let fans = (1..=count).map(|number| models::v1::Status {
+                id: format!("fan{number}"),
+                metric: Some(Metric::Speed(FanSpeed {
+                    duty: Some(50.0),
+                    rpm: Some(1200),
+                })),
+            });
+            Response::new(StatusResponse {
+                status: temps.chain(fans).collect(),
+            })
+        }
+    }
+
+    fn unsupported<T>() -> Reply<T> {
+        Err(Status::unimplemented("stub"))
+    }
+
+    #[tonic::async_trait]
+    impl DeviceService for StubPlugin {
+        async fn health(&self, _: Request<HealthRequest>) -> Reply<HealthResponse> {
+            unsupported()
+        }
+
+        async fn list_devices(&self, _: Request<ListDevicesRequest>) -> Reply<ListDevicesResponse> {
+            unsupported()
+        }
+
+        async fn initialize_device(
+            &self,
+            _: Request<InitializeDeviceRequest>,
+        ) -> Reply<InitializeDeviceResponse> {
+            unsupported()
+        }
+
+        async fn shutdown(&self, _: Request<ShutdownRequest>) -> Reply<ShutdownResponse> {
+            unsupported()
+        }
+
+        async fn status(&self, _: Request<StatusRequest>) -> Reply<StatusResponse> {
+            Ok(Self::reply(2))
+        }
+
+        async fn reset_channel(
+            &self,
+            _: Request<ResetChannelRequest>,
+        ) -> Reply<ResetChannelResponse> {
+            unsupported()
+        }
+
+        async fn enable_manual_fan_control(
+            &self,
+            _: Request<EnableManualFanControlRequest>,
+        ) -> Reply<EnableManualFanControlResponse> {
+            unsupported()
+        }
+
+        async fn fixed_duty(&self, _: Request<FixedDutyRequest>) -> Reply<FixedDutyResponse> {
+            unsupported()
+        }
+
+        async fn speed_profile(
+            &self,
+            _: Request<SpeedProfileRequest>,
+        ) -> Reply<SpeedProfileResponse> {
+            unsupported()
+        }
+
+        async fn lighting(&self, _: Request<LightingRequest>) -> Reply<LightingResponse> {
+            unsupported()
+        }
+
+        async fn lcd(&self, _: Request<LcdRequest>) -> Reply<LcdResponse> {
+            unsupported()
+        }
+
+        async fn custom_function_one(
+            &self,
+            _: Request<CustomFunctionOneRequest>,
+        ) -> Reply<CustomFunctionOneResponse> {
+            unsupported()
+        }
+    }
+
+    /// Serves `StubPlugin` on a Unix socket at `path` from its own thread and runtime.
+    fn serve_stub(path: &std::path::Path) {
+        let listener = std::os::unix::net::UnixListener::bind(path).expect("the socket binds");
+        listener
+            .set_nonblocking(true)
+            .expect("the socket is non-blocking");
+        let serve = move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("the stub runtime builds");
+            runtime.block_on(async move {
+                let listener =
+                    tokio::net::UnixListener::from_std(listener).expect("tokio adopts the socket");
+                let incoming = futures_util::stream::unfold(listener, |listener| async move {
+                    let accepted = listener.accept().await.map(|(stream, _)| stream);
+                    Some((accepted, listener))
+                });
+                let _ = tonic::transport::Server::builder()
+                    .add_service(DeviceServiceServer::new(StubPlugin))
+                    .serve_with_incoming(incoming)
+                    .await;
+            });
+        };
+        std::thread::Builder::new()
+            .name("stub-plugin".to_string())
+            .spawn(serve)
+            .expect("the stub thread starts");
+    }
+
+    async fn connected_client(path: &std::path::Path, device_uid: &str) -> DeviceServiceClient {
+        let address = format!("unix://{}", path.display());
+        let channel = tonic::transport::Endpoint::try_from(address)
+            .expect("a unix address parses")
+            .connect()
+            .await
+            .expect("the stub accepts");
+        let channel = transport::ExplainRefusals::new(channel, "stub".to_string());
+        let grpc_client = device_service_client::DeviceServiceClient::new(channel);
+        let client = DeviceServiceClient::new("stub".to_string(), 1.0, grpc_client, None);
+        client
+            .with_device_ids(vec![(device_uid.to_string(), "stub-device".to_string())])
+            .await;
+        client
+    }
+
+    #[test]
+    fn a_status_call_allocates_a_bounded_amount() {
+        // Goal: pin what one steady-state `Status` call costs the client. Method: serve a stub
+        // plugin from another thread, warm the connection with two calls, then count this
+        // thread's allocations over a third.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        serve_stub(&path);
+        let device_uid = "device-uid".to_string();
+        let allocations = crate::rt::test_runtime(async {
+            let client = connected_client(&path, &device_uid).await;
+            for _ in 0..2 {
+                assert!(client.status(&device_uid).await.is_ok());
+            }
+            let (status, allocations) =
+                crate::alloc_count::count_allocations_async(client.status(&device_uid)).await;
+            let (channels, temps) = status.expect("the stub answers");
+            assert_eq!(channels.len(), 2);
+            assert_eq!(temps.len(), 2);
+            allocations
+        });
+        // About 35 of these are tonic, hyper, h2 and prost, so a dependency update can move
+        // the count. Ours are the device ID and the two lists `map_status` returns.
+        assert!(allocations <= 40, "{allocations} allocations");
+    }
+
+    #[test]
+    fn mapping_a_status_allocates_only_the_two_lists() {
+        // Goal: a device with many channels maps its status without regrowing either list.
+        // Method: map a reply of 10 temps and 10 fans, which would regrow a list started empty
+        // twice, and count the allocations.
+        let reply = StubPlugin::reply(10);
+        let ((channels, temps), allocations) =
+            crate::alloc_count::count_allocations(|| DeviceServiceClient::map_status(reply));
+        assert_eq!(channels.len(), 10);
+        assert_eq!(temps.len(), 10);
+        assert_eq!(allocations, 2);
     }
 }

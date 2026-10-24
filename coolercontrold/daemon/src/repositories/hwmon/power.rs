@@ -3,7 +3,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
-use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
+use crate::repositories::hwmon::device_io::{pair_with_results, DeviceIo};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
@@ -12,6 +12,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 const POWER_AVERAGE_SUFFIX: &str = "average";
 const PATTERN_POWER_FILE_NUMBER: &str = r"^power(?P<number>\d+)_(average|input)$";
@@ -46,7 +47,7 @@ pub async fn init_power(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonC
         preferred_powers.insert(channel_number, power_input);
     }
     for (channel_number, power_channel_name) in preferred_powers {
-        let label = get_power_channel_label(base_path, channel_number).await;
+        let label = get_power_channel_label(base_path, channel_number, io).await;
         powers.push(HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Power,
             number: channel_number,
@@ -92,47 +93,58 @@ async fn insert_power_metrics(
     Ok(())
 }
 
-/// Reads a set of power channels in one hop. See `temps::read_temp_statuses` for why the per-tick
-/// path batches.
-pub async fn read_power_statuses(
-    driver: &HwmonDriverInfo,
-    channels: &[&HwmonChannelInfo],
-) -> Vec<Option<ChannelStatus>> {
-    if channels.is_empty() {
-        return Vec::new();
-    }
-    // See `temps::read_temp_statuses` for why the reply is not zipped straight onto `channels`.
-    let (slots, slotted) = slots_for(channels, |channel| channel.read_slot.value);
-    debug_assert_eq!(
-        slots.len(),
-        channels.len(),
+/// Whether a directory entry names an attribute power detection reads, `powerN_average` or
+/// `powerN_input`, so a chip with neither can be ruled out from its listing alone.
+pub fn is_power_attribute(file_name: &str) -> bool {
+    // Compiled once. The pattern is a constant, so only a typo fails, and the tests catch that.
+    static PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(PATTERN_POWER_FILE_NUMBER).expect("power attribute pattern is valid")
+    });
+    PATTERN.is_match(file_name)
+}
+
+/// Reads a set of power channels in one hop. See `temps::read_temps` for why the per-tick path
+/// batches, and for the callback.
+pub async fn read_watts<'a>(
+    driver: &'a HwmonDriverInfo,
+    channels: impl Iterator<Item = &'a HwmonChannelInfo> + Clone,
+    mut on_watts: impl FnMut(&'a HwmonChannelInfo, Option<Watts>),
+) {
+    debug_assert!(
+        channels
+            .clone()
+            .all(|channel| channel.read_slot.value.is_some()),
         "every power channel needs a read slot; was the registry installed?"
     );
     if cfg!(debug_assertions) {
-        for (channel, slot) in channels.iter().zip(&slots) {
-            driver
-                .io
-                .debug_assert_slot(*slot, &driver.path.join(&channel.name));
+        for channel in channels.clone() {
+            if let Some(slot) = channel.read_slot.value {
+                driver
+                    .io
+                    .debug_assert_slot(slot, &driver.path.join(&channel.name));
+            }
         }
     }
-    let mut results = driver.io.read_many(&slots).await.into_iter();
-    channels
-        .iter()
-        .zip(slotted)
-        .map(|(channel, has_slot)| {
-            let result = has_slot.then(|| results.next()).flatten()?;
-            power_status_from(driver, channel, result)
-        })
-        .collect()
+    let slots = channels
+        .clone()
+        .filter_map(|channel| channel.read_slot.value);
+    let mut batch = driver.io.read_many(slots).await;
+    let has_slot = |channel: &&HwmonChannelInfo| channel.read_slot.value.is_some();
+    for (channel, result) in pair_with_results(channels, has_slot, batch.take_all()) {
+        on_watts(
+            channel,
+            result.and_then(|result| watts_from(driver, channel, result)),
+        );
+    }
 }
 
-/// Turns one raw power read into a `ChannelStatus`. Shared by the batched pass and the
-/// single-channel path so both log and discard failures identically.
-fn power_status_from(
+/// Turns one raw power read into watts. Shared by the batched pass and the single-channel path so
+/// both log and discard failures identically.
+fn watts_from(
     driver: &HwmonDriverInfo,
     channel: &HwmonChannelInfo,
     result: Result<cc_fs::SysfsValue>,
-) -> Option<ChannelStatus> {
+) -> Option<Watts> {
     // Only the log arms need it, and `log::debug!` evaluates its arguments only when enabled, so
     // the per-tick pass never builds a path.
     let power_path = || driver.path.join(&channel.name);
@@ -149,46 +161,38 @@ fn power_status_from(
             }
         })
         .ok()
-        .map(|watts| ChannelStatus {
-            name: channel.name.clone(),
-            watts: Some(watts),
-            ..Default::default()
-        })
 }
 
-/// Reads the power-input file for one channel and returns the
-/// resulting `ChannelStatus`, or `None` if the read failed.
-/// Pulled out so the preload loop can acquire the device permit
-/// per channel and avoid holding it across the whole device's
-/// power-channel set.
-pub async fn read_one_power_status(
-    driver: &HwmonDriverInfo,
-    channel: &HwmonChannelInfo,
-) -> Option<ChannelStatus> {
+/// Reads the power-input file for one channel and returns its watts, or `None` if the read failed.
+/// Pulled out so the preload loop can acquire the device permit per channel and avoid holding it
+/// across the whole device's power-channel set.
+pub async fn read_one_watts(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> Option<Watts> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Power);
     // In the Power case, channel.name is the real name of the sysfs file.
     let result = driver
         .io
-        .read_one(channel.read_slot.value, &driver.path.join(&channel.name))
+        .read_one(channel.read_slot.value, || driver.path.join(&channel.name))
         .await;
-    power_status_from(driver, channel, result)
+    watts_from(driver, channel, result)
 }
 
 /// Every power channel in one hop, for callers that want an owned `Vec` (the reinit path).
 pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
-    let channels: Vec<&HwmonChannelInfo> = driver
+    let channels = driver
         .channels
         .iter()
-        .filter(|channel| channel.hwmon_type == HwmonChannelType::Power)
-        .collect();
-    let mut powers = Vec::with_capacity(channels.len());
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Power);
+    let mut powers = Vec::with_capacity(channels.clone().count());
     let mut any_failure = false;
-    for status in read_power_statuses(driver, &channels).await {
-        match status {
-            Some(status) => powers.push(status),
-            None => any_failure = true,
-        }
-    }
+    read_watts(driver, channels, |channel, watts| match watts {
+        Some(watts) => powers.push(ChannelStatus {
+            name: channel.name.clone(),
+            watts: Some(watts),
+            ..Default::default()
+        }),
+        None => any_failure = true,
+    })
+    .await;
     (powers, any_failure)
 }
 
@@ -231,8 +235,13 @@ fn check_parsing_64(value: cc_fs::SysfsValue) -> Result<f64> {
 }
 
 /// Read the power label
-async fn get_power_channel_label(base_path: &Path, channel_number: u8) -> Option<String> {
-    cc_fs::read_txt(base_path.join(format_power_label!(channel_number)))
+async fn get_power_channel_label(
+    base_path: &Path,
+    channel_number: u8,
+    io: &DeviceIo,
+) -> Option<String> {
+    // On the device's thread: the label comes from the driver, which may have to ask the hardware.
+    io.read_text(&base_path.join(format_power_label!(channel_number)))
         .await
         .ok()
         .and_then(|label| {

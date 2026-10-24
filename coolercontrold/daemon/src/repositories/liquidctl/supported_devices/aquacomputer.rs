@@ -4,11 +4,11 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions, Status, TempStatus,
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    Status, StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
+use crate::repositories::liquidctl::liqctld_schema::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, StatusMap};
 
 #[derive(Debug)]
@@ -66,33 +66,34 @@ impl DeviceSupport for AquaComputerSupport {
         Vec::new()
     }
 
-    fn get_temperatures(&self, status_map: &StatusMap) -> Vec<TempStatus> {
-        let mut temps = Vec::with_capacity(status_map.len());
+    fn refill_temperatures(&self, status_map: &StatusMap, refill: &mut StatusRefill<'_>) {
         // D5
-        self.add_liquid_temp(status_map, &mut temps);
+        self.add_liquid_temp(status_map, refill);
         // Farbwerk, Farbwerk 360, Octo, Quadro
-        self.add_temp_sensors(status_map, &mut temps);
+        self.add_temp_sensors(status_map, refill);
         // D5, Farbwerk 360, Octo, Quadro
-        self.add_software_temp_sensors(status_map, &mut temps);
-        temps.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-        temps
+        self.add_software_temp_sensors(status_map, refill);
+        refill
+            .temps_mut()
+            .sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
 
-    fn get_channel_statuses(
+    fn refill_channel_statuses(
         &self,
         status_map: &StatusMap,
         _device_index: u8,
-    ) -> Vec<ChannelStatus> {
-        let mut channel_statuses = Vec::with_capacity(status_map.len());
+        refill: &mut StatusRefill<'_>,
+    ) {
         // D5
-        self.add_single_fan_status(status_map, &mut channel_statuses);
-        self.add_single_pump_status(status_map, &mut channel_statuses);
+        self.add_single_fan_status(status_map, refill);
+        self.add_single_pump_status(status_map, refill);
         // Octo, Quadro
-        self.add_multiple_fans_status(status_map, &mut channel_statuses);
+        self.add_multiple_fans_status(status_map, refill);
         // Quadro
-        self.add_flow_sensor_status(status_map, &mut channel_statuses);
-        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
-        channel_statuses
+        self.add_flow_sensor_status(status_map, refill);
+        refill
+            .channels_mut()
+            .sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
     }
 }
 
@@ -101,7 +102,7 @@ mod tests {
     use std::ops::Not;
 
     use super::*;
-    use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+    use crate::repositories::liquidctl::liqctld_schema::DeviceProperties;
     use crate::repositories::liquidctl::supported_devices::device_support::{
         FLOW_CHANNEL_LABEL, FLOW_CHANNEL_NAME,
     };

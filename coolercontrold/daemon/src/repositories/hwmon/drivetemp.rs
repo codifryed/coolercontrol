@@ -8,7 +8,7 @@
 //! to determine the current power mode of the connected drives.
 
 use crate::cc_fs;
-use crate::device::TempStatus;
+use crate::device::Temp;
 use crate::repositories::hwmon::devices;
 #[cfg(test)]
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
@@ -100,25 +100,25 @@ pub fn get_verified_block_device_path(path: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 pub fn stream_default_suspended_temps<F>(driver: &Rc<HwmonDriverInfo>, mut sink: F)
 where
-    F: FnMut(TempStatus),
+    F: FnMut(crate::device::TempStatus),
 {
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Temp {
             continue;
         }
-        sink(default_suspended_temp_for(channel));
+        sink(crate::device::TempStatus {
+            name: channel.name.clone(),
+            temp: default_suspended_temp_for(channel),
+        });
     }
 }
 
 /// Returns the default suspended temp value for a single channel.
 /// Per-channel callers (e.g. preload's per-channel permit loop)
 /// use this directly so they do not iterate the whole driver list.
-pub fn default_suspended_temp_for(channel: &HwmonChannelInfo) -> TempStatus {
+pub fn default_suspended_temp_for(channel: &HwmonChannelInfo) -> Temp {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Temp);
-    TempStatus {
-        name: channel.name.clone(),
-        temp: DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED,
-    }
+    DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED
 }
 
 /// Result of the bounded `drive_power_state` call, kept structured so

@@ -9,6 +9,7 @@ use std::rc::Rc;
 use crate::calibration::{self, effective_speed_options, CalibrationStore, FanStateMap};
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
+use crate::engine::commanders::{spawn_duty_writes, DutyBuffer};
 use crate::engine::main::DutyWritersByType;
 use crate::engine::processors::functions::{
     calc_ideal_stack_size, FunctionDutyThresholdPostProcessor, FunctionIdentityPreProcessor,
@@ -16,11 +17,13 @@ use crate::engine::processors::functions::{
 };
 use crate::engine::processors::profiles::GraphProcessor;
 use crate::engine::{
-    utils, DeviceChannelProfileSetting, NormalizedGraphProfile, Processor, SpeedProfileData,
+    utils, ChannelDuty, DeviceChannelProfileSetting, NormalizedGraphProfile, Processor,
+    ScheduledChannel, SpeedProfileData,
 };
 use crate::setting::{Function, FunctionUID, Profile, ProfileType, ProfileUID};
 use crate::AllDevices;
 use anyhow::{anyhow, Context, Result};
+use futures_util::future::join_all;
 use log::{debug, info, warn};
 use moro_local::Scope;
 
@@ -38,11 +41,21 @@ struct WriteFailureLog {
 impl WriteFailureLog {
     /// Records a failed write. Returns `true` when this failure starts a new run and should be
     /// logged, `false` while a run for this channel is already in progress.
+    ///
+    /// A run repeats on every tick, so it is found by borrowed lookups; keys are copied only when
+    /// a run starts.
     fn record_failure(&mut self, device_uid: &UID, channel_name: &str) -> bool {
-        self.failing_channels_by_device
-            .entry(device_uid.clone())
-            .or_default()
-            .insert(channel_name.to_string())
+        if let Some(failing_channels) = self.failing_channels_by_device.get_mut(device_uid) {
+            if failing_channels.contains(channel_name) {
+                return false;
+            }
+            return failing_channels.insert(channel_name.to_string());
+        }
+        self.failing_channels_by_device.insert(
+            device_uid.clone(),
+            HashSet::from([channel_name.to_string()]),
+        );
+        true
     }
 
     /// Records a successful write. Returns `true` when this ends a run and recovery should be
@@ -79,8 +92,7 @@ struct ProcessorCollection {
 pub struct GraphProfileCommander {
     all_devices: AllDevices,
     duty_writers_by_type: DutyWritersByType,
-    scheduled_settings:
-        RefCell<HashMap<Rc<NormalizedGraphProfile>, HashSet<DeviceChannelProfileSetting>>>,
+    scheduled_settings: RefCell<HashMap<Rc<NormalizedGraphProfile>, HashSet<ScheduledChannel>>>,
     config: Rc<Config>,
     processors: ProcessorCollection,
     /// The last calculated Option<Duty> for each Graph Profile.
@@ -89,6 +101,7 @@ pub struct GraphProfileCommander {
     calibration_store: Rc<CalibrationStore>,
     fan_state_map: Rc<FanStateMap>,
     write_failure_log: RefCell<WriteFailureLog>,
+    duty_buffer: DutyBuffer,
 }
 
 impl GraphProfileCommander {
@@ -120,6 +133,7 @@ impl GraphProfileCommander {
             calibration_store,
             fan_state_map,
             write_failure_log: RefCell::new(WriteFailureLog::default()),
+            duty_buffer: DutyBuffer::default(),
         }
     }
 
@@ -145,7 +159,7 @@ impl GraphProfileCommander {
         {
             // We replace the existing NormalizedGraphProfile if it exists to make sure it's
             // internal settings are up-to-date
-            existing_device_channels.insert(device_channel);
+            existing_device_channels.insert(Rc::new(device_channel));
             settings_lock.insert(
                 Rc::new(normalized_profile_setting),
                 existing_device_channels,
@@ -155,7 +169,7 @@ impl GraphProfileCommander {
             self.processors.fun_safety_latch.init_state(&profile.uid);
         } else {
             let mut new_device_channels = HashSet::new();
-            new_device_channels.insert(device_channel);
+            new_device_channels.insert(Rc::new(device_channel));
             settings_lock.insert(Rc::new(normalized_profile_setting), new_device_channels);
             self.processors.fun_safety_latch.init_state(&profile.uid);
             self.processors
@@ -216,20 +230,42 @@ impl GraphProfileCommander {
     /// Applies the speed of all devices that have a scheduled Graph Profile setting.
     /// Normally triggered by a loop/timer.
     pub fn update_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, Result<()>>) {
-        for (device_uid, channel_duties_to_set) in self.collect_processed_outputs() {
-            scope.spawn(async move {
-                for (channel_name, duty_to_set) in channel_duties_to_set {
-                    self.set_device_speed(&device_uid, &channel_name, duty_to_set)
-                        .await;
-                }
-            });
-        }
+        let mut duties = self.duty_buffer.take();
+        self.collect_processed_outputs(&mut duties);
+        spawn_duty_writes(scope, self, &self.duty_buffer, duties);
     }
 
-    /// Collects all the processed outputs for all scheduled Graph Profiles.
-    fn collect_processed_outputs(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
+    /// Writes one tick's duties: each device's channels in turn, all devices at once, so a slow
+    /// device holds up no other. Used by every profile commander.
+    pub async fn apply_duties(&self, duties: &mut [ChannelDuty]) {
+        // Unstable: a stable sort allocates a buffer, and the order within a device is free.
+        duties.sort_unstable_by(|(left, _), (right, _)| left.device_uid().cmp(right.device_uid()));
+        let same_device = |(left, _): &ChannelDuty, (right, _): &ChannelDuty| {
+            left.device_uid() == right.device_uid()
+        };
+        let device_count = duties.chunk_by(same_device).count();
+        debug_assert!(device_count <= duties.len());
+        let duties = &*duties;
+        // Indexed by a range, so `join_all` sees an exact length and sizes its buffer once.
+        join_all((0..device_count).map(|device_index| {
+            let device_duties = duties
+                .chunk_by(same_device)
+                .nth(device_index)
+                .unwrap_or_default();
+            debug_assert!(device_duties.is_empty().not(), "every chunk holds a duty");
+            async move {
+                for (channel, duty) in device_duties {
+                    self.set_device_speed(channel.device_uid(), channel.channel_name(), *duty)
+                        .await;
+                }
+            }
+        }))
+        .await;
+    }
+
+    /// Collects the processed outputs for all scheduled Graph Profiles into `duties`.
+    fn collect_processed_outputs(&self, duties: &mut Vec<ChannelDuty>) {
         let settings = self.scheduled_settings.borrow();
-        let mut output_to_apply = HashMap::with_capacity(settings.len());
         for (normalized_profile, device_channels) in settings.iter() {
             let optional_duty_to_set = self.process_output_cache.borrow()
                 [&normalized_profile.profile_uid]
@@ -242,19 +278,11 @@ impl GraphProfileCommander {
                 // We only apply Graph Profiles directly applied to fan channels, as we
                 // can also schedule Overlay Member Profiles and Mix Member Profiles,
                 // which need to be handled properly upstream.
-                if let DeviceChannelProfileSetting::Graph {
-                    device_uid,
-                    channel_name,
-                } = device_channel
-                {
-                    output_to_apply
-                        .entry(device_uid.clone())
-                        .or_insert_with(Vec::new)
-                        .push((channel_name.clone(), duty_to_set));
+                if let DeviceChannelProfileSetting::Graph { .. } = **device_channel {
+                    duties.push((Rc::clone(device_channel), duty_to_set));
                 }
             }
         }
-        output_to_apply
     }
 
     fn process_speed_setting(
@@ -299,8 +327,8 @@ impl GraphProfileCommander {
             &self.fan_state_map,
             &self.calibration_store,
             writer,
-            device_uid.clone(),
-            channel_name.to_string(),
+            device_uid,
+            channel_name,
             duty_to_set,
         )
         .await;
@@ -428,9 +456,10 @@ impl GraphProfileCommander {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::DutyWriter;
+    use crate::calibration::RepoWriter;
     use crate::device::{Device, DeviceInfo, DeviceType};
-    use async_trait::async_trait;
+    use crate::engine::commanders::by_device;
+    use crate::repositories::repository::StubRepo;
     use std::cell::Cell;
 
     const DEVICE: &str = "device-uid";
@@ -438,49 +467,121 @@ mod tests {
     const FAN: &str = "fan1";
     const PUMP: &str = "pump";
 
-    /// Fails every write while `failing` is set.
-    struct ToggleWriter {
-        failing: Rc<Cell<bool>>,
-    }
-
-    #[async_trait(?Send)]
-    impl DutyWriter for ToggleWriter {
-        async fn write_device_duty(&self, _: &UID, _: &str, _: Duty) -> Result<()> {
-            if self.failing.get() {
-                return Err(anyhow!("simulated failure"));
-            }
-            Ok(())
-        }
-    }
-
     /// A commander over one hwmon device, its UID, and the writer's failure switch.
     fn commander_with_toggle_writer() -> (GraphProfileCommander, UID, Rc<Cell<bool>>) {
-        let device = Device::new(
-            "nct6687".to_string(),
-            DeviceType::Hwmon,
-            0,
-            None,
-            DeviceInfo::default(),
-            None,
-            1.0,
-        );
-        let device_uid = device.uid.clone();
-        let all_devices: AllDevices = Rc::new(HashMap::from([(
-            device_uid.clone(),
-            Rc::new(RefCell::new(device)),
-        )]));
         let failing = Rc::new(Cell::new(true));
-        let writer: Rc<dyn DutyWriter> = Rc::new(ToggleWriter {
-            failing: Rc::clone(&failing),
-        });
+        let repo = StubRepo {
+            failing_writes: Rc::clone(&failing),
+            ..StubRepo::new(DeviceType::Hwmon)
+        };
+        let (commander, mut device_uids) = commander_over_hwmon_devices(1, repo);
+        (commander, device_uids.remove(0), failing)
+    }
+
+    /// A commander over `device_count` hwmon devices written through `repo`, and their UIDs.
+    fn commander_over_hwmon_devices(
+        device_count: u8,
+        repo: StubRepo,
+    ) -> (GraphProfileCommander, Vec<UID>) {
+        let mut devices = HashMap::new();
+        for type_index in 0..device_count {
+            let device = Device::new(
+                "nct6687".to_string(),
+                DeviceType::Hwmon,
+                type_index,
+                None,
+                DeviceInfo::default(),
+                None,
+                1.0,
+            );
+            devices.insert(device.uid.clone(), Rc::new(RefCell::new(device)));
+        }
+        let device_uids = devices.keys().cloned().collect();
+        let all_devices: AllDevices = Rc::new(devices);
         let commander = GraphProfileCommander::new(
             all_devices,
-            HashMap::from([(DeviceType::Hwmon, writer)]),
+            HashMap::from([(DeviceType::Hwmon, RepoWriter::rc(Rc::new(repo)))]),
             Rc::new(Config::init_default_config().unwrap()),
             Rc::new(CalibrationStore::empty()),
             Rc::new(FanStateMap::new()),
         );
-        (commander, device_uid, failing)
+        (commander, device_uids)
+    }
+
+    /// One graph-scheduled channel's duty on `device_uid`.
+    fn graph_duty(device_uid: &UID, channel_name: &str, duty: Duty) -> ChannelDuty {
+        let channel = DeviceChannelProfileSetting::Graph {
+            device_uid: device_uid.clone(),
+            channel_name: channel_name.to_string(),
+        };
+        (Rc::new(channel), duty)
+    }
+
+    #[test]
+    fn every_duty_of_a_tick_is_written() {
+        // Goal: a tick writes each of its duties once, whichever device it is on. Method: apply
+        // two duties on one device and one on another, then count the writes.
+        let written = Rc::new(Cell::new(0));
+        let repo = StubRepo {
+            written: Rc::clone(&written),
+            ..StubRepo::new(DeviceType::Hwmon)
+        };
+        let (commander, device_uids) = commander_over_hwmon_devices(2, repo);
+        let mut duties = vec![
+            graph_duty(&device_uids[0], FAN, 40),
+            graph_duty(&device_uids[1], FAN, 50),
+            graph_duty(&device_uids[0], PUMP, 60),
+        ];
+
+        crate::rt::poll_to_end(commander.apply_duties(&mut duties));
+
+        assert_eq!(written.get(), 3);
+    }
+
+    #[test]
+    fn devices_are_written_at_the_same_time() {
+        // Goal: a device whose write waits holds up no other device. Method: each device's
+        // write waits at one barrier for two; written one device after the other, the first
+        // would wait forever.
+        crate::rt::test_runtime(async {
+            let written = Rc::new(Cell::new(0));
+            let repo = StubRepo {
+                write_meeting: Some(Rc::new(tokio::sync::Barrier::new(2))),
+                written: Rc::clone(&written),
+                ..StubRepo::new(DeviceType::Hwmon)
+            };
+            let (commander, device_uids) = commander_over_hwmon_devices(2, repo);
+            let mut duties = vec![
+                graph_duty(&device_uids[0], FAN, 40),
+                graph_duty(&device_uids[1], FAN, 50),
+            ];
+
+            commander.apply_duties(&mut duties).await;
+
+            assert_eq!(written.get(), 2);
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn applying_a_ticks_duties_allocates_once_plus_one_per_write() {
+        // Goal: writing a tick's duties costs one allocation for the join, whatever the device
+        // count, plus the repository's boxed future per write. Method: apply three duties over
+        // two devices once to warm the writer, then count a second apply.
+        let repo = StubRepo::new(DeviceType::Hwmon);
+        let (commander, device_uids) = commander_over_hwmon_devices(2, repo);
+        let mut duties = vec![
+            graph_duty(&device_uids[0], FAN, 40),
+            graph_duty(&device_uids[1], FAN, 50),
+            graph_duty(&device_uids[0], PUMP, 60),
+        ];
+        crate::rt::poll_to_end(commander.apply_duties(&mut duties));
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            crate::rt::poll_to_end(commander.apply_duties(&mut duties));
+        });
+
+        assert_eq!(allocations, 1 + 3);
     }
 
     #[test]
@@ -588,5 +689,72 @@ mod tests {
         assert_eq!(write_failure_log.failing_channels_by_device.len(), 1);
         write_failure_log.record_success(&DEVICE.to_string(), PUMP);
         assert!(write_failure_log.failing_channels_by_device.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_failure_in_a_run_allocates_nothing() {
+        // Goal: a device that keeps failing costs no allocation per tick. Method: start a run,
+        // then count a repeat.
+        let mut write_failure_log = WriteFailureLog::default();
+        let device_uid = DEVICE.to_string();
+        assert!(write_failure_log.record_failure(&device_uid, FAN));
+
+        let (starts_a_run, allocations) = crate::alloc_count::count_allocations(|| {
+            write_failure_log.record_failure(&device_uid, FAN)
+        });
+
+        assert!(starts_a_run.not());
+        assert_eq!(allocations, 0);
+    }
+
+    /// Schedules graph profile `g1` on the commander's fan, with `output` as its latest duty.
+    fn schedule_g1(commander: &GraphProfileCommander, device_uid: &UID, output: Option<Duty>) {
+        let profile = Rc::new(NormalizedGraphProfile {
+            profile_uid: "g1".to_string(),
+            ..Default::default()
+        });
+        let channel = DeviceChannelProfileSetting::Graph {
+            device_uid: device_uid.clone(),
+            channel_name: FAN.to_string(),
+        };
+        commander
+            .scheduled_settings
+            .borrow_mut()
+            .insert(profile, HashSet::from([Rc::new(channel)]));
+        commander
+            .process_output_cache
+            .borrow_mut()
+            .insert("g1".to_string(), output);
+    }
+
+    #[test]
+    fn a_duty_to_set_is_collected_for_its_channel() {
+        // Goal: a collect carries the duty to set for its channel. Method: schedule one
+        // profile with an output and collect.
+        let (commander, device_uid, _) = commander_with_toggle_writer();
+        schedule_g1(&commander, &device_uid, Some(50));
+        let mut duties = Vec::new();
+
+        commander.collect_processed_outputs(&mut duties);
+
+        assert_eq!(by_device(&duties)[&device_uid], vec![(FAN.to_string(), 50)]);
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn collecting_with_no_duty_to_set_allocates_nothing() {
+        // Goal: a tick with nothing to apply costs no allocation. Method: schedule one profile
+        // with no output and count the allocations of a collect.
+        let (commander, device_uid, _) = commander_with_toggle_writer();
+        schedule_g1(&commander, &device_uid, None);
+        let mut duties = Vec::new();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            commander.collect_processed_outputs(&mut duties);
+        });
+
+        assert!(duties.is_empty());
+        assert_eq!(allocations, 0);
     }
 }

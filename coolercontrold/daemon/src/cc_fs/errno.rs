@@ -8,8 +8,8 @@ use nix::libc;
 /// is unreadable.
 ///
 /// `EINTR` is the one that matters: a driver that sleeps interruptibly inside its sysfs read
-/// returns `-ERESTARTSYS`, which `io_uring` converts rather than restarting. `EIO` is deliberately
-/// absent, being ambiguous and often permanent.
+/// returns `-ERESTARTSYS`, which a signal handler without `SA_RESTART` turns into `EINTR` rather
+/// than a restart. `EIO` is deliberately absent, being ambiguous and often permanent.
 ///
 /// The hot read path retries only `EINTR`. This wider set is for one-shot detection, where giving
 /// up costs a channel for the whole session.

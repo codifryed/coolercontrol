@@ -159,8 +159,8 @@ impl AppleDriver {
     ) -> AppleFans {
         let handler = match self {
             Self::IntelLegacy => {
-                AppleSmcLegacy::log_fan_limits(base_path, channels).await;
-                AppleHandler::IntelLegacy(AppleSmcLegacy::new(base_path, channels).await)
+                AppleSmcLegacy::log_fan_limits(base_path, channels, io).await;
+                AppleHandler::IntelLegacy(AppleSmcLegacy::new(base_path, channels, io).await)
             }
             Self::IntelLinux73 => {
                 AppleHandler::IntelLinux73(AppleSmc73::new(base_path, channels, io).await)
@@ -315,7 +315,7 @@ pub fn is_writable(path: &Path) -> bool {
 }
 
 pub async fn read_rpm(path: &Path, io: &DeviceIo) -> Option<RPM> {
-    io.read_one(None, path)
+    io.read_value(path)
         .await
         .and_then(fans::check_parsing_32)
         .ok()
@@ -360,13 +360,14 @@ pub async fn detect_target_fans(
         }
         fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
     }
-    Ok(fan_channels(base_path, fan_caps).await)
+    Ok(fan_channels(base_path, fan_caps, io).await)
 }
 
 /// The channels of the fans found, in fan order. Every one has a readable speed.
 pub async fn fan_channels(
     base_path: &Path,
     fan_caps: HashMap<u8, HwmonChannelCapabilities>,
+    io: &DeviceIo,
 ) -> Vec<HwmonChannelInfo> {
     let mut fans = Vec::with_capacity(fan_caps.len());
     for (channel_number, caps) in fan_caps {
@@ -375,7 +376,7 @@ pub async fn fan_channels(
             hwmon_type: HwmonChannelType::Fan,
             number: channel_number,
             name: fans::get_fan_channel_name(channel_number),
-            label: fans::get_fan_channel_label(base_path, &channel_number).await,
+            label: fans::get_fan_channel_label(base_path, &channel_number, io).await,
             rpm_path: Some(base_path.join(format!("fan{channel_number}_input"))),
             caps,
             ..Default::default()

@@ -25,12 +25,12 @@ use clap::Parser;
 #[cfg(target_arch = "x86_64")]
 use log::debug;
 use log::{error, info, warn};
-use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
-use nix::unistd::{Pid, Uid};
+use nix::unistd::Uid;
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use repositories::repository::Repository;
 use tokio_util::sync::CancellationToken;
 
+mod affinity;
 mod alerts;
 // Gated: allocation counts depend on the toolchain and optimizer.
 #[cfg(all(test, feature = "gated-tests"))]
@@ -50,6 +50,7 @@ mod events;
 mod grpc_api;
 mod hashutil;
 mod listeners;
+mod log_writer;
 mod logger;
 mod main_loop;
 mod malloc_threshold;
@@ -184,8 +185,8 @@ const ENV_SERVICE_MANAGER: &str = "CC_SERVICE_MANAGER";
 /// ```
 const ENV_NVML: &str = "CC_NVML";
 
-/// Environment Variable: Force the async runtime's reactor backend
-/// Takes one of: [`epoll`, `io_uring`]
+/// Environment Variable: No longer has an effect. It chose the compio runtime's reactor backend;
+/// the tokio runtime always uses epoll. Still named so a unit file that sets it gets a note.
 ///
 /// # Example
 /// ```
@@ -306,7 +307,9 @@ impl Args {
 fn main() -> Result<()> {
     malloc_threshold::pin();
     let cmd_args: Args = Args::parse();
-    rt::runtime(async {
+    // Outside the runtime: GPU stress builds its own, which tokio refuses to nest.
+    handle_non_root_commands(&cmd_args)?;
+    let result = rt::runtime(async {
         let run_token = setup_termination_signals();
         // The Tokio sidecar hosts everything that needs a Tokio reactor (REST/gRPC servers, the dbus
         // sleep listener, the service-plugin tonic transport). Started early so it exists before
@@ -317,7 +320,6 @@ fn main() -> Result<()> {
         // Publish the sidecar handle process-wide so reactor-bound work (process spawning, the
         // auth/token/liqctld/service-plugin transports) can reach it without threading a handle.
         sidecar::install_global(sidecar.handle());
-        handle_non_root_commands(&cmd_args)?;
         // Read ahead of the full config load so the level applies from the first log line.
         let debug_logging_setting = Config::read_debug_logging_setting().await;
         let log_buf_handle =
@@ -337,17 +339,16 @@ fn main() -> Result<()> {
             config.save_config_file().await?;
         }
         paths::ensure_data_dir().await?;
-        // admin uses `sidecar_fs` (always Tokio); on the compio main thread there is no Tokio
-        // reactor, so run it on the sidecar. Harmless on the Tokio backend too. The hash is
-        // unused here: loading it resets a stored file's permissions to 0600.
+        // admin uses `sidecar_fs`, which the auth subsystem awaits on the sidecar, so run it
+        // there. The hash is unused here: loading it resets a stored file's permissions to 0600.
         sidecar::handle().run(auth::admin::load_passwd).await??;
 
         // The startup pause below is covered by TimeoutStartSec: systemd does
         // not start the watchdog until READY.
         let watchdog = Rc::new(watchdog::Watchdog::init());
         pause_before_startup(&config).await?;
-        let detection_results = run_sensors_detection(&config);
-        rt::log_active_backend();
+        let detection_results = run_sensors_detection(&config).await;
+        rt::log_ignored_driver_override();
         let hardware_support = Rc::new(
             diagnostics::support::HardwareSupportController::init(
                 detection_results,
@@ -363,6 +364,8 @@ fn main() -> Result<()> {
                 .await
                 .with_sensors_conf(sensors_conf),
         );
+        // Before the device workers start, which go beside the main thread's CPU.
+        affinity::pin_main_thread().await?;
         let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
             initialize_device_repos(
                 &config,
@@ -507,11 +510,10 @@ fn main() -> Result<()> {
 
                 // give concurrent services a moment to finish initializing:
                 rt::sleep(Duration::from_millis(10)).await;
-                set_cpu_affinity()?;
                 info!("Initialization Complete");
                 // Only now is the daemon serving, so this is what releases
                 // systemd's start job.
-                watchdog::notify_ready();
+                watchdog::notify_ready().await;
                 main_loop::run(
                     Rc::clone(&config),
                     Rc::clone(&repos),
@@ -535,14 +537,17 @@ fn main() -> Result<()> {
             error!("Main scope failed to start: {err}");
         });
         // all tasks from the main scope must have completed by this point.
-        watchdog::notify_stopping();
+        watchdog::notify_stopping().await;
         let shutdown_result = shutdown(repos, config).await;
         // Repos have finished their shutdown (incl. any sidecar round-trips like the service-plugin
         // gRPC shutdown), so the sidecar can now be torn down and joined (bounded, force-exit).
         sidecar_token.cancel();
         sidecar.join();
         shutdown_result
-    })
+    });
+    // Lines still queued for the journal or stderr would go with the process.
+    log::logger().flush();
+    result
 }
 
 fn verify_is_root() -> Result<()> {
@@ -659,8 +664,14 @@ enum SubCommands {
 }
 
 /// The stress subcommands run synchronously on plain threads, so this needs
-/// no runtime of its own.
+/// no runtime of its own and must run outside the daemon's.
 fn handle_non_root_commands(args: &Args) -> Result<()> {
+    // GPU stress builds a tokio runtime of its own, which tokio refuses inside another. Checked on
+    // every start, so a call moved into `rt::runtime` fails at once rather than only on stress-gpu.
+    assert!(
+        tokio::runtime::Handle::try_current().is_err(),
+        "non-root commands must run before the daemon's runtime starts"
+    );
     if let Some(SubCommands::OpenApi) = &args.command {
         // Pretty-printed: the file is checked in, so a merge request diff has to be
         // readable. Whitespace compresses away to a couple of KB on the wire.
@@ -723,8 +734,8 @@ fn handle_non_root_commands(args: &Args) -> Result<()> {
 async fn parse_cmd_args(cmd_args: &Args) -> Result<()> {
     if cmd_args.reset_password {
         info!("Resetting UI password to default");
-        // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
-        // main thread. `unwrap_or_else(Err)` flattens a dispatch failure into the same exit path.
+        // admin uses `sidecar_fs`, so run it on the sidecar. `unwrap_or_else(Err)` flattens a
+        // dispatch failure into the same exit path.
         match crate::sidecar::handle()
             .run(auth::admin::reset_passwd)
             .await
@@ -797,6 +808,7 @@ fn finish_check(all_valid: bool) -> ! {
         exit_successfully();
     }
     error!("One or more configuration files are invalid");
+    log::logger().flush();
     std::process::exit(1);
 }
 
@@ -815,10 +827,12 @@ fn finish_backup(result: Result<backup::BackupOutput>) -> ! {
 
 fn exit_with_error(err: &Error) -> ! {
     error!("{err}");
+    log::logger().flush();
     std::process::exit(1);
 }
 
 fn exit_successfully() -> ! {
+    log::logger().flush();
     std::process::exit(0)
 }
 
@@ -827,7 +841,7 @@ fn exit_successfully() -> ! {
 /// `None` means no probe was made, which is not the same as a probe that found
 /// nothing and must not produce findings.
 #[cfg(target_arch = "x86_64")]
-fn run_sensors_detection(config: &Rc<Config>) -> Option<cc_detect::DetectionResults> {
+async fn run_sensors_detection(config: &Rc<Config>) -> Option<cc_detect::DetectionResults> {
     if is_env_disabled(ENV_SENSORS_DETECT) {
         info!("Super-I/O hardware detection disabled by environment variable");
         return None;
@@ -835,7 +849,18 @@ fn run_sensors_detection(config: &Rc<Config>) -> Option<cc_detect::DetectionResu
     match config.get_settings() {
         Ok(settings) if settings.sensors_auto_detect => {
             debug!("Running Super-I/O hardware detection");
-            let results = cc_detect::run_detection(true, Some(paths::detect_override_file()));
+            // Port probing, modprobe and `udevadm settle` all block, so they run on the blocking
+            // pool, as the detect API's do. Nothing else can probe yet: the API is not up.
+            let detection = rt::spawn_blocking(|| {
+                cc_detect::run_detection(true, Some(paths::detect_override_file()))
+            });
+            let results = match detection.await {
+                Ok(results) => results,
+                Err(err) => {
+                    warn!("Super-I/O hardware detection failed: {err}");
+                    return None;
+                }
+            };
             for chip in &results.detected_chips {
                 info!(
                     "{} (driver: {}, status: {})",
@@ -859,7 +884,8 @@ fn run_sensors_detection(config: &Rc<Config>) -> Option<cc_detect::DetectionResu
 }
 
 #[cfg(not(target_arch = "x86_64"))]
-fn run_sensors_detection(_config: &Rc<Config>) -> Option<cc_detect::DetectionResults> {
+#[allow(clippy::unused_async)] // The x86_64 signature, so the caller awaits either.
+async fn run_sensors_detection(_config: &Rc<Config>) -> Option<cc_detect::DetectionResults> {
     // Super-I/O detection is x86_64-only
     None
 }
@@ -1005,7 +1031,7 @@ async fn init_liquidctl_repo(
     let lc_repo = Rc::new(lc_repo);
     Rc::clone(&lc_repo).preload_statuses().await;
     lc_repo.update_infos_from_first_status();
-    lc_repo.update_statuses(chrono::Local::now()).await?;
+    lc_repo.update_statuses(chrono::Local::now())?;
     lc_repo.initialize_all_device_status_histories_with_current_status()?;
     Ok((lc_repo, lc_locations))
 }
@@ -1074,7 +1100,8 @@ async fn init_custom_sensors_repo(
     overrides: Rc<overrides::OverridesController>,
 ) -> Result<CustomSensorsRepo> {
     let mut custom_sensors_repo =
-        CustomSensorsRepo::new(config, devices_for_custom_sensors, overrides)?;
+        CustomSensorsRepo::new(config, devices_for_custom_sensors, overrides)?
+            .with_isolated_file_reads();
     custom_sensors_repo.initialize_devices().await?;
     Ok(custom_sensors_repo)
 }
@@ -1113,23 +1140,6 @@ async fn create_devices_map(repos: &Repos) -> AllDevices {
     Rc::new(all_devices)
 }
 
-/// Pin our main runtime thread to the CPU it is currently running on, reducing unnecessary
-/// context switching.
-///
-/// Deferred until after runtime startup and initialization complete, never at build time.
-/// Linux threads inherit the creating thread's affinity mask, so pinning before the blocking
-/// IO pool has warmed up would trap every later-spawned blocking thread on this one CPU.
-/// Running it now lets those threads spawn while affinity is still all-CPUs and stay spread
-/// across cores. This is also why compio's build-time `RuntimeBuilder::thread_affinity` is
-/// not used: it pins inside `build()`, before any blocking worker exists.
-fn set_cpu_affinity() -> Result<()> {
-    let current_cpu = sched_getcpu()?;
-    let mut cpu_set = CpuSet::new();
-    cpu_set.set(current_cpu)?;
-    sched_setaffinity(Pid::from_raw(0), &cpu_set)?;
-    Ok(())
-}
-
 async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
     info!("Main process shutting down");
     // verifies all config document locks have been released before shutdown:
@@ -1157,6 +1167,25 @@ mod tests {
             reset_plugin_user: false,
             command: None,
         }
+    }
+
+    /// Goal: the non-root commands refuse to run inside a tokio runtime, where GPU stress cannot
+    /// build its own, and they refuse on a bare start too, so a call moved into `rt::runtime` shows
+    /// on every run. Method: call the handler with no command inside the test runtime.
+    #[test]
+    #[should_panic(expected = "non-root commands must run before the daemon's runtime starts")]
+    fn non_root_commands_refuse_to_run_inside_the_runtime() {
+        let args = base_args();
+        rt::test_runtime(async move {
+            let _ = handle_non_root_commands(&args);
+        });
+    }
+
+    /// Goal: outside a runtime, where `main` calls it, a bare start has nothing to run and goes on.
+    /// Method: call the handler with no command on a plain test thread.
+    #[test]
+    fn non_root_commands_pass_through_outside_the_runtime() {
+        assert!(handle_non_root_commands(&base_args()).is_ok());
     }
 
     /// Goal: the System Info banner logs for a real daemon start and for the

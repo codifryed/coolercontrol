@@ -48,18 +48,34 @@ const CAROUSEL_IMAGE_DIRECTORY: &str = "carousel";
 /// processes them to ensure they fit the screen dimensions, and stores the processed
 /// images in a designated location if they do not already exist. The function supports
 /// both static images and animated GIFs, converting all static outputs to PNG format.
+///
+/// The scan runs on the blocking pool: the directory is the user's, maybe on a network or
+/// removable mount, and up to `MAX_CAROUSEL_ITEMS` images of up to 50 MB are each hashed with
+/// SHA-256 and processed.
 pub async fn process_carousel_images(
     images_path_str: &str,
     lcd_info: LcdInfo,
 ) -> Result<Vec<String>> {
+    let images_path_str = images_path_str.to_owned();
+    crate::rt::spawn_blocking(move || process_carousel_images_blocking(&images_path_str, &lcd_info))
+        .await
+        .map_err(|err| anyhow!("Carousel image processing failed: {err}"))?
+}
+
+/// `process_carousel_images` as blocking calls.
+fn process_carousel_images_blocking(
+    images_path_str: &str,
+    lcd_info: &LcdInfo,
+) -> Result<Vec<String>> {
     let images_path = verify_images_path(images_path_str)?;
     let verified_image_paths = verify_images(&images_path)?;
-    create_carousel_processed_image_directory().await?;
-    let mut processed_image_paths = Vec::new();
+    debug_assert!(verified_image_paths.len() <= MAX_CAROUSEL_ITEMS);
+    create_carousel_processed_image_directory()?;
+    let mut processed_image_paths = Vec::with_capacity(verified_image_paths.len());
     for path in verified_image_paths {
-        let image_hash = image_digest(&path)
-            .await
-            .inspect_err(|err| warn!("Error getting image digest: {err}"))?;
+        // Read once: the hash names the processed file, and the bytes are processed if it is new.
+        let file_data = std::fs::read(&path)?;
+        let image_hash = image_digest(&file_data);
         // The content type is just used to know if it's processing an animated gif or a
         // static file, all processed static file output is encoded to png regardless of input.
         // A screen that cannot animate still shows the gif's first frame, which is what
@@ -72,15 +88,14 @@ pub async fn process_carousel_images(
         let processed_image_path = create_carousel_lcd_image_path(&content_type, image_hash);
         debug!("New Image Path created: {}", processed_image_path.display());
         if processed_image_path.exists().not() {
-            let file_data = cc_fs::read_image(&path).await?;
-            let Ok((_, processed_image_data)) = process_image(
-                content_type,
-                file_data,
-                lcd_info.screen_width,
-                lcd_info.screen_height,
-            )
-            .await
-            else {
+            let Some((_, processed_image_data)) = skip_on_panic(|| {
+                cc_image::process_image(
+                    &content_type,
+                    file_data,
+                    lcd_info.screen_width,
+                    lcd_info.screen_height,
+                )
+            }) else {
                 debug!("Image processing failed for path: {}", path.display());
                 continue;
             };
@@ -98,7 +113,7 @@ pub async fn process_carousel_images(
                 // alternative at some point.
                 continue;
             }
-            cc_fs::write(&processed_image_path, processed_image_data).await?;
+            std::fs::write(&processed_image_path, processed_image_data)?;
         }
         let processed_image_path_str = processed_image_path
             .to_str()
@@ -109,6 +124,15 @@ pub async fn process_carousel_images(
         processed_image_paths.push(processed_image_path_str);
     }
     Ok(processed_image_paths)
+}
+
+/// One image's processing, with a failure or a decoder panic on a malformed file both a skip: the
+/// whole scan runs in one blocking task, so a panic must not fail the rest of the Carousel.
+fn skip_on_panic<T, E>(process: impl FnOnce() -> std::result::Result<T, E>) -> Option<T> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(process)) {
+        Ok(Ok(processed)) => Some(processed),
+        Ok(Err(_)) | Err(_) => None,
+    }
 }
 
 fn verify_images_path(images_path_str: &str) -> Result<PathBuf> {
@@ -163,11 +187,10 @@ fn verify_images(images_path: &Path) -> Result<Vec<PathBuf>> {
     Ok(verified_image_paths)
 }
 
-async fn create_carousel_processed_image_directory() -> Result<()> {
+fn create_carousel_processed_image_directory() -> Result<()> {
     let carousel_processed_image_dir = paths::config_dir().join(CAROUSEL_IMAGE_DIRECTORY);
     if carousel_processed_image_dir.exists().not() {
-        cc_fs::create_dir_all(&carousel_processed_image_dir)
-            .await
+        std::fs::create_dir_all(&carousel_processed_image_dir)
             .inspect_err(|_| warn!("Error creating carousel processed image directory"))?;
     }
     Ok(())
@@ -185,11 +208,38 @@ fn create_carousel_lcd_image_path(content_type: &Mime, image_hash: String) -> Pa
     }
 }
 
-async fn image_digest(path: &Path) -> Result<String> {
-    // Read via cc_fs so this runs on the active runtime (the engine is on the main thread). Image
-    // files are bounded, so reading whole-to-memory to hash is fine.
-    let bytes = crate::cc_fs::read_image(path).await?;
+/// Names a processed image by its source's contents. Image files are bounded, so they are read
+/// whole to hash.
+fn image_digest(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(&bytes);
-    Ok(crate::hashutil::to_lower_hex(&hasher.finalize()))
+    hasher.update(bytes);
+    crate::hashutil::to_lower_hex(&hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_processed_image_is_named_by_the_sha256_of_its_source() {
+        // Goal: hashing the bytes once read keeps the names earlier processed files were saved
+        // under, so none is processed again. Method: the FIPS 180-2 test vector for "abc".
+        assert_eq!(
+            image_digest(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn a_panicking_or_failing_image_is_skipped() {
+        // Goal: one malformed image that panics its decoder is skipped like one that fails,
+        // leaving the rest of the Carousel to process. Method: run a processed, a failing and a
+        // panicking image through the per-image guard.
+        assert_eq!(skip_on_panic(|| Ok::<_, ()>(7)), Some(7));
+        assert_eq!(skip_on_panic(|| Err::<u8, _>("unsupported format")), None);
+        assert_eq!(
+            skip_on_panic(|| -> std::result::Result<u8, ()> { panic!("malformed image") }),
+            None
+        );
+    }
 }

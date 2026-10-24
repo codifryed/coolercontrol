@@ -58,9 +58,9 @@ impl ShellCommand {
     }
 
     pub async fn run(&self) -> ShellCommandResult {
-        // tokio::process needs a Tokio reactor and gives us async wait + kill-on-timeout +
-        // kill_on_drop (so a hung child never blocks the runtime or fills the blocking pool, and is
-        // killed on overrun/cancel), so run it on the sidecar; the main thread may be on compio.
+        // tokio::process gives us async wait + kill-on-timeout + kill_on_drop (so a hung child
+        // never blocks the runtime or fills the blocking pool, and is killed on overrun/cancel). It
+        // runs on the sidecar, with the daemon's other child processes.
         let command = self.command.clone();
         let env = self.env.clone();
         let timeout = self.timeout;
@@ -178,7 +178,7 @@ impl DirectCommand {
 
     async fn execute(self) -> Result<(i32, String, String)> {
         // See `ShellCommand::run`: tokio::process runs on the sidecar for resilient async
-        // wait/kill, off the main (possibly compio) thread and off the blocking pool.
+        // wait/kill, off the main thread and off the blocking pool.
         crate::sidecar::handle()
             .run(move || run_direct_command(self.binary, self.args, self.timeout))
             .await?
