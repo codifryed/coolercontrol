@@ -1188,23 +1188,34 @@ mod tests {
     }
 
     /// Goal: a batch that times out must not leave the next batch without results; it just
-    /// loses the buffers. Method: time a batch out, then serve the next by hand.
+    /// loses the buffers and its reply slot, so a late reply can never reach the next batch.
+    /// Method: time a batch out, let its late reply land, then serve the next by hand.
     #[test]
     fn a_batch_after_a_timeout_still_reads() {
         crate::rt::test_runtime(async {
             let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let worker = worker_of(&io);
             let lost = io.read_many([0]).await;
             assert!(lost[0].is_err());
             drop(lost);
-            // Discard the request the timed-out batch left queued.
-            assert!(rx.try_recv().is_ok());
+            assert_eq!(
+                worker.batch_replies.spare_count(),
+                0,
+                "a timed-out batch orphans its reply slot"
+            );
+            let Ok(Request::ReadMany { mut buffers, reply }) = rx.try_recv() else {
+                panic!("the timed-out batch left its request queued");
+            };
+            buffers.values.clear();
+            buffers.values.push(Ok(SysfsValue::from_bytes(b"99000\n")));
+            reply.send(Ok(buffers));
 
             let (batch, _) =
                 futures_util::future::join(io.read_many([0]), serve_one_batch_by_hand(&mut rx))
                     .await;
 
             assert_eq!(batch.len(), 1);
-            assert!(batch[0].is_ok());
+            assert_eq!(batch[0].as_ref().unwrap().trimmed_str().unwrap(), "41000");
         });
     }
 
