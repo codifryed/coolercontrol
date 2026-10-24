@@ -6,6 +6,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::default::Default;
 use std::ops::{Add, Not, RangeInclusive};
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1743,6 +1744,20 @@ pub enum NvmlInitResult {
     Unavailable,
 }
 
+/// Each PCI function, with the kernel's cached `vendor` and `class` attributes.
+const PCI_DEVICES_PATH: &str = "/sys/bus/pci/devices";
+
+/// Present while the NVIDIA kernel driver is loaded.
+const NVIDIA_MODULE_PATH: &str = "/sys/module/nvidia";
+
+const NVIDIA_PCI_VENDOR_ID: u32 = 0x10de;
+
+/// The PCI base class of display controllers, VGA and 3D alike.
+const PCI_BASE_CLASS_DISPLAY: u32 = 0x03;
+
+/// More PCI functions than any real machine has. A bus this large is not ruled out.
+const PCI_DEVICES_MAX: usize = 4096;
+
 /// How long NVML gets to load, initialize and enumerate, and to shut down again. Without
 /// persistence mode the driver initializes each GPU on the first call, about a second each; a GPU
 /// that fell off the bus never answers.
@@ -1773,6 +1788,57 @@ struct NvmlProbe {
     nvml: Box<Nvml>,
     device_count: u32,
     device_uids: Vec<UID>,
+}
+
+/// Whether NVIDIA detection is worth running: the NVIDIA driver is loaded, or an NVIDIA display
+/// controller is on the PCI bus. `nvmlInit` maps libcuda even when it then fails, and libcuda stays
+/// mapped for the daemon's lifetime, so a machine with only the NVIDIA userspace installed skips
+/// it. True when the bus cannot be read, so detection runs as before.
+pub async fn nvidia_gpu_may_be_present() -> bool {
+    rt::spawn_blocking(|| {
+        nvidia_gpu_may_be_present_in(Path::new(PCI_DEVICES_PATH), Path::new(NVIDIA_MODULE_PATH))
+    })
+    .await
+    .unwrap_or(true)
+}
+
+fn nvidia_gpu_may_be_present_in(pci_devices_path: &Path, nvidia_module_path: &Path) -> bool {
+    if nvidia_module_path.exists() {
+        return true;
+    }
+    let Ok(entries) = std::fs::read_dir(pci_devices_path) else {
+        return true;
+    };
+    let mut device_count: usize = 0;
+    for entry in entries.take(PCI_DEVICES_MAX) {
+        device_count += 1;
+        let Ok(entry) = entry else {
+            continue;
+        };
+        if is_nvidia_display_controller(&entry.path()) {
+            return true;
+        }
+    }
+    assert!(device_count <= PCI_DEVICES_MAX);
+    device_count == PCI_DEVICES_MAX
+}
+
+/// Reads only `vendor` and `class`, which the kernel caches, so a GPU in D3cold stays asleep.
+fn is_nvidia_display_controller(pci_device_path: &Path) -> bool {
+    let read_hex = |name: &str| {
+        let contents = std::fs::read_to_string(pci_device_path.join(name)).ok()?;
+        parse_sysfs_hex(&contents)
+    };
+    if read_hex("vendor") != Some(NVIDIA_PCI_VENDOR_ID) {
+        return false;
+    }
+    read_hex("class").is_some_and(|class| class >> 16 == PCI_BASE_CLASS_DISPLAY)
+}
+
+/// Parses a sysfs hex attribute such as `0x10de\n`.
+fn parse_sysfs_hex(contents: &str) -> Option<u32> {
+    let digits = contents.trim().strip_prefix("0x")?;
+    u32::from_str_radix(digits, 16).ok()
 }
 
 /// Loads NVML and enumerates its GPUs on the blocking pool, within `NVML_INIT_TIMEOUT`. `None`
@@ -2002,6 +2068,89 @@ mod tests {
     use super::*;
     use crate::repositories::gpu::nvapi_io::HotspotReader;
     use crate::setting::CCDeviceSettings;
+
+    /// Writes one PCI function's `vendor` and `class` the way sysfs formats them.
+    fn add_pci_device(pci_devices_path: &Path, slot: &str, vendor: &str, class: &str) {
+        let device_path = pci_devices_path.join(slot);
+        std::fs::create_dir_all(&device_path).unwrap();
+        std::fs::write(device_path.join("vendor"), format!("{vendor}\n")).unwrap();
+        std::fs::write(device_path.join("class"), format!("{class}\n")).unwrap();
+    }
+
+    /// Goal: an AMD-only machine skips NVIDIA detection, even with NVIDIA's non-GPU functions
+    /// present. Method: a fake bus with an AMD GPU and an NVIDIA audio function, no driver.
+    #[test]
+    fn no_nvidia_display_controller_and_no_driver_skips_detection() {
+        let root = tempfile::tempdir().unwrap();
+        let pci_devices_path = root.path().join("devices");
+        add_pci_device(&pci_devices_path, "0000:03:00.0", "0x1002", "0x030000");
+        add_pci_device(&pci_devices_path, "0000:03:00.1", "0x10de", "0x040300");
+
+        let present =
+            nvidia_gpu_may_be_present_in(&pci_devices_path, &root.path().join("module/nvidia"));
+
+        assert!(present.not());
+    }
+
+    /// Goal: an NVIDIA GPU is found whether it reports as VGA or as a 3D controller, before its
+    /// driver loads. Method: one fake bus per class, no driver.
+    #[test]
+    fn an_nvidia_display_controller_runs_detection() {
+        for class in ["0x030000", "0x030200"] {
+            let root = tempfile::tempdir().unwrap();
+            let pci_devices_path = root.path().join("devices");
+            add_pci_device(&pci_devices_path, "0000:01:00.0", "0x10de", class);
+
+            let present =
+                nvidia_gpu_may_be_present_in(&pci_devices_path, &root.path().join("module/nvidia"));
+
+            assert!(present, "class {class} is a display controller");
+        }
+    }
+
+    /// Goal: a loaded NVIDIA driver runs detection even when no NVIDIA PCI GPU is listed, e.g. a
+    /// GPU off the PCI bus. Method: the module directory exists, the bus is empty.
+    #[test]
+    fn a_loaded_nvidia_driver_runs_detection() {
+        let root = tempfile::tempdir().unwrap();
+        let pci_devices_path = root.path().join("devices");
+        let nvidia_module_path = root.path().join("module/nvidia");
+        std::fs::create_dir_all(&pci_devices_path).unwrap();
+        std::fs::create_dir_all(&nvidia_module_path).unwrap();
+
+        assert!(nvidia_gpu_may_be_present_in(
+            &pci_devices_path,
+            &nvidia_module_path
+        ));
+    }
+
+    /// Goal: an unreadable bus never hides an NVIDIA GPU. Method: no PCI directory at all.
+    #[test]
+    fn an_unreadable_pci_bus_runs_detection() {
+        let root = tempfile::tempdir().unwrap();
+
+        let present = nvidia_gpu_may_be_present_in(
+            &root.path().join("devices"),
+            &root.path().join("module/nvidia"),
+        );
+
+        assert!(present);
+    }
+
+    /// Goal: only well-formed sysfs hex parses. Method: valid values with and without the
+    /// newline, and malformed ones.
+    #[test]
+    fn sysfs_hex_attributes_parse() {
+        assert_eq!(parse_sysfs_hex("0x10de\n"), Some(0x10de));
+        assert_eq!(parse_sysfs_hex("0x030200"), Some(0x0003_0200));
+        for malformed in ["", "10de", "0x", "0xzz", "0x10de 0x1"] {
+            assert_eq!(
+                parse_sysfs_hex(malformed),
+                None,
+                "{malformed:?} must not parse"
+            );
+        }
+    }
 
     /// Goal: a `fanN` channel names fan N-1, and anything else is refused rather than read as
     /// some other fan. Method: parse valid names at both widths and malformed ones.
