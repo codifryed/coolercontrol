@@ -26,11 +26,11 @@ use crate::repositories::hwmon::device_io::reply_timeout_for;
 use crate::repositories::hwmon::devices;
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
-use crate::repositories::liquidctl::liqctld_client::{
-    ColorRequest, DeviceResponse, LCStatus, StatusResponse,
-};
 use crate::repositories::liquidctl::liqctld_http::{Endpoint, LIQCTLD_CONNECTION_TRIES};
 use crate::repositories::liquidctl::liqctld_io::{LiqctldControl, LiqctldIo};
+use crate::repositories::liquidctl::liqctld_schema::{
+    ColorRequest, DeviceResponse, LCStatus, StatusResponse,
+};
 use crate::repositories::liquidctl::liqctld_service;
 use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
@@ -2420,7 +2420,7 @@ mod tests {
     use super::*;
     use crate::device::{ChannelInfo, DeviceInfo, DeviceType, LcdInfo, LcdMode, LcdModeType};
     use crate::repositories::hwmon::device_io::DeviceHealth;
-    use crate::repositories::liquidctl::liqctld_client::{DeviceProperties, LCStatus, SkippedUnit};
+    use crate::repositories::liquidctl::liqctld_schema::{DeviceProperties, LCStatus, SkippedUnit};
 
     const DEV_PROPS: DeviceProperties = DeviceProperties {
         speed_channels: Vec::new(),

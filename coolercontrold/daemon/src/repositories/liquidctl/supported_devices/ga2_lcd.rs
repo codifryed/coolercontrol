@@ -6,7 +6,7 @@ use crate::device::{
     StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
+use crate::repositories::liquidctl::liqctld_schema::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{
     ColorMode, DeviceSupport, StatusMap,
 };
@@ -174,7 +174,7 @@ mod tests {
     use std::ops::Not;
 
     use super::*;
-    use crate::repositories::liquidctl::liqctld_client::{DeviceProperties, DeviceResponse};
+    use crate::repositories::liquidctl::liqctld_schema::{DeviceProperties, DeviceResponse};
 
     fn create_test_device_response() -> DeviceResponse {
         DeviceResponse {

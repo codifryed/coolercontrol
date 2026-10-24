@@ -15,7 +15,7 @@ use crate::device::{
     LightingModeType, Status, StatusRefill, TempStatus,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
+use crate::repositories::liquidctl::liqctld_schema::DeviceResponse;
 
 pub type StatusMap = HashMap<String, String>;
 

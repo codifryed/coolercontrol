@@ -8,7 +8,7 @@ use crate::device::{
     Status, StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
+use crate::repositories::liquidctl::liqctld_schema::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, StatusMap};
 
 #[derive(Debug)]
@@ -102,7 +102,7 @@ mod tests {
     use std::ops::Not;
 
     use super::*;
-    use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+    use crate::repositories::liquidctl::liqctld_schema::DeviceProperties;
     use crate::repositories::liquidctl::supported_devices::device_support::{
         FLOW_CHANNEL_LABEL, FLOW_CHANNEL_NAME,
     };

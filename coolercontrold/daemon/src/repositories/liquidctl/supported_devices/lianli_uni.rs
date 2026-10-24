@@ -7,7 +7,7 @@ use crate::device::{
     ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
+use crate::repositories::liquidctl::liqctld_schema::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
 // https://github.com/liquidctl/liquidctl/blob/a04de8b855145e9298a6fe0bf3c7efef7b4e3b79/liquidctl/driver/lianli_uni.py#L29-L31

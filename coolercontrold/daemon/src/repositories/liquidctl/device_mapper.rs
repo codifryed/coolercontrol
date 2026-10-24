@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::device::{ChannelStatus, DeviceInfo, Status, TempStatus};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
+use crate::repositories::liquidctl::liqctld_schema::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::aquacomputer::AquaComputerSupport;
 use crate::repositories::liquidctl::supported_devices::aura_led::AuraLedSupport;
 use crate::repositories::liquidctl::supported_devices::commander_core::CommanderCoreSupport;

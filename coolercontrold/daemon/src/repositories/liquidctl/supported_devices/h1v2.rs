@@ -8,7 +8,7 @@ use crate::device::{
     StatusRefill,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
+use crate::repositories::liquidctl::liqctld_schema::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, StatusMap};
 
 #[derive(Debug)]

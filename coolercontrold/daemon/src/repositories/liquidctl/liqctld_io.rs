@@ -25,13 +25,13 @@ use crate::affinity;
 #[cfg(test)]
 use crate::repositories::hwmon::device_io::DeviceHealth;
 use crate::repositories::hwmon::device_io::{HealthState, QUEUE_DEPTH};
-use crate::repositories::liquidctl::liqctld_client::{
+use crate::repositories::liquidctl::liqctld_http::{
+    Endpoint, LiqctldHttp, Method, LIQCTLD_RESPONSE_TIMEOUT,
+};
+use crate::repositories::liquidctl::liqctld_schema::{
     parse_status_into, ColorRequest, ControlModeRequest, DeviceResponse, DevicesResponse,
     FixedSpeedRequest, InitializeRequest, LCStatus, ScreenRequest, SpeedProfileRequest,
     StatusResponse,
-};
-use crate::repositories::liquidctl::liqctld_http::{
-    Endpoint, LiqctldHttp, Method, LIQCTLD_RESPONSE_TIMEOUT,
 };
 use crate::rt;
 use crate::rt::reply::{ReplyPool, ReplySender};
@@ -704,7 +704,7 @@ fn worker_gone(device_name: &str) -> anyhow::Error {
 mod tests {
     use super::*;
     use crate::repositories::hwmon::device_io::UNREACHABLE_AFTER_TIMEOUTS;
-    use crate::repositories::liquidctl::liqctld_client::SkippedUnit;
+    use crate::repositories::liquidctl::liqctld_schema::SkippedUnit;
     use std::io::{BufRead, BufReader, Read, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
