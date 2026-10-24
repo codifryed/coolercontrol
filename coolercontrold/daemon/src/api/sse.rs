@@ -743,7 +743,7 @@ mod tests {
         });
     }
 
-    fn status_ticks(device_count: usize) -> Arc<[DeviceStatusDto]> {
+    fn status_tick(device_count: usize) -> Arc<[DeviceStatusDto]> {
         let status = crate::device::Status {
             temps: vec![crate::device::TempStatus {
                 name: "temp1".to_string(),
@@ -781,7 +781,7 @@ mod tests {
         // lag the channel, and compare each frame with the one `Event::from` renders.
         let (sender, receiver) = broadcast::channel(2);
         let mut events = std::pin::pin!(status_events(receiver));
-        let (large, small) = (status_ticks(3), status_ticks(1));
+        let (large, small) = (status_tick(3), status_tick(1));
         let mut received = Vec::new();
         for tick in [&large, &small] {
             sender.send(Arc::clone(tick)).expect("a subscriber exists");
@@ -823,7 +823,7 @@ mod tests {
         let allocations_for = |device_count| {
             let (sender, receiver) = broadcast::channel(2);
             let mut events = std::pin::pin!(status_events(receiver));
-            let devices = status_ticks(device_count);
+            let devices = status_tick(device_count);
             sender
                 .send(Arc::clone(&devices))
                 .expect("a subscriber exists");
