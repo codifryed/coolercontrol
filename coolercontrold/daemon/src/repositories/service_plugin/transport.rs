@@ -26,6 +26,7 @@ use rustls::ClientConfig;
 use std::future::Future;
 use std::ops::Not;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::task::{Context as TaskContext, Poll};
 use tokio::net::TcpStream;
@@ -198,7 +199,7 @@ const UNAUTHENTICATED: &str = "16";
 pub struct ExplainRefusals<S> {
     inner: S,
     /// Shared, since every call carries it into its response future.
-    service_id: Arc<str>,
+    service_id: Rc<str>,
 }
 
 impl<S> ExplainRefusals<S> {
@@ -206,7 +207,7 @@ impl<S> ExplainRefusals<S> {
         debug_assert!(service_id.is_empty().not());
         Self {
             inner,
-            service_id: Arc::from(service_id),
+            service_id: Rc::from(service_id),
         }
     }
 }
@@ -217,7 +218,7 @@ pin_project_lite::pin_project! {
     pub struct ExplainRefusalsFuture<F> {
         #[pin]
         future: F,
-        service_id: Arc<str>,
+        service_id: Rc<str>,
     }
 }
 
@@ -325,7 +326,7 @@ where
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
         ExplainRefusalsFuture {
             future: self.inner.call(request),
-            service_id: Arc::clone(&self.service_id),
+            service_id: Rc::clone(&self.service_id),
         }
     }
 }
