@@ -1041,10 +1041,12 @@ impl GpuNVidia {
             // set the fan control policy to manual automatically.
             fan_range.log_outside_warning_once(fan_duty);
         }
-        self.write_nvml_bounded(nv_info.gpu_index, "fan duty", move |device| {
-            device.set_fan_speed(u32::from(fan_index), u32::from(fan_duty))
-        })
-        .await
+        self.nvml_io
+            .get(&nv_info.gpu_index)
+            .with_context(|| format!("NVML device {} should exist", nv_info.gpu_index))?
+            .set_fan_speed(u32::from(fan_index), u32::from(fan_duty))
+            .await?
+            .map_err(anyhow::Error::from)
     }
 
     /// The 0-based fan index of a `fanN` channel. Parsed by hand: it runs on every duty write,
