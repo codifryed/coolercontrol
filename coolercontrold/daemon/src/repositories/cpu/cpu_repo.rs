@@ -367,7 +367,8 @@ impl CpuRepo {
         freqs
     }
 
-    /// `collect_freq` into `freqs`, keeping its room. A failed read leaves it empty.
+    /// `collect_freq` into `freqs`, keeping its room, except on Apple Silicon, which replaces
+    /// it. A failed read leaves it empty.
     async fn collect_freq_into(&self, freqs: &mut HashMap<PhysicalID, CpuFreqs>) {
         if let Some(apple_silicon) = &self.apple_silicon {
             *freqs = apple_silicon.read_freqs().await;
