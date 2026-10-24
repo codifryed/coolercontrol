@@ -16,13 +16,13 @@ use axum::extract::Request;
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
-use axum::Extension;
 use std::ops::Not;
 
 // Note: using `#[debug_handler]` on the handler functions themselves is sometimes very helpful.
 
+/// The routes alone. `with_base_layers` wraps them in the token extension, the token
+/// throttle and every other shared layer.
 pub async fn init(app_state: AppState) -> ApiRouter {
-    let token_handle = app_state.token_handle.clone();
     let document_csp = app_state.frame_policy.document_csp.clone();
     let router = documented_routes().merge(grpc_routes(&app_state).await);
     // Only add API doc route for debug builds (safer for production)
@@ -32,13 +32,6 @@ pub async fn init(app_state: AppState) -> ApiRouter {
     router
         .fallback_service(base::web_app_service(document_csp))
         .with_state(app_state)
-        // need an extension here for middleware::from_fn to work and not pass app_state everywhere.
-        .layer(Extension(token_handle))
-        // Outermost here, so a throttled peer is turned away before any token validation
-        // runs. `grpc_error_middleware` wraps this whole router from `create_api_server`.
-        .layer(axum::middleware::from_fn(
-            auth_throttle::token_throttle_middleware,
-        ))
 }
 
 /// Renders error responses that gRPC clients can actually read.
@@ -1839,8 +1832,8 @@ mod tests {
     /// handles, so health stands in for it; the mounting and transport path under test
     /// is identical.
     ///
-    /// The layer order here mirrors `init` by hand. If a layer is added there, it must
-    /// be added here too, or these tests stop covering the real stack.
+    /// The layer order here mirrors `with_base_layers` by hand. If a layer is added there,
+    /// it must be added here too, or these tests stop covering the real stack.
     #[cfg(feature = "gated-tests")]
     async fn serve(token_handle: TokenHandle) -> String {
         let router = axum::Router::new()
@@ -1925,7 +1918,10 @@ mod tests {
     /// Sends a Basic `/login` on a new pre-auth remote connection, and returns its status
     /// and whether it promoted the connection.
     #[cfg(feature = "gated-tests")]
-    async fn login(app: &axum::Router, password: &str) -> (StatusCode, bool) {
+    async fn login<S>(app: &S, password: &str) -> (StatusCode, bool)
+    where
+        S: tower::Service<Request, Response = Response, Error = std::convert::Infallible> + Clone,
+    {
         use axum::extract::ConnectInfo;
         // A TEST-NET peer, allotted beside the throttle statics in `auth_throttle`.
         let peer = std::net::SocketAddr::from(([198, 51, 100, 21], 40000));
