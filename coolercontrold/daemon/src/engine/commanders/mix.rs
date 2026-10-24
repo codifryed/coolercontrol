@@ -217,6 +217,15 @@ impl MixProfileCommander {
                 if is_parent != parents_pass {
                     continue;
                 }
+                debug_assert!(
+                    mix_profile.member_mix_profile_uids.iter().all(|child_uid| {
+                        scheduled
+                            .keys()
+                            .filter(|child| &child.profile_uid == child_uid)
+                            .all(|child| child.member_mix_profile_uids.is_empty())
+                    }),
+                    "Mix nesting must be single-level"
+                );
                 let result = Self::process_single_mix_profile(
                     mix_profile,
                     &graph_duties,
@@ -1310,6 +1319,32 @@ mod tests {
         let cache = commander.process_output_cache.borrow();
         assert_eq!(cache["child"], Some(40));
         assert_eq!(cache["parent"], Some(60));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "Mix nesting must be single-level")]
+    fn a_parent_of_a_parent_is_refused() {
+        // Goal: the in-place write must never see nesting deeper than one level. Method:
+        // schedule a Mix whose Mix member is itself a parent, then process.
+        let commander = mix_commander();
+        schedule_child_and_parent(&commander);
+        let grandparent = NormalizedMixProfile {
+            profile_uid: "grandparent".to_string(),
+            mix_function: ProfileMixFunctionType::Max,
+            member_profile_uids: vec!["parent".to_string()],
+            member_mix_profile_uids: vec!["parent".to_string()],
+            member_fixed_profile_duties: HashMap::new(),
+        };
+        commander
+            .scheduled_settings
+            .borrow_mut()
+            .extend(make_scheduled(vec![(
+                grandparent,
+                vec![mix_channel("dev1", "fan3")],
+            )]));
+
+        commander.process_all_profiles();
     }
 
     #[test]
