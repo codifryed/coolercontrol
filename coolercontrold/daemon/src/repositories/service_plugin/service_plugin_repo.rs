@@ -32,6 +32,7 @@ use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
+use futures_util::future::join_all;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -824,24 +825,23 @@ impl ServicePluginRepo {
     }
 
     async fn preload_device_status(
-        self: Rc<Self>,
-        device_uid: DeviceUID,
+        &self,
+        device_uid: &DeviceUID,
         service: &Rc<DeviceServiceConnection>,
     ) {
-        let delay = self.device_delay(&device_uid);
-        let Ok((mut channel_statuses, mut temp_statuses)) =
-            service.client.status(&device_uid).await
+        let delay = self.device_delay(device_uid);
+        let Ok((mut channel_statuses, mut temp_statuses)) = service.client.status(device_uid).await
         else {
-            self.note_status_failure(&device_uid);
+            self.note_status_failure(device_uid);
             apply_device_command_delay(delay).await;
             return;
         };
-        let disabled_channels_for_device = self.disabled_channels.get(&device_uid);
+        let disabled_channels_for_device = self.disabled_channels.get(device_uid);
         channel_statuses
             .retain(|s| Self::retain_enabled_channels(&s.name, disabled_channels_for_device));
         temp_statuses
             .retain(|s| Self::retain_enabled_channels(&s.name, disabled_channels_for_device));
-        self.record_fresh_statuses(&device_uid, channel_statuses, temp_statuses);
+        self.record_fresh_statuses(device_uid, channel_statuses, temp_statuses);
         apply_device_command_delay(delay).await;
     }
 
@@ -1057,12 +1057,13 @@ impl Repository for ServicePluginRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-        moro_local::async_scope!(|status_scope| {
-            for (device_uid, (_device_lock, service)) in &self.devices {
-                let self = Rc::clone(&self);
-                status_scope.spawn(self.preload_device_status(device_uid.clone(), service));
-            }
-        })
+        join_all(
+            self.devices
+                .iter()
+                .map(|(device_uid, (_device_lock, service))| {
+                    self.preload_device_status(device_uid, service)
+                }),
+        )
         .await;
         trace!(
             "STATUS PRELOAD Time taken for all Device Service devices: {:?}",

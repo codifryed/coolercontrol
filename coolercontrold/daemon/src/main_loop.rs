@@ -55,6 +55,7 @@ use crate::watchdog::Watchdog;
 use crate::Repos;
 use anyhow::Result;
 use chrono::Local;
+use futures_util::future::join_all;
 use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
 use std::ops::Not;
@@ -180,9 +181,9 @@ async fn align_loop_timing_with_clock() {
 
 /// Initiates the preload process for all repositories.
 ///
-/// This function spawns asynchronous tasks that trigger the `preload_statuses` method
-/// for each repository in the given `repos`. It ensures that all preload tasks are
-/// completed before sending a signal through the `tx_preload` sender to trigger snapshots
+/// This function spawns one task that runs the `preload_statuses` method of every
+/// repository in the given `repos` concurrently. It ensures that all preloads have
+/// completed before cancelling the snapshot timeout token to trigger snapshots
 /// if completed before the `snapshot_timeout`.
 fn fire_preloads<'s>(
     repos: &'s Repos,
@@ -190,16 +191,8 @@ fn fire_preloads<'s>(
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     scope.spawn(async move {
-        // This scope ensures that all concurrent preload tasks have completed.
-        moro_local::async_scope!(|preload_scope| {
-            for repo in repos.iter() {
-                let repo = Rc::clone(repo);
-                preload_scope.spawn(async move {
-                    repo.preload_statuses().await;
-                });
-            }
-        })
-        .await;
+        // Waits for every concurrent preload to complete.
+        join_all(repos.iter().map(|repo| Rc::clone(repo).preload_statuses())).await;
         snapshot_timeout_token.cancel();
     });
 }
@@ -362,6 +355,118 @@ impl LCDUpdateTrigger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device::{DeviceType, UID};
+    use crate::repositories::repository::{DeviceList, Repositories, Repository};
+    use crate::setting::{LcdSettings, LightingSettings, TempSource};
+    use async_trait::async_trait;
+    use std::cell::Cell;
+    use tokio::sync::Barrier;
+
+    /// A repository whose preload finishes only once every other preload has started.
+    struct MeetingRepo {
+        device_type: DeviceType,
+        meeting: Rc<Barrier>,
+        finished: Rc<Cell<u8>>,
+    }
+
+    #[async_trait(?Send)]
+    impl Repository for MeetingRepo {
+        fn device_type(&self) -> DeviceType {
+            self.device_type
+        }
+
+        async fn initialize_devices(&mut self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn devices(&self) -> DeviceList {
+            Vec::new()
+        }
+
+        async fn preload_statuses(self: Rc<Self>) {
+            self.meeting.wait().await;
+            self.finished.set(self.finished.get() + 1);
+        }
+
+        async fn update_statuses(&self, _timestamp: chrono::DateTime<Local>) -> Result<()> {
+            Ok(())
+        }
+
+        async fn shutdown(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn apply_setting_reset(&self, _: &UID, _: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn apply_setting_manual_control(&self, _: &UID, _: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn apply_setting_speed_fixed(&self, _: &UID, _: &str, _: u8) -> Result<()> {
+            Ok(())
+        }
+
+        async fn apply_setting_speed_profile(
+            &self,
+            _: &UID,
+            _: &str,
+            _: &TempSource,
+            _: &[(f64, u8)],
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        async fn apply_setting_lighting(
+            &self,
+            _: &UID,
+            _: &str,
+            _: &LightingSettings,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        async fn apply_setting_lcd(&self, _: &UID, _: &str, _: &LcdSettings) -> Result<()> {
+            Ok(())
+        }
+
+        async fn apply_setting_pwm_mode(&self, _: &UID, _: &str, _: u8) -> Result<()> {
+            Ok(())
+        }
+
+        async fn reinitialize_devices(&self) {}
+    }
+
+    /// Run one after another, the first preload would wait for the second forever.
+    #[test]
+    fn every_repo_preloads_at_the_same_time() {
+        rt::test_runtime(async {
+            let meeting = Rc::new(Barrier::new(2));
+            let finished = Rc::new(Cell::new(0));
+            let repo = |device_type| -> Option<Rc<dyn Repository>> {
+                Some(Rc::new(MeetingRepo {
+                    device_type,
+                    meeting: Rc::clone(&meeting),
+                    finished: Rc::clone(&finished),
+                }))
+            };
+            let repos: Repos = Rc::new(Repositories {
+                cpu: repo(DeviceType::CPU),
+                hwmon: repo(DeviceType::Hwmon),
+                ..Default::default()
+            });
+            let token = CancellationToken::new();
+            let preloads = moro_local::async_scope!(|scope| -> Result<()> {
+                fire_preloads(&repos, token.clone(), scope);
+                Ok(())
+            });
+            let outcome = rt::timeout(Duration::from_secs(5), preloads).await;
+            assert!(outcome.is_ok(), "a preload waited for another to finish");
+            assert_eq!(finished.get(), 2);
+            assert!(token.is_cancelled());
+        });
+    }
 
     /// Regression: the snapshot timeout must stay at the historical
     /// 400 ms value. It bounds engine reaction latency to a

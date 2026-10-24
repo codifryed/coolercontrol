@@ -87,6 +87,7 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use bitflags::bitflags;
 use chrono::{DateTime, Local};
+use futures_util::future::join_all;
 use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
 use serde::{Deserialize, Serialize};
@@ -2472,17 +2473,12 @@ impl Repository for HwmonRepo {
         // Bump once per tick; round-robin start indices advance
         // together. u64::MAX wrap is unreachable.
         self.tick_count.set(self.tick_count.get().wrapping_add(1));
-        moro_local::async_scope!(|scope| {
-            for (device_lock, driver) in self.devices.values() {
-                let type_index = device_lock.borrow().type_index;
-                let self = Rc::clone(&self);
-                scope.spawn(async move {
-                    // preload_device_statuses self-coalesces and
-                    // owns its slow-device + staleness logging.
-                    self.preload_device_statuses(type_index, driver).await;
-                });
-            }
-        })
+        // preload_device_statuses self-coalesces and
+        // owns its slow-device + staleness logging.
+        join_all(self.devices.values().map(|(device_lock, driver)| {
+            let type_index = device_lock.borrow().type_index;
+            self.preload_device_statuses(type_index, driver)
+        }))
         .await;
         trace!(
             "STATUS PRELOAD Time taken for all HWMON devices: {:?}",
@@ -4461,6 +4457,51 @@ mod coalescer_tests {
                 "final pwm value must reflect the latest target (duty=50)"
             );
 
+            repo.shutdown_token.cancel();
+        });
+    }
+
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn a_device_waiting_for_its_permit_holds_up_no_other() {
+        // Goal: the repo preloads its devices at the same time. Method: hold one device's read
+        // permit far past the test's budget, then the other's. Read one after another, whichever
+        // device came first would keep the second from landing in one of the two passes.
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let mut repo = empty_repo();
+            repo.device_read_permit_timeout = Duration::from_secs(30);
+            for type_index in [1, 2] {
+                let dir = tmp.path().join(format!("dev{type_index}"));
+                seed_fan_files(&dir, &[1]).await;
+                install_device_and_spawn_writer(
+                    &mut repo,
+                    type_index,
+                    "dev",
+                    dir.clone(),
+                    vec![fan_channel(1, "fan1", &dir)],
+                    0,
+                )
+                .await;
+            }
+            let repo = Rc::new(repo);
+            for (held, free) in [(1, 2), (2, 1)] {
+                repo.preloaded_statuses.borrow_mut().clear();
+                let permit = Rc::clone(repo.device_permits.get(&held).unwrap());
+                let _hold = permit.acquire().await.unwrap();
+
+                let preload = Rc::clone(&repo).preload_statuses();
+                let outcome = crate::rt::timeout(Duration::from_secs(2), preload).await;
+
+                assert!(outcome.is_err(), "device {held} must still be waiting");
+                let preloaded = repo.preloaded_statuses.borrow();
+                assert!(
+                    preloaded.contains_key(&free),
+                    "device {free} waited on {held}"
+                );
+                assert!(preloaded.contains_key(&held).not());
+            }
             repo.shutdown_token.cancel();
         });
     }

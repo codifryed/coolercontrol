@@ -4,6 +4,7 @@
 use crate::device::health::UnreachableRef;
 use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use chrono::{DateTime, Local};
+use futures_util::future::join_all;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
@@ -1125,20 +1126,17 @@ impl Repository for CpuRepo {
         let start_update = Instant::now();
         let mut cpu_freqs = self.collect_freq().await;
         self.sample_cpu_load().await;
-        moro_local::async_scope!(|scope| {
-            for cpu_device in self.devices.values() {
-                let association = cpu_device.association;
-                let driver = &cpu_device.driver;
-                let freqs = association
-                    .physical_id()
-                    .and_then(|physical_id| cpu_freqs.remove(&physical_id));
-                let self = Rc::clone(&self);
-                scope.spawn(async move {
-                    self.preload_status(association, driver, freqs.as_ref())
-                        .await;
-                });
+        join_all(self.devices.values().map(|cpu_device| {
+            let association = cpu_device.association;
+            let freqs = association
+                .physical_id()
+                .and_then(|physical_id| cpu_freqs.remove(&physical_id));
+            let self = &self;
+            async move {
+                self.preload_status(association, &cpu_device.driver, freqs.as_ref())
+                    .await;
             }
-        })
+        }))
         .await;
         trace!(
             "STATUS PRELOAD Time taken for all CPU devices: {:?}",
