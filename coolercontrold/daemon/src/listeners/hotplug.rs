@@ -13,6 +13,7 @@ use crate::{AllDevices, ENV_DEVICE_EVENTS};
 use anyhow::Result;
 use log::{debug, info, warn};
 use moro_local::Scope;
+use nix::errno::Errno;
 use nix::sys::socket::{
     bind, recv, socket, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
 };
@@ -20,19 +21,16 @@ use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ops::Not;
-use std::os::fd::{AsRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::io::unix::{AsyncFd, AsyncFdReadyGuard};
+use tokio::io::Interest;
 use tokio_util::sync::CancellationToken;
 
 const DEBOUNCE_DURATION: Duration = Duration::from_secs(5);
-/// Poll interval for the netlink socket, which is drained on a timer rather than woken per uevent:
-/// the kernel broadcasts every subsystem's uevents to it. They queue in the socket buffer, so a
-/// coarse poll loses no events; it only adds at most this much latency to detecting a device
-/// change (already debounced), keeping idle wakeups low.
-const NETLINK_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// Standard kernel uevent buffer size. Messages exceeding this are truncated.
 const UEVENT_BUF_SIZE: usize = 4096;
 /// Maximum uevent messages to drain per readable notification. Prevents
@@ -76,8 +74,15 @@ impl<'s> DeviceListener {
                 return Ok(Self::deaf());
             }
         };
-        // Hold the raw fd and poll it; `run_event_loop` drains whatever has queued.
-        let event_source = fd;
+        // SAFETY: `OwnedFd` holds its fd open and returns the same one until the `AsyncFd` drops.
+        let registered = unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE) };
+        let event_source = match registered {
+            Ok(async_fd) => async_fd,
+            Err(err) => {
+                info!("Could not register netlink socket for device change detection: {err}");
+                return Ok(Self::deaf());
+            }
+        };
         // One for the listener's lifetime, so a device that stalled is not read again on every
         // scan, each read parking another thread beside the first.
         let identity = IdentityReader::start("hotplug", device_io::reply_timeout_from(config));
@@ -233,7 +238,7 @@ fn extract_disabled_device_names(
 /// together, so a device that triggers both hwmon and usb subsystem events
 /// results in one combined scan rather than two separate ones.
 async fn run_event_loop(
-    netlink_fd: OwnedFd,
+    netlink_fd: AsyncFd<OwnedFd>,
     identity: IdentityReader,
     mut hwmon_baseline: HashSet<PathBuf>,
     mut lc_baseline: HashSet<String>,
@@ -255,15 +260,12 @@ async fn run_event_loop(
                 debounce_deadline = None;
                 true
             },
-            // Poll the netlink socket; queued uevents are drained on each wake.
-            () = crate::rt::sleep(NETLINK_POLL_INTERVAL) => {
-                drain_uevents(
-                    netlink_fd.as_raw_fd(),
-                    &mut buf,
-                    &mut debounce_deadline,
-                    &mut pending,
-                    lc_available,
-                );
+            ready = netlink_fd.readable() => {
+                let Ok(guard) = ready else {
+                    // Only fails when the reactor is shutting down.
+                    break;
+                };
+                drain_uevents(guard, &mut buf, &mut debounce_deadline, &mut pending, lc_available);
                 continue;
             },
         };
@@ -307,8 +309,11 @@ async fn sleep_until_deadline(deadline: Option<Instant>) {
 /// which device categories were affected, and sets or extends the debounce
 /// deadline. Liquidctl events are ignored when `lc_available` is false
 /// (the liqctld service is not running).
+///
+/// Readiness is cleared only when the socket reports it is empty, so messages
+/// left past the drain limit wake the loop again at once.
 fn drain_uevents(
-    raw_fd: RawFd,
+    mut guard: AsyncFdReadyGuard<'_, OwnedFd>,
     buf: &mut [u8],
     debounce_deadline: &mut Option<Instant>,
     pending: &mut PendingScans,
@@ -317,7 +322,14 @@ fn drain_uevents(
     debug_assert!(buf.len() >= UEVENT_BUF_SIZE);
     let mut any_relevant = false;
     for _ in 0..MAX_DRAIN_PER_WAKE {
-        match recv(raw_fd, buf, MsgFlags::MSG_DONTWAIT) {
+        let received = guard.try_io(|fd| {
+            recv(fd.as_raw_fd(), buf, MsgFlags::MSG_DONTWAIT).map_err(std::io::Error::from)
+        });
+        let Ok(received) = received else {
+            // Would block: the socket is empty and readiness is cleared.
+            break;
+        };
+        match received {
             Ok(n) if n > 0 => match classify_uevent(&buf[..n]) {
                 UeventKind::Hwmon => {
                     pending.hwmon = true;
@@ -329,12 +341,28 @@ fn drain_uevents(
                 }
                 UeventKind::Liquidctl | UeventKind::Irrelevant => {}
             },
-            _ => break,
+            Err(err) if is_overrun(&err) => {
+                // Dropped uevents may have been relevant, so scan everything. The queued ones are
+                // still readable.
+                pending.hwmon = true;
+                pending.liquidctl |= lc_available;
+                any_relevant = true;
+            }
+            _ => {
+                // A failed or empty read would stay ready and spin; wait for the next uevent.
+                guard.clear_ready();
+                break;
+            }
         }
     }
     if any_relevant {
         *debounce_deadline = Some(Instant::now() + DEBOUNCE_DURATION);
     }
+}
+
+/// The kernel reports `ENOBUFS` once when the socket buffer overflowed and uevents were dropped.
+fn is_overrun(err: &std::io::Error) -> bool {
+    err.raw_os_error() == Some(Errno::ENOBUFS as i32)
 }
 
 /// Identifies which scan category a uevent is relevant to.
@@ -786,6 +814,110 @@ mod tests {
         deadline = Some(Instant::now() + DEBOUNCE_DURATION);
         // Deadline was extended.
         assert!(deadline.unwrap() >= old);
+    }
+
+    // --- drain_uevents: socket readiness ---
+    //
+    // A nonblocking Unix datagram pair stands in for the netlink socket: same
+    // datagram reads, same readiness, no privileges or real uevents needed.
+
+    const HWMON_ADD: &[u8] = b"add@/devices/hwmon/hwmon3\0ACTION=add\0SUBSYSTEM=hwmon\0";
+    const NET_ADD: &[u8] = b"add@/devices/virtual/net/eth0\0ACTION=add\0SUBSYSTEM=net\0";
+
+    /// Returns (sender, registered receiver). Must run inside the test runtime.
+    fn uevent_socket_pair() -> (OwnedFd, AsyncFd<OwnedFd>) {
+        use nix::sys::socket::{setsockopt, socketpair, sockopt};
+        let (sender, receiver) = socketpair(
+            AddressFamily::Unix,
+            SockType::Datagram,
+            None,
+            SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
+        )
+        .unwrap();
+        // Room for more than one drain's worth of small datagrams.
+        setsockopt(&sender, sockopt::SndBuf, &(1 << 20)).unwrap();
+        // SAFETY: `OwnedFd` holds its fd open and returns the same one until the `AsyncFd` drops.
+        let receiver =
+            unsafe { AsyncFd::register_with_interest(receiver, Interest::READABLE) }.unwrap();
+        (sender, receiver)
+    }
+
+    fn send_uevent(sender: &OwnedFd, uevent: &[u8]) {
+        let sent = nix::sys::socket::send(sender.as_raw_fd(), uevent, MsgFlags::empty()).unwrap();
+        assert_eq!(sent, uevent.len());
+    }
+
+    #[test]
+    fn drain_reads_queued_uevents_and_clears_readiness() {
+        // One wake reads every queued uevent, then waits for the next one.
+        crate::rt::test_runtime(async {
+            use futures_util::FutureExt;
+            let (sender, receiver) = uevent_socket_pair();
+            send_uevent(&sender, NET_ADD);
+            send_uevent(&sender, HWMON_ADD);
+            let mut buf = vec![0u8; UEVENT_BUF_SIZE];
+            let mut deadline = None;
+            let mut pending = PendingScans::default();
+            let guard = receiver.readable().await.unwrap();
+            drain_uevents(guard, &mut buf, &mut deadline, &mut pending, true);
+            assert!(pending.hwmon);
+            assert!(pending.liquidctl.not());
+            assert!(deadline.is_some());
+            assert!(receiver.readable().now_or_never().is_none());
+            // A new uevent wakes it again, once the reactor sees it.
+            send_uevent(&sender, NET_ADD);
+            let woken = crate::rt::timeout(Duration::from_secs(5), receiver.readable()).await;
+            assert!(woken.is_ok());
+        });
+    }
+
+    #[test]
+    fn drain_of_irrelevant_uevents_sets_no_deadline() {
+        // Uevents from other subsystems wake the loop but schedule no scan.
+        crate::rt::test_runtime(async {
+            let (sender, receiver) = uevent_socket_pair();
+            send_uevent(&sender, NET_ADD);
+            let mut buf = vec![0u8; UEVENT_BUF_SIZE];
+            let mut deadline = None;
+            let mut pending = PendingScans::default();
+            let guard = receiver.readable().await.unwrap();
+            drain_uevents(guard, &mut buf, &mut deadline, &mut pending, true);
+            assert!(deadline.is_none());
+            assert!(pending.hwmon.not());
+            assert!(pending.liquidctl.not());
+        });
+    }
+
+    #[test]
+    fn drain_past_limit_stays_ready_for_the_rest() {
+        // Uevents left past the drain limit must not wait for a new uevent.
+        crate::rt::test_runtime(async {
+            use futures_util::FutureExt;
+            let (sender, receiver) = uevent_socket_pair();
+            for _ in 0..MAX_DRAIN_PER_WAKE {
+                send_uevent(&sender, NET_ADD);
+            }
+            send_uevent(&sender, HWMON_ADD);
+            let mut buf = vec![0u8; UEVENT_BUF_SIZE];
+            let mut deadline = None;
+            let mut pending = PendingScans::default();
+            let guard = receiver.readable().await.unwrap();
+            drain_uevents(guard, &mut buf, &mut deadline, &mut pending, true);
+            assert!(pending.hwmon.not());
+            let guard = receiver.readable().now_or_never().unwrap().unwrap();
+            drain_uevents(guard, &mut buf, &mut deadline, &mut pending, true);
+            assert!(pending.hwmon);
+            assert!(deadline.is_some());
+            assert!(receiver.readable().now_or_never().is_none());
+        });
+    }
+
+    #[test]
+    fn only_enobufs_is_an_overrun() {
+        // An overrun forces a full scan; other read errors do not.
+        assert!(is_overrun(&std::io::Error::from(Errno::ENOBUFS)));
+        assert!(is_overrun(&std::io::Error::from(Errno::EAGAIN)).not());
+        assert!(is_overrun(&std::io::Error::other("not an errno")).not());
     }
 
     // --- extract_disabled_device_names ---
