@@ -2053,7 +2053,7 @@ mod tests {
             let state = FanStateMap::new();
             let store = CalibrationStore::empty();
             state.replace(
-                key("dev-a", "fan1"),
+                (&key("dev-a", "fan1")).into(),
                 crate::calibration::state::ChannelEntry {
                     state: FanState::Kicking { sustain_target: 60 },
                     under_diagnosis: false,

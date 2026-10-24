@@ -13,11 +13,12 @@ use crate::device::{ChannelName, DeviceUID, Duty, Temp, RPM};
 use crate::overrides::OverridesController;
 use crate::paths;
 use anyhow::{anyhow, Result};
-use indexmap::IndexMap;
+use indexmap::{Equivalent, IndexMap};
 use log::{info, warn};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::hash::Hash;
 use std::ops::Not;
 use std::rc::Rc;
 
@@ -121,7 +122,10 @@ impl CalibrationStore {
     /// for uncalibrated or stepped channels, so the caller writes the duty
     /// unchanged. This runs on every duty write, so it reads in place:
     /// `get` would clone the calibration with both of its curves.
-    pub fn dispatch_plan(&self, key: &ChannelKey, true_duty: Duty) -> Option<DispatchPlan> {
+    pub fn dispatch_plan<Q>(&self, key: &Q, true_duty: Duty) -> Option<DispatchPlan>
+    where
+        Q: Hash + Equivalent<ChannelKey> + ?Sized,
+    {
         let map = self.calibrations.borrow();
         let calibration = map.get(key)?;
         calibration.dispatch_plan(true_duty)

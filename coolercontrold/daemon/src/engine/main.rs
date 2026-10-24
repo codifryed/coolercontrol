@@ -232,8 +232,8 @@ impl Engine {
                     &self.fan_state_map,
                     &self.calibration_store,
                     writer,
-                    device_uid.clone(),
-                    channel_name.to_string(),
+                    device_uid,
+                    channel_name,
                     speed_fixed,
                 )
                 .await

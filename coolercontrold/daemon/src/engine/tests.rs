@@ -3145,7 +3145,7 @@ mod engine_tests {
             let device_uid = h.device.borrow().uid.clone();
             let key = (device_uid, "fan1".to_string());
             h.fan_state_map.replace(
-                key.clone(),
+                (&key).into(),
                 ChannelEntry {
                     state: FanState::On,
                     under_diagnosis: false,
