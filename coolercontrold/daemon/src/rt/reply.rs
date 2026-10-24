@@ -91,6 +91,7 @@ impl<T> ReplyPool<T> {
         if spare.len() < SPARE_MAX {
             spare.push(slot);
         }
+        debug_assert!(spare.len() <= SPARE_MAX);
     }
 
     #[cfg(test)]
@@ -123,6 +124,7 @@ impl<T> ReplySender<T> {
 
     /// Hands the value to the waiting request. A request already given up on never reads it.
     pub fn send(mut self, value: T) {
+        // Only `send` and `drop` clear the slot, and both consume the sender.
         let slot = self.slot.take().expect("a sender replies once");
         *slot.value.lock().unwrap_or_else(PoisonError::into_inner) = Some(value);
         slot.waker.wake();
@@ -149,11 +151,13 @@ pub struct Reply<'pool, T> {
 
 impl<T> Reply<'_, T> {
     fn ready(&mut self) -> Option<Result<T, Closed>> {
+        // The slot is cleared only on resolving, and a resolved future is never polled again.
         let slot = self
             .slot
             .as_ref()
             .expect("a reply is polled after it resolved");
         if let Some(value) = slot.take() {
+            // Borrowed as `Some` just above, and nothing clears it in between.
             let slot = self.slot.take().expect("checked above");
             self.pool.give_back(slot);
             return Some(Ok(value));
@@ -184,6 +188,7 @@ impl<T> Future for Reply<'_, T> {
         if let Some(ready) = this.ready() {
             return Poll::Ready(ready);
         }
+        // `ready` clears the slot only when it resolves, which returned above.
         this.slot
             .as_ref()
             .expect("unresolved")
