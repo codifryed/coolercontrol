@@ -7,9 +7,11 @@
 //! IO and a request stalled inside liqctld parks only its own device's thread. Health follows the
 //! rules of a sysfs device: enough timeouts in a row take a device out of rotation until its next
 //! probe. A control thread serves the calls that belong to no device.
+use std::cell::RefCell;
 use std::future::Future;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -46,6 +48,8 @@ const CONTROL_THREAD_NAME: &str = "ccliq-ctl";
 const _: () = assert!(THREAD_NAME_PREFIX.len() + 3 <= 15);
 const _: () = assert!(CONTROL_THREAD_NAME.len() <= 15);
 const NO_BODY: Option<&()> = None;
+/// Channel names a device keeps for its fixed-speed requests. Past it a request copies its own.
+const CHANNEL_NAMES_MAX: usize = 32;
 
 type Reply<T> = oneshot::Sender<Result<T>>;
 
@@ -101,7 +105,7 @@ pub enum Request {
     },
     FixedSpeed {
         body: FixedSpeedRequest,
-        reply: Reply<()>,
+        reply: ReplySender<Result<()>>,
     },
     SpeedProfile {
         body: SpeedProfileRequest,
@@ -145,9 +149,9 @@ impl Job for Request {
             Self::Status { reply, .. } => reply.is_closed(),
             Self::Initialize { reply, .. } => reply.is_closed(),
             Self::Legacy690 { reply } => reply.is_closed(),
+            Self::FixedSpeed { reply, .. } => reply.is_closed(),
             Self::Reconnect { reply }
             | Self::DirectAccess { reply }
-            | Self::FixedSpeed { reply, .. }
             | Self::SpeedProfile { reply, .. }
             | Self::ControlMode { reply, .. }
             | Self::Color { reply, .. }
@@ -174,6 +178,10 @@ pub struct LiqctldIo {
     state: HealthState,
     /// Reply channels for the per-tick status, kept so a warm one allocates nothing.
     status_replies: ReplyPool<Result<StatusResponse>>,
+    /// Reply channels for duty writes, kept so a warm one allocates nothing.
+    fixed_speed_replies: ReplyPool<Result<()>>,
+    /// The device's channel names, each copied once, on its first duty write.
+    channel_names: RefCell<Vec<Arc<str>>>,
 }
 
 impl LiqctldIo {
@@ -199,6 +207,8 @@ impl LiqctldIo {
             status_timeout,
             state: HealthState::new(device_name),
             status_replies: ReplyPool::default(),
+            fixed_speed_replies: ReplyPool::default(),
+            channel_names: RefCell::new(Vec::new()),
         })
     }
 
@@ -252,15 +262,38 @@ impl LiqctldIo {
         .await
     }
 
+    /// A duty write. Once warm it allocates nothing: the channel name is shared, and the reply
+    /// channel is a recycled one.
     pub async fn put_fixed_speed(&self, channel_name: &str, duty: u8) -> Result<()> {
+        debug_assert!(duty <= 100);
         let body = FixedSpeedRequest {
-            channel: channel_name.to_owned(),
+            channel: self.shared_channel_name(channel_name),
             duty,
         };
-        self.dispatch("fixed speed", COMMAND_TIMEOUT, oneshot::channel, |reply| {
-            Request::FixedSpeed { body, reply }
-        })
+        self.dispatch(
+            "fixed speed",
+            COMMAND_TIMEOUT,
+            || self.fixed_speed_replies.channel(),
+            |reply| Request::FixedSpeed { body, reply },
+        )
         .await
+    }
+
+    /// `channel_name`, copied only the first time this device writes to it.
+    fn shared_channel_name(&self, channel_name: &str) -> Arc<str> {
+        let mut channel_names = self.channel_names.borrow_mut();
+        if let Some(shared) = channel_names
+            .iter()
+            .find(|shared| shared.as_ref() == channel_name)
+        {
+            return Arc::clone(shared);
+        }
+        let shared: Arc<str> = Arc::from(channel_name);
+        if channel_names.len() < CHANNEL_NAMES_MAX {
+            channel_names.push(Arc::clone(&shared));
+        }
+        debug_assert!(channel_names.len() <= CHANNEL_NAMES_MAX);
+        shared
     }
 
     pub async fn put_speed_profile(
@@ -924,6 +957,44 @@ mod tests {
                     ),
                 ]
             );
+        });
+    }
+
+    /// Goal: a channel's duty writes share one copy of its name and one reply channel, and
+    /// another channel gets a name of its own. Method: write twice to one channel and once to
+    /// another, then inspect what the device kept.
+    #[test]
+    fn duty_writes_share_their_channel_name_and_reply_channel() {
+        rt::test_runtime(async {
+            let server = FakeLiqctld::start(|_| Action::Reply);
+            let io = worker(&server, LONG, LONG);
+
+            io.put_fixed_speed("fan1", 40).await.unwrap();
+            io.put_fixed_speed("fan1", 50).await.unwrap();
+            io.put_fixed_speed("pump", 60).await.unwrap();
+
+            let channel_names = io.channel_names.borrow();
+            let kept: Vec<&str> = channel_names.iter().map(AsRef::as_ref).collect();
+            assert_eq!(kept, vec!["fan1", "pump"]);
+            assert_eq!(io.fixed_speed_replies.spare_count(), 1);
+        });
+    }
+
+    /// Goal: a warm duty write costs the main thread no allocation. Method: write twice to warm
+    /// the name and the reply channel, then count a third write's round trip.
+    #[test]
+    fn a_warm_duty_write_allocates_nothing_on_the_main_thread() {
+        rt::test_runtime(async {
+            let server = FakeLiqctld::start(|_| Action::Reply);
+            let io = worker(&server, LONG, LONG);
+            io.put_fixed_speed("fan1", 40).await.unwrap();
+            io.put_fixed_speed("fan1", 50).await.unwrap();
+
+            let (written, allocations) =
+                crate::alloc_count::count_allocations_async(io.put_fixed_speed("fan1", 60)).await;
+
+            written.unwrap();
+            assert_eq!(allocations, 0);
         });
     }
 
