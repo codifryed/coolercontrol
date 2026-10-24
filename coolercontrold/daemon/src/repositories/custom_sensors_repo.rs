@@ -6271,7 +6271,7 @@ mod tests {
             // Every read before the probe timed out, so only the probe's reply is waited for.
             while let Ok(request) = rx.try_recv() {
                 if let Request::Read { reply, .. } = request {
-                    let _ = reply.send(Ok(cc_fs::SysfsValue::from_bytes(b"47000")));
+                    reply.send(Ok(cc_fs::SysfsValue::from_bytes(b"47000")));
                 }
             }
             probe.await;

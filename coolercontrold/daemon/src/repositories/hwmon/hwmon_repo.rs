@@ -6222,7 +6222,7 @@ mod slow_device_tests {
                 let value = cc_fs::SysfsValue::from_bytes(values[index].as_bytes());
                 buffers.values.push(Ok(value));
             }
-            reply.send(Ok(buffers)).unwrap();
+            reply.send(Ok(buffers));
             pass.await;
 
             {
