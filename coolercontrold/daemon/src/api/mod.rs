@@ -493,6 +493,9 @@ where
 /// route, boxed, and each request then deep-clones the boxed stack below it once per layer
 /// it passes, which was over half of a request's allocations. Out here they are one plain
 /// service. Route layers stay on the router, since they skip unmatched paths.
+///
+/// The shared layers keep their order. The route layers (session, body limits) run
+/// innermost, after the token `Extension`.
 fn with_base_layers(
     api: ApiRoutes,
     compression_layer: Option<ApiCompressionLayer>,
