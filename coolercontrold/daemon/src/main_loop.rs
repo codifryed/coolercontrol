@@ -363,31 +363,32 @@ mod tests {
     /// Run one after another, the first preload would wait for the second forever.
     #[test]
     fn every_repo_preloads_at_the_same_time() {
-        rt::test_runtime(async {
-            let meeting = Rc::new(Barrier::new(2));
-            let finished = Rc::new(Cell::new(0));
-            let repo = |device_type| -> Option<Rc<dyn Repository>> {
-                Some(Rc::new(StubRepo {
-                    device_type,
-                    meeting: Some(Rc::clone(&meeting)),
-                    finished: Rc::clone(&finished),
-                }))
-            };
-            let repos: Repos = Rc::new(Repositories {
-                cpu: repo(DeviceType::CPU),
-                hwmon: repo(DeviceType::Hwmon),
-                ..Default::default()
-            });
-            let token = CancellationToken::new();
-            let preloads = moro_local::async_scope!(|scope| -> Result<()> {
-                fire_preloads(&repos, token.clone(), scope);
-                Ok(())
-            });
-            let outcome = rt::timeout(Duration::from_secs(5), preloads).await;
-            assert!(outcome.is_ok(), "a preload waited for another to finish");
-            assert_eq!(finished.get(), 2);
-            assert!(token.is_cancelled());
+        let meeting = Rc::new(Barrier::new(2));
+        let finished = Rc::new(Cell::new(0));
+        let repo = |device_type| -> Option<Rc<dyn Repository>> {
+            Some(Rc::new(StubRepo {
+                device_type,
+                meeting: Some(Rc::clone(&meeting)),
+                finished: Rc::clone(&finished),
+            }))
+        };
+        let repos: Repos = Rc::new(Repositories {
+            cpu: repo(DeviceType::CPU),
+            hwmon: repo(DeviceType::Hwmon),
+            ..Default::default()
         });
+        let token = CancellationToken::new();
+        let preloads = moro_local::async_scope!(|scope| -> Result<()> {
+            fire_preloads(&repos, token.clone(), scope);
+            Ok(())
+        });
+
+        // Run in sequence, the scope never finishes and poll_to_end panics.
+        let (outcome, _) = rt::poll_to_end(preloads);
+
+        assert!(outcome.is_ok());
+        assert_eq!(finished.get(), 2);
+        assert!(token.is_cancelled());
     }
 
     /// Regression: the snapshot timeout must stay at the historical
