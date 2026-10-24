@@ -2205,14 +2205,29 @@ mod tests {
             .is_none());
     }
 
-    /// The headers the production stack answers each of `paths` with: the real routes and
-    /// fallback over `state`, behind every base layer, compression aside. Runs on the
+    /// Plain `GET`s of `paths`.
+    #[cfg(feature = "gated-tests")]
+    fn get_requests(paths: &[&str]) -> Vec<axum::http::Request<axum::body::Body>> {
+        paths
+            .iter()
+            .map(|path| {
+                axum::http::Request::get(*path)
+                    .body(axum::body::Body::empty())
+                    .unwrap()
+            })
+            .collect()
+    }
+
+    /// The headers the production stack answers each of `requests` with: the real routes
+    /// and fallback over `state`, behind every base layer and `compression`. Runs on the
     /// sidecar, as the servers do, since the timeout layer needs its reactor.
     #[cfg(feature = "gated-tests")]
     async fn served_headers(
         state: AppState,
-        paths: &'static [&'static str],
+        compression: Option<ApiCompressionLayer>,
+        requests: Vec<axum::http::Request<axum::body::Body>>,
     ) -> Vec<axum::http::HeaderMap> {
+        let request_count = requests.len();
         let sessions_dir = tempfile::tempdir().unwrap();
         let sessions_path = sessions_dir.path().to_path_buf();
         let serve = move || async move {
@@ -2224,23 +2239,88 @@ mod tests {
                 .with_private(tower_sessions::cookie::Key::generate());
             let app = with_base_layers(
                 api_router(state, Arc::default()).await,
-                None,
+                compression,
                 session_layer,
                 cors_layer(None, None, Vec::new()),
             );
-            let mut headers = Vec::with_capacity(paths.len());
-            for path in paths {
-                let request = axum::http::Request::get(*path)
-                    .body(axum::body::Body::empty())
-                    .unwrap();
+            let mut headers = Vec::with_capacity(requests.len());
+            for request in requests {
                 let response = app.clone().oneshot(request).await.unwrap();
+                assert!(response.status().is_success(), "{}", response.status());
                 headers.push(response.headers().clone());
             }
             headers
         };
         let headers = crate::sidecar::handle().run(serve).await.unwrap();
-        assert_eq!(headers.len(), paths.len());
+        assert_eq!(headers.len(), request_count);
         headers
+    }
+
+    /// A read-only bearer token: the raw value a client sends and the record that accepts it.
+    #[cfg(feature = "gated-tests")]
+    fn read_only_token() -> (String, crate::auth::token::StoredToken) {
+        let raw_token = crate::auth::token::generate_token();
+        let stored = crate::auth::token::StoredToken {
+            id: "test-token".to_string(),
+            label: "Test Token".to_string(),
+            hash: String::new(),
+            digest: Some(crate::auth::token::digest_token(&raw_token)),
+            created_at: chrono::Local::now(),
+            expires_at: None,
+            last_used: None,
+            write_access: false,
+        };
+        (raw_token, stored)
+    }
+
+    /// Goal: the production compression arm of `with_base_layers` compresses API responses
+    /// and leaves the embedded web app alone. Method: the real stack with the API
+    /// compression layer, a deflate offer to an authenticated `/health` and to the `/`
+    /// fallback document. Deflate, since the fallback serves its build-time gzip copies to
+    /// a gzip offer itself.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
+    fn the_served_stack_compresses_api_responses_only() {
+        let (raw_token, stored) = read_only_token();
+        let mut requests = Vec::with_capacity(2);
+        for (path, bearer) in [("/health", true), ("/", false)] {
+            let mut builder = axum::http::Request::get(path)
+                .header(axum::http::header::ACCEPT_ENCODING, "deflate");
+            if bearer {
+                builder = builder.header(
+                    axum::http::header::AUTHORIZATION,
+                    format!("Bearer {raw_token}"),
+                );
+            }
+            let mut request = builder.body(axum::body::Body::empty()).unwrap();
+            request
+                .extensions_mut()
+                .insert(axum::extract::ConnectInfo(SocketAddr::from((
+                    [127, 0, 0, 1],
+                    40000,
+                ))));
+            requests.push(request);
+        }
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = AppState {
+                    token_handle: TokenHandle::with_tokens(vec![stored]),
+                    ..empty_app_state(&cancel_token, main_scope).await
+                };
+                let headers = served_headers(state, Some(api_compression_layer()), requests).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+
+                let (api, document) = (&headers[0], &headers[1]);
+                assert_eq!(api[axum::http::header::CONTENT_ENCODING], "deflate");
+                assert!(document.get(axum::http::header::CONTENT_ENCODING).is_none());
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
     }
 
     /// Goal: what a browser receives decides who may frame the UI, so pin it on the
@@ -2261,8 +2341,8 @@ mod tests {
                     frame_policy: FramePolicy::from_config(&[ANCESTOR.to_string()]),
                     ..state.clone()
                 };
-                let unframed = served_headers(state, &PATHS).await;
-                let framed = served_headers(framed_state, &PATHS).await;
+                let unframed = served_headers(state, None, get_requests(&PATHS)).await;
+                let framed = served_headers(framed_state, None, get_requests(&PATHS)).await;
                 // Stops the actors so the scope can finish.
                 cancel_token.cancel();
 
@@ -2335,17 +2415,7 @@ mod tests {
     #[serial_test::serial(modes_file)]
     #[cfg(feature = "gated-tests")]
     fn a_status_poll_allocates_a_bounded_amount() {
-        let raw_token = crate::auth::token::generate_token();
-        let stored = crate::auth::token::StoredToken {
-            id: "poll-test".to_string(),
-            label: "Poll Test".to_string(),
-            hash: String::new(),
-            digest: Some(crate::auth::token::digest_token(&raw_token)),
-            created_at: chrono::Local::now(),
-            expires_at: None,
-            last_used: None,
-            write_access: false,
-        };
+        let (raw_token, stored) = read_only_token();
         let request = move || {
             let mut request = axum::http::Request::post("/status")
                 .header(
