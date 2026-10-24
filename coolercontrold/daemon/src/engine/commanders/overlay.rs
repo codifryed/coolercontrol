@@ -228,7 +228,7 @@ impl OverlayProfileCommander {
     /// safety latch counter has been reached.
     fn collect_duties_to_apply(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
         let settings = self.scheduled_settings.borrow();
-        let mut output_to_apply = HashMap::with_capacity(settings.len());
+        let mut output_to_apply = HashMap::new();
         let output_cache_lock = self.process_output_cache.borrow();
         let mut dedup_lock = self.output_dedup.borrow_mut();
         for (overlay_profile, device_channels) in settings.iter() {
@@ -315,5 +315,70 @@ impl Eq for NormalizedOverlayProfile {}
 impl Hash for NormalizedOverlayProfile {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.profile_uid.hash(state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::calibration::{CalibrationStore, FanStateMap};
+    use crate::config::Config;
+
+    /// An Overlay commander with `o1` on dev1's fan1, its latest duty `output`.
+    fn commander_with_o1(output: Option<Duty>) -> OverlayProfileCommander {
+        let graph_commander = Rc::new(GraphProfileCommander::new(
+            Rc::new(HashMap::new()),
+            HashMap::new(),
+            Rc::new(Config::init_default_config().unwrap()),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+        ));
+        let mix_commander = Rc::new(MixProfileCommander::new(Rc::clone(&graph_commander)));
+        let commander = OverlayProfileCommander::new(graph_commander, mix_commander);
+        let profile = Rc::new(NormalizedOverlayProfile {
+            profile_uid: "o1".to_string(),
+            ..Default::default()
+        });
+        let channel = DeviceChannelProfileSetting::Overlay {
+            device_uid: "dev1".to_string(),
+            channel_name: "fan1".to_string(),
+        };
+        commander
+            .scheduled_settings
+            .borrow_mut()
+            .insert(profile, HashSet::from([channel]));
+        commander
+            .process_output_cache
+            .borrow_mut()
+            .insert("o1".to_string(), output);
+        commander
+            .output_dedup
+            .borrow_mut()
+            .insert("o1".to_string(), OutputDedupState::new());
+        commander
+    }
+
+    #[test]
+    fn a_new_duty_is_collected_once() {
+        let commander = commander_with_o1(Some(50));
+
+        let first = commander.collect_duties_to_apply();
+        let second = commander.collect_duties_to_apply();
+
+        assert_eq!(first["dev1"], vec![("fan1".to_string(), 50)]);
+        assert!(second.is_empty(), "an unchanged duty is applied once");
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn collecting_an_unchanged_duty_allocates_nothing() {
+        let commander = commander_with_o1(Some(50));
+        assert!(commander.collect_duties_to_apply().is_empty().not());
+
+        let (outputs, allocations) =
+            crate::alloc_count::count_allocations(|| commander.collect_duties_to_apply());
+
+        assert!(outputs.is_empty());
+        assert_eq!(allocations, 0);
     }
 }

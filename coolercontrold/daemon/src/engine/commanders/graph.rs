@@ -229,7 +229,7 @@ impl GraphProfileCommander {
     /// Collects all the processed outputs for all scheduled Graph Profiles.
     fn collect_processed_outputs(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
         let settings = self.scheduled_settings.borrow();
-        let mut output_to_apply = HashMap::with_capacity(settings.len());
+        let mut output_to_apply = HashMap::new();
         for (normalized_profile, device_channels) in settings.iter() {
             let optional_duty_to_set = self.process_output_cache.borrow()
                 [&normalized_profile.profile_uid]
@@ -588,5 +588,48 @@ mod tests {
         assert_eq!(write_failure_log.failing_channels_by_device.len(), 1);
         write_failure_log.record_success(&DEVICE.to_string(), PUMP);
         assert!(write_failure_log.failing_channels_by_device.is_empty());
+    }
+
+    /// Schedules graph profile `g1` on the commander's fan, with `output` as its latest duty.
+    fn schedule_g1(commander: &GraphProfileCommander, device_uid: &UID, output: Option<Duty>) {
+        let profile = Rc::new(NormalizedGraphProfile {
+            profile_uid: "g1".to_string(),
+            ..Default::default()
+        });
+        let channel = DeviceChannelProfileSetting::Graph {
+            device_uid: device_uid.clone(),
+            channel_name: FAN.to_string(),
+        };
+        commander
+            .scheduled_settings
+            .borrow_mut()
+            .insert(profile, HashSet::from([channel]));
+        commander
+            .process_output_cache
+            .borrow_mut()
+            .insert("g1".to_string(), output);
+    }
+
+    #[test]
+    fn a_duty_to_set_is_collected_for_its_channel() {
+        let (commander, device_uid, _) = commander_with_toggle_writer();
+        schedule_g1(&commander, &device_uid, Some(50));
+
+        let outputs = commander.collect_processed_outputs();
+
+        assert_eq!(outputs[&device_uid], vec![(FAN.to_string(), 50)]);
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn collecting_with_no_duty_to_set_allocates_nothing() {
+        let (commander, device_uid, _) = commander_with_toggle_writer();
+        schedule_g1(&commander, &device_uid, None);
+
+        let (outputs, allocations) =
+            crate::alloc_count::count_allocations(|| commander.collect_processed_outputs());
+
+        assert!(outputs.is_empty());
+        assert_eq!(allocations, 0);
     }
 }
