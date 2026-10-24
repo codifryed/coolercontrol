@@ -367,9 +367,9 @@ mod tests {
         let finished = Rc::new(Cell::new(0));
         let repo = |device_type| -> Option<Rc<dyn Repository>> {
             Some(Rc::new(StubRepo {
-                device_type,
                 meeting: Some(Rc::clone(&meeting)),
                 finished: Rc::clone(&finished),
+                ..StubRepo::new(device_type)
             }))
         };
         let repos: Repos = Rc::new(Repositories {

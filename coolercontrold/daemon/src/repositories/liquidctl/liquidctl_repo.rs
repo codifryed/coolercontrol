@@ -1468,7 +1468,7 @@ impl LiquidctlRepo {
 
     async fn set_fixed_speed(
         &self,
-        device_data: &CachedDeviceData,
+        device_data: &CachedDeviceData<'_>,
         channel_name: &str,
         fixed_speed: u8,
     ) -> Result<()> {
@@ -1528,13 +1528,13 @@ impl LiquidctlRepo {
         };
         // Hold the permit through the configured command delay so the next request to this device
         // observes the gap (liqctld serializes per device, but the gap itself is ours to enforce).
-        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        apply_device_command_delay(self.device_delay(device_data.uid)).await;
         result
     }
 
     async fn set_speed_profile(
         &self,
-        device_data: &CachedDeviceData,
+        device_data: &CachedDeviceData<'_>,
         channel_name: &str,
         temp_source: &TempSource,
         profile: &[(f64, u8)],
@@ -1546,7 +1546,7 @@ impl LiquidctlRepo {
             .expect("device permit never closed");
         let max_points = self
             .devices
-            .get(&device_data.uid)
+            .get(device_data.uid)
             .map(|dev| dev.borrow().info.profile_max_length)
             .with_context(|| {
                 format!(
@@ -1579,7 +1579,7 @@ impl LiquidctlRepo {
                     device_data.uid
                 )
             });
-        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        apply_device_command_delay(self.device_delay(device_data.uid)).await;
         result
     }
 
@@ -1605,7 +1605,7 @@ impl LiquidctlRepo {
 
     async fn set_color(
         &self,
-        device_data: &CachedDeviceData,
+        device_data: &CachedDeviceData<'_>,
         channel_name: &str,
         lighting_settings: &LightingSettings,
     ) -> Result<()> {
@@ -1658,13 +1658,13 @@ impl LiquidctlRepo {
                     device_data.uid
                 )
             });
-        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        apply_device_command_delay(self.device_delay(device_data.uid)).await;
         result
     }
 
     async fn set_screen(
         &self,
-        device_data: &CachedDeviceData,
+        device_data: &CachedDeviceData<'_>,
         channel_name: &str,
         lcd_settings: &LcdSettings,
     ) -> Result<()> {
@@ -1684,7 +1684,7 @@ impl LiquidctlRepo {
             if let Err(err) = self
                 .send_screen_request(
                     &device_data.type_index,
-                    &device_data.uid,
+                    device_data.uid,
                     channel_name,
                     "brightness",
                     Some(brightness.to_string()), // liquidctl handles conversion to int
@@ -1699,7 +1699,7 @@ impl LiquidctlRepo {
             if let Err(err) = self
                 .send_screen_request(
                     &device_data.type_index,
-                    &device_data.uid,
+                    device_data.uid,
                     channel_name,
                     "orientation",
                     Some(orientation.to_string()), // liquidctl handles conversion to int
@@ -1720,7 +1720,7 @@ impl LiquidctlRepo {
                 };
                 self.send_screen_request(
                     &device_data.type_index,
-                    &device_data.uid,
+                    device_data.uid,
                     channel_name,
                     &mode,
                     Some(image_file.clone()),
@@ -1731,7 +1731,7 @@ impl LiquidctlRepo {
         } else if lcd_settings.mode_name() == LcdModeName::Liquid {
             self.send_screen_request(
                 &device_data.type_index,
-                &device_data.uid,
+                device_data.uid,
                 channel_name,
                 &lcd_settings.mode.to_string(),
                 None,
@@ -1746,7 +1746,7 @@ impl LiquidctlRepo {
         // Held under the device permit (acquired at the top of this method) so the next request to
         // this device observes the configured command gap. Skipped only if a sub-command above
         // already returned early, in which case the device is failing and the next apply re-delays.
-        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        apply_device_command_delay(self.device_delay(device_data.uid)).await;
         Ok(())
     }
 
@@ -1766,15 +1766,16 @@ impl LiquidctlRepo {
             })
     }
 
-    fn cache_device_data(&self, device_uid: &UID) -> Result<CachedDeviceData> {
+    fn cache_device_data<'u>(&self, device_uid: &'u UID) -> Result<CachedDeviceData<'u>> {
         let device = self
             .devices
             .get(device_uid)
             .with_context(|| format!("Device UID not found! {device_uid}"))?
             .borrow();
+        debug_assert_eq!(&device.uid, device_uid);
         Ok(CachedDeviceData {
             type_index: device.type_index,
-            uid: device.uid.clone(),
+            uid: device_uid,
             driver_type: device
                 .lc_info
                 .as_ref()
@@ -2240,10 +2241,11 @@ fn rearm_device_probes(liqctld_devices: &HashMap<TypeIndex, LiqctldIo>) {
     }
 }
 
+/// Borrows the device's UID from the caller, so an apply copies no name.
 #[derive(Debug)]
-struct CachedDeviceData {
+struct CachedDeviceData<'u> {
     type_index: u8,
-    uid: UID,
+    uid: &'u UID,
     driver_type: BaseDriver,
 }
 

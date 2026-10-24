@@ -157,6 +157,7 @@ impl DeviceIo {
             spare_values: RefCell::default(),
             read_replies: ReplyPool::default(),
             batch_replies: ReplyPool::default(),
+            write_replies: ReplyPool::default(),
             liveness,
         })))
     }
@@ -354,6 +355,32 @@ impl DeviceIo {
         }
     }
 
+    /// Writes one number to an attribute through its slot when the registry gave it one, by path
+    /// otherwise.
+    ///
+    /// For the per-tick duty write: through a slot, neither the path nor the value is copied to
+    /// the heap, and the reply channel is a recycled one. The path is built only for the
+    /// fallback. The inline path writes by path, as it has no worker to resolve a slot.
+    pub async fn write_one(
+        &self,
+        slot: Option<ReadIndex>,
+        value: u8,
+        path: impl FnOnce() -> PathBuf,
+    ) -> Result<()> {
+        match (self, slot) {
+            (Self::Threaded(worker), Some(index)) => worker.write_index(index, value).await,
+            (_, slot) => {
+                let path = path();
+                debug_assert!(path.as_os_str().is_empty().not(), "a write needs a path");
+                if let Some(index) = slot {
+                    self.debug_assert_slot(index, &path);
+                }
+                self.write_value(&path, value.to_string().into_bytes())
+                    .await
+            }
+        }
+    }
+
     /// Releases every held descriptor, for when the devices behind them may be gone (suspend).
     ///
     /// Best effort on the threaded path: a wedged worker never gets to act on it, which is
@@ -404,6 +431,7 @@ impl DeviceIo {
             spare_values: RefCell::default(),
             read_replies: ReplyPool::default(),
             batch_replies: ReplyPool::default(),
+            write_replies: ReplyPool::default(),
             liveness: WorkerLiveness(Arc::downgrade(&running)),
         };
         (Self::Threaded(Rc::new(worker)), rx, running)
@@ -628,6 +656,7 @@ pub struct Worker {
     /// Reply channels for the per-tick requests, kept so a warm one allocates nothing.
     read_replies: ReplyPool<Result<SysfsValue>>,
     batch_replies: ReplyPool<Result<BatchBuffers>>,
+    write_replies: ReplyPool<Result<()>>,
     liveness: WorkerLiveness,
 }
 
@@ -747,6 +776,30 @@ impl Worker {
         }
     }
 
+    /// Writes `value` to a slot's attribute. The table goes first, as a write through a slot the
+    /// worker has not been given fails as unregistered.
+    async fn write_index(&self, index: ReadIndex, value: u8) -> Result<()> {
+        debug_assert!(
+            self.pending_registry
+                .borrow()
+                .as_ref()
+                .is_none_or(|paths| usize::from(index) < paths.len()),
+            "write slot {index} is outside the read table"
+        );
+        self.ensure_registry().await;
+        self.dispatch(
+            "writing",
+            &SlotLabel(index),
+            || self.write_replies.channel(),
+            |reply| Request::WriteIndex {
+                index,
+                value,
+                reply,
+            },
+        )
+        .await
+    }
+
     fn health(&self) -> DeviceHealth {
         self.state.health()
     }
@@ -793,6 +846,13 @@ pub enum Request {
         path: PathBuf,
         data: Vec<u8>,
         reply: oneshot::Sender<Result<()>>,
+    },
+    /// Writes a number to a slot's attribute, formatted on the worker, so nothing is copied to
+    /// the heap for it.
+    WriteIndex {
+        index: ReadIndex,
+        value: u8,
+        reply: ReplySender<Result<()>>,
     },
     /// Counts the worker's own descriptor cache, so a test can prove it is not reopening.
     #[cfg(test)]
@@ -896,6 +956,14 @@ fn serve_one(fds: &cc_fs::SysfsFdCache, request: Request) {
             let result = cc_fs::write_blocking(&path, &data);
             let _ = reply.send(result);
         }
+        Request::WriteIndex {
+            index,
+            value,
+            reply,
+        } => {
+            let mut digits = [0; 3];
+            reply.send(fds.write_index(index, decimal_digits(value, &mut digits)));
+        }
         Request::ClearDescriptors => fds.clear(),
     }
 }
@@ -978,6 +1046,31 @@ fn unreachable(device_name: &str, what: &dyn Display) -> anyhow::Error {
         ErrorKind::HostUnreachable,
         format!("device {device_name} is unreachable, skipping {what}"),
     )
+}
+
+/// `value` in decimal, written into `digits`, as a sysfs attribute takes a number.
+fn decimal_digits(value: u8, digits: &mut [u8; 3]) -> &[u8] {
+    let mut start = digits.len();
+    let mut rest = value;
+    loop {
+        start -= 1;
+        digits[start] = b'0' + rest % 10;
+        rest /= 10;
+        if rest == 0 {
+            break;
+        }
+    }
+    debug_assert!(start < digits.len());
+    &digits[start..]
+}
+
+/// Names a slot in a timeout message without carrying a path across the boundary.
+struct SlotLabel(ReadIndex);
+
+impl Display for SlotLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the attribute in slot {}", self.0)
+    }
 }
 
 /// Names a batch in a timeout message without carrying a path across the boundary.
@@ -1571,6 +1664,98 @@ mod tests {
             assert_eq!(written, "128");
             assert_eq!(io.health(), DeviceHealth::Healthy);
         });
+    }
+
+    /// Goal: a duty written through a slot reaches the file the slot was registered with, and
+    /// only an unslotted write builds its path. Method: register two files on a real worker,
+    /// write each way, and read both back.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_slotted_write_reaches_its_registered_file() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let slotted = dir.path().join("pwm1");
+            let unslotted = dir.path().join("pwm2");
+            std::fs::write(&slotted, "0\n").unwrap();
+            std::fs::write(&unslotted, "0\n").unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
+            io.install_registry(vec![slotted.clone()]).await.unwrap();
+
+            io.write_one(Some(0), 128, || panic!("a slotted write builds no path"))
+                .await
+                .unwrap();
+            io.write_one(None, 7, || unslotted.clone()).await.unwrap();
+
+            assert_eq!(std::fs::read_to_string(&slotted).unwrap(), "128");
+            assert_eq!(std::fs::read_to_string(&unslotted).unwrap(), "7");
+            assert_eq!(io.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: a write through a slot the table does not have fails, and touches no file.
+    /// Method: write through slot 1 of a one-entry table.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_write_through_an_unregistered_slot_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pwm1");
+        std::fs::write(&path, "0\n").unwrap();
+        let fds = cc_fs::SysfsFdCache::default();
+        fds.install(vec![path.clone()]);
+
+        let written = fds.write_index(1, b"128");
+
+        assert!(written.is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "0\n");
+    }
+
+    /// Goal: a slotted write costs the worker thread no heap. Method: serve one write against a
+    /// real file on the test thread, then count a second.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_slotted_write_allocates_nothing_on_the_worker() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pwm1");
+        std::fs::write(&path, "0\n").unwrap();
+        let fds = cc_fs::SysfsFdCache::default();
+        fds.install(vec![path.clone()]);
+        let replies = ReplyPool::default();
+        let (reply, reply_rx) = replies.channel();
+        serve_one(
+            &fds,
+            Request::WriteIndex {
+                index: 0,
+                value: 64,
+                reply,
+            },
+        );
+        crate::rt::poll_to_end(reply_rx).0.unwrap().unwrap();
+        let (reply, reply_rx) = replies.channel();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            serve_one(
+                &fds,
+                Request::WriteIndex {
+                    index: 0,
+                    value: 255,
+                    reply,
+                },
+            );
+        });
+
+        assert_eq!(allocations, 0);
+        crate::rt::poll_to_end(reply_rx).0.unwrap().unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "255");
+    }
+
+    /// Goal: a value is written as the decimal a sysfs attribute parses, at every width.
+    /// Method: format the bounds and a value of each digit count.
+    #[test]
+    fn a_value_is_written_in_decimal() {
+        let mut digits = [0; 3];
+        for (value, expected) in [(0, "0"), (7, "7"), (42, "42"), (128, "128"), (255, "255")] {
+            assert_eq!(decimal_digits(value, &mut digits), expected.as_bytes());
+        }
     }
 
     /// Goal: whole-attribute reads cross the thread boundary unchanged, past the 64 bytes of a

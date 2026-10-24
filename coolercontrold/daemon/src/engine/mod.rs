@@ -15,6 +15,13 @@ pub mod processors;
 mod tests;
 pub mod utils;
 
+/// A scheduled channel, shared so a tick's duty writes hold it across their awaits without
+/// copying its names.
+pub type ScheduledChannel = Rc<DeviceChannelProfileSetting>;
+
+/// One tick's duty for a scheduled channel.
+pub type ChannelDuty = (ScheduledChannel, Duty);
+
 #[derive(Debug, Clone)]
 pub enum DeviceChannelProfileSetting {
     Mix {

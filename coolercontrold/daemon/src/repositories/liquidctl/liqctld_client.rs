@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::ops::Not;
+use std::sync::Arc;
 
 use serde::de::{self, DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -172,10 +173,16 @@ pub struct InitializeRequest {
     pub pump_mode: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FixedSpeedRequest {
-    pub channel: String,
+    /// Shared with the device's channel names, so a request copies none.
+    #[serde(serialize_with = "serialize_shared_str")]
+    pub channel: Arc<str>,
     pub duty: u8,
+}
+
+fn serialize_shared_str<S: Serializer>(value: &Arc<str>, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(value)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -339,7 +339,7 @@ mod tests {
             .sustain;
         // Pre-populate the state map as if the dispatcher had just written.
         state.replace(
-            key_gentle.clone(),
+            (&key_gentle).into(),
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,
@@ -347,7 +347,7 @@ mod tests {
             },
         );
         state.replace(
-            key_steep.clone(),
+            (&key_steep).into(),
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,
@@ -425,7 +425,7 @@ mod tests {
         let expected = cal.device_to_true_duty(hijacked_dev).expect("smooth");
         store.insert_unsaved(key.clone(), cal);
         state.replace(
-            key.clone(),
+            (&key).into(),
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,

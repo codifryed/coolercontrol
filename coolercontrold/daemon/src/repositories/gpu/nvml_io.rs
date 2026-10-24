@@ -8,27 +8,42 @@
 //! the lock is held forever and every later tick parks another pool thread. Owning the device on
 //! its own thread means a hung driver parks that one thread and the GPU goes unreachable on the
 //! same rules as a wedged sysfs device.
+use std::future::Future;
 use std::ops::Not;
 use std::thread;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use log::{debug, error};
+use nvml_wrapper::error::NvmlError;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::affinity;
 use crate::repositories::hwmon::device_io::{DeviceHealth, HealthState, QUEUE_DEPTH};
 use crate::rt;
+use crate::rt::reply::{ReplyPool, ReplySender};
 
-/// One unit of work for a GPU's thread. The job owns its own reply channel, so every NVML call
-/// shape fits one queue without an enum per setter.
-type NvmlJob = Box<dyn FnOnce(&mut nvml_wrapper::Device<'static>) + Send>;
+/// One unit of work for a GPU's thread.
+pub enum NvmlJob {
+    /// Any call. It owns its own reply channel, so every NVML call shape fits one queue without
+    /// a variant per setter.
+    Call(Box<dyn FnOnce(&mut nvml_wrapper::Device<'static>) + Send>),
+    /// A fan duty write, the one call a profile makes on every duty change. Unboxed, with a
+    /// recycled reply channel, so a warm write allocates nothing.
+    SetFanSpeed {
+        fan_index: u32,
+        duty_percent: u32,
+        reply: ReplySender<Result<(), NvmlError>>,
+    },
+}
 
 /// The main-thread half of a GPU's NVML worker.
 pub struct NvmlIo {
     tx: mpsc::Sender<NvmlJob>,
     reply_timeout: Duration,
     state: HealthState,
+    /// Reply channels for fan duty writes, kept so a warm one allocates nothing.
+    fan_speed_replies: ReplyPool<Result<(), NvmlError>>,
 }
 
 impl NvmlIo {
@@ -55,6 +70,7 @@ impl NvmlIo {
             tx,
             reply_timeout,
             state: HealthState::new(device_name),
+            fan_speed_replies: ReplyPool::default(),
         })
     }
 
@@ -72,6 +88,7 @@ impl NvmlIo {
                 tx,
                 reply_timeout: Duration::from_millis(10),
                 state: HealthState::new(device_name.to_owned()),
+                fan_speed_replies: ReplyPool::default(),
             },
             rx,
         )
@@ -103,6 +120,51 @@ impl NvmlIo {
         F: FnOnce(&mut nvml_wrapper::Device<'static>) -> T + Send + 'static,
         T: Send + 'static,
     {
+        self.dispatch(what, budget, oneshot::channel, |reply_tx| {
+            NvmlJob::Call(Box::new(move |device| {
+                // A dropped receiver means the caller already timed out. Expected, not an error.
+                let _ = reply_tx.send(f(device));
+            }))
+        })
+        .await
+    }
+
+    /// Sets one fan's duty, within the per-tick reply timeout.
+    ///
+    /// # Errors
+    ///
+    /// As `call`. NVML's own answer is the inner result.
+    pub async fn set_fan_speed(
+        &self,
+        fan_index: u32,
+        duty_percent: u32,
+    ) -> Result<Result<(), NvmlError>> {
+        debug_assert!(duty_percent <= 100);
+        self.dispatch(
+            "fan duty",
+            self.reply_timeout,
+            || self.fan_speed_replies.channel(),
+            |reply| NvmlJob::SetFanSpeed {
+                fan_index,
+                duty_percent,
+                reply,
+            },
+        )
+        .await
+    }
+
+    /// Queues one job and waits for its reply, within `budget`. `channel` makes the reply
+    /// channel, and is called only once the job will be sent.
+    async fn dispatch<T, Tx, Rx, E>(
+        &self,
+        what: &str,
+        budget: Duration,
+        channel: impl FnOnce() -> (Tx, Rx),
+        make_job: impl FnOnce(Tx) -> NvmlJob,
+    ) -> Result<T>
+    where
+        Rx: Future<Output = std::result::Result<T, E>>,
+    {
         debug_assert!(budget > Duration::ZERO);
         // Refuse to queue for a GPU that is not answering until its next probe is due, or every
         // tick adds a job to a queue nobody drains and pays a full timeout to learn that.
@@ -112,11 +174,8 @@ impl NvmlIo {
                 self.state.device_name()
             ));
         }
-        let (reply_tx, reply_rx) = oneshot::channel();
-        let job: NvmlJob = Box::new(move |device| {
-            // A dropped receiver means the caller already timed out. Expected, not an error.
-            let _ = reply_tx.send(f(device));
-        });
+        let (reply_tx, reply_rx) = channel();
+        let job = make_job(reply_tx);
         let exchange = async {
             self.tx
                 .send(job)
@@ -170,7 +229,17 @@ impl NvmlIo {
 /// A plain blocking loop. NVML is a synchronous FFI, so there is nothing here for a reactor to do.
 fn run_worker(mut device: nvml_wrapper::Device<'static>, mut rx: mpsc::Receiver<NvmlJob>) {
     while let Some(job) = rx.blocking_recv() {
-        job(&mut device);
+        match job {
+            NvmlJob::Call(call) => call(&mut device),
+            NvmlJob::SetFanSpeed {
+                fan_index,
+                duty_percent,
+                reply,
+            } => {
+                // A caller that already timed out never reads it. Expected, not an error.
+                reply.send(device.set_fan_speed(fan_index, duty_percent));
+            }
+        }
     }
     debug!("NVML worker stopped");
 }
@@ -178,4 +247,65 @@ fn run_worker(mut device: nvml_wrapper::Device<'static>, mut rx: mpsc::Receiver<
 /// Logs a worker that could not start. The GPU is dropped rather than run un-isolated.
 pub fn log_spawn_failure(device_name: &str, err: &anyhow::Error) {
     error!("Could not start an NVML thread for GPU {device_name}: {err}. This GPU is unmanaged.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Answers each fan duty job from `rx` as NVML would, recording the write, until the queue
+    /// closes. Stands in for the worker, which needs a GPU.
+    async fn answer_fan_speed_jobs(
+        mut rx: mpsc::Receiver<NvmlJob>,
+        written: std::rc::Rc<std::cell::Cell<Option<(u32, u32)>>>,
+    ) {
+        while let Some(job) = rx.recv().await {
+            let NvmlJob::SetFanSpeed {
+                fan_index,
+                duty_percent,
+                reply,
+            } = job
+            else {
+                panic!("only fan duty jobs are expected");
+            };
+            written.set(Some((fan_index, duty_percent)));
+            reply.send(Ok(()));
+        }
+    }
+
+    /// Goal: a fan duty write reaches the worker as its own job, carrying the fan and the duty.
+    /// Method: answer the queue as the worker would and check what it was asked.
+    #[test]
+    fn a_fan_duty_write_carries_its_fan_and_duty() {
+        rt::test_runtime(async {
+            let (io, rx) = NvmlIo::for_test("test-gpu");
+            let written = std::rc::Rc::default();
+            rt::spawn(answer_fan_speed_jobs(rx, std::rc::Rc::clone(&written)));
+
+            io.set_fan_speed(2, 55).await.unwrap().unwrap();
+
+            assert_eq!(written.get(), Some((2, 55)));
+            assert_eq!(io.fan_speed_replies.spare_count(), 1);
+        });
+    }
+
+    /// Goal: a warm fan duty write costs the main thread no allocation. Method: write once to
+    /// warm the reply channel, then count a second write's round trip.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_fan_duty_write_allocates_nothing() {
+        rt::test_runtime(async {
+            let (io, rx) = NvmlIo::for_test("test-gpu");
+            let written = std::rc::Rc::default();
+            rt::spawn(answer_fan_speed_jobs(rx, std::rc::Rc::clone(&written)));
+            io.set_fan_speed(0, 40).await.unwrap().unwrap();
+
+            let (result, allocations) =
+                crate::alloc_count::count_allocations_async(io.set_fan_speed(0, 60)).await;
+
+            result.unwrap().unwrap();
+            assert_eq!(written.get(), Some((0, 60)));
+            assert_eq!(allocations, 0);
+        });
+    }
 }

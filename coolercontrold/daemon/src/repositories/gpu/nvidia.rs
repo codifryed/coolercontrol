@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::default::Default;
-use std::ops::{Add, Not, RangeInclusive, Sub};
+use std::ops::{Add, Not, RangeInclusive};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -61,7 +61,6 @@ const NVIDIA_CLOCK_MEMORY: &str = "freq_memory";
 const NVIDIA_CLOCK_VIDEO: &str = "freq_video";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
-const PATTERN_FAN_CHANNEL_INDEX: &str = r"^fan(?P<index>\d+)";
 const XAUTHORITY_SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 type DisplayId = u8;
@@ -1042,23 +1041,25 @@ impl GpuNVidia {
             // set the fan control policy to manual automatically.
             fan_range.log_outside_warning_once(fan_duty);
         }
-        self.write_nvml_bounded(nv_info.gpu_index, "fan duty", move |device| {
-            device.set_fan_speed(u32::from(fan_index), u32::from(fan_duty))
-        })
-        .await
+        self.nvml_io
+            .get(&nv_info.gpu_index)
+            .with_context(|| format!("NVML device {} should exist", nv_info.gpu_index))?
+            .set_fan_speed(u32::from(fan_index), u32::from(fan_duty))
+            .await?
+            .map_err(anyhow::Error::from)
     }
 
+    /// The 0-based fan index of a `fanN` channel. Parsed by hand: it runs on every duty write,
+    /// and a regex compiled here allocated dozens of times per write.
     fn parse_fan_index(channel_name: &str) -> Result<FanIndex> {
-        let regex_fan_index =
-            Regex::new(PATTERN_FAN_CHANNEL_INDEX).expect("This regex should be valid");
-        let fan_index = regex_fan_index
-            .captures(channel_name)
-            .with_context(|| "Nvidia fan channel name Should always match")?
-            .name("index")
-            .with_context(|| "This should be a valid capture name")?
-            .as_str()
-            .parse::<FanIndex>()?
-            .sub(1);
+        let fan_number = channel_name
+            .strip_prefix(NVIDIA_FAN_PREFIX)
+            .and_then(|digits| digits.parse::<FanIndex>().ok())
+            .with_context(|| format!("Nvidia fan channel name should be fanN: {channel_name}"))?;
+        let fan_index = fan_number
+            .checked_sub(1)
+            .with_context(|| format!("Nvidia fan channels count from 1: {channel_name}"))?;
+        debug_assert!(fan_index < FanIndex::MAX);
         Ok(fan_index)
     }
 
@@ -2001,6 +2002,31 @@ mod tests {
     use super::*;
     use crate::repositories::gpu::nvapi_io::HotspotReader;
     use crate::setting::CCDeviceSettings;
+
+    /// Goal: a `fanN` channel names fan N-1, and anything else is refused rather than read as
+    /// some other fan. Method: parse valid names at both widths and malformed ones.
+    #[test]
+    fn a_fan_channel_names_its_zero_based_index() {
+        assert_eq!(GpuNVidia::parse_fan_index("fan1").unwrap(), 0);
+        assert_eq!(GpuNVidia::parse_fan_index("fan12").unwrap(), 11);
+        for malformed in ["fan0", "fan", "pump", "fan1x", "fan256", "1fan"] {
+            assert!(
+                GpuNVidia::parse_fan_index(malformed).is_err(),
+                "{malformed} must not name a fan"
+            );
+        }
+    }
+
+    /// Goal: parsing the fan index on every duty write costs nothing. Method: count one parse.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn parsing_a_fan_index_allocates_nothing() {
+        let (fan_index, allocations) =
+            crate::alloc_count::count_allocations(|| GpuNVidia::parse_fan_index("fan3"));
+
+        assert_eq!(fan_index.unwrap(), 2);
+        assert_eq!(allocations, 0);
+    }
 
     #[test]
     #[cfg(feature = "gated-tests")]

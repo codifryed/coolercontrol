@@ -52,7 +52,7 @@ pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
 /// Per-device-type cache of the calibration dispatch writer. Built
 /// once at engine construction and reused on every fan-write so the
 /// hot path is a single `HashMap` lookup with no allocation or cloning.
-pub type DutyWritersByType = HashMap<DeviceType, Rc<dyn calibration::DutyWriter>>;
+pub type DutyWritersByType = HashMap<DeviceType, Rc<RepoWriter>>;
 
 pub struct Engine {
     all_devices: AllDevices,
@@ -232,8 +232,8 @@ impl Engine {
                     &self.fan_state_map,
                     &self.calibration_store,
                     writer,
-                    device_uid.clone(),
-                    channel_name.to_string(),
+                    device_uid,
+                    channel_name,
                     speed_fixed,
                 )
                 .await
@@ -2188,7 +2188,7 @@ fn describe_failure(failure: &DiagnosisFailure) -> String {
 }
 
 /// Build the per-device-type writer cache from an existing repos map.
-/// One `Rc<dyn DutyWriter>` per device type, reused for every write.
+/// One `Rc<RepoWriter>` per device type, reused for every write.
 fn build_duty_writers_by_type(repos_by_type: &ReposByType) -> DutyWritersByType {
     let mut writers = HashMap::with_capacity(repos_by_type.len());
     for (device_type, repo) in repos_by_type {

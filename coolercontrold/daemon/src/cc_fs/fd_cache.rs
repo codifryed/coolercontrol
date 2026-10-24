@@ -16,6 +16,7 @@
 
 use anyhow::{anyhow, Result};
 use std::fs::File;
+use std::ops::Not;
 use std::path::Path;
 
 use super::SysfsValue;
@@ -93,6 +94,22 @@ impl SysfsFdCache {
             }
             None => self.open_and_read(index),
         }
+    }
+
+    /// Writes a registered attribute by its path: open, write, close. Each `store()` stands
+    /// alone, so a held descriptor buys a write nothing and none is kept. Blocks like a read.
+    ///
+    /// # Errors
+    ///
+    /// When the slot was never registered, or the write fails.
+    pub fn write_index(&self, index: ReadIndex, data: &[u8]) -> Result<()> {
+        debug_assert!(data.is_empty().not(), "a sysfs write carries a value");
+        let entries = self.entries.borrow();
+        let Some(entry) = entries.get(usize::from(index)) else {
+            return Err(unregistered(index));
+        };
+        // The write is synchronous, so the borrow can span it and lend the path.
+        Ok(std::fs::write(&entry.path, data)?)
     }
 
     /// The path a slot was registered with, for logs and for the caller's own assertions.

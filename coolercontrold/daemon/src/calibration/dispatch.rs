@@ -31,12 +31,11 @@
 use super::curve::{DispatchPlan, MappedDuty};
 use super::state::{ChannelEntry, FanState, FanStateMap};
 use super::store::CalibrationStore;
-use super::ChannelKey;
-use crate::device::{ChannelName, DeviceUID, Duty, UID};
+use super::ChannelRef;
+use crate::device::{Duty, UID};
 use crate::repositories::repository::Repository;
 use crate::rt;
 use anyhow::Result;
-use async_trait::async_trait;
 use log::{debug, warn};
 use std::fmt;
 use std::rc::Rc;
@@ -61,7 +60,9 @@ const _: () = assert!((MAX_WALK_STEPS as usize) * (WALK_STEP_DUTY as usize) > 10
 ///
 /// Production code wraps `Rc<dyn Repository>` in `RepoWriter` (below).
 /// Tests implement this trait directly to capture the sequence of writes.
-#[async_trait(?Send)]
+/// Dispatched statically, so a write boxes no future of its own.
+// The daemon's runtime is single-threaded, so no caller needs the future to be `Send`.
+#[allow(async_fn_in_trait)]
 pub trait DutyWriter {
     async fn write_device_duty(
         &self,
@@ -85,14 +86,13 @@ impl RepoWriter {
         Self { repo }
     }
 
-    /// Convenience: returns an `Rc<dyn DutyWriter>` ready to hand to
+    /// Convenience: returns an `Rc<RepoWriter>` ready to hand to
     /// `dispatch`. Call sites typically use this form.
-    pub fn rc(repo: Rc<dyn Repository>) -> Rc<dyn DutyWriter> {
+    pub fn rc(repo: Rc<dyn Repository>) -> Rc<Self> {
         Rc::new(Self::new(repo))
     }
 }
 
-#[async_trait(?Send)]
 impl DutyWriter for RepoWriter {
     async fn write_device_duty(
         &self,
@@ -185,9 +185,6 @@ enum DispatchOutcome {
         kick_duty: Duty,
         sustain_duty: Duty,
         walk_enabled: bool,
-        key: ChannelKey,
-        device_uid: DeviceUID,
-        channel_name: ChannelName,
     },
 }
 
@@ -213,11 +210,11 @@ impl DispatchOutcome {
 ///
 /// On a smooth-curve channel transitioning out of `Off`, the kick
 /// duty is written immediately and a deferred sustain-write task is
-/// spawned via `tokio::task::spawn_local`. The clone of `state` and
-/// `writer` into the spawned task, and the name resolution its log
-/// lines need, only happen on this rare transition; the hot per-tick
-/// paths (mid-kick update, On-state write, passthrough for
-/// uncalibrated/stepped channels) do zero clones and resolve no names.
+/// spawned via `tokio::task::spawn_local`. The clone of `state`,
+/// `writer` and the channel's names into the spawned task, and the name
+/// resolution its log lines need, only happen on this rare transition;
+/// the hot per-tick paths (mid-kick update, On-state write, passthrough
+/// for uncalibrated/stepped channels) do zero clones and resolve no names.
 ///
 /// `moro_local::Scope::spawn` is intentionally not used here even
 /// though the main loop has a scope available: `dispatch` is called
@@ -229,53 +226,43 @@ impl DispatchOutcome {
 pub async fn dispatch(
     state: &Rc<FanStateMap>,
     store: &CalibrationStore,
-    writer: &Rc<dyn DutyWriter>,
-    device_uid: DeviceUID,
-    channel_name: ChannelName,
+    writer: &Rc<impl DutyWriter + 'static>,
+    device_uid: &UID,
+    channel_name: &str,
     true_duty: Duty,
 ) -> Result<AppliedDuty> {
-    let outcome = dispatch_core(state, store, writer, device_uid, channel_name, true_duty).await?;
+    let channel = ChannelRef::new(device_uid, channel_name);
+    let outcome = dispatch_core(state, store, writer, channel, true_duty).await?;
     let applied = outcome.applied();
     if let DispatchOutcome::SustainPending {
         kick_duration_ms,
         kick_duty,
         sustain_duty: _,
         walk_enabled,
-        key,
-        device_uid,
-        channel_name,
     } = outcome
     {
         let state_owned = Rc::clone(state);
         let writer_owned = Rc::clone(writer);
+        let key = channel.to_key();
         // Resolved here, on the Off -> Kicking transition only: the deferred task outlives this
         // borrow of the store, and resolving inside the error arms would repeat the work on
         // every failing walk step.
-        let log_label = store.log_device_channel(&device_uid, &channel_name);
+        let log_label = store.log_device_channel(device_uid, channel_name);
         rt::spawn(async move {
             rt::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
+            let channel = ChannelRef::from(&key);
             if walk_enabled {
                 complete_kick_with_walk(
                     &state_owned,
                     &writer_owned,
-                    &key,
-                    &device_uid,
-                    &channel_name,
+                    channel,
                     &log_label,
                     kick_duty,
                     WALK_STEP_INTERVAL_MS,
                 )
                 .await;
             } else {
-                complete_kick(
-                    &state_owned,
-                    &writer_owned,
-                    &key,
-                    &device_uid,
-                    &channel_name,
-                    &log_label,
-                )
-                .await;
+                complete_kick(&state_owned, &writer_owned, channel, &log_label).await;
             }
         });
     }
@@ -290,20 +277,17 @@ pub async fn dispatch(
 async fn dispatch_core(
     state: &Rc<FanStateMap>,
     store: &CalibrationStore,
-    writer: &Rc<dyn DutyWriter>,
-    device_uid: DeviceUID,
-    channel_name: ChannelName,
+    writer: &Rc<impl DutyWriter + 'static>,
+    channel: ChannelRef<'_>,
     true_duty: Duty,
 ) -> Result<DispatchOutcome> {
-    let key: ChannelKey = (device_uid.clone(), channel_name.clone());
-
-    if state.is_under_diagnosis(&key) {
+    if state.is_under_diagnosis(&channel) {
         return Ok(DispatchOutcome::Done(AppliedDuty::Skipped));
     }
 
-    let Some(plan) = store.dispatch_plan(&key, true_duty) else {
+    let Some(plan) = store.dispatch_plan(&channel, true_duty) else {
         writer
-            .write_device_duty(&device_uid, &channel_name, true_duty)
+            .write_device_duty(channel.device_uid, channel.channel_name, true_duty)
             .await?;
         return Ok(DispatchOutcome::Done(AppliedDuty::Unmapped));
     };
@@ -311,77 +295,43 @@ async fn dispatch_core(
     debug_assert!(plan.mapped.sustain <= 100);
 
     if true_duty == 0 {
-        handle_write_zero(state, writer, key, device_uid, channel_name).await?;
+        handle_write_zero(state, writer, channel).await?;
         return Ok(DispatchOutcome::Done(AppliedDuty::Mapped {
             device_duty: 0,
         }));
     }
-    dispatch_mapped(
-        state,
-        writer,
-        plan,
-        key,
-        device_uid,
-        channel_name,
-        true_duty,
-    )
-    .await
+    dispatch_mapped(state, writer, plan, channel, true_duty).await
 }
 
 /// Non-zero write on a smooth calibration: kick from `Off`, retarget a kick
 /// in flight, or write the sustain duty when `On`.
 async fn dispatch_mapped(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
+    writer: &Rc<impl DutyWriter + 'static>,
     plan: DispatchPlan,
-    key: ChannelKey,
-    device_uid: DeviceUID,
-    channel_name: ChannelName,
+    channel: ChannelRef<'_>,
     true_duty: Duty,
 ) -> Result<DispatchOutcome> {
     let mapped = plan.mapped;
-    let entry = state.entry(&key);
+    let entry = state.entry(&channel);
     match entry.state {
         FanState::Off => {
-            start_kick(
-                state,
-                writer,
-                &key,
-                entry,
-                mapped,
-                true_duty,
-                &device_uid,
-                &channel_name,
-            )
-            .await?;
+            start_kick(state, writer, channel, entry, mapped, true_duty).await?;
             Ok(DispatchOutcome::SustainPending {
                 kick_duration_ms: plan.kick_duration_ms,
                 kick_duty: mapped.kick,
                 sustain_duty: mapped.sustain,
                 walk_enabled: plan.walk_after_kick,
-                key,
-                device_uid,
-                channel_name,
             })
         }
         FanState::Kicking { .. } => {
-            update_kick_target(state, key, entry, mapped.sustain, true_duty);
+            update_kick_target(state, channel, entry, mapped.sustain, true_duty);
             Ok(DispatchOutcome::Done(AppliedDuty::Retargeted {
                 sustain: mapped.sustain,
             }))
         }
         FanState::On => {
-            write_sustain_on(
-                state,
-                writer,
-                key,
-                entry,
-                mapped,
-                true_duty,
-                device_uid,
-                channel_name,
-            )
-            .await?;
+            write_sustain_on(state, writer, channel, entry, mapped, true_duty).await?;
             Ok(DispatchOutcome::Done(AppliedDuty::Mapped {
                 device_duty: mapped.sustain,
             }))
@@ -392,14 +342,12 @@ async fn dispatch_mapped(
 /// Transition any state to `Off` and write 0 to hardware.
 async fn handle_write_zero(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
-    key: ChannelKey,
-    device_uid: DeviceUID,
-    channel_name: ChannelName,
+    writer: &Rc<impl DutyWriter + 'static>,
+    channel: ChannelRef<'_>,
 ) -> Result<()> {
-    let prior = state.entry(&key);
+    let prior = state.entry(&channel);
     state.replace(
-        key,
+        channel,
         ChannelEntry {
             state: FanState::Off,
             under_diagnosis: prior.under_diagnosis,
@@ -407,7 +355,7 @@ async fn handle_write_zero(
         },
     );
     writer
-        .write_device_duty(&device_uid, &channel_name, 0)
+        .write_device_duty(channel.device_uid, channel.channel_name, 0)
         .await
 }
 
@@ -416,16 +364,14 @@ async fn handle_write_zero(
 /// write returns the channel to `Off`. No spawns inside this helper.
 async fn start_kick(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
-    key: &ChannelKey,
+    writer: &Rc<impl DutyWriter + 'static>,
+    channel: ChannelRef<'_>,
     prior: ChannelEntry,
     mapped: MappedDuty,
     true_duty: Duty,
-    device_uid: &UID,
-    channel_name: &str,
 ) -> Result<()> {
     state.replace(
-        key.clone(),
+        channel,
         ChannelEntry {
             state: FanState::Kicking {
                 sustain_target: mapped.sustain,
@@ -435,15 +381,15 @@ async fn start_kick(
         },
     );
     let written = writer
-        .write_device_duty(device_uid, channel_name, mapped.kick)
+        .write_device_duty(channel.device_uid, channel.channel_name, mapped.kick)
         .await;
     if written.is_err() {
         // The caller schedules no sustain task on an error, so nothing else leaves `Kicking`.
         // Skipped when the entry moved on during the write (write-zero, diagnosis start).
-        let current = state.entry(key);
+        let current = state.entry(&channel);
         if current.state.is_kicking() {
             state.replace(
-                key.clone(),
+                channel,
                 ChannelEntry {
                     state: FanState::Off,
                     under_diagnosis: current.under_diagnosis,
@@ -460,13 +406,13 @@ async fn start_kick(
 /// re-kicking when the user oscillates the target mid-kick.
 fn update_kick_target(
     state: &Rc<FanStateMap>,
-    key: ChannelKey,
+    channel: ChannelRef<'_>,
     prior: ChannelEntry,
     new_sustain: Duty,
     true_duty: Duty,
 ) {
     state.replace(
-        key,
+        channel,
         ChannelEntry {
             state: FanState::Kicking {
                 sustain_target: new_sustain,
@@ -481,16 +427,14 @@ fn update_kick_target(
 /// sustain duty. State stays `On`.
 async fn write_sustain_on(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
-    key: ChannelKey,
+    writer: &Rc<impl DutyWriter + 'static>,
+    channel: ChannelRef<'_>,
     prior: ChannelEntry,
     mapped: MappedDuty,
     true_duty: Duty,
-    device_uid: DeviceUID,
-    channel_name: ChannelName,
 ) -> Result<()> {
     state.replace(
-        key,
+        channel,
         ChannelEntry {
             state: FanState::On,
             under_diagnosis: prior.under_diagnosis,
@@ -498,7 +442,7 @@ async fn write_sustain_on(
         },
     );
     writer
-        .write_device_duty(&device_uid, &channel_name, mapped.sustain)
+        .write_device_duty(channel.device_uid, channel.channel_name, mapped.sustain)
         .await
 }
 
@@ -507,18 +451,16 @@ async fn write_sustain_on(
 /// at the tail of `complete_kick_with_walk` and directly by unit tests.
 pub async fn complete_kick(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
-    key: &ChannelKey,
-    device_uid: &UID,
-    channel_name: &str,
+    writer: &Rc<impl DutyWriter + 'static>,
+    channel: ChannelRef<'_>,
     log_label: &str,
 ) {
     let target = {
-        let entry = state.entry(key);
+        let entry = state.entry(&channel);
         match entry.state {
             FanState::Kicking { sustain_target } => {
                 state.replace(
-                    key.clone(),
+                    channel,
                     ChannelEntry {
                         state: FanState::On,
                         under_diagnosis: entry.under_diagnosis,
@@ -533,7 +475,7 @@ pub async fn complete_kick(
     if let Some(duty) = target {
         debug!("Calibration kick finished:: {log_label} | settling at device duty: {duty}%");
         if let Err(err) = writer
-            .write_device_duty(device_uid, channel_name, duty)
+            .write_device_duty(channel.device_uid, channel.channel_name, duty)
             .await
         {
             warn!(
@@ -582,10 +524,8 @@ fn next_walk_step(channel_state: FanState, walk_position: Duty) -> WalkStep {
 
 pub async fn complete_kick_with_walk(
     state: &Rc<FanStateMap>,
-    writer: &Rc<dyn DutyWriter>,
-    key: &ChannelKey,
-    device_uid: &UID,
-    channel_name: &str,
+    writer: &Rc<impl DutyWriter + 'static>,
+    channel: ChannelRef<'_>,
     log_label: &str,
     kick_duty: Duty,
     step_interval_ms: u64,
@@ -594,14 +534,14 @@ pub async fn complete_kick_with_walk(
     let mut steps_taken: u32 = 0;
     loop {
         assert!(steps_taken < MAX_WALK_STEPS);
-        match next_walk_step(state.entry(key).state, walk_position) {
+        match next_walk_step(state.entry(&channel).state, walk_position) {
             WalkStep::Abort => return,
             WalkStep::Finalize => {
-                complete_kick(state, writer, key, device_uid, channel_name, log_label).await;
+                complete_kick(state, writer, channel, log_label).await;
                 return;
             }
             WalkStep::Write(next) => {
-                write_walk_step(writer, device_uid, channel_name, log_label, next).await;
+                write_walk_step(writer, channel, log_label, next).await;
                 walk_position = next;
                 steps_taken += 1;
                 rt::sleep(Duration::from_millis(step_interval_ms)).await;
@@ -613,15 +553,14 @@ pub async fn complete_kick_with_walk(
 /// Intermediate walk-down write. Logs and continues on error so a
 /// transient hardware failure does not abandon the fan at the kick duty.
 async fn write_walk_step(
-    writer: &Rc<dyn DutyWriter>,
-    device_uid: &UID,
-    channel_name: &str,
+    writer: &Rc<impl DutyWriter + 'static>,
+    channel: ChannelRef<'_>,
     log_label: &str,
     duty: Duty,
 ) {
     debug!("Calibration walk-down:: {log_label} | device duty: {duty}%");
     if let Err(err) = writer
-        .write_device_duty(device_uid, channel_name, duty)
+        .write_device_duty(channel.device_uid, channel.channel_name, duty)
         .await
     {
         warn!("Calibration walk-down write of device duty {duty}% failed for {log_label} - {err}");
@@ -631,6 +570,7 @@ async fn write_walk_step(
 #[cfg(test)]
 mod tests {
     use super::super::curve::{Calibration, CurveKind, DutySample};
+    use super::super::ChannelKey;
     use super::*;
 
     /// Stands in for the resolved name the production caller passes down.
@@ -659,11 +599,11 @@ mod tests {
     }
 
     impl MockWriter {
-        /// Returns the writer as the trait-object Rc the dispatch
-        /// signature expects, plus a handle to the captured writes.
-        fn make() -> (Rc<dyn DutyWriter>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
+        /// Returns the writer as the Rc the dispatch signature expects,
+        /// plus a handle to the captured writes.
+        fn make() -> (Rc<Self>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
             let writes = Rc::new(RefCell::new(Vec::new()));
-            let writer: Rc<dyn DutyWriter> = Rc::new(Self {
+            let writer = Rc::new(Self {
                 writes: Rc::clone(&writes),
                 fail_next: Rc::new(RefCell::new(false)),
             });
@@ -671,9 +611,9 @@ mod tests {
         }
 
         /// Like `make`, but the first write fails.
-        fn make_failing_first() -> (Rc<dyn DutyWriter>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
+        fn make_failing_first() -> (Rc<Self>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
             let writes = Rc::new(RefCell::new(Vec::new()));
-            let writer: Rc<dyn DutyWriter> = Rc::new(Self {
+            let writer = Rc::new(Self {
                 writes: Rc::clone(&writes),
                 fail_next: Rc::new(RefCell::new(true)),
             });
@@ -681,7 +621,6 @@ mod tests {
         }
     }
 
-    #[async_trait(?Send)]
     impl DutyWriter for MockWriter {
         async fn write_device_duty(
             &self,
@@ -760,6 +699,55 @@ mod tests {
         }
     }
 
+    /// Keeps only the last device duty written, so a write allocates nothing of its own.
+    #[cfg(feature = "gated-tests")]
+    #[derive(Default)]
+    struct LastDutyWriter {
+        last_duty: std::cell::Cell<Option<Duty>>,
+    }
+
+    #[cfg(feature = "gated-tests")]
+    impl DutyWriter for LastDutyWriter {
+        async fn write_device_duty(&self, _: &UID, _: &str, device_duty: Duty) -> Result<()> {
+            self.last_duty.set(Some(device_duty));
+            Ok(())
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_dispatch_builds_no_channel_key() {
+        // Goal: a duty write on a channel already seen clones none of its names, on both the
+        // uncalibrated passthrough and a calibrated channel that is `On`, and boxes no writer
+        // future. Method: seed each channel's entry, then count one dispatch to each.
+        let state = Rc::new(FanStateMap::new());
+        let store = CalibrationStore::empty();
+        let device_uid = "dev-a".to_string();
+        store.insert_unsaved(k("dev-a", "fan2"), smooth_cal());
+        let on = ChannelEntry {
+            state: FanState::On,
+            under_diagnosis: false,
+            commanded_true_duty: Some(30),
+        };
+        state.replace(ChannelRef::new(&device_uid, "fan2"), on);
+        let writer = Rc::new(LastDutyWriter::default());
+
+        let (applied, allocations) = crate::alloc_count::count_allocations(|| {
+            let unmapped = dispatch(&state, &store, &writer, &device_uid, "fan1", 42);
+            let mapped = dispatch(&state, &store, &writer, &device_uid, "fan2", 50);
+            (
+                crate::rt::poll_to_end(unmapped).0.expect("ok"),
+                crate::rt::poll_to_end(mapped).0.expect("ok"),
+            )
+        });
+
+        assert_eq!(applied.0, AppliedDuty::Unmapped);
+        assert!(matches!(applied.1, AppliedDuty::Mapped { .. }));
+        assert!(writer.last_duty.get().is_some());
+        assert_eq!(state.len(), 1, "the passthrough stores no entry");
+        assert_eq!(allocations, 0);
+    }
+
     #[test]
     fn uncalibrated_channel_passes_through() {
         crate::rt::test_runtime(async {
@@ -769,16 +757,9 @@ mod tests {
             let state = Rc::new(FanStateMap::new());
             let store = CalibrationStore::empty();
             let (writer, writes) = MockWriter::make();
-            let applied = dispatch(
-                &state,
-                &store,
-                &writer,
-                "dev-a".to_string(),
-                "fan1".to_string(),
-                42,
-            )
-            .await
-            .expect("ok");
+            let applied = dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 42)
+                .await
+                .expect("ok");
             assert_eq!(applied, AppliedDuty::Unmapped);
             assert_eq!(
                 writes.borrow().as_slice(),
@@ -798,16 +779,9 @@ mod tests {
             let store = CalibrationStore::empty();
             store.insert_unsaved(k("dev-a", "fan1"), stepped_cal());
             let (writer, writes) = MockWriter::make();
-            let applied = dispatch(
-                &state,
-                &store,
-                &writer,
-                "dev-a".to_string(),
-                "fan1".to_string(),
-                42,
-            )
-            .await
-            .expect("ok");
+            let applied = dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 42)
+                .await
+                .expect("ok");
             assert_eq!(applied, AppliedDuty::Unmapped);
             assert_eq!(writes.borrow().len(), 1);
             assert_eq!(writes.borrow()[0].2, 42);
@@ -826,16 +800,9 @@ mod tests {
             let store = CalibrationStore::empty();
             store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
             let (writer, writes) = MockWriter::make();
-            let applied = dispatch(
-                &state,
-                &store,
-                &writer,
-                "dev-a".to_string(),
-                "fan1".to_string(),
-                42,
-            )
-            .await
-            .expect("ok");
+            let applied = dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 42)
+                .await
+                .expect("ok");
             // Reported as skipped, so a caller does not log it as applied.
             assert_eq!(applied, AppliedDuty::Skipped);
             assert!(writes.borrow().is_empty());
@@ -856,16 +823,10 @@ mod tests {
                     let store = CalibrationStore::empty();
                     store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
                     let (writer, writes) = MockWriter::make();
-                    let applied = dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        50,
-                    )
-                    .await
-                    .expect("ok");
+                    let applied =
+                        dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 50)
+                            .await
+                            .expect("ok");
                     // One write so far: the kick. The sustain write is
                     // scheduled via spawn_local; we never drive the timer in
                     // this test, so the spawned future never fires before
@@ -911,30 +872,17 @@ mod tests {
                     let (writer, writes) = MockWriter::make_failing_first();
                     let mapped = smooth_cal().true_to_device(50).expect("smooth");
 
-                    let failed = dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        50,
-                    )
-                    .await;
+                    let failed =
+                        dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 50).await;
                     assert!(failed.is_err());
                     assert!(writes.borrow().is_empty());
                     // The prior entry is back: the failed duty was never commanded.
                     assert_eq!(state.entry(&key), ChannelEntry::default_off());
 
-                    let applied = dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        50,
-                    )
-                    .await
-                    .expect("retry kicks");
+                    let applied =
+                        dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 50)
+                            .await
+                            .expect("retry kicks");
                     assert_eq!(
                         applied,
                         AppliedDuty::Kick {
@@ -970,26 +918,13 @@ mod tests {
                     let store = CalibrationStore::empty();
                     store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
                     let (writer, writes) = MockWriter::make();
-                    dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        50,
-                    )
-                    .await
-                    .expect("kick");
-                    let applied = dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        0,
-                    )
-                    .await
-                    .expect("zero");
+                    dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 50)
+                        .await
+                        .expect("kick");
+                    let applied =
+                        dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 0)
+                            .await
+                            .expect("zero");
                     assert_eq!(applied, AppliedDuty::Mapped { device_duty: 0 });
                     let log = writes.borrow().clone();
                     assert_eq!(log.len(), 2);
@@ -997,15 +932,7 @@ mod tests {
                     assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
                     // Now finalize the kick manually; should be a no-op
                     // because state has moved to Off.
-                    complete_kick(
-                        &state,
-                        &writer,
-                        &k("dev-a", "fan1"),
-                        &"dev-a".to_string(),
-                        "fan1",
-                        LABEL,
-                    )
-                    .await;
+                    complete_kick(&state, &writer, (&k("dev-a", "fan1")).into(), LABEL).await;
                     assert_eq!(writes.borrow().len(), 2);
                     assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
                 })
@@ -1027,27 +954,14 @@ mod tests {
                     store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
                     let (writer, writes) = MockWriter::make();
                     let cal = smooth_cal();
-                    dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        50,
-                    )
-                    .await
-                    .expect("kick");
+                    dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 50)
+                        .await
+                        .expect("kick");
                     assert_eq!(writes.borrow().len(), 1);
-                    let applied = dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        70,
-                    )
-                    .await
-                    .expect("mid-kick update");
+                    let applied =
+                        dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 70)
+                            .await
+                            .expect("mid-kick update");
                     assert_eq!(writes.borrow().len(), 1, "no extra hardware write");
                     let expected_sustain = cal.true_to_device(70).expect("smooth").sustain;
                     assert_eq!(
@@ -1064,15 +978,7 @@ mod tests {
                     );
                     // Finalize manually: now the second sustain target
                     // should be written, state becomes On.
-                    complete_kick(
-                        &state,
-                        &writer,
-                        &k("dev-a", "fan1"),
-                        &"dev-a".to_string(),
-                        "fan1",
-                        LABEL,
-                    )
-                    .await;
+                    complete_kick(&state, &writer, (&k("dev-a", "fan1")).into(), LABEL).await;
                     assert_eq!(writes.borrow().len(), 2);
                     assert_eq!(writes.borrow()[1].2, expected_sustain);
                     assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::On);
@@ -1094,7 +1000,7 @@ mod tests {
                     let state = Rc::new(FanStateMap::new());
                     let key = k("dev-a", "fan1");
                     state.replace(
-                        key.clone(),
+                        (&key).into(),
                         ChannelEntry {
                             state: FanState::On,
                             under_diagnosis: false,
@@ -1104,16 +1010,10 @@ mod tests {
                     let store = CalibrationStore::empty();
                     store.insert_unsaved(key.clone(), smooth_cal());
                     let (writer, writes) = MockWriter::make();
-                    let applied = dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        80,
-                    )
-                    .await
-                    .expect("ok");
+                    let applied =
+                        dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 80)
+                            .await
+                            .expect("ok");
                     let expected = smooth_cal().true_to_device(80).expect("smooth").sustain;
                     assert_eq!(
                         applied,
@@ -1139,7 +1039,7 @@ mod tests {
             let state = Rc::new(FanStateMap::new());
             let key = k("dev-a", "fan1");
             state.replace(
-                key.clone(),
+                (&key).into(),
                 ChannelEntry {
                     state: FanState::Off,
                     under_diagnosis: false,
@@ -1147,7 +1047,7 @@ mod tests {
                 },
             );
             let (writer, writes) = MockWriter::make();
-            complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1", LABEL).await;
+            complete_kick(&state, &writer, (&key).into(), LABEL).await;
             assert!(writes.borrow().is_empty());
             assert_eq!(state.entry(&key).state, FanState::Off);
         });
@@ -1168,7 +1068,7 @@ mod tests {
             let key = k("dev-a", "fan1");
             let (writer, writes) = MockWriter::make();
             state.replace(
-                key.clone(),
+                (&key).into(),
                 ChannelEntry {
                     state: FanState::Kicking { sustain_target: 5 },
                     under_diagnosis: false,
@@ -1181,9 +1081,7 @@ mod tests {
             complete_kick_with_walk(
                 &state,
                 &writer,
-                &key,
-                &"dev-a".to_string(),
-                "fan1",
+                (&key).into(),
                 LABEL,
                 20,
                 TEST_STEP_INTERVAL_MS,
@@ -1211,7 +1109,7 @@ mod tests {
             let key = k("dev-a", "fan1");
             let (writer, writes) = MockWriter::make();
             state.replace(
-                key.clone(),
+                (&key).into(),
                 ChannelEntry {
                     state: FanState::Kicking { sustain_target: 50 },
                     under_diagnosis: false,
@@ -1221,9 +1119,7 @@ mod tests {
             complete_kick_with_walk(
                 &state,
                 &writer,
-                &key,
-                &"dev-a".to_string(),
-                "fan1",
+                (&key).into(),
                 LABEL,
                 50,
                 TEST_STEP_INTERVAL_MS,
@@ -1285,7 +1181,7 @@ mod tests {
             let key = k("dev-a", "fan1");
             let (writer, writes) = MockWriter::make();
             state.replace(
-                key.clone(),
+                (&key).into(),
                 ChannelEntry {
                     state: FanState::Off,
                     under_diagnosis: false,
@@ -1295,9 +1191,7 @@ mod tests {
             complete_kick_with_walk(
                 &state,
                 &writer,
-                &key,
-                &"dev-a".to_string(),
-                "fan1",
+                (&key).into(),
                 LABEL,
                 30,
                 TEST_STEP_INTERVAL_MS,
@@ -1323,16 +1217,9 @@ mod tests {
             cal.kick_duration_override_ms = Some(0);
             store.insert_unsaved(k("dev-a", "fan1"), cal.clone());
             let (writer, writes) = MockWriter::make();
-            dispatch(
-                &state,
-                &store,
-                &writer,
-                "dev-a".to_string(),
-                "fan1".to_string(),
-                50,
-            )
-            .await
-            .expect("kick");
+            dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 50)
+                .await
+                .expect("kick");
             // Kick is written synchronously.
             assert_eq!(writes.borrow().len(), 1);
             let mapped = cal.true_to_device(50).expect("smooth");
@@ -1367,60 +1254,32 @@ mod tests {
                     let (writer, _writes) = MockWriter::make();
 
                     // Off -> Kicking with commanded=50.
-                    dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        50,
-                    )
-                    .await
-                    .expect("kick");
+                    dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 50)
+                        .await
+                        .expect("kick");
                     assert_eq!(state.entry(&key).commanded_true_duty, Some(50));
 
                     // Mid-kick update to commanded=70.
-                    dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        70,
-                    )
-                    .await
-                    .expect("update");
+                    dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 70)
+                        .await
+                        .expect("update");
                     assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
 
                     // Finalize the kick so state moves to On.
-                    complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1", LABEL).await;
+                    complete_kick(&state, &writer, (&key).into(), LABEL).await;
                     assert_eq!(state.entry(&key).state, FanState::On);
                     assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
 
                     // On-state write at commanded=40.
-                    dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        40,
-                    )
-                    .await
-                    .expect("on-write");
+                    dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 40)
+                        .await
+                        .expect("on-write");
                     assert_eq!(state.entry(&key).commanded_true_duty, Some(40));
 
                     // Write-zero clears the channel and records the zero command.
-                    dispatch(
-                        &state,
-                        &store,
-                        &writer,
-                        "dev-a".to_string(),
-                        "fan1".to_string(),
-                        0,
-                    )
-                    .await
-                    .expect("zero");
+                    dispatch(&state, &store, &writer, &"dev-a".to_string(), "fan1", 0)
+                        .await
+                        .expect("zero");
                     assert_eq!(state.entry(&key).state, FanState::Off);
                     assert_eq!(state.entry(&key).commanded_true_duty, Some(0));
                 })

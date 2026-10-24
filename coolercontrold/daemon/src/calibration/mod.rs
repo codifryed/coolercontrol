@@ -28,7 +28,7 @@ pub use diagnoser::{
     DiagnosisProgress, DiagnosisSettings, HottestTemp, SettingsSnapshot, SnapshotKind,
     CALIBRATION_TEMP_HINT,
 };
-pub use dispatch::{dispatch, DutyWriter, RepoWriter};
+pub use dispatch::{dispatch, RepoWriter};
 pub use registry::DiagnosisRegistry;
 pub use state::FanStateMap;
 // Parameter and return types of `FanStateMap`'s public entry/replace
@@ -38,9 +38,50 @@ pub use state::{ChannelEntry, FanState};
 pub use store::{validate, CalibrationEntry, CalibrationStore};
 
 use crate::device::{ChannelName, DeviceUID};
+use std::hash::{Hash, Hasher};
 
 /// Identifies a calibratable channel uniquely within the daemon.
 pub type ChannelKey = (DeviceUID, ChannelName);
+
+/// A `ChannelKey` by borrowed parts, so a lookup on the duty write path builds no owned key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelRef<'a> {
+    pub device_uid: &'a DeviceUID,
+    pub channel_name: &'a str,
+}
+
+impl<'a> ChannelRef<'a> {
+    pub fn new(device_uid: &'a DeviceUID, channel_name: &'a str) -> Self {
+        Self {
+            device_uid,
+            channel_name,
+        }
+    }
+
+    pub fn to_key(self) -> ChannelKey {
+        (self.device_uid.clone(), self.channel_name.to_owned())
+    }
+}
+
+impl<'a> From<&'a ChannelKey> for ChannelRef<'a> {
+    fn from(key: &'a ChannelKey) -> Self {
+        Self::new(&key.0, &key.1)
+    }
+}
+
+/// Hashes exactly as the `ChannelKey` tuple it names, field by field, which `Equivalent` needs.
+impl Hash for ChannelRef<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.device_uid.hash(state);
+        self.channel_name.hash(state);
+    }
+}
+
+impl indexmap::Equivalent<ChannelKey> for ChannelRef<'_> {
+    fn equivalent(&self, key: &ChannelKey) -> bool {
+        *self.device_uid == key.0 && self.channel_name == key.1
+    }
+}
 
 /// Preflight gate: an alert already Active on a channel blocks calibrating it.
 /// Suppression only exists for alerts a sweep would cause; one that fired
