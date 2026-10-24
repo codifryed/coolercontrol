@@ -26,7 +26,7 @@ use crate::device::{ChannelAttribute, DeviceType, Duty, MAX_CHANNEL_ATTRIBUTES, 
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{AMDDriverInfo, GpuAMD, TEMP_FOR_FAN_CURVE};
-use crate::repositories::gpu::nvidia::{GpuNVidia, NvmlInitResult};
+use crate::repositories::gpu::nvidia::{self, GpuNVidia, NvmlInitResult};
 use crate::repositories::hwmon::attributes;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
@@ -222,7 +222,10 @@ impl GpuRepo {
                     .or_else(|| Some(env_nvml.trim().to_lowercase() != "off"))
             })
             .unwrap_or(true);
-        let nvidia_dev_count = if self.force_nvidia_cli || nvml_enabled.not() {
+        let nvidia_dev_count = if nvidia::nvidia_gpu_may_be_present().await.not() {
+            info!("No NVIDIA GPU or driver found, skipping NVML and nvidia-smi.");
+            0
+        } else if self.force_nvidia_cli || nvml_enabled.not() {
             self.gpus_nvidia
                 .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
                 .await
