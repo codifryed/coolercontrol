@@ -2087,43 +2087,14 @@ async fn run_one_pending_write(task: &WriterTask, channel_index: usize, mut pend
         pending.waiter.send(Ok(()));
         return;
     }
-    let driver_name = task.driver.name.as_str();
-    let acquire: Result<SemaphorePermit<'_>, String> = tokio::select! {
-        () = task.shutdown.cancelled() => Err(format!(
-            "HWMon write cancelled for {driver_name}:{channel_name}: daemon shutting down"
-        )),
-        () = rt::sleep(task.write_permit_timeout) => Err(format!(
-            "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
-             fan speed. There will be significant issues handling this device due to extreme lag."
-        )),
-        permit = task.semaphore.acquire() => permit.map_err(|e| format!(
-            "HWMon write failed for {driver_name}:{channel_name}: semaphore closed ({e})"
-        )),
-    };
-    let permit = match acquire {
+    let permit = match acquire_write_permit(task, channel_name).await {
         Ok(permit) => permit,
         Err(message) => {
             pending.waiter.send(Err(message));
             return;
         }
     };
-    // Refresh the target right before issuing the write. On a slow
-    // device the buffer takes long enough to drain that the engine's
-    // next tick has often already enqueued a newer target for this
-    // channel; without this swap we would commit a stale duty to
-    // hardware (visible as fans bumping to outdated values), then
-    // immediately overwrite it on the next wave. Sync borrow only;
-    // released before the await.
-    let fresh = {
-        let mut mailbox_pending = task.mailbox.pending.borrow_mut();
-        mailbox_pending
-            .get_mut(channel_index)
-            .and_then(Option::take)
-    };
-    if let Some(fresh) = fresh {
-        pending.waiter.send(Ok(()));
-        pending = fresh;
-    }
+    pending = take_fresher_pending(task, channel_index, pending);
     // Re-check write-skip with the (possibly updated) target so a
     // refreshed value that already matches preloaded duty does not
     // cost a sysfs write. Still bypassed when `force_write` is set:
@@ -2135,9 +2106,8 @@ async fn run_one_pending_write(task: &WriterTask, channel_index: usize, mut pend
         return;
     }
     debug!(
-        "Applying HWMON device: {driver_name} channel: {channel_name}; \
-         Device Duty: {}%",
-        pending.target_duty
+        "Applying HWMON device: {} channel: {channel_name}; Device Duty: {}%",
+        task.driver.name, pending.target_duty
     );
     let result = apply_pwm_duty_write(&task.config, &task.driver, channel, pending.target_duty)
         .await
@@ -2145,25 +2115,77 @@ async fn run_one_pending_write(task: &WriterTask, channel_index: usize, mut pend
     apply_device_command_delay(task.delay_millis).await;
     drop(permit);
     if result.is_ok() {
-        // Update `last_known`; `next_verify_at` is unchanged so
-        // writes do not reset the verification clock.
-        if let Some(cache) = task.duty_cache.as_ref() {
-            let mut entries = cache.borrow_mut();
-            // Looked up first, so only a channel's first cached write builds a key.
-            if let Some(entry) = entries.get_mut(channel_name) {
-                entry.last_known = pending.target_duty;
-            } else {
-                entries.insert(
-                    channel_name.to_owned(),
-                    DutyCacheEntry {
-                        last_known: pending.target_duty,
-                        next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
-                    },
-                );
-            }
-        }
+        record_written_duty(task, channel_name, pending.target_duty);
     }
     pending.waiter.send(result);
+}
+
+/// Waits for the device's write permit, giving up on shutdown or after the permit timeout.
+async fn acquire_write_permit<'t>(
+    task: &'t WriterTask,
+    channel_name: &str,
+) -> Result<SemaphorePermit<'t>, String> {
+    let driver_name = task.driver.name.as_str();
+    tokio::select! {
+        () = task.shutdown.cancelled() => Err(format!(
+            "HWMon write cancelled for {driver_name}:{channel_name}: daemon shutting down"
+        )),
+        () = rt::sleep(task.write_permit_timeout) => Err(format!(
+            "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
+             fan speed. There will be significant issues handling this device due to extreme lag."
+        )),
+        permit = task.semaphore.acquire() => permit.map_err(|e| format!(
+            "HWMon write failed for {driver_name}:{channel_name}: semaphore closed ({e})"
+        )),
+    }
+}
+
+/// Refreshes the target right before issuing the write. On a slow
+/// device the buffer takes long enough to drain that the engine's
+/// next tick has often already enqueued a newer target for this
+/// channel; without this swap we would commit a stale duty to
+/// hardware (visible as fans bumping to outdated values), then
+/// immediately overwrite it on the next wave. The superseded write
+/// is answered `Ok`. Sync borrow only.
+fn take_fresher_pending(
+    task: &WriterTask,
+    channel_index: usize,
+    pending: PendingWrite,
+) -> PendingWrite {
+    let fresh = task
+        .mailbox
+        .pending
+        .borrow_mut()
+        .get_mut(channel_index)
+        .and_then(Option::take);
+    let Some(fresh) = fresh else {
+        return pending;
+    };
+    debug_assert!(fresh.target_duty <= 100, "enqueue_pending_write validates");
+    pending.waiter.send(Ok(()));
+    fresh
+}
+
+/// Records a written duty as the slow device's `last_known`. `next_verify_at` is unchanged,
+/// so writes do not reset the verification clock.
+fn record_written_duty(task: &WriterTask, channel_name: &str, duty: Duty) {
+    debug_assert!(duty <= 100, "only a validated duty is written");
+    let Some(cache) = task.duty_cache.as_ref() else {
+        return;
+    };
+    let mut entries = cache.borrow_mut();
+    // Looked up first, so only a channel's first cached write builds a key.
+    if let Some(entry) = entries.get_mut(channel_name) {
+        entry.last_known = duty;
+    } else {
+        entries.insert(
+            channel_name.to_owned(),
+            DutyCacheEntry {
+                last_known: duty,
+                next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
+            },
+        );
+    }
 }
 
 /// Removes and returns whether `channel_name` had the
