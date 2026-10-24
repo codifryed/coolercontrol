@@ -87,11 +87,13 @@ impl<T> ReplyPool<T> {
     }
 
     fn give_back(&self, slot: Arc<Slot<T>>) {
+        // Paired with the checks in `channel`: only a slot whose reply was read comes back.
+        debug_assert!(slot.closed.load(Ordering::Acquire).not());
+        debug_assert!(slot.abandoned.load(Ordering::Acquire).not());
         let mut spare = self.spare.borrow_mut();
         if spare.len() < SPARE_MAX {
             spare.push(slot);
         }
-        debug_assert!(spare.len() <= SPARE_MAX);
     }
 
     #[cfg(test)]
