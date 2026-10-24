@@ -7,6 +7,7 @@
 //! IO and a request stalled inside liqctld parks only its own device's thread. Health follows the
 //! rules of a sysfs device: enough timeouts in a row take a device out of rotation until its next
 //! probe. A control thread serves the calls that belong to no device.
+use std::future::Future;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::thread;
@@ -31,6 +32,7 @@ use crate::repositories::liquidctl::liqctld_http::{
     Endpoint, LiqctldHttp, Method, LIQCTLD_RESPONSE_TIMEOUT,
 };
 use crate::rt;
+use crate::rt::reply::{ReplyPool, ReplySender};
 
 /// Budget for every device call but status. Matches the socket timeout, which covers
 /// liquidctl's own 9.5 s job timeout.
@@ -47,6 +49,34 @@ const NO_BODY: Option<&()> = None;
 
 type Reply<T> = oneshot::Sender<Result<T>>;
 
+/// Where a worker hands its result: a oneshot, or the recycled channel the per-tick status uses.
+trait ReplyTo<T> {
+    /// Whether the caller stopped waiting.
+    fn is_closed(&self) -> bool;
+    /// A caller that already timed out never reads it. Expected, not an error.
+    fn send(self, result: Result<T>);
+}
+
+impl<T> ReplyTo<T> for Reply<T> {
+    fn is_closed(&self) -> bool {
+        oneshot::Sender::is_closed(self)
+    }
+
+    fn send(self, result: Result<T>) {
+        let _ = oneshot::Sender::send(self, result);
+    }
+}
+
+impl<T> ReplyTo<T> for ReplySender<Result<T>> {
+    fn is_closed(&self) -> bool {
+        ReplySender::is_closed(self)
+    }
+
+    fn send(self, result: Result<T>) {
+        ReplySender::send(self, result);
+    }
+}
+
 /// Work for a device's worker. Every payload is plain data, so the thread boundary needs no
 /// shared ownership and no lock.
 #[derive(Debug)]
@@ -54,7 +84,7 @@ pub enum Request {
     /// `recycled` is last tick's lines, which the reply is parsed into.
     Status {
         recycled: LCStatus,
-        reply: Reply<StatusResponse>,
+        reply: ReplySender<Result<StatusResponse>>,
     },
     Initialize {
         body: InitializeRequest,
@@ -112,7 +142,8 @@ trait Job {
 impl Job for Request {
     fn is_abandoned(&self) -> bool {
         match self {
-            Self::Status { reply, .. } | Self::Initialize { reply, .. } => reply.is_closed(),
+            Self::Status { reply, .. } => reply.is_closed(),
+            Self::Initialize { reply, .. } => reply.is_closed(),
             Self::Legacy690 { reply } => reply.is_closed(),
             Self::Reconnect { reply }
             | Self::DirectAccess { reply }
@@ -141,6 +172,8 @@ pub struct LiqctldIo {
     tx: mpsc::Sender<Request>,
     status_timeout: Duration,
     state: HealthState,
+    /// Reply channels for the per-tick status, kept so a warm one allocates nothing.
+    status_replies: ReplyPool<Result<StatusResponse>>,
 }
 
 impl LiqctldIo {
@@ -165,31 +198,33 @@ impl LiqctldIo {
             tx,
             status_timeout,
             state: HealthState::new(device_name),
+            status_replies: ReplyPool::default(),
         })
     }
 
     /// The device's current status, within the poll-rate budget, parsed into `recycled`.
     pub async fn status(&self, recycled: LCStatus) -> Result<StatusResponse> {
-        self.dispatch("status", self.status_timeout, |reply| Request::Status {
-            recycled,
-            reply,
-        })
+        self.dispatch(
+            "status",
+            self.status_timeout,
+            || self.status_replies.channel(),
+            |reply| Request::Status { recycled, reply },
+        )
         .await
     }
 
     pub async fn initialize(&self, pump_mode: Option<String>) -> Result<StatusResponse> {
         let body = InitializeRequest { pump_mode };
-        self.dispatch("initialize", COMMAND_TIMEOUT, |reply| Request::Initialize {
-            body,
-            reply,
+        self.dispatch("initialize", COMMAND_TIMEOUT, oneshot::channel, |reply| {
+            Request::Initialize { body, reply }
         })
         .await
     }
 
     /// Sets the device to legacy 690 mode (old Krakens and the EVGA CLC).
     pub async fn put_legacy690(&self) -> Result<DeviceResponse> {
-        self.dispatch("legacy690", COMMAND_TIMEOUT, |reply| Request::Legacy690 {
-            reply,
+        self.dispatch("legacy690", COMMAND_TIMEOUT, oneshot::channel, |reply| {
+            Request::Legacy690 { reply }
         })
         .await
     }
@@ -200,17 +235,20 @@ impl LiqctldIo {
     /// every device, and keeps the driver object, so a legacy690 flip and a forced direct access
     /// survive it. The device still has to be re-initialized afterwards.
     pub async fn put_reconnect(&self) -> Result<()> {
-        self.dispatch("reconnect", COMMAND_TIMEOUT, |reply| Request::Reconnect {
-            reply,
+        self.dispatch("reconnect", COMMAND_TIMEOUT, oneshot::channel, |reply| {
+            Request::Reconnect { reply }
         })
         .await
     }
 
     /// Forces direct access, before the device is initialized.
     pub async fn put_direct_access(&self) -> Result<()> {
-        self.dispatch("direct access", COMMAND_TIMEOUT, |reply| {
-            Request::DirectAccess { reply }
-        })
+        self.dispatch(
+            "direct access",
+            COMMAND_TIMEOUT,
+            oneshot::channel,
+            |reply| Request::DirectAccess { reply },
+        )
         .await
     }
 
@@ -219,7 +257,7 @@ impl LiqctldIo {
             channel: channel_name.to_owned(),
             duty,
         };
-        self.dispatch("fixed speed", COMMAND_TIMEOUT, |reply| {
+        self.dispatch("fixed speed", COMMAND_TIMEOUT, oneshot::channel, |reply| {
             Request::FixedSpeed { body, reply }
         })
         .await
@@ -236,9 +274,12 @@ impl LiqctldIo {
             profile: profile.to_vec(),
             temperature_sensor,
         };
-        self.dispatch("speed profile", COMMAND_TIMEOUT, |reply| {
-            Request::SpeedProfile { body, reply }
-        })
+        self.dispatch(
+            "speed profile",
+            COMMAND_TIMEOUT,
+            oneshot::channel,
+            |reply| Request::SpeedProfile { body, reply },
+        )
         .await
     }
 
@@ -247,16 +288,15 @@ impl LiqctldIo {
             channel: channel_name.to_owned(),
             desired_state: control_mode.to_owned(),
         };
-        self.dispatch("control mode", COMMAND_TIMEOUT, |reply| {
+        self.dispatch("control mode", COMMAND_TIMEOUT, oneshot::channel, |reply| {
             Request::ControlMode { body, reply }
         })
         .await
     }
 
     pub async fn put_color(&self, body: ColorRequest) -> Result<()> {
-        self.dispatch("color", COMMAND_TIMEOUT, |reply| Request::Color {
-            body,
-            reply,
+        self.dispatch("color", COMMAND_TIMEOUT, oneshot::channel, |reply| {
+            Request::Color { body, reply }
         })
         .await
     }
@@ -273,9 +313,8 @@ impl LiqctldIo {
             mode: mode.to_owned(),
             value,
         };
-        self.dispatch("screen", COMMAND_TIMEOUT, |reply| Request::Screen {
-            body,
-            reply,
+        self.dispatch("screen", COMMAND_TIMEOUT, oneshot::channel, |reply| {
+            Request::Screen { body, reply }
         })
         .await
     }
@@ -329,14 +368,17 @@ impl LiqctldIo {
     ///
     /// Only a timeout counts against the device's health. An error coming back means liqctld
     /// answered, which says nothing about whether the device is wedged.
-    async fn dispatch<T, F>(
+    ///
+    /// `channel` makes the reply channel, and is called only once the request will be sent.
+    async fn dispatch<T, Tx, Rx, E>(
         &self,
         what: &'static str,
         budget: Duration,
-        make_request: F,
+        channel: impl FnOnce() -> (Tx, Rx),
+        make_request: impl FnOnce(Tx) -> Request,
     ) -> Result<T>
     where
-        F: FnOnce(Reply<T>) -> Request,
+        Rx: Future<Output = std::result::Result<Result<T>, E>>,
     {
         debug_assert!(what.is_empty().not());
         debug_assert!(budget > Duration::ZERO);
@@ -345,7 +387,7 @@ impl LiqctldIo {
         if self.state.dispatchable().not() {
             return Err(unreachable(self.state.device_name(), what));
         }
-        let (reply_tx, reply_rx) = oneshot::channel();
+        let (reply_tx, reply_rx) = channel();
         let gone = || worker_gone(self.state.device_name());
         let request = make_request(reply_tx);
         let Some(result) = round_trip(&self.tx, request, reply_rx, budget, gone).await else {
@@ -435,10 +477,10 @@ impl LiqctldControl {
 }
 
 /// Queues `request` and waits for its reply. `None` when `budget` ran out first.
-async fn round_trip<R, T>(
+async fn round_trip<R, T, E>(
     tx: &mpsc::Sender<R>,
     request: R,
-    reply_rx: oneshot::Receiver<Result<T>>,
+    reply_rx: impl Future<Output = std::result::Result<Result<T>, E>>,
     budget: Duration,
     gone: impl Fn() -> anyhow::Error,
 ) -> Option<Result<T>> {
@@ -529,10 +571,9 @@ fn serve_control(http: &mut LiqctldHttp, request: ControlRequest) {
 }
 
 /// Runs `work` while its caller waits, then hands the caller the result.
-fn answer<T>(reply: Reply<T>, work: impl FnOnce(&dyn Fn() -> bool) -> Result<T>) {
+fn answer<T>(reply: impl ReplyTo<T>, work: impl FnOnce(&dyn Fn() -> bool) -> Result<T>) {
     let result = work(&|| reply.is_closed());
-    // A dropped receiver means the caller already timed out. Expected, not an error.
-    let _ = reply.send(result);
+    reply.send(result);
 }
 
 /// One exchange on a device's path, with its reply parsed here rather than on the main thread.
@@ -850,6 +891,11 @@ mod tests {
                 ("Liquid temperature", "31.5")
             );
             assert_eq!((line.0.as_ptr(), line.1.as_ptr()), buffers);
+            assert_eq!(
+                io.status_replies.spare_count(),
+                1,
+                "the reply channel is kept for the next status"
+            );
         });
     }
 
@@ -922,6 +968,11 @@ mod tests {
                 DeviceHealth::Degraded {
                     consecutive_timeouts: 1
                 }
+            );
+            assert_eq!(
+                io.status_replies.spare_count(),
+                0,
+                "a timed out reply channel waits for its late reply, never reused"
             );
         });
     }

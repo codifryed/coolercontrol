@@ -28,6 +28,8 @@ struct Slot<T> {
     value: Mutex<Option<T>>,
     /// Set only by a sender dropped without replying.
     closed: AtomicBool,
+    /// Set only by a reply dropped before it resolved, so the worker can skip the work.
+    abandoned: AtomicBool,
     waker: AtomicWaker,
 }
 
@@ -68,10 +70,12 @@ impl<T> ReplyPool<T> {
             Arc::new(Slot {
                 value: Mutex::new(None),
                 closed: AtomicBool::new(false),
+                abandoned: AtomicBool::new(false),
                 waker: AtomicWaker::new(),
             })
         });
         debug_assert!(slot.closed.load(Ordering::Acquire).not());
+        debug_assert!(slot.abandoned.load(Ordering::Acquire).not());
         let sender = ReplySender {
             slot: Some(Arc::clone(&slot)),
         };
@@ -110,6 +114,13 @@ impl<T> std::fmt::Debug for ReplySender<T> {
 }
 
 impl<T> ReplySender<T> {
+    /// Whether the request was given up on, so its reply would never be read.
+    pub fn is_closed(&self) -> bool {
+        self.slot
+            .as_ref()
+            .is_none_or(|slot| slot.abandoned.load(Ordering::Acquire))
+    }
+
     /// Hands the value to the waiting request. A request already given up on never reads it.
     pub fn send(mut self, value: T) {
         let slot = self.slot.take().expect("a sender replies once");
@@ -153,6 +164,15 @@ impl<T> Reply<'_, T> {
             return Some(Err(Closed));
         }
         None
+    }
+}
+
+impl<T> Drop for Reply<'_, T> {
+    fn drop(&mut self) {
+        // A resolved reply has already given its slot back or let it go.
+        if let Some(slot) = self.slot.take() {
+            slot.abandoned.store(true, Ordering::Release);
+        }
     }
 }
 
@@ -234,6 +254,29 @@ mod tests {
         assert!(reply.as_mut().poll(&mut context).is_pending());
         sender.send("fresh");
         assert_eq!(reply.poll(&mut context), Poll::Ready(Ok("fresh")));
+    }
+
+    #[test]
+    fn a_dropped_reply_tells_the_worker_to_skip_the_work() {
+        let pool = ReplyPool::<u32>::default();
+        let (sender, reply) = pool.channel();
+        assert!(sender.is_closed().not());
+
+        drop(reply);
+
+        assert!(sender.is_closed());
+    }
+
+    #[test]
+    fn a_recycled_slot_starts_open() {
+        let pool = ReplyPool::default();
+        let (sender, reply) = pool.channel();
+        sender.send(1_u32);
+        crate::rt::poll_to_end(reply).0.unwrap();
+
+        let (sender, _reply) = pool.channel();
+
+        assert!(sender.is_closed().not());
     }
 
     #[test]
