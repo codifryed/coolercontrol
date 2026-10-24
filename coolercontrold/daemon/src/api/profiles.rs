@@ -63,10 +63,17 @@ fn validate_profile(profile: &Profile) -> Result<(), CCError> {
             msg: "Invalid Profile UID, cannot be empty".to_string(),
         });
     }
-    if profile.p_type() == ProfileType::Fixed && profile.speed_fixed().is_none() {
-        return Err(CCError::UserError {
-            msg: "A Fixed profile must have a fixed speed".to_string(),
-        });
+    if profile.p_type() == ProfileType::Fixed {
+        let Some(speed_fixed) = profile.speed_fixed() else {
+            return Err(CCError::UserError {
+                msg: "A Fixed profile must have a fixed speed".to_string(),
+            });
+        };
+        if speed_fixed > 100 {
+            return Err(CCError::UserError {
+                msg: "A Fixed profile must have a fixed speed of 100 or less".to_string(),
+            });
+        }
     } else if profile.p_type() == ProfileType::Mix {
         if profile.member_profile_uids().is_empty() {
             return Err(CCError::UserError {
@@ -139,4 +146,36 @@ pub struct ProfilesDto {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ProfilePath {
     profile_uid: ProfileUID,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::setting::ProfileKind;
+
+    fn fixed_profile(speed_fixed: Option<u8>) -> Profile {
+        Profile {
+            uid: "prof-1".to_string(),
+            name: "Fixed".to_string(),
+            function_uid: "fn-1".to_string(),
+            kind: ProfileKind::Fixed { speed_fixed },
+        }
+    }
+
+    #[test]
+    fn a_fixed_speed_from_0_to_100_is_valid() {
+        assert!(validate_profile(&fixed_profile(Some(0))).is_ok());
+        assert!(validate_profile(&fixed_profile(Some(100))).is_ok());
+    }
+
+    #[test]
+    fn a_fixed_speed_above_100_is_rejected() {
+        assert!(validate_profile(&fixed_profile(Some(101))).is_err());
+        assert!(validate_profile(&fixed_profile(Some(u8::MAX))).is_err());
+    }
+
+    #[test]
+    fn a_fixed_profile_without_a_speed_is_rejected() {
+        assert!(validate_profile(&fixed_profile(None)).is_err());
+    }
 }
