@@ -5,9 +5,10 @@ use axum::extract::{Path, Query, State};
 use axum::Json;
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::api::devices::{DeviceChannelPath, DevicePath};
 use crate::api::{AppState, CCError};
@@ -87,6 +88,21 @@ pub struct StatusQuery {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StatusResponse {
     pub devices: Vec<DeviceStatusDto>,
+}
+
+/// The SSE form of [`StatusResponse`], serialized the same: one tick's devices, shared by every
+/// subscriber so none of them copies them.
+#[derive(Debug, Clone, Serialize)]
+pub struct SharedStatusResponse {
+    #[serde(serialize_with = "serialize_shared_devices")]
+    pub devices: Arc<[DeviceStatusDto]>,
+}
+
+fn serialize_shared_devices<S: Serializer>(
+    devices: &Arc<[DeviceStatusDto]>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    devices.as_ref().serialize(serializer)
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
