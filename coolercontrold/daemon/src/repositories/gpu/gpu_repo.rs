@@ -14,8 +14,8 @@ use crate::diagnostics::support::HardwareSupportController;
 use crate::rt;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use futures_util::future::{join, join_all};
 use log::{debug, error, info, trace, warn};
-use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use strum::{Display, EnumString};
@@ -250,13 +250,16 @@ impl GpuRepo {
         amd_drivers
     }
 
-    pub fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
+    pub async fn load_amd_statuses(&self) {
         let read_permit_timeout = self.device_read_permit_timeout;
-        for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
-            if let Some(device_lock) = self.devices.get(uid) {
-                let type_index = device_lock.borrow().type_index;
+        let reads = self
+            .gpus_amd
+            .amd_driver_infos
+            .iter()
+            .filter_map(|(uid, amd_driver)| {
+                let type_index = self.devices.get(uid)?.borrow().type_index;
                 let delay = self.device_delay(uid);
-                scope.spawn(async move {
+                Some(async move {
                     let Some(device_semaphore) = self.device_permits.get(uid) else {
                         return;
                     };
@@ -275,17 +278,20 @@ impl GpuRepo {
                             drop(device_permit);
                         },
                     }
-                });
-            }
-        }
+                })
+            });
+        join_all(reads).await;
     }
 
-    fn load_nvml_status<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
-        for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
-            if let Some(device_lock) = self.devices.get(uid) {
-                let type_index = device_lock.borrow().type_index;
+    async fn load_nvml_status(&self) {
+        let reads = self
+            .gpus_nvidia
+            .nvidia_device_infos
+            .iter()
+            .filter_map(|(uid, nv_info)| {
+                let type_index = self.devices.get(uid)?.borrow().type_index;
                 let delay = self.device_delay(uid);
-                scope.spawn(async move {
+                Some(async move {
                     // A GPU that did not answer keeps its last-known-good values until its
                     // failsafe takes over.
                     match self.gpus_nvidia.request_nvml_status(nv_info).await {
@@ -297,32 +303,30 @@ impl GpuRepo {
                         None => self.gpus_nvidia.record_nvml_no_answer(type_index),
                     }
                     apply_device_command_delay(delay).await;
-                });
-            }
-        }
+                })
+            });
+        join_all(reads).await;
     }
 
-    fn load_nvidia_smi_status<'s>(self: Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
-        scope.spawn(async move {
-            let mut nv_status_map = HashMap::new();
-            for nv_status in self.gpus_nvidia.try_request_nv_smi_statuses().await {
-                nv_status_map.insert(nv_status.index, nv_status);
-            }
-            for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
-                if let Some(device_lock) = self.devices.get(uid) {
-                    let type_index = device_lock.borrow().type_index;
-                    if let Some(nv_status) = nv_status_map.remove(&nv_info.gpu_index) {
-                        self.gpus_nvidia
-                            .nvidia_preloaded_statuses
-                            .borrow_mut()
-                            .insert(type_index, nv_status);
-                    } else {
-                        error!("GPU Index not found in Nvidia status response");
-                    }
+    async fn load_nvidia_smi_status(&self) {
+        let mut nv_status_map = HashMap::new();
+        for nv_status in self.gpus_nvidia.try_request_nv_smi_statuses().await {
+            nv_status_map.insert(nv_status.index, nv_status);
+        }
+        for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
+            if let Some(device_lock) = self.devices.get(uid) {
+                let type_index = device_lock.borrow().type_index;
+                if let Some(nv_status) = nv_status_map.remove(&nv_info.gpu_index) {
+                    self.gpus_nvidia
+                        .nvidia_preloaded_statuses
+                        .borrow_mut()
+                        .insert(type_index, nv_status);
+                } else {
+                    error!("GPU Index not found in Nvidia status response");
                 }
-                apply_device_command_delay(self.device_delay(uid)).await;
             }
-        });
+            apply_device_command_delay(self.device_delay(uid)).await;
+        }
     }
 }
 
@@ -383,25 +387,20 @@ impl Repository for GpuRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-        let self_c = Rc::clone(&self);
-        moro_local::async_scope!(|scope| {
-            if self.devices.is_empty().not() {
-                self_c.load_amd_statuses(scope);
-                if self.nvml_active {
-                    self_c.load_nvml_status(scope);
-                } else {
-                    self.load_nvidia_smi_status(scope);
-                }
+        if self.devices.is_empty().not() {
+            if self.nvml_active {
+                join(self.load_amd_statuses(), self.load_nvml_status()).await;
+            } else {
+                join(self.load_amd_statuses(), self.load_nvidia_smi_status()).await;
             }
-        })
-        .await;
+        }
         trace!(
             "STATUS PRELOAD Time taken for all GPU devices: {:?}",
             start_update.elapsed()
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         self.gpus_amd.update_all_statuses(timestamp);
         self.gpus_nvidia.update_all_statuses(timestamp);
         Ok(())
@@ -796,7 +795,7 @@ mod nvml_status_tests {
                 );
             let repo = Rc::new(repo);
 
-            moro_local::async_scope!(|scope| repo.load_nvml_status(scope)).await;
+            repo.load_nvml_status().await;
 
             let cache = repo.gpus_nvidia.nvidia_preloaded_statuses.borrow();
             assert_eq!(cache.get(&1).unwrap().temps, last_good);
@@ -856,14 +855,14 @@ mod nvml_status_tests {
             let repo = Rc::new(repo);
 
             for _ in 0..MISSING_STATUS_THRESHOLD {
-                moro_local::async_scope!(|scope| repo.load_nvml_status(scope)).await;
+                repo.load_nvml_status().await;
             }
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.update_statuses(Local::now()).unwrap();
             assert_eq!(device.borrow().latest_temp(GPU_TEMP_NAME), Some(60.0));
             assert!(repo.failsafing().is_empty());
 
-            moro_local::async_scope!(|scope| repo.load_nvml_status(scope)).await;
-            repo.update_statuses(Local::now()).await.unwrap();
+            repo.load_nvml_status().await;
+            repo.update_statuses(Local::now()).unwrap();
             let device = device.borrow();
             assert_eq!(
                 device.latest_temp(GPU_TEMP_NAME),

@@ -38,11 +38,21 @@ struct WriteFailureLog {
 impl WriteFailureLog {
     /// Records a failed write. Returns `true` when this failure starts a new run and should be
     /// logged, `false` while a run for this channel is already in progress.
+    ///
+    /// A run repeats on every tick, so it is found by borrowed lookups; keys are copied only when
+    /// a run starts.
     fn record_failure(&mut self, device_uid: &UID, channel_name: &str) -> bool {
-        self.failing_channels_by_device
-            .entry(device_uid.clone())
-            .or_default()
-            .insert(channel_name.to_string())
+        if let Some(failing_channels) = self.failing_channels_by_device.get_mut(device_uid) {
+            if failing_channels.contains(channel_name) {
+                return false;
+            }
+            return failing_channels.insert(channel_name.to_string());
+        }
+        self.failing_channels_by_device.insert(
+            device_uid.clone(),
+            HashSet::from([channel_name.to_string()]),
+        );
+        true
     }
 
     /// Records a successful write. Returns `true` when this ends a run and recovery should be
@@ -229,7 +239,8 @@ impl GraphProfileCommander {
     /// Collects all the processed outputs for all scheduled Graph Profiles.
     fn collect_processed_outputs(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
         let settings = self.scheduled_settings.borrow();
-        let mut output_to_apply = HashMap::with_capacity(settings.len());
+        // Empty until a duty applies, so a tick that applies nothing allocates nothing.
+        let mut output_to_apply = HashMap::new();
         for (normalized_profile, device_channels) in settings.iter() {
             let optional_duty_to_set = self.process_output_cache.borrow()
                 [&normalized_profile.profile_uid]
@@ -588,5 +599,69 @@ mod tests {
         assert_eq!(write_failure_log.failing_channels_by_device.len(), 1);
         write_failure_log.record_success(&DEVICE.to_string(), PUMP);
         assert!(write_failure_log.failing_channels_by_device.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_failure_in_a_run_allocates_nothing() {
+        // Goal: a device that keeps failing costs no allocation per tick. Method: start a run,
+        // then count a repeat.
+        let mut write_failure_log = WriteFailureLog::default();
+        let device_uid = DEVICE.to_string();
+        assert!(write_failure_log.record_failure(&device_uid, FAN));
+
+        let (starts_a_run, allocations) = crate::alloc_count::count_allocations(|| {
+            write_failure_log.record_failure(&device_uid, FAN)
+        });
+
+        assert!(starts_a_run.not());
+        assert_eq!(allocations, 0);
+    }
+
+    /// Schedules graph profile `g1` on the commander's fan, with `output` as its latest duty.
+    fn schedule_g1(commander: &GraphProfileCommander, device_uid: &UID, output: Option<Duty>) {
+        let profile = Rc::new(NormalizedGraphProfile {
+            profile_uid: "g1".to_string(),
+            ..Default::default()
+        });
+        let channel = DeviceChannelProfileSetting::Graph {
+            device_uid: device_uid.clone(),
+            channel_name: FAN.to_string(),
+        };
+        commander
+            .scheduled_settings
+            .borrow_mut()
+            .insert(profile, HashSet::from([channel]));
+        commander
+            .process_output_cache
+            .borrow_mut()
+            .insert("g1".to_string(), output);
+    }
+
+    #[test]
+    fn a_duty_to_set_is_collected_for_its_channel() {
+        // Goal: the lazily filled map still carries a duty to set. Method: schedule one
+        // profile with an output and collect.
+        let (commander, device_uid, _) = commander_with_toggle_writer();
+        schedule_g1(&commander, &device_uid, Some(50));
+
+        let outputs = commander.collect_processed_outputs();
+
+        assert_eq!(outputs[&device_uid], vec![(FAN.to_string(), 50)]);
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn collecting_with_no_duty_to_set_allocates_nothing() {
+        // Goal: a tick with nothing to apply costs no allocation. Method: schedule one profile
+        // with no output and count the allocations of a collect.
+        let (commander, device_uid, _) = commander_with_toggle_writer();
+        schedule_g1(&commander, &device_uid, None);
+
+        let (outputs, allocations) =
+            crate::alloc_count::count_allocations(|| commander.collect_processed_outputs());
+
+        assert!(outputs.is_empty());
+        assert_eq!(allocations, 0);
     }
 }

@@ -12,6 +12,7 @@
 //! directly. Channels (`tokio::sync`) and `CancellationToken` are reactor-agnostic and are used
 //! directly, not wrapped here.
 
+pub mod reply;
 mod tokio_rt;
 pub use tokio_rt::*;
 

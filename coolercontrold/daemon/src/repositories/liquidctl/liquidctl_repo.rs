@@ -1966,46 +1966,44 @@ impl Repository for LiquidctlRepo {
         }
         let start_update = Instant::now();
         let overrides = &self.overrides;
-        moro_local::async_scope!(|scope| {
-            for (uid, device_lock) in &self.devices {
-                let device_id = device_lock.borrow().type_index;
-                // Formatting the name allocates, so it waits for a line that logs it.
-                let device_name = || overrides.log_device_name(uid, &device_lock.borrow().name);
-                let delay = self.device_delay(uid);
-                let self = Rc::clone(&self);
-                scope.spawn(async move {
-                    match self.call_status(&device_id, delay).await {
-                        Ok(status) => self.store_status(device_id, status, device_name),
-                        Err(err) => {
-                            let mut fsd_map = self.failsafe_statuses.borrow_mut();
-                            let Some(fsd) = fsd_map.get_mut(&device_id) else {
-                                // No failsafe data means no latch to gate on.
-                                error!("Error getting status from device #{device_id}: {err}");
-                                return;
-                            };
-                            match fsd.record_failure_log_action() {
-                                FailureLogAction::PerPollError => {
-                                    error!(
-                                        "Error getting status from device \
-                                         #{device_id}: {err}"
-                                    );
-                                }
-                                FailureLogAction::FailsafeLatch => {
-                                    error!(
-                                        "Significant issue retrieving status for \
-                                         liquidctl device: {}. \
-                                         Setting failsafe values. Suppressing further \
-                                         status errors until recovery.",
-                                        device_name()
-                                    );
-                                }
-                                FailureLogAction::Silent => {}
+        join_all(self.devices.iter().map(|(uid, device_lock)| {
+            let device_id = device_lock.borrow().type_index;
+            // Formatting the name allocates, so it waits for a line that logs it.
+            let device_name = || overrides.log_device_name(uid, &device_lock.borrow().name);
+            let delay = self.device_delay(uid);
+            let self = &self;
+            async move {
+                match self.call_status(&device_id, delay).await {
+                    Ok(status) => self.store_status(device_id, status, device_name),
+                    Err(err) => {
+                        let mut fsd_map = self.failsafe_statuses.borrow_mut();
+                        let Some(fsd) = fsd_map.get_mut(&device_id) else {
+                            // No failsafe data means no latch to gate on.
+                            error!("Error getting status from device #{device_id}: {err}");
+                            return;
+                        };
+                        match fsd.record_failure_log_action() {
+                            FailureLogAction::PerPollError => {
+                                error!(
+                                    "Error getting status from device \
+                                     #{device_id}: {err}"
+                                );
                             }
+                            FailureLogAction::FailsafeLatch => {
+                                error!(
+                                    "Significant issue retrieving status for \
+                                     liquidctl device: {}. \
+                                     Setting failsafe values. Suppressing further \
+                                     status errors until recovery.",
+                                    device_name()
+                                );
+                            }
+                            FailureLogAction::Silent => {}
                         }
                     }
-                });
+                }
             }
-        })
+        }))
         .await;
         trace!(
             "STATUS PRELOAD Time taken for all LIQUIDCTL devices: {:?}",
@@ -2013,7 +2011,7 @@ impl Repository for LiquidctlRepo {
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         let fsd_map = self.failsafe_statuses.borrow();
         for device_lock in self.devices.values() {
             let mut device = device_lock.borrow_mut();

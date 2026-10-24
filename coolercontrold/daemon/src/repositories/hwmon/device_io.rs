@@ -12,6 +12,7 @@
 //! safety of its own. The thread runs no runtime: it blocks on its queue and in plain syscalls.
 use std::cell::{Cell, RefCell};
 use std::fmt::Display;
+use std::future::Future;
 use std::io::{Error, ErrorKind};
 use std::ops::{Deref, Not};
 use std::path::{Path, PathBuf};
@@ -28,6 +29,7 @@ use crate::cc_fs::{self, ReadIndex, SysfsValue};
 use crate::config::Config;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::rt;
+use crate::rt::reply::{ReplyPool, ReplySender};
 
 /// Consecutive reply timeouts before a device is declared unreachable and taken out of the
 /// per-tick rotation.
@@ -153,6 +155,8 @@ impl DeviceIo {
             pending_registry: RefCell::new(None),
             spare_indices: RefCell::default(),
             spare_values: RefCell::default(),
+            read_replies: ReplyPool::default(),
+            batch_replies: ReplyPool::default(),
             liveness,
         })))
     }
@@ -196,10 +200,15 @@ impl DeviceIo {
             Self::Inline(_) => cc_fs::read_sysfs_value(path).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch("reading", &path.display(), |reply| Request::Read {
-                        path: path.to_path_buf(),
-                        reply,
-                    })
+                    .dispatch(
+                        "reading",
+                        &path.display(),
+                        || worker.read_replies.channel(),
+                        |reply| Request::Read {
+                            path: path.to_path_buf(),
+                            reply,
+                        },
+                    )
                     .await
             }
         }
@@ -214,9 +223,11 @@ impl DeviceIo {
             Self::Inline(_) => cc_fs::read_bytes(path).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch("reading", &path.display(), |reply| Request::ReadBytes {
-                        path: path.to_path_buf(),
-                        reply,
+                    .dispatch("reading", &path.display(), oneshot::channel, |reply| {
+                        Request::ReadBytes {
+                            path: path.to_path_buf(),
+                            reply,
+                        }
                     })
                     .await
             }
@@ -298,9 +309,9 @@ impl DeviceIo {
     /// Reads several attributes in one hop, so a device's whole attribute set costs one round
     /// trip rather than one each. Results are positional, with per-path errors preserved.
     ///
-    /// On the threaded path a warm batch allocates only its reply channel: the slot and result
-    /// buffers travel to the worker and back, and the result buffer comes home when the
-    /// `ReadBatch` drops.
+    /// On the threaded path a warm batch allocates nothing: the slot and result buffers travel to
+    /// the worker and back, the result buffer comes home when the `ReadBatch` drops, and the
+    /// reply channel is a recycled one.
     ///
     /// # Panics
     ///
@@ -331,10 +342,12 @@ impl DeviceIo {
             Self::Inline(_) => cc_fs::write(path, data).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch("writing", &path.display(), |reply| Request::Write {
-                        path: path.to_path_buf(),
-                        data,
-                        reply,
+                    .dispatch("writing", &path.display(), oneshot::channel, |reply| {
+                        Request::Write {
+                            path: path.to_path_buf(),
+                            data,
+                            reply,
+                        }
                     })
                     .await
             }
@@ -389,6 +402,8 @@ impl DeviceIo {
             pending_registry: RefCell::new(None),
             spare_indices: RefCell::default(),
             spare_values: RefCell::default(),
+            read_replies: ReplyPool::default(),
+            batch_replies: ReplyPool::default(),
             liveness: WorkerLiveness(Arc::downgrade(&running)),
         };
         (Self::Threaded(Rc::new(worker)), rx, running)
@@ -434,7 +449,7 @@ impl DeviceIo {
         match self {
             Self::Inline(fds) => fds.len(),
             Self::Threaded(worker) => worker
-                .dispatch("sending", &"descriptor-count", |reply| {
+                .dispatch("sending", &"descriptor-count", oneshot::channel, |reply| {
                     Request::DescriptorCount { reply }
                 })
                 .await
@@ -610,6 +625,9 @@ pub struct Worker {
     /// is in flight; a batch that overlaps it, or follows a timeout, allocates its own.
     spare_indices: RefCell<Vec<ReadIndex>>,
     spare_values: RefCell<Vec<Result<SysfsValue>>>,
+    /// Reply channels for the per-tick requests, kept so a warm one allocates nothing.
+    read_replies: ReplyPool<Result<SysfsValue>>,
+    batch_replies: ReplyPool<Result<BatchBuffers>>,
     liveness: WorkerLiveness,
 }
 
@@ -633,14 +651,17 @@ impl Worker {
     ///
     /// Only a timeout counts against the device's health. An `io::Error` coming back means the
     /// device answered and the answer was an error, which says nothing about whether it is wedged.
-    async fn dispatch<T, F>(
+    ///
+    /// `channel` makes the reply channel, and is called only once the request will be sent.
+    async fn dispatch<T, Tx, Rx, E>(
         &self,
         verb: &'static str,
         what: &dyn Display,
-        make_request: F,
+        channel: impl FnOnce() -> (Tx, Rx),
+        make_request: impl FnOnce(Tx) -> Request,
     ) -> Result<T>
     where
-        F: FnOnce(oneshot::Sender<Result<T>>) -> Request,
+        Rx: Future<Output = std::result::Result<Result<T>, E>>,
     {
         // Refuse to queue for a device that is not answering, until its next probe is due.
         // Otherwise every tick adds a request to a queue nobody drains and pays a full timeout
@@ -648,7 +669,7 @@ impl Worker {
         if self.state.dispatchable().not() {
             return Err(unreachable(self.state.device_name(), what));
         }
-        let (reply_tx, reply_rx) = oneshot::channel();
+        let (reply_tx, reply_rx) = channel();
         let request = make_request(reply_tx);
         let exchange = async {
             self.tx
@@ -696,10 +717,12 @@ impl Worker {
             values: self.spare_values.take(),
         };
         let dispatched = self
-            .dispatch("reading", &label, |reply| Request::ReadMany {
-                buffers,
-                reply,
-            })
+            .dispatch(
+                "reading",
+                &label,
+                || self.batch_replies.channel(),
+                |reply| Request::ReadMany { buffers, reply },
+            )
             .await;
         let values = match dispatched {
             Ok(buffers) => {
@@ -734,9 +757,8 @@ impl Worker {
             return;
         };
         if self
-            .dispatch("sending", &"install", |reply| Request::Install {
-                paths,
-                reply,
+            .dispatch("sending", &"install", oneshot::channel, |reply| {
+                Request::Install { paths, reply }
             })
             .await
             .is_ok()
@@ -752,7 +774,7 @@ impl Worker {
 pub enum Request {
     Read {
         path: PathBuf,
-        reply: oneshot::Sender<Result<SysfsValue>>,
+        reply: ReplySender<Result<SysfsValue>>,
     },
     ReadBytes {
         path: PathBuf,
@@ -760,7 +782,7 @@ pub enum Request {
     },
     ReadMany {
         buffers: BatchBuffers,
-        reply: oneshot::Sender<Result<BatchBuffers>>,
+        reply: ReplySender<Result<BatchBuffers>>,
     },
     /// Hands the worker its read table. Sent once, after detection settles the channel set.
     Install {
@@ -848,9 +870,8 @@ fn serve_one(fds: &cc_fs::SysfsFdCache, request: Request) {
         Request::Read { path, reply } => {
             // Uncached: one-shots are detection probes, labels and pre-write reads, none of
             // which repeat per tick. The table is for the per-tick set alone.
-            let result = cc_fs::read_sysfs_value_blocking(&path);
-            // A dropped receiver means the caller already timed out. Expected, not an error.
-            let _ = reply.send(result);
+            // A caller that already timed out never reads it. Expected, not an error.
+            reply.send(cc_fs::read_sysfs_value_blocking(&path));
         }
         Request::ReadBytes { path, reply } => {
             let _ = reply.send(cc_fs::read_bytes_blocking(&path));
@@ -861,7 +882,7 @@ fn serve_one(fds: &cc_fs::SysfsFdCache, request: Request) {
                 .values
                 .extend(buffers.indices.iter().map(|index| fds.read_index(*index)));
             debug_assert_eq!(buffers.values.len(), buffers.indices.len());
-            let _ = reply.send(Ok(buffers));
+            reply.send(Ok(buffers));
         }
         Request::Install { paths, reply } => {
             fds.install(paths);
@@ -1119,7 +1140,7 @@ mod tests {
             buffers.indices.as_ptr() as usize,
             buffers.values.as_ptr() as usize,
         );
-        reply.send(Ok(buffers)).unwrap();
+        reply.send(Ok(buffers));
         addresses
     }
 
@@ -1152,6 +1173,11 @@ mod tests {
                     worker.spare_values.borrow().is_empty(),
                     "results are cleared"
                 );
+                assert_eq!(
+                    worker.batch_replies.spare_count(),
+                    1,
+                    "the reply channel is kept for the next batch"
+                );
                 addresses.push(served);
             }
             assert_eq!(
@@ -1162,23 +1188,34 @@ mod tests {
     }
 
     /// Goal: a batch that times out must not leave the next batch without results; it just
-    /// loses the buffers. Method: time a batch out, then serve the next by hand.
+    /// loses the buffers and its reply slot, so a late reply can never reach the next batch.
+    /// Method: time a batch out, let its late reply land, then serve the next by hand.
     #[test]
     fn a_batch_after_a_timeout_still_reads() {
         crate::rt::test_runtime(async {
             let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let worker = worker_of(&io);
             let lost = io.read_many([0]).await;
             assert!(lost[0].is_err());
             drop(lost);
-            // Discard the request the timed-out batch left queued.
-            assert!(rx.try_recv().is_ok());
+            assert_eq!(
+                worker.batch_replies.spare_count(),
+                0,
+                "a timed-out batch orphans its reply slot"
+            );
+            let Ok(Request::ReadMany { mut buffers, reply }) = rx.try_recv() else {
+                panic!("the timed-out batch left its request queued");
+            };
+            buffers.values.clear();
+            buffers.values.push(Ok(SysfsValue::from_bytes(b"99000\n")));
+            reply.send(Ok(buffers));
 
             let (batch, _) =
                 futures_util::future::join(io.read_many([0]), serve_one_batch_by_hand(&mut rx))
                     .await;
 
             assert_eq!(batch.len(), 1);
-            assert!(batch[0].is_ok());
+            assert_eq!(batch[0].as_ref().unwrap().trimmed_str().unwrap(), "41000");
         });
     }
 
@@ -1197,7 +1234,8 @@ mod tests {
         }
         let fds = cc_fs::SysfsFdCache::default();
         fds.install(paths);
-        let (reply, mut reply_rx) = oneshot::channel();
+        let replies = ReplyPool::default();
+        let (reply, reply_rx) = replies.channel();
         let cold = BatchBuffers {
             indices: vec![0, 1, 2],
             values: Vec::new(),
@@ -1209,8 +1247,8 @@ mod tests {
                 reply,
             },
         );
-        let warm = reply_rx.try_recv().unwrap().unwrap();
-        let (reply, mut reply_rx) = oneshot::channel();
+        let warm = crate::rt::poll_to_end(reply_rx).0.unwrap().unwrap();
+        let (reply, reply_rx) = replies.channel();
 
         let ((), allocations) = crate::alloc_count::count_allocations(|| {
             serve_one(
@@ -1223,7 +1261,7 @@ mod tests {
         });
 
         assert_eq!(allocations, 0);
-        let served = reply_rx.try_recv().unwrap().unwrap();
+        let served = crate::rt::poll_to_end(reply_rx).0.unwrap().unwrap();
         assert_eq!(served.values.len(), 3);
         for value in &served.values {
             assert_eq!(value.as_ref().unwrap().trimmed_str().unwrap(), "41000");

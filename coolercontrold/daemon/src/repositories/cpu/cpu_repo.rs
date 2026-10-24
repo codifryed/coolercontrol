@@ -4,6 +4,7 @@
 use crate::device::health::UnreachableRef;
 use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use chrono::{DateTime, Local};
+use futures_util::future::join_all;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
@@ -87,6 +88,8 @@ pub struct CpuRepo {
     /// The buffers each device's next status is read into, so last tick's stays readable in
     /// `preloaded_statuses` until the two swap.
     spare_statuses: RefCell<HashMap<CpuAssociation, CpuStatusBuffers>>,
+    /// Each poll's package frequencies, read into last poll's map. Empty while a poll runs.
+    poll_freqs: RefCell<HashMap<PhysicalID, CpuFreqs>>,
     energy_counters: HashMap<PhysicalID, Cell<f64>>,
     poll_rate: f64,
     /// Set on an Apple Silicon machine only, whose frequencies come from its clusters.
@@ -105,6 +108,7 @@ impl CpuRepo {
             cpu_percent_collector: CpuPercentCollector::new()?,
             preloaded_statuses: RefCell::new(HashMap::new()),
             spare_statuses: RefCell::new(HashMap::new()),
+            poll_freqs: RefCell::new(HashMap::new()),
             energy_counters: HashMap::new(),
             poll_rate: 0.,
         })
@@ -358,13 +362,22 @@ impl CpuRepo {
 
     /// The frequencies of every package, read fresh from cpuinfo.
     async fn collect_freq(&self) -> HashMap<PhysicalID, CpuFreqs> {
+        let mut freqs = HashMap::new();
+        self.collect_freq_into(&mut freqs).await;
+        freqs
+    }
+
+    /// `collect_freq` into `freqs`, keeping its room, except on Apple Silicon, which replaces
+    /// it. A failed read leaves it empty.
+    async fn collect_freq_into(&self, freqs: &mut HashMap<PhysicalID, CpuFreqs>) {
         if let Some(apple_silicon) = &self.apple_silicon {
-            return apple_silicon.read_freqs().await;
+            *freqs = apple_silicon.read_freqs().await;
+            return;
         }
-        self.cpuinfo
-            .read_with(topology::parse_freqs)
-            .await
-            .unwrap_or_default()
+        let parse = |cpu_info_data: &str| topology::parse_freqs_into(cpu_info_data, freqs);
+        if self.cpuinfo.read_with(parse).await.is_err() {
+            freqs.clear();
+        }
     }
 
     /// The cpuinfo frequency a single-CPU frequency channel reports, by its name.
@@ -1123,30 +1136,30 @@ impl Repository for CpuRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-        let mut cpu_freqs = self.collect_freq().await;
+        // Taken out, since the reads below await.
+        let mut cpu_freqs = self.poll_freqs.take();
+        self.collect_freq_into(&mut cpu_freqs).await;
         self.sample_cpu_load().await;
-        moro_local::async_scope!(|scope| {
-            for cpu_device in self.devices.values() {
-                let association = cpu_device.association;
-                let driver = &cpu_device.driver;
-                let freqs = association
-                    .physical_id()
-                    .and_then(|physical_id| cpu_freqs.remove(&physical_id));
-                let self = Rc::clone(&self);
-                scope.spawn(async move {
-                    self.preload_status(association, driver, freqs.as_ref())
-                        .await;
-                });
+        join_all(self.devices.values().map(|cpu_device| {
+            let association = cpu_device.association;
+            let freqs = association
+                .physical_id()
+                .and_then(|physical_id| cpu_freqs.get(&physical_id));
+            let self = &self;
+            async move {
+                self.preload_status(association, &cpu_device.driver, freqs)
+                    .await;
             }
-        })
+        }))
         .await;
+        self.poll_freqs.replace(cpu_freqs);
         trace!(
             "STATUS PRELOAD Time taken for all CPU devices: {:?}",
             start_update.elapsed()
         );
     }
 
-    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+    fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         self.store_preloaded_statuses(timestamp);
         Ok(())
     }
