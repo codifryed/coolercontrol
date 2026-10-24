@@ -80,6 +80,7 @@ use crate::repositories::hwmon::{
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
 use crate::rt;
+use crate::rt::reply::{Reply, ReplyPool, ReplySender};
 #[cfg(test)]
 use crate::rt::sleep;
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
@@ -101,7 +102,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 use strum::{Display, EnumString};
-use tokio::sync::{oneshot, Notify, Semaphore, SemaphorePermit};
+use tokio::sync::{Notify, Semaphore, SemaphorePermit};
 use tokio_util::sync::CancellationToken;
 
 /// Init-time slow-device detection threshold as a fraction of
@@ -446,20 +447,42 @@ const PENDING_INITIAL_CAPACITY: usize = 8;
 /// latest, which is what will be applied).
 struct PendingWrite {
     target_duty: Duty,
-    waiter: oneshot::Sender<Result<(), String>>,
+    waiter: ReplySender<Result<(), String>>,
 }
 
 /// Per-device coalescing inbox. `pending` is borrowed sync (no
 /// `.await` across the borrow); safe for `RefCell` on the single-
-/// threaded runtime. `HashMap` keeps the cap-at-1 supersession
-/// O(1) and lets the writer drain the whole snapshot in one swap;
-/// the writer task then orders multi-entry waves by a per-channel
-/// `last_processed` counter so never-serviced channels jump the
-/// queue ahead of channels already serviced in this run.
+/// threaded runtime. It holds one slot per channel, by the channel's
+/// position in the driver's channel list, so a write builds no key,
+/// the cap-at-1 supersession is a slot replace, and the writer drains
+/// the whole snapshot in one swap; the writer task then orders
+/// multi-entry waves by a per-channel `last_processed` counter so
+/// never-serviced channels jump the queue ahead of channels already
+/// serviced in this run.
 struct WriterMailbox {
-    pending: RefCell<HashMap<ChannelName, PendingWrite>>,
+    pending: RefCell<Vec<Option<PendingWrite>>>,
     notify: Notify,
     force_next_write: RefCell<HashSet<ChannelName>>,
+    /// Kept for the next write, so a warm write allocates no reply channel.
+    replies: ReplyPool<Result<(), String>>,
+}
+
+impl WriterMailbox {
+    fn new(channel_count: usize) -> Self {
+        Self {
+            pending: RefCell::new(empty_pending(channel_count)),
+            notify: Notify::new(),
+            force_next_write: RefCell::new(HashSet::with_capacity(PENDING_INITIAL_CAPACITY)),
+            replies: ReplyPool::default(),
+        }
+    }
+}
+
+/// One empty pending slot per channel.
+fn empty_pending(channel_count: usize) -> Vec<Option<PendingWrite>> {
+    std::iter::repeat_with(|| None)
+        .take(channel_count)
+        .collect()
 }
 
 /// Duty-cache entry for slow-device fan channels. `last_known` is
@@ -840,13 +863,7 @@ impl HwmonRepo {
                 .insert(type_index, Rc::new(Semaphore::new(1)));
             self.writers.insert(
                 type_index,
-                Rc::new(WriterMailbox {
-                    pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
-                    notify: Notify::new(),
-                    force_next_write: RefCell::new(HashSet::with_capacity(
-                        PENDING_INITIAL_CAPACITY,
-                    )),
-                }),
+                Rc::new(WriterMailbox::new(driver.channels.len())),
             );
             self.delay_logged.insert(type_index, Cell::new(0));
             self.preload_in_flight
@@ -1853,12 +1870,15 @@ async fn read_one_fan_rpm_only_for(
 }
 
 async fn run_writer_task(task: WriterTask) {
-    let mut buffer: HashMap<ChannelName, PendingWrite> =
-        HashMap::with_capacity(PENDING_INITIAL_CAPACITY);
-    let mut entries: Vec<(ChannelName, PendingWrite)> =
-        Vec::with_capacity(PENDING_INITIAL_CAPACITY);
-    let mut last_processed: HashMap<ChannelName, u64> =
-        HashMap::with_capacity(PENDING_INITIAL_CAPACITY);
+    let channel_count = task.driver.channels.len();
+    debug_assert_eq!(
+        task.mailbox.pending.borrow().len(),
+        channel_count,
+        "the mailbox has one slot per channel"
+    );
+    let mut buffer = empty_pending(channel_count);
+    let mut entries: Vec<(usize, PendingWrite)> = Vec::with_capacity(channel_count);
+    let mut last_processed: Vec<u64> = vec![0; channel_count];
     let mut process_counter: u64 = 0;
     loop {
         tokio::select! {
@@ -1868,36 +1888,47 @@ async fn run_writer_task(task: WriterTask) {
                 return;
             }
         }
-        debug_assert!(buffer.is_empty(), "buffer must start each iteration empty");
+        debug_assert!(
+            buffer.iter().all(Option::is_none),
+            "buffer must start each iteration empty"
+        );
         debug_assert!(entries.is_empty(), "entries scratch must start empty");
         swap_pending_into(&task.mailbox, &mut buffer);
         order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
-        for (channel_name, pending) in entries.drain(..) {
-            run_one_pending_write(&task, channel_name.clone(), pending).await;
+        for (channel_index, pending) in entries.drain(..) {
+            run_one_pending_write(&task, channel_index, pending).await;
             // Increment first so any "processed" value is >= 1 and
             // distinguishable from the never-serviced default of 0.
             process_counter = process_counter.wrapping_add(1);
-            last_processed.insert(channel_name, process_counter);
+            last_processed[channel_index] = process_counter;
         }
     }
 }
 
 /// Drains `buffer` into `entries` ordered ascending by
-/// `last_processed`. Channels with no entry in the map have never
-/// been serviced and sort to the head via `unwrap_or(0)`; among
-/// already-serviced channels, the one whose write happened longest
-/// ago goes next. Single-entry waves short-circuit since order is
-/// trivial there.
+/// `last_processed`, both by channel index. A never-serviced channel
+/// counts 0 and sorts to the head; among already-serviced channels,
+/// the one whose write happened longest ago goes next. Single-entry
+/// waves short-circuit since order is trivial there.
 fn order_entries_by_starvation(
-    buffer: &mut HashMap<ChannelName, PendingWrite>,
-    entries: &mut Vec<(ChannelName, PendingWrite)>,
-    last_processed: &HashMap<ChannelName, u64>,
+    buffer: &mut [Option<PendingWrite>],
+    entries: &mut Vec<(usize, PendingWrite)>,
+    last_processed: &[u64],
 ) {
-    entries.extend(buffer.drain());
+    debug_assert_eq!(buffer.len(), last_processed.len());
+    entries.extend(
+        buffer
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(channel_index, slot)| Some((channel_index, slot.take()?))),
+    );
     if entries.len() <= 1 {
         return;
     }
-    entries.sort_by_key(|(name, _)| last_processed.get(name.as_str()).copied().unwrap_or(0));
+    // Unstable, as a stable sort may allocate; the index breaks ties, so the order stays fixed.
+    entries.sort_unstable_by_key(|(channel_index, _)| {
+        (last_processed[*channel_index], *channel_index)
+    });
 }
 
 /// Drops the channels the user's lm-sensors configuration ignores, and reports how many went.
@@ -1986,71 +2017,74 @@ fn log_applied_label(chip: Option<&ChipName>, channel_name: &str, label: &str, s
     );
 }
 
-fn swap_pending_into(mailbox: &WriterMailbox, buffer: &mut HashMap<ChannelName, PendingWrite>) {
-    mem::swap(&mut *mailbox.pending.borrow_mut(), buffer);
+fn swap_pending_into(mailbox: &WriterMailbox, buffer: &mut Vec<Option<PendingWrite>>) {
+    let mut pending = mailbox.pending.borrow_mut();
+    debug_assert_eq!(pending.len(), buffer.len());
+    mem::swap(&mut *pending, buffer);
 }
 
-fn drain_pending(mailbox: &WriterMailbox) -> HashMap<ChannelName, PendingWrite> {
-    mem::take(&mut *mailbox.pending.borrow_mut())
-}
-
-/// Inserts a fresh pending write, replacing any waiting one for the
-/// same channel. Borrow of `pending` is released before the caller
+/// Puts a fresh pending write in the channel's slot, replacing any
+/// waiting one. Borrow of `pending` is released before the caller
 /// awaits. The superseded waiter resolves Ok because the latest
 /// target supplants its intent and is what the writer will apply;
-/// callers only see Err when the actual hardware write fails.
+/// callers only see Err when the actual hardware write fails. `None`
+/// when the device has no such channel slot.
 fn enqueue_pending_write(
-    mailbox: &Rc<WriterMailbox>,
-    channel_name: &str,
+    mailbox: &WriterMailbox,
+    channel_index: usize,
     target_duty: Duty,
-) -> oneshot::Receiver<Result<(), String>> {
+) -> Option<Reply<'_, Result<(), String>>> {
     debug_assert!(target_duty <= 100, "caller must validate target_duty");
-    let (tx, rx) = oneshot::channel();
-    let new_pending = PendingWrite {
-        target_duty,
-        waiter: tx,
-    };
+    let (waiter, reply) = mailbox.replies.channel();
     let superseded = {
         let mut pending = mailbox.pending.borrow_mut();
-        pending.insert(channel_name.to_string(), new_pending)
+        let slot = pending.get_mut(channel_index)?;
+        slot.replace(PendingWrite {
+            target_duty,
+            waiter,
+        })
     };
     if let Some(superseded) = superseded {
-        let _ = superseded.waiter.send(Ok(()));
+        superseded.waiter.send(Ok(()));
     }
-    rx
+    Some(reply)
 }
 
 /// Sync (no `.await`) so it can run inside the writer task's
 /// shutdown branch with the `pending` borrow held.
 fn cancel_remaining_waiters(mailbox: &WriterMailbox) {
-    let entries = drain_pending(mailbox);
-    for (_, pending) in entries {
-        let _ = pending.waiter.send(Err(
-            "HWMon writer cancelled: daemon shutting down".to_string()
-        ));
+    for slot in mailbox.pending.borrow_mut().iter_mut() {
+        if let Some(pending) = slot.take() {
+            pending.waiter.send(Err(
+                "HWMon writer cancelled: daemon shutting down".to_string()
+            ));
+        }
     }
 }
 
-async fn run_one_pending_write(
-    task: &WriterTask,
-    channel_name: ChannelName,
-    mut pending: PendingWrite,
-) {
+async fn run_one_pending_write(task: &WriterTask, channel_index: usize, mut pending: PendingWrite) {
     debug_assert!(
         pending.target_duty <= 100,
         "enqueue_pending_write validates"
     );
-    let force_write = consume_force_flag(&task.mailbox, &channel_name);
+    let Some(channel) = task.driver.channels.get(channel_index) else {
+        pending
+            .waiter
+            .send(Err(format!("HWMon writer has no channel {channel_index}")));
+        return;
+    };
+    let channel_name = channel.name.as_str();
+    let force_write = consume_force_flag(&task.mailbox, channel_name);
     debug_assert!(
         task.mailbox
             .force_next_write
             .borrow()
-            .contains(channel_name.as_str())
+            .contains(channel_name)
             .not(),
         "force_next_write must be cleared after consume"
     );
-    if force_write.not() && current_duty_matches_target(task, &channel_name, pending.target_duty) {
-        let _ = pending.waiter.send(Ok(()));
+    if force_write.not() && current_duty_matches_target(task, channel_name, pending.target_duty) {
+        pending.waiter.send(Ok(()));
         return;
     }
     let driver_name = task.driver.name.as_str();
@@ -2069,7 +2103,7 @@ async fn run_one_pending_write(
     let permit = match acquire {
         Ok(permit) => permit,
         Err(message) => {
-            let _ = pending.waiter.send(Err(message));
+            pending.waiter.send(Err(message));
             return;
         }
     };
@@ -2082,10 +2116,12 @@ async fn run_one_pending_write(
     // released before the await.
     let fresh = {
         let mut mailbox_pending = task.mailbox.pending.borrow_mut();
-        mailbox_pending.remove(channel_name.as_str())
+        mailbox_pending
+            .get_mut(channel_index)
+            .and_then(Option::take)
     };
     if let Some(fresh) = fresh {
-        let _ = pending.waiter.send(Ok(()));
+        pending.waiter.send(Ok(()));
         pending = fresh;
     }
     // Re-check write-skip with the (possibly updated) target so a
@@ -2093,8 +2129,8 @@ async fn run_one_pending_write(
     // cost a sysfs write. Still bypassed when `force_write` is set:
     // the anchor must reach sysfs even if a later enqueue happened
     // to match preloaded duty.
-    if force_write.not() && current_duty_matches_target(task, &channel_name, pending.target_duty) {
-        let _ = pending.waiter.send(Ok(()));
+    if force_write.not() && current_duty_matches_target(task, channel_name, pending.target_duty) {
+        pending.waiter.send(Ok(()));
         drop(permit);
         return;
     }
@@ -2103,14 +2139,9 @@ async fn run_one_pending_write(
          Device Duty: {}%",
         pending.target_duty
     );
-    let result = apply_pwm_duty_write(
-        &task.config,
-        &task.driver,
-        &channel_name,
-        pending.target_duty,
-    )
-    .await
-    .map_err(|err| err.to_string());
+    let result = apply_pwm_duty_write(&task.config, &task.driver, channel, pending.target_duty)
+        .await
+        .map_err(|err| err.to_string());
     apply_device_command_delay(task.delay_millis).await;
     drop(permit);
     if result.is_ok() {
@@ -2118,16 +2149,21 @@ async fn run_one_pending_write(
         // writes do not reset the verification clock.
         if let Some(cache) = task.duty_cache.as_ref() {
             let mut entries = cache.borrow_mut();
-            entries
-                .entry(channel_name.clone())
-                .and_modify(|e| e.last_known = pending.target_duty)
-                .or_insert_with(|| DutyCacheEntry {
-                    last_known: pending.target_duty,
-                    next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
-                });
+            // Looked up first, so only a channel's first cached write builds a key.
+            if let Some(entry) = entries.get_mut(channel_name) {
+                entry.last_known = pending.target_duty;
+            } else {
+                entries.insert(
+                    channel_name.to_owned(),
+                    DutyCacheEntry {
+                        last_known: pending.target_duty,
+                        next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
+                    },
+                );
+            }
         }
     }
-    let _ = pending.waiter.send(result);
+    pending.waiter.send(result);
 }
 
 /// Removes and returns whether `channel_name` had the
@@ -2170,19 +2206,16 @@ fn current_duty_matches_target(task: &WriterTask, channel_name: &str, target_dut
 async fn apply_pwm_duty_write(
     config: &Rc<Config>,
     driver: &Rc<HwmonDriverInfo>,
-    channel_name: &str,
+    channel_info: &HwmonChannelInfo,
     target_duty: Duty,
 ) -> Result<()> {
-    let Some(channel_info) = driver
-        .channels
-        .iter()
-        .find(|c| c.hwmon_type == HwmonChannelType::Fan && c.name == channel_name)
-    else {
+    let channel_name = channel_info.name.as_str();
+    if channel_info.hwmon_type != HwmonChannelType::Fan {
         return Err(anyhow!(
             "Channel not found while writing HWMon {}:{channel_name}",
             driver.name
         ));
-    };
+    }
     if driver.name == devices::DEVICE_NAME_THINK_PAD {
         thinkpad::apply_speed_fixed(config, driver, channel_info, target_duty).await
     } else if let Some(apple_fans) = &driver.apple_fans {
@@ -2639,16 +2672,27 @@ impl Repository for HwmonRepo {
             );
             return Ok(());
         }
-        let (hwmon_driver, _, type_index) = self.get_hwmon_info(device_uid, channel_name)?;
+        let (hwmon_driver, channel_info, type_index) =
+            self.get_hwmon_info(device_uid, channel_name)?;
         let mailbox = self.writers.get(&type_index).with_context(|| {
             format!(
                 "No writer mailbox for HWMon device {} (type_index {type_index})",
                 hwmon_driver.name
             )
         })?;
-        let rx = enqueue_pending_write(mailbox, channel_name, speed_fixed);
+        let reply = hwmon_driver
+            .channels
+            .iter()
+            .position(|channel| std::ptr::eq(channel, channel_info))
+            .and_then(|channel_index| enqueue_pending_write(mailbox, channel_index, speed_fixed))
+            .with_context(|| {
+                format!(
+                    "No writer slot for HWMon device {} channel {channel_name}",
+                    hwmon_driver.name
+                )
+            })?;
         mailbox.notify.notify_one();
-        match rx.await {
+        match reply.await {
             Ok(Ok(())) => Ok(()),
             Ok(Err(message)) => {
                 if self.shutdown_token.is_cancelled() {
@@ -4330,6 +4374,37 @@ mod coalescer_tests {
         channels: Vec<HwmonChannelInfo>,
         delay_millis: u16,
     ) -> UID {
+        let writer = TestWriter {
+            type_index,
+            name,
+            path,
+            channels,
+            delay_millis,
+            io: DeviceIo::default(),
+        };
+        install_writer(repo, writer).await
+    }
+
+    /// One device for `install_writer`.
+    struct TestWriter<'n> {
+        type_index: TypeIndex,
+        name: &'n str,
+        path: PathBuf,
+        channels: Vec<HwmonChannelInfo>,
+        delay_millis: u16,
+        io: DeviceIo,
+    }
+
+    /// `install_device_and_spawn_writer`, with the device's IO chosen by the caller.
+    async fn install_writer(repo: &mut HwmonRepo, writer: TestWriter<'_>) -> UID {
+        let TestWriter {
+            type_index,
+            name,
+            path,
+            channels,
+            delay_millis,
+            io,
+        } = writer;
         let driver = HwmonDriverInfo {
             name: name.to_string(),
             path,
@@ -4337,6 +4412,7 @@ mod coalescer_tests {
             u_id: format!("test-uid-{name}-{type_index}"),
             drivetemp: DrivetempState::default(),
             apple_fans: None,
+            io,
             ..Default::default()
         }
         .with_read_registry()
@@ -4355,11 +4431,7 @@ mod coalescer_tests {
             .insert(type_index, Rc::new(Semaphore::new(1)));
         repo.writers.insert(
             type_index,
-            Rc::new(WriterMailbox {
-                pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
-                notify: Notify::new(),
-                force_next_write: RefCell::new(HashSet::with_capacity(PENDING_INITIAL_CAPACITY)),
-            }),
+            Rc::new(WriterMailbox::new(driver.channels.len())),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
         repo.preload_in_flight
@@ -4405,6 +4477,51 @@ mod coalescer_tests {
         crate::rt::spawn_task(
             async move { repo.apply_setting_speed_fixed(&uid, &channel, duty).await },
         )
+    }
+
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn a_warm_dispatched_write_allocates_only_the_repository_future() {
+        // Goal: once warm, a duty write from the engine's dispatch to the sysfs file costs the
+        // main thread one allocation, the repository's boxed future. Method: write through a
+        // real worker thread twice to warm the reply channels, then count the main thread's
+        // allocations across a third write, the writer task's included.
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("dev");
+            seed_fan_files(&dir, &[1]).await;
+            let mut repo = empty_repo();
+            let writer = TestWriter {
+                type_index: 1,
+                name: "dev",
+                path: dir.clone(),
+                channels: vec![fan_channel(1, "fan1", &dir)],
+                delay_millis: 0,
+                io: DeviceIo::threaded("dev", Duration::from_secs(5)).unwrap(),
+            };
+            let uid = install_writer(&mut repo, writer).await;
+            let repo = Rc::new(repo);
+            let duty_writer =
+                crate::calibration::RepoWriter::rc(Rc::clone(&repo) as Rc<dyn Repository>);
+            let state = Rc::new(crate::calibration::FanStateMap::new());
+            let store = crate::calibration::CalibrationStore::empty();
+            let dispatch = |duty| {
+                crate::calibration::dispatch(&state, &store, &duty_writer, &uid, "fan1", duty)
+            };
+            for duty in [40, 50] {
+                dispatch(duty).await.unwrap();
+            }
+
+            let (written, allocations) =
+                crate::alloc_count::count_allocations_async(dispatch(60)).await;
+
+            written.unwrap();
+            let pwm = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(pwm.trim(), duty_to_pwm_value(60).to_string());
+            assert_eq!(allocations, 1);
+            repo.shutdown_token.cancel();
+        });
     }
 
     #[test]
@@ -4552,8 +4669,8 @@ mod coalescer_tests {
 
             {
                 let pending = repo.writers.get(&1).unwrap().pending.borrow();
-                assert_eq!(pending.len(), 1, "one channel, one pending entry");
-                let entry = pending.get("fan1").expect("entry must exist");
+                assert_eq!(pending_count(&pending), 1, "one channel, one pending entry");
+                let entry = pending[FAN1_INDEX].as_ref().expect("entry must exist");
                 assert_eq!(entry.target_duty, 50, "latest target wins");
             }
 
@@ -4881,8 +4998,10 @@ mod coalescer_tests {
 
             {
                 let pending = repo.writers.get(&1).unwrap().pending.borrow();
-                assert_eq!(pending.len(), 1, "one channel, one pending entry");
-                let entry = pending.get("fan1").expect("pending entry must exist");
+                assert_eq!(pending_count(&pending), 1, "one channel, one pending entry");
+                let entry = pending[FAN1_INDEX]
+                    .as_ref()
+                    .expect("pending entry must exist");
                 let last_duty = u8::try_from(((FLOOD - 1) % 99) + 1).unwrap();
                 assert_eq!(entry.target_duty, last_duty, "latest target wins");
             }
@@ -4968,18 +5087,32 @@ mod coalescer_tests {
         });
     }
 
+    /// Where the writer test drivers keep `fan1`: their channel list starts with it.
+    #[cfg(feature = "gated-tests")]
+    const FAN1_INDEX: usize = 0;
+
+    /// How many channels have a write waiting.
+    #[cfg(feature = "gated-tests")]
+    fn pending_count(pending: &[Option<PendingWrite>]) -> usize {
+        pending.iter().filter(|slot| slot.is_some()).count()
+    }
+
     fn pending_with_duty(duty: u8) -> PendingWrite {
-        let (tx, _rx) = oneshot::channel();
+        let replies = ReplyPool::default();
+        let (waiter, _reply) = replies.channel();
         PendingWrite {
             target_duty: duty,
-            waiter: tx,
+            waiter,
         }
     }
 
-    fn populate_buffer(buffer: &mut HashMap<ChannelName, PendingWrite>, names: &[&str]) {
-        for name in names {
-            buffer.insert((*name).to_string(), pending_with_duty(10));
+    /// A writer buffer of `channel_count` slots with a write waiting at each of `indices`.
+    fn buffer_with(channel_count: usize, indices: &[usize]) -> Vec<Option<PendingWrite>> {
+        let mut buffer = empty_pending(channel_count);
+        for &channel_index in indices {
+            buffer[channel_index] = Some(pending_with_duty(10));
         }
+        buffer
     }
 
     #[test]
@@ -4991,32 +5124,18 @@ mod coalescer_tests {
         // get serviced first by tick 1; fan6/7/8 enter the queue
         // only after a few waves and must overtake the recurring
         // tick 2 fan1, fan2 entries.
-        let mut entries: Vec<(ChannelName, PendingWrite)> = Vec::with_capacity(4);
-        let mut buffer: HashMap<ChannelName, PendingWrite> = HashMap::with_capacity(4);
-        populate_buffer(&mut buffer, &["fan1", "fan2", "fan6", "fan7"]);
-        let mut last_processed: HashMap<ChannelName, u64> = HashMap::new();
-        // fan1 and fan2 have been serviced; fan6 and fan7 have not.
-        last_processed.insert("fan1".to_string(), 1);
-        last_processed.insert("fan2".to_string(), 2);
+        let mut entries: Vec<(usize, PendingWrite)> = Vec::with_capacity(8);
+        // Channels 0 and 1 have been serviced; 5 and 6 have not.
+        let mut buffer = buffer_with(8, &[0, 1, 5, 6]);
+        let mut last_processed = vec![0; 8];
+        last_processed[0] = 1;
+        last_processed[1] = 2;
         order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
-        let order: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
-        // The exact ordering of the two never-serviced channels is
-        // sort-stable but unspecified by the API; what matters is
-        // that both come before any serviced channel and that the
+        let order: Vec<usize> = entries.iter().map(|(index, _)| *index).collect();
+        // Both never-serviced channels come before any serviced one, in index order, and the
         // older-serviced channel comes before the newer one.
-        assert!(
-            order[0] == "fan6" || order[0] == "fan7",
-            "never-serviced channel must lead, got {order:?}"
-        );
-        assert!(
-            order[1] == "fan6" || order[1] == "fan7",
-            "second slot must also be never-serviced, got {order:?}"
-        );
-        assert_eq!(
-            order[2], "fan1",
-            "older-serviced (counter=1) goes before newer"
-        );
-        assert_eq!(order[3], "fan2", "newest-serviced trails the rest");
+        assert_eq!(order, vec![5, 6, 0, 1], "never-serviced channels lead");
+        assert!(buffer.iter().all(Option::is_none), "the buffer is drained");
     }
 
     #[test]
@@ -5024,15 +5143,15 @@ mod coalescer_tests {
         // Goal: the single-entry case is the common case; sort must
         // be a no-op there to keep the writer's per-wave overhead
         // off the hot path.
-        let mut entries: Vec<(ChannelName, PendingWrite)> = Vec::with_capacity(1);
-        let mut buffer: HashMap<ChannelName, PendingWrite> = HashMap::with_capacity(1);
-        let last_processed: HashMap<ChannelName, u64> = HashMap::new();
+        let mut entries: Vec<(usize, PendingWrite)> = Vec::with_capacity(2);
+        let mut buffer = empty_pending(2);
+        let last_processed = vec![0; 2];
         order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
         assert!(entries.is_empty(), "empty buffer drains to empty entries");
-        buffer.insert("fan1".to_string(), pending_with_duty(50));
+        buffer[1] = Some(pending_with_duty(50));
         order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].0, "fan1");
+        assert_eq!(entries[0].0, 1);
     }
 
     #[test]
@@ -5041,16 +5160,12 @@ mod coalescer_tests {
         // serviced longest ago wins the slot. Verifies the ascending
         // sort key is the counter and not its negation or the
         // hashing order.
-        let mut entries: Vec<(ChannelName, PendingWrite)> = Vec::with_capacity(3);
-        let mut buffer: HashMap<ChannelName, PendingWrite> = HashMap::with_capacity(3);
-        populate_buffer(&mut buffer, &["fan1", "fan2", "fan3"]);
-        let mut last_processed: HashMap<ChannelName, u64> = HashMap::new();
-        last_processed.insert("fan1".to_string(), 30);
-        last_processed.insert("fan2".to_string(), 10);
-        last_processed.insert("fan3".to_string(), 20);
+        let mut entries: Vec<(usize, PendingWrite)> = Vec::with_capacity(3);
+        let mut buffer = buffer_with(3, &[0, 1, 2]);
+        let last_processed = vec![30, 10, 20];
         order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
-        let order: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(order, vec!["fan2", "fan3", "fan1"]);
+        let order: Vec<usize> = entries.iter().map(|(index, _)| *index).collect();
+        assert_eq!(order, vec![1, 2, 0]);
     }
 
     #[test]
@@ -5257,11 +5372,7 @@ mod slow_device_tests {
             .insert(type_index, Rc::new(Semaphore::new(1)));
         repo.writers.insert(
             type_index,
-            Rc::new(WriterMailbox {
-                pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
-                notify: Notify::new(),
-                force_next_write: RefCell::new(HashSet::with_capacity(PENDING_INITIAL_CAPACITY)),
-            }),
+            Rc::new(WriterMailbox::new(driver.channels.len())),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
         repo.preload_in_flight

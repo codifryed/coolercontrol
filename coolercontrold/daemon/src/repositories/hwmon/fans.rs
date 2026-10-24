@@ -1046,16 +1046,18 @@ pub async fn set_pwm_duty(
     io: &DeviceIo,
 ) -> Result<()> {
     let pwm_value = duty_to_pwm_value(speed_duty);
-    let pwm_path: &Path = match channel_info.pwm_path.as_deref() {
-        Some(path) => path,
-        None => &base_path.join(format_pwm!(channel_info.number)),
+    let pwm_path = || {
+        channel_info
+            .pwm_path
+            .clone()
+            .unwrap_or_else(|| base_path.join(format_pwm!(channel_info.number)))
     };
-    io.write_value(pwm_path, pwm_value.to_string().into_bytes())
+    io.write_one(channel_info.read_slot.pwm, pwm_value, pwm_path)
         .await
         .map_err(|err| {
             anyhow!(
                 "Unable to set PWM value {pwm_value} for {} Reason: {err}",
-                pwm_path.display()
+                pwm_path().display()
             )
         })
 }

@@ -58,6 +58,16 @@ pub fn count_allocations<R>(f: impl FnOnce() -> R) -> (R, u64) {
     (result, after - before)
 }
 
+/// `count_allocations` across awaits. On a single-threaded runtime this counts every task polled
+/// on this thread meanwhile too, which is what a test of a hand-off between local tasks wants.
+pub async fn count_allocations_async<F: std::future::Future>(future: F) -> (F::Output, u64) {
+    let before = ALLOCATIONS.with(Cell::get);
+    let result = future.await;
+    let after = ALLOCATIONS.with(Cell::get);
+    assert!(after >= before);
+    (result, after - before)
+}
+
 mod tests {
     use super::*;
 
