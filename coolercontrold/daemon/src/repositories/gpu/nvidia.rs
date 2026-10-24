@@ -1793,7 +1793,7 @@ struct NvmlProbe {
 /// Whether NVIDIA detection is worth running: the NVIDIA driver is loaded, or an NVIDIA display
 /// controller is on the PCI bus. `nvmlInit` maps libcuda even when it then fails, and libcuda stays
 /// mapped for the daemon's lifetime, so a machine with only the NVIDIA userspace installed skips
-/// it. True when the bus cannot be read, so detection runs as before.
+/// it. True when the bus or any function on it cannot be read, so detection runs as before.
 pub async fn nvidia_gpu_may_be_present() -> bool {
     rt::spawn_blocking(|| {
         nvidia_gpu_may_be_present_in(
@@ -1822,9 +1822,10 @@ fn nvidia_gpu_may_be_present_in(
     for entry in entries.take(pci_devices_max) {
         device_count += 1;
         let Ok(entry) = entry else {
-            continue;
+            return true;
         };
-        if is_nvidia_display_controller(&entry.path()) {
+        // An unreadable function may be an NVIDIA GPU.
+        if is_nvidia_display_controller(&entry.path()).unwrap_or(true) {
             return true;
         }
     }
@@ -1833,15 +1834,17 @@ fn nvidia_gpu_may_be_present_in(
 }
 
 /// Reads only `vendor` and `class`, which the kernel caches, so a GPU in D3cold stays asleep.
-fn is_nvidia_display_controller(pci_device_path: &Path) -> bool {
+/// `None` when an attribute needed to decide cannot be read or parsed.
+fn is_nvidia_display_controller(pci_device_path: &Path) -> Option<bool> {
     let read_hex = |name: &str| {
         let contents = std::fs::read_to_string(pci_device_path.join(name)).ok()?;
         parse_sysfs_hex(&contents)
     };
-    if read_hex("vendor") != Some(NVIDIA_PCI_VENDOR_ID) {
-        return false;
+    if read_hex("vendor")? != NVIDIA_PCI_VENDOR_ID {
+        return Some(false);
     }
-    read_hex("class").is_some_and(|class| class >> 16 == PCI_BASE_CLASS_DISPLAY)
+    let class = read_hex("class")?;
+    Some(class >> 16 == PCI_BASE_CLASS_DISPLAY)
 }
 
 /// Parses a sysfs hex attribute such as `0x10de\n`.
@@ -2152,6 +2155,35 @@ mod tests {
         );
 
         assert!(present);
+    }
+
+    /// Goal: a function whose attributes cannot be read never hides an NVIDIA GPU. Method: an
+    /// NVIDIA function with no `class` file, and a function with a malformed `vendor`.
+    #[test]
+    fn an_unreadable_pci_function_runs_detection() {
+        let write_attributes = |attributes: &[(&str, &str)]| {
+            let root = tempfile::tempdir().unwrap();
+            let device_path = root.path().join("devices/0000:01:00.0");
+            std::fs::create_dir_all(&device_path).unwrap();
+            for (name, contents) in attributes {
+                std::fs::write(device_path.join(name), contents).unwrap();
+            }
+            root
+        };
+        for attributes in [
+            &[("vendor", "0x10de\n")][..],
+            &[("vendor", "nvidia\n"), ("class", "0x030000\n")][..],
+        ] {
+            let root = write_attributes(attributes);
+
+            let present = nvidia_gpu_may_be_present_in(
+                &root.path().join("devices"),
+                &root.path().join("module/nvidia"),
+                PCI_DEVICES_MAX,
+            );
+
+            assert!(present, "{attributes:?}");
+        }
     }
 
     /// Goal: a bus too large to scan in full never hides an NVIDIA GPU, and one just under the
