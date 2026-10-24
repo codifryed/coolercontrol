@@ -2000,6 +2000,8 @@ fn needs_hotspot_register(architecture: Result<DeviceArchitecture, NvmlError>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::gpu::nvapi_io::HotspotReader;
+    use crate::setting::CCDeviceSettings;
 
     /// Goal: a `fanN` channel names fan N-1, and anything else is refused rather than read as
     /// some other fan. Method: parse valid names at both widths and malformed ones.
@@ -2025,8 +2027,6 @@ mod tests {
         assert_eq!(fan_index.unwrap(), 2);
         assert_eq!(allocations, 0);
     }
-    use crate::repositories::gpu::nvapi_io::HotspotReader;
-    use crate::setting::CCDeviceSettings;
 
     #[test]
     #[cfg(feature = "gated-tests")]

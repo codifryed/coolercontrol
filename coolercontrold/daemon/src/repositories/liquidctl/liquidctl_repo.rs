@@ -2241,8 +2241,8 @@ fn rearm_device_probes(liqctld_devices: &HashMap<TypeIndex, LiqctldIo>) {
     }
 }
 
-#[derive(Debug)]
 /// Borrows the device's UID from the caller, so an apply copies no name.
+#[derive(Debug)]
 struct CachedDeviceData<'u> {
     type_index: u8,
     uid: &'u UID,
