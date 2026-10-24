@@ -240,10 +240,6 @@ impl GraphProfileCommander {
     pub async fn apply_duties(&self, duties: &mut [ChannelDuty]) {
         // Unstable: a stable sort allocates a buffer, and the order within a device is free.
         duties.sort_unstable_by(|(left, _), (right, _)| left.device_uid().cmp(right.device_uid()));
-        debug_assert!(
-            duties.is_sorted_by(|(left, _), (right, _)| left.device_uid() <= right.device_uid()),
-            "chunking by device needs each device's duties adjacent"
-        );
         let same_device = |(left, _): &ChannelDuty, (right, _): &ChannelDuty| {
             left.device_uid() == right.device_uid()
         };
