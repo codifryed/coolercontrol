@@ -369,8 +369,13 @@ impl DeviceIo {
     ) -> Result<()> {
         match (self, slot) {
             (Self::Threaded(worker), Some(index)) => worker.write_index(index, value).await,
-            _ => {
-                self.write_value(&path(), value.to_string().into_bytes())
+            (_, slot) => {
+                let path = path();
+                debug_assert!(path.as_os_str().is_empty().not(), "a write needs a path");
+                if let Some(index) = slot {
+                    self.debug_assert_slot(index, &path);
+                }
+                self.write_value(&path, value.to_string().into_bytes())
                     .await
             }
         }
@@ -774,6 +779,13 @@ impl Worker {
     /// Writes `value` to a slot's attribute. The table goes first, as a write through a slot the
     /// worker has not been given fails as unregistered.
     async fn write_index(&self, index: ReadIndex, value: u8) -> Result<()> {
+        debug_assert!(
+            self.pending_registry
+                .borrow()
+                .as_ref()
+                .is_none_or(|paths| usize::from(index) < paths.len()),
+            "write slot {index} is outside the read table"
+        );
         self.ensure_registry().await;
         self.dispatch(
             "writing",

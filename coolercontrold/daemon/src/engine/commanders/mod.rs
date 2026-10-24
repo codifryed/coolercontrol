@@ -92,6 +92,10 @@ pub fn spawn_duty_writes<'s>(
         buffer.give_back(duties);
         return;
     }
+    debug_assert!(
+        duties.iter().all(|(_, duty)| *duty <= 100),
+        "duty must be in 0..=100 range"
+    );
     scope.spawn(async move {
         graph_commander.apply_duties(&mut duties).await;
         buffer.give_back(duties);

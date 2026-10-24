@@ -396,7 +396,17 @@ impl MixProfileCommander {
         child_uid: &ProfileUID,
         device_channel: &ScheduledChannel,
     ) -> bool {
+        debug_assert!(
+            scheduled.iter().any(|(child, channels)| {
+                &child.profile_uid == child_uid && channels.contains(&**device_channel)
+            }),
+            "the child must be scheduled on the channel"
+        );
         scheduled.iter().any(|(parent, parent_channels)| {
+            debug_assert!(
+                parent.member_mix_profile_uids.len() <= parent.member_profile_uids.len(),
+                "Mix members are a subset of all members"
+            );
             parent.member_mix_profile_uids.contains(child_uid)
                 && parent_channels.contains(&**device_channel)
         })
