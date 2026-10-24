@@ -368,22 +368,15 @@ impl MixProfileCommander {
         mut duty_to_apply: impl FnMut(&ProfileUID) -> Option<Duty>,
         duties: &mut Vec<ChannelDuty>,
     ) {
-        // Built on the first duty to apply, so a tick that applies nothing allocates nothing.
-        let mut parent_owned_channels = None;
         for (mix_profile, device_channels) in scheduled {
             let Some(duty_to_set) = duty_to_apply(&mix_profile.profile_uid) else {
                 continue;
             };
-            let skip_channels = parent_owned_channels
-                .get_or_insert_with(|| Self::parent_owned_channels(scheduled))
-                .get(&mix_profile.profile_uid);
             for device_channel in device_channels {
                 // Skip channels owned by a parent Mix - the parent applies its own
                 // calculated duty to those channels.
-                if let Some(channels) = skip_channels {
-                    if channels.contains(&**device_channel) {
-                        continue;
-                    }
+                if Self::is_owned_by_a_parent(scheduled, &mix_profile.profile_uid, device_channel) {
+                    continue;
                 }
                 // We only apply Mix Profiles directly applied to fan channels, as we
                 // can also schedule Overlay Member Profiles,
@@ -395,22 +388,18 @@ impl MixProfileCommander {
         }
     }
 
-    /// For each child Mix profile, the device channels that belong to its parent(s). These
-    /// channels should not be applied by the child directly.
-    fn parent_owned_channels(
+    /// Whether a parent of the Mix `child_uid` is applied to `device_channel`, which the child
+    /// then leaves to it. A scan rather than a lookup map: a child's duty changes on most ticks,
+    /// so a map built per tick allocated on most ticks, and there are only a few Mix profiles.
+    fn is_owned_by_a_parent(
         scheduled: &HashMap<Rc<NormalizedMixProfile>, HashSet<ScheduledChannel>>,
-    ) -> HashMap<&ProfileUID, HashSet<&DeviceChannelProfileSetting>> {
-        let mut parent_owned_channels: HashMap<&ProfileUID, HashSet<&DeviceChannelProfileSetting>> =
-            HashMap::new();
-        for (mix_profile, parent_device_channels) in scheduled {
-            for child_uid in &mix_profile.member_mix_profile_uids {
-                parent_owned_channels
-                    .entry(child_uid)
-                    .or_default()
-                    .extend(parent_device_channels.iter().map(Rc::as_ref));
-            }
-        }
-        parent_owned_channels
+        child_uid: &ProfileUID,
+        device_channel: &ScheduledChannel,
+    ) -> bool {
+        scheduled.iter().any(|(parent, parent_channels)| {
+            parent.member_mix_profile_uids.contains(child_uid)
+                && parent_channels.contains(&**device_channel)
+        })
     }
 
     /// Applies the mix function to the member duties.
@@ -1372,6 +1361,54 @@ mod tests {
             applied,
             vec![("fan1".to_string(), 40), ("fan2".to_string(), 60)]
         );
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_child_left_to_its_parent_allocates_nothing() {
+        // Goal: a child Mix whose duty changes every tick, on a channel its parent owns, costs
+        // a collect nothing. Method: count a collect where only the child has a new duty.
+        let scheduled = make_scheduled(vec![
+            (
+                NormalizedMixProfile {
+                    profile_uid: "child_mix".to_string(),
+                    mix_function: ProfileMixFunctionType::Max,
+                    member_profile_uids: vec!["g1".to_string()],
+                    member_mix_profile_uids: vec![],
+                    member_fixed_profile_duties: HashMap::new(),
+                },
+                vec![mix_channel("dev2", "fan2")],
+            ),
+            (
+                NormalizedMixProfile {
+                    profile_uid: "parent_mix".to_string(),
+                    mix_function: ProfileMixFunctionType::Avg,
+                    member_profile_uids: vec!["child_mix".to_string(), "g2".to_string()],
+                    member_mix_profile_uids: vec!["child_mix".to_string()],
+                    member_fixed_profile_duties: HashMap::new(),
+                },
+                vec![mix_channel("dev2", "fan2")],
+            ),
+        ]);
+        let output_cache = HashMap::from([
+            ("child_mix".to_string(), Some(40u8)),
+            ("parent_mix".to_string(), None),
+        ]);
+        let mut duties = Vec::new();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            MixProfileCommander::collect_duties_from_scheduled(
+                &scheduled,
+                |uid| output_cache[uid],
+                &mut duties,
+            );
+        });
+
+        assert!(
+            duties.is_empty(),
+            "the parent owns the child's only channel"
+        );
+        assert_eq!(allocations, 0);
     }
 
     #[test]
