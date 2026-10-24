@@ -361,6 +361,8 @@ mod tests {
 
     #[test]
     fn a_new_duty_is_collected_once() {
+        // Goal: a new duty applies once and an unchanged one is suppressed. Method: collect
+        // twice with the same output.
         let commander = commander_with_o1(Some(50));
 
         let first = commander.collect_duties_to_apply();
@@ -373,6 +375,8 @@ mod tests {
     #[test]
     #[cfg(feature = "gated-tests")]
     fn collecting_an_unchanged_duty_allocates_nothing() {
+        // Goal: a tick whose duty is suppressed costs no allocation. Method: apply the duty
+        // once, then count the allocations of the next collect.
         let commander = commander_with_o1(Some(50));
         assert!(commander.collect_duties_to_apply().is_empty().not());
 

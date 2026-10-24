@@ -209,6 +209,8 @@ mod tests {
 
     #[test]
     fn a_reply_from_another_thread_arrives() {
+        // Goal: a worker thread's reply wakes and resolves the request. Method: send from a
+        // spawned thread while the runtime waits on the reply.
         let pool = ReplyPool::default();
         let (sender, reply) = pool.channel();
         let worker = std::thread::spawn(move || sender.send(42_u32));
@@ -221,6 +223,8 @@ mod tests {
 
     #[test]
     fn a_read_reply_frees_its_slot_for_the_next_request() {
+        // Goal: a read reply recycles its slot. Method: read one reply, then check the next
+        // channel takes the spare and still carries its own value.
         let pool = ReplyPool::default();
         let (sender, reply) = pool.channel();
         sender.send(1_u32);
@@ -236,6 +240,8 @@ mod tests {
 
     #[test]
     fn a_sender_dropped_unsent_closes_the_reply() {
+        // Goal: a worker gone without replying reports `Closed` and its slot is not reused.
+        // Method: drop the sender, then read the reply and count spares.
         let pool = ReplyPool::<u32>::default();
         let (sender, reply) = pool.channel();
         drop(sender);
@@ -263,6 +269,8 @@ mod tests {
 
     #[test]
     fn a_dropped_reply_tells_the_worker_to_skip_the_work() {
+        // Goal: the worker sees a request given up on. Method: drop the reply and check the
+        // sender reports closed.
         let pool = ReplyPool::<u32>::default();
         let (sender, reply) = pool.channel();
         assert!(sender.is_closed().not());
@@ -274,6 +282,8 @@ mod tests {
 
     #[test]
     fn a_recycled_slot_starts_open() {
+        // Goal: a reused slot carries no state from its last request. Method: complete one
+        // round trip, then check the next sender is not closed.
         let pool = ReplyPool::default();
         let (sender, reply) = pool.channel();
         sender.send(1_u32);
@@ -287,6 +297,8 @@ mod tests {
     #[test]
     #[cfg(feature = "gated-tests")]
     fn a_warm_round_trip_allocates_nothing() {
+        // Goal: a warm pool round trip costs no allocation. Method: warm the pool with one
+        // round trip, then count the allocations of the next.
         let pool = ReplyPool::default();
         let (sender, reply) = pool.channel();
         sender.send(0_u32);

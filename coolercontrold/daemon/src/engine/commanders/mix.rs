@@ -1311,6 +1311,8 @@ mod tests {
 
     #[test]
     fn a_parent_reads_its_childs_output_from_the_same_tick() {
+        // Goal: the in-place write gives a parent its child's fresh output. Method: process a
+        // child and parent once from empty caches and check both results.
         let commander = mix_commander();
         schedule_child_and_parent(&commander);
 
@@ -1349,6 +1351,8 @@ mod tests {
 
     #[test]
     fn each_mix_applies_to_its_own_channel() {
+        // Goal: a child and its parent each apply only to their own channel. Method: process
+        // once and collect the duties to apply.
         let commander = mix_commander();
         schedule_child_and_parent(&commander);
         commander.process_all_profiles();

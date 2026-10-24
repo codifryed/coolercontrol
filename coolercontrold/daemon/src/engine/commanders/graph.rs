@@ -640,6 +640,8 @@ mod tests {
 
     #[test]
     fn a_duty_to_set_is_collected_for_its_channel() {
+        // Goal: the lazily filled map still carries a duty to set. Method: schedule one
+        // profile with an output and collect.
         let (commander, device_uid, _) = commander_with_toggle_writer();
         schedule_g1(&commander, &device_uid, Some(50));
 
@@ -651,6 +653,8 @@ mod tests {
     #[test]
     #[cfg(feature = "gated-tests")]
     fn collecting_with_no_duty_to_set_allocates_nothing() {
+        // Goal: a tick with nothing to apply costs no allocation. Method: schedule one profile
+        // with no output and count the allocations of a collect.
         let (commander, device_uid, _) = commander_with_toggle_writer();
         schedule_g1(&commander, &device_uid, None);
 

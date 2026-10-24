@@ -299,6 +299,8 @@ mod tests {
 
     #[test]
     fn liquidctl_comes_first_and_custom_sensors_last() {
+        // Goal: iteration keeps the repo order the main loop relies on. Method: list the
+        // device types of a full set.
         let types: Vec<DeviceType> = all_repos().iter().map(|repo| repo.device_type()).collect();
         assert_eq!(
             types,
@@ -315,6 +317,8 @@ mod tests {
 
     #[test]
     fn a_missing_repo_is_skipped() {
+        // Goal: an absent repo is left out of iteration. Method: drop the GPU repo and check
+        // it is neither listed nor counted.
         let repos = Repositories {
             gpu: None,
             ..all_repos()
@@ -328,6 +332,8 @@ mod tests {
     #[test]
     #[cfg(feature = "gated-tests")]
     fn iterating_allocates_nothing() {
+        // Goal: iterating the repos each tick costs no allocation. Method: count the
+        // allocations of a full iteration.
         let repos = all_repos();
         let (count, allocations) = crate::alloc_count::count_allocations(|| repos.iter().count());
         assert_eq!(count, 6);
