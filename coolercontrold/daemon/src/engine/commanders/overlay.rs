@@ -228,6 +228,7 @@ impl OverlayProfileCommander {
     /// safety latch counter has been reached.
     fn collect_duties_to_apply(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
         let settings = self.scheduled_settings.borrow();
+        // Empty until a duty applies, so a tick that applies nothing allocates nothing.
         let mut output_to_apply = HashMap::new();
         let output_cache_lock = self.process_output_cache.borrow();
         let mut dedup_lock = self.output_dedup.borrow_mut();
