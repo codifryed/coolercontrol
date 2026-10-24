@@ -1754,9 +1754,11 @@ const NVIDIA_PCI_VENDOR_ID: u32 = 0x10de;
 
 /// The PCI base class of display controllers, VGA and 3D alike.
 const PCI_BASE_CLASS_DISPLAY: u32 = 0x03;
+const _: () = assert!(PCI_BASE_CLASS_DISPLAY <= 0xff);
 
 /// More PCI functions than any real machine has. A bus this large is not ruled out.
 const PCI_DEVICES_MAX: usize = 4096;
+const _: () = assert!(PCI_DEVICES_MAX > 0);
 
 /// How long NVML gets to load, initialize and enumerate, and to shut down again. Without
 /// persistence mode the driver initializes each GPU on the first call, about a second each; a GPU
