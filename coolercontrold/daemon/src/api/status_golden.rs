@@ -14,6 +14,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+#[cfg(feature = "gated-tests")]
+use std::sync::Arc;
 
 #[cfg(feature = "gated-tests")]
 use axum::response::sse::{Event, Sse};
@@ -30,7 +32,7 @@ use crate::api::devices::DeviceDto;
 use crate::api::sse::SseEvent;
 use crate::api::status::DeviceStatusDto;
 #[cfg(feature = "gated-tests")]
-use crate::api::status::{DeviceChannelStatusDto, StatusResponse};
+use crate::api::status::{DeviceChannelStatusDto, SharedStatusResponse, StatusResponse};
 use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::grpc_api::models;
 use crate::grpc_api::models::v1::status::{FanSpeed, Metric};
@@ -701,8 +703,8 @@ fn sse_status_frame_is_golden() {
     let fixture = fixture();
     let responses = responses(&fixture);
     let hwmon_first = hwmon_first(&responses.recent, &fixture);
-    let event: Event = SseEvent::Status(StatusResponse {
-        devices: responses.recent,
+    let event: Event = SseEvent::Status(SharedStatusResponse {
+        devices: Arc::from(responses.recent),
     })
     .into();
     let stream = futures_util::stream::iter([Ok::<_, std::convert::Infallible>(event)]);

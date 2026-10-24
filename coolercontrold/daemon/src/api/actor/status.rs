@@ -11,7 +11,7 @@ use anyhow::Result;
 use chrono::{DateTime, Local};
 use moro_local::Scope;
 use std::ops::Deref;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -217,7 +217,8 @@ fn get_most_recent_status_for_channel(
 #[derive(Clone)]
 pub struct StatusHandle {
     sender: mpsc::Sender<StatusMessage>,
-    broadcaster: broadcast::Sender<Vec<DeviceStatusDto>>,
+    /// Shared, so each SSE subscriber's receive is a reference count instead of a deep copy.
+    broadcaster: broadcast::Sender<Arc<[DeviceStatusDto]>>,
     cancel_token: CancellationToken,
 }
 
@@ -228,7 +229,7 @@ impl StatusHandle {
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let (broadcaster, _) = broadcast::channel::<Vec<DeviceStatusDto>>(2);
+        let (broadcaster, _) = broadcast::channel::<Arc<[DeviceStatusDto]>>(2);
         let actor = StatusActor::new(receiver, all_devices);
         main_scope.spawn(run_api_actor(actor, cancel_token.clone()));
         Self {
@@ -252,7 +253,7 @@ impl StatusHandle {
         rx.await?
     }
 
-    pub fn broadcaster(&self) -> &broadcast::Sender<Vec<DeviceStatusDto>> {
+    pub fn broadcaster(&self) -> &broadcast::Sender<Arc<[DeviceStatusDto]>> {
         &self.broadcaster
     }
 
@@ -262,7 +263,7 @@ impl StatusHandle {
             return;
         }
         let recent_status = self.recent().await.unwrap_or_default();
-        let _ = self.broadcaster.send(recent_status);
+        let _ = self.broadcaster.send(Arc::from(recent_status));
     }
 
     pub fn cancel_token(&self) -> CancellationToken {

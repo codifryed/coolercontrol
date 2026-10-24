@@ -4,7 +4,7 @@
 use crate::alerts::AlertLog;
 use crate::api::actor::{AlertHandle, DeviceHealthHandle, ModeHandle, StatusHandle};
 use crate::api::modes::ActiveMode;
-use crate::api::status::StatusResponse;
+use crate::api::status::{DeviceStatusDto, SharedStatusResponse, StatusResponse};
 use crate::api::{AppState, CCError};
 use crate::device::health::{
     DeviceHealthDto, FailsafeDelta, HealthEvent, SourceDelta, UnreachableDelta,
@@ -27,7 +27,9 @@ use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::ops::Not;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::broadcast;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_stream::wrappers::BroadcastStream;
 use zbus::export::futures_core::Stream;
@@ -56,7 +58,7 @@ type SseResponse = NoApi<Sse<KeepAliveStream<SelectAll<EventStream>>>>;
 #[serde(tag = "event", content = "data", rename_all = "kebab-case")]
 pub enum SseEvent {
     /// One poll tick of every device's most recent status.
-    Status(StatusResponse),
+    Status(#[schemars(with = "StatusResponse")] SharedStatusResponse),
     /// Temp sources that appeared or disappeared this tick.
     Missing(Vec<SourceDelta>),
     /// Temp sources that went stale or recovered this tick.
@@ -81,28 +83,37 @@ pub enum SseEvent {
 
 impl From<SseEvent> for Event {
     fn from(event: SseEvent) -> Self {
-        match event {
-            SseEvent::Status(payload) => json_event("status", &payload),
-            SseEvent::Missing(payload) => json_event("missing", &payload),
-            SseEvent::StaleSource(payload) => json_event("stale-source", &payload),
-            SseEvent::Failsafe(payload) => json_event("failsafe", &payload),
-            SseEvent::Unreachable(payload) => json_event("unreachable", &payload),
-            SseEvent::Health(payload) => json_event("health", &payload),
+        event.into_event_with(&mut Vec::new())
+    }
+}
+
+impl SseEvent {
+    /// As `Event::from`, but serializes JSON through `buffer`. A stream that keeps its buffer
+    /// across events serializes without growing it again.
+    fn into_event_with(self, buffer: &mut Vec<u8>) -> Event {
+        match self {
+            SseEvent::Status(payload) => json_event("status", &payload, buffer),
+            SseEvent::Missing(payload) => json_event("missing", &payload, buffer),
+            SseEvent::StaleSource(payload) => json_event("stale-source", &payload, buffer),
+            SseEvent::Failsafe(payload) => json_event("failsafe", &payload, buffer),
+            SseEvent::Unreachable(payload) => json_event("unreachable", &payload, buffer),
+            SseEvent::Health(payload) => json_event("health", &payload, buffer),
             // The only payload that is not JSON.
             SseEvent::Log(line) => Event::default().event("log").data(line),
-            SseEvent::Mode(payload) => json_event("mode", &payload),
-            SseEvent::Alert(payload) => json_event("alert", &payload),
-            SseEvent::Notification(payload) => json_event("notification", &payload),
-            SseEvent::System(payload) => json_event("system", &payload),
+            SseEvent::Mode(payload) => json_event("mode", &payload, buffer),
+            SseEvent::Alert(payload) => json_event("alert", &payload, buffer),
+            SseEvent::Notification(payload) => json_event("notification", &payload, buffer),
+            SseEvent::System(payload) => json_event("system", &payload, buffer),
         }
     }
 }
 
-fn json_event<T: Serialize>(name: &str, payload: &T) -> Event {
-    Event::default()
-        .event(name)
-        .json_data(payload)
-        .expect("derived DTO serialization cannot fail")
+fn json_event<T: Serialize>(name: &str, payload: &T, buffer: &mut Vec<u8>) -> Event {
+    buffer.clear();
+    serde_json::to_writer(&mut *buffer, payload).expect("derived DTO serialization cannot fail");
+    assert!(buffer.is_empty().not(), "JSON is never empty");
+    let json = std::str::from_utf8(buffer).expect("serde_json writes UTF-8");
+    Event::default().event(name).data(json)
 }
 
 /// Documents the `/sse` 200 response. The handler returns a stream, which aide cannot
@@ -352,15 +363,23 @@ pub async fn status(State(app_state): State<AppState>) -> SseResponse {
 
 fn status_stream(status_handle: &StatusHandle) -> EventStream {
     let cancel_token = status_handle.cancel_token();
-    let stream = BroadcastStream::new(status_handle.broadcaster().subscribe())
-        .take_until(async move { cancel_token.cancelled().await })
-        .map(|status| {
-            Ok(SseEvent::Status(StatusResponse {
-                devices: status.unwrap_or_default(),
-            })
-            .into())
-        });
+    let stream = status_events(status_handle.broadcaster().subscribe())
+        .take_until(async move { cancel_token.cancelled().await });
     Box::pin(stream)
+}
+
+/// One `status` event per broadcast tick. A lagged subscriber gets an empty tick.
+fn status_events(
+    receiver: broadcast::Receiver<Arc<[DeviceStatusDto]>>,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    // Kept across ticks: each frame is about as long as the last.
+    let mut buffer = Vec::new();
+    BroadcastStream::new(receiver).map(move |status| {
+        let event = SseEvent::Status(SharedStatusResponse {
+            devices: status.unwrap_or_else(|_| Arc::from([])),
+        });
+        Ok(event.into_event_with(&mut buffer))
+    })
 }
 
 fn health_stream(device_health_handle: &DeviceHealthHandle) -> EventStream {
@@ -455,14 +474,15 @@ mod tests {
     use crate::events::notifier::NotificationIcon;
     use crate::events::system_event::SystemEventKind;
 
+    use futures_util::FutureExt;
     use tokio_util::sync::CancellationToken;
 
     /// One value per variant. The match is exhaustive on purpose: a new `SseEvent` variant
     /// fails to compile here until it is added, which is what keeps the checks below total.
     fn sample_of_every_variant() -> Vec<SseEvent> {
         let all = vec![
-            SseEvent::Status(StatusResponse {
-                devices: Vec::new(),
+            SseEvent::Status(SharedStatusResponse {
+                devices: Arc::from([]),
             }),
             SseEvent::Missing(Vec::new()),
             SseEvent::StaleSource(Vec::new()),
@@ -721,5 +741,105 @@ mod tests {
             assert!(received.iter().all(|line| line.starts_with("line ")));
             assert_eq!(received.last(), Some(&last_line));
         });
+    }
+
+    fn status_ticks(device_count: usize) -> Arc<[DeviceStatusDto]> {
+        let status = crate::device::Status {
+            temps: vec![crate::device::TempStatus {
+                name: "temp1".to_string(),
+                temp: 40.0,
+            }],
+            ..Default::default()
+        };
+        (0..device_count)
+            .map(|index| DeviceStatusDto {
+                d_type: crate::device::DeviceType::Hwmon,
+                type_index: u8::try_from(index + 1).expect("test device counts fit a u8"),
+                uid: format!("device-{index}"),
+                status_history: crate::device::StatusSnapshot::from_statuses(std::slice::from_ref(
+                    &status,
+                )),
+            })
+            .collect()
+    }
+
+    fn wire(events: Vec<Event>) -> String {
+        let stream = futures_util::stream::iter(events.into_iter().map(Ok::<_, Infallible>));
+        crate::rt::test_runtime(async {
+            let body = axum::response::IntoResponse::into_response(Sse::new(stream)).into_body();
+            let bytes = axum::body::to_bytes(body, usize::MAX)
+                .await
+                .expect("a finite body");
+            String::from_utf8(bytes.to_vec()).expect("SSE frames are UTF-8")
+        })
+    }
+
+    #[test]
+    fn status_events_frame_each_tick_as_event_from_does() {
+        // Goal: reusing the serialization buffer changes no byte on the wire, from one tick to
+        // the next, nor for a lagged subscriber. Method: send two ticks of different sizes, then
+        // lag the channel, and compare each frame with the one `Event::from` renders.
+        let (sender, receiver) = broadcast::channel(2);
+        let mut events = std::pin::pin!(status_events(receiver));
+        let (large, small) = (status_ticks(3), status_ticks(1));
+        let mut received = Vec::new();
+        for tick in [&large, &small] {
+            sender.send(Arc::clone(tick)).expect("a subscriber exists");
+            received.push(
+                events
+                    .next()
+                    .now_or_never()
+                    .flatten()
+                    .expect("a tick")
+                    .unwrap(),
+            );
+        }
+        for _ in 0..3 {
+            sender
+                .send(Arc::clone(&small))
+                .expect("a subscriber exists");
+        }
+        received.push(
+            events
+                .next()
+                .now_or_never()
+                .flatten()
+                .expect("a lag")
+                .unwrap(),
+        );
+
+        let expected = [large, small, Arc::from([])]
+            .map(|devices| Event::from(SseEvent::Status(SharedStatusResponse { devices })));
+        assert_eq!(wire(received), wire(expected.into()));
+        assert!(wire(Vec::new()).is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_status_event_allocates_the_same_for_any_device_count() {
+        // Goal: a subscriber's status event costs a few allocations for the frame, none per
+        // device. Method: warm the buffer on one tick, then count the allocations of receiving
+        // and framing the next, for 1 device and for 20.
+        let allocations_for = |device_count| {
+            let (sender, receiver) = broadcast::channel(2);
+            let mut events = std::pin::pin!(status_events(receiver));
+            let devices = status_ticks(device_count);
+            sender
+                .send(Arc::clone(&devices))
+                .expect("a subscriber exists");
+            assert!(events.next().now_or_never().flatten().is_some());
+            sender.send(devices).expect("a subscriber exists");
+            let (event, allocations) =
+                crate::alloc_count::count_allocations(|| events.next().now_or_never().flatten());
+            assert!(event.is_some());
+            allocations
+        };
+
+        let one_device = allocations_for(1);
+        let twenty_devices = allocations_for(20);
+
+        assert_eq!(one_device, twenty_devices);
+        // All of them are axum growing the frame's own buffer, which it cannot be given.
+        assert!(twenty_devices <= 5, "{twenty_devices} allocations");
     }
 }
