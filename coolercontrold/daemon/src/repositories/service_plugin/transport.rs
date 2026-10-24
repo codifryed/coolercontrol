@@ -197,12 +197,47 @@ const UNAUTHENTICATED: &str = "16";
 #[derive(Clone, Debug)]
 pub struct ExplainRefusals<S> {
     inner: S,
-    service_id: ServiceId,
+    /// Shared, since every call carries it into its response future.
+    service_id: Arc<str>,
 }
 
 impl<S> ExplainRefusals<S> {
     pub fn new(inner: S, service_id: ServiceId) -> Self {
-        Self { inner, service_id }
+        debug_assert!(service_id.is_empty().not());
+        Self {
+            inner,
+            service_id: Arc::from(service_id),
+        }
+    }
+}
+
+pin_project_lite::pin_project! {
+    /// The inner response future, then the rewrite. Named rather than boxed, so a call
+    /// allocates nothing here.
+    pub struct ExplainRefusalsFuture<F> {
+        #[pin]
+        future: F,
+        service_id: Arc<str>,
+    }
+}
+
+impl<F, ResBody, E> Future for ExplainRefusalsFuture<F>
+where
+    F: Future<Output = Result<Response<ResBody>, E>>,
+{
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        let mut response = std::task::ready!(this.future.poll(cx))?;
+        // Exclusive: the rewritten redirect is itself an `Unauthenticated` status, and
+        // `explain_refusal` would replace its message with the wrong advice.
+        if redirects_to_https(&response) {
+            explain_unencrypted_refusal(&mut response, this.service_id);
+        } else {
+            explain_refusal(response.headers_mut(), this.service_id);
+        }
+        Poll::Ready(Ok(response))
     }
 }
 
@@ -278,32 +313,20 @@ fn explain_unencrypted_refusal<B>(response: &mut Response<B>, service_id: &str) 
 impl<S, ReqBody, ResBody> tower::Service<Request<ReqBody>> for ExplainRefusals<S>
 where
     S: tower::Service<Request<ReqBody>, Response = Response<ResBody>>,
-    S::Future: Send + 'static,
-    S::Error: Send + 'static,
-    ResBody: Send + 'static,
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = ExplainRefusalsFuture<S::Future>;
 
     fn poll_ready(&mut self, cx: &mut TaskContext<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
-        let service_id = self.service_id.clone();
-        let future = self.inner.call(request);
-        Box::pin(async move {
-            let mut response = future.await?;
-            // Exclusive: the rewritten redirect is itself an `Unauthenticated` status, and
-            // `explain_refusal` would replace its message with the wrong advice.
-            if redirects_to_https(&response) {
-                explain_unencrypted_refusal(&mut response, &service_id);
-            } else {
-                explain_refusal(response.headers_mut(), &service_id);
-            }
-            Ok(response)
-        })
+        ExplainRefusalsFuture {
+            future: self.inner.call(request),
+            service_id: Arc::clone(&self.service_id),
+        }
     }
 }
 
