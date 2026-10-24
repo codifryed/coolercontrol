@@ -2218,15 +2218,18 @@ mod tests {
             .collect()
     }
 
-    /// The headers the production stack answers each of `requests` with: the real routes
-    /// and fallback over `state`, behind every base layer and `compression`. Runs on the
-    /// sidecar, as the servers do, since the timeout layer needs its reactor.
+    /// The status and headers the production stack answers each of `requests` with: the real
+    /// routes and fallback over `state`, behind every base layer and `compression`. Runs on
+    /// the sidecar, as the servers do, since the timeout layer needs its reactor.
+    ///
+    /// The status is the caller's to check: the fallback answers 404 when the build embedded
+    /// no UI, as in CI, and its headers still apply.
     #[cfg(feature = "gated-tests")]
-    async fn served_headers(
+    async fn served_heads(
         state: AppState,
         compression: Option<ApiCompressionLayer>,
         requests: Vec<axum::http::Request<axum::body::Body>>,
-    ) -> Vec<axum::http::HeaderMap> {
+    ) -> Vec<axum::http::response::Parts> {
         let request_count = requests.len();
         let sessions_dir = tempfile::tempdir().unwrap();
         let sessions_path = sessions_dir.path().to_path_buf();
@@ -2243,17 +2246,16 @@ mod tests {
                 session_layer,
                 cors_layer(None, None, Vec::new()),
             );
-            let mut headers = Vec::with_capacity(requests.len());
+            let mut heads = Vec::with_capacity(requests.len());
             for request in requests {
                 let response = app.clone().oneshot(request).await.unwrap();
-                assert!(response.status().is_success(), "{}", response.status());
-                headers.push(response.headers().clone());
+                heads.push(response.into_parts().0);
             }
-            headers
+            heads
         };
-        let headers = crate::sidecar::handle().run(serve).await.unwrap();
-        assert_eq!(headers.len(), request_count);
-        headers
+        let heads = crate::sidecar::handle().run(serve).await.unwrap();
+        assert_eq!(heads.len(), request_count);
+        heads
     }
 
     /// A read-only bearer token: the raw value a client sends and the record that accepts it.
@@ -2309,13 +2311,18 @@ mod tests {
                     token_handle: TokenHandle::with_tokens(vec![stored]),
                     ..empty_app_state(&cancel_token, main_scope).await
                 };
-                let headers = served_headers(state, Some(api_compression_layer()), requests).await;
+                let heads = served_heads(state, Some(api_compression_layer()), requests).await;
                 // Stops the actors so the scope can finish.
                 cancel_token.cancel();
 
-                let (api, document) = (&headers[0], &headers[1]);
-                assert_eq!(api[axum::http::header::CONTENT_ENCODING], "deflate");
-                assert!(document.get(axum::http::header::CONTENT_ENCODING).is_none());
+                let (api, document) = (&heads[0], &heads[1]);
+                assert!(api.status.is_success(), "{}", api.status);
+                assert_eq!(api.headers[axum::http::header::CONTENT_ENCODING], "deflate");
+                // Built with or without the UI, the fallback's answer stays uncompressed.
+                assert!(document
+                    .headers
+                    .get(axum::http::header::CONTENT_ENCODING)
+                    .is_none());
                 Ok(())
             })
             .await
@@ -2341,29 +2348,35 @@ mod tests {
                     frame_policy: FramePolicy::from_config(&[ANCESTOR.to_string()]),
                     ..state.clone()
                 };
-                let unframed = served_headers(state, None, get_requests(&PATHS)).await;
-                let framed = served_headers(framed_state, None, get_requests(&PATHS)).await;
+                let unframed = served_heads(state, None, get_requests(&PATHS)).await;
+                let framed = served_heads(framed_state, None, get_requests(&PATHS)).await;
                 // Stops the actors so the scope can finish.
                 cancel_token.cancel();
 
                 for document in &unframed[..2] {
                     assert_eq!(
-                        document["content-security-policy"],
+                        document.headers["content-security-policy"],
                         base::CONTENT_SECURITY_POLICY
                     );
-                    assert_eq!(document["x-frame-options"], "SAMEORIGIN");
+                    assert_eq!(document.headers["x-frame-options"], "SAMEORIGIN");
                 }
                 for document in &framed[..2] {
-                    let csp = document["content-security-policy"].to_str().unwrap();
+                    let csp = document.headers["content-security-policy"]
+                        .to_str()
+                        .unwrap();
                     assert!(csp.contains(&format!("; frame-ancestors {ANCESTOR}; ")));
                     assert_eq!(csp.matches("frame-ancestors").count(), 1);
                     // Browsers ignore this where the policy names ancestors. It keeps the
                     // document same-origin only if that policy is ever lost.
-                    assert_eq!(document["x-frame-options"], "SAMEORIGIN");
+                    assert_eq!(document.headers["x-frame-options"], "SAMEORIGIN");
                 }
                 for api_response in [&unframed[2], &framed[2]] {
-                    assert_eq!(api_response["x-frame-options"], "SAMEORIGIN");
-                    assert!(api_response.get("content-security-policy").is_none());
+                    assert!(api_response.status.is_success(), "{}", api_response.status);
+                    assert_eq!(api_response.headers["x-frame-options"], "SAMEORIGIN");
+                    assert!(api_response
+                        .headers
+                        .get("content-security-policy")
+                        .is_none());
                 }
                 Ok(())
             })
