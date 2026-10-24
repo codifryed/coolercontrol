@@ -341,9 +341,11 @@ fn processor_owners(entries: &[ProcessorEntry]) -> Vec<Option<PhysicalID>> {
 /// `/sys/devices/system/cpu/cpufreq/policy[0-9]*/scaling_cur_freq`, which have been reported as
 /// significantly slower on some systems, and give no way to tie a frequency to a package.
 ///
-/// Frequencies are folded into a slot per physical id as they are read, so a poll allocates only
-/// the map it returns.
-pub fn parse_freqs(cpu_info_data: &str) -> HashMap<PhysicalID, CpuFreqs> {
+/// Frequencies are folded into a slot per physical id as they are read, and written into `freqs`,
+/// cleared first, so a poll into last poll's map allocates nothing. A malformed entry leaves it
+/// empty.
+pub fn parse_freqs_into(cpu_info_data: &str, freqs: &mut HashMap<PhysicalID, CpuFreqs>) {
+    freqs.clear();
     let mut tallies = [FreqTally::EMPTY; PHYSICAL_ID_SLOTS];
     let mut physical_id: PhysicalID = 0;
     let mut freq: f64 = 0.;
@@ -359,14 +361,14 @@ pub fn parse_freqs(cpu_info_data: &str) -> HashMap<PhysicalID, CpuFreqs> {
         };
         if key == "physical id" {
             let Ok(parsed) = value.parse() else {
-                return HashMap::new();
+                return;
             };
             physical_id = parsed;
             physical_id_present = true;
         }
         if key == "cpu MHz" {
             let Ok(parsed) = value.parse() else {
-                return HashMap::new();
+                return;
             };
             freq = parsed;
             freq_present = true;
@@ -378,14 +380,20 @@ pub fn parse_freqs(cpu_info_data: &str) -> HashMap<PhysicalID, CpuFreqs> {
             freq_present = false;
         }
     }
-    let mut cpu_freqs = HashMap::new();
     // Pairs each slot with the physical id that indexes it.
     for (physical_id, tally) in (0..=PhysicalID::MAX).zip(&tallies) {
         if tally.count > 0 {
-            cpu_freqs.insert(physical_id, tally.freqs());
+            freqs.insert(physical_id, tally.freqs());
         }
     }
-    cpu_freqs
+}
+
+/// `parse_freqs_into` a new map.
+#[cfg(test)]
+pub fn parse_freqs(cpu_info_data: &str) -> HashMap<PhysicalID, CpuFreqs> {
+    let mut freqs = HashMap::new();
+    parse_freqs_into(cpu_info_data, &mut freqs);
+    freqs
 }
 
 /// A `PhysicalID` is a `u8`, so one slot per possible value holds every package without a map.
@@ -447,7 +455,7 @@ impl FreqTally {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_freqs, CpuFreqs, CpuTopology, Not, PhysicalID};
+    use super::{parse_freqs, parse_freqs_into, CpuFreqs, CpuTopology, Not, PhysicalID};
     use crate::repositories::cpu::fixtures;
     use crate::repositories::cpu::percent::CpuPercent;
 
@@ -744,17 +752,30 @@ mod tests {
         assert!(parse_freqs("").is_empty());
     }
 
-    /// Goal: the per-poll parse allocates only the map it returns, however many processors each
-    /// package has. Method: count the allocations of parsing the two-package dump.
+    /// Goal: the per-poll parse allocates nothing once its map has room, however many processors
+    /// each package has. Method: parse the two-package dump once, then count a second parse.
     #[test]
     #[cfg(feature = "gated-tests")]
-    fn parsing_frequencies_allocates_only_the_result() {
-        let (freqs, allocations) =
-            crate::alloc_count::count_allocations(|| parse_freqs(fixtures::AMD_DOUBLE_CPU));
+    fn parsing_frequencies_into_last_polls_map_allocates_nothing() {
+        let mut freqs = parse_freqs(fixtures::AMD_DOUBLE_CPU);
 
-        assert_eq!(freqs.len(), 2);
-        // At most: the optimizer may elide an allocation, never add one.
-        assert!(allocations <= 1);
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            parse_freqs_into(fixtures::AMD_DOUBLE_CPU, &mut freqs);
+        });
+
+        assert_eq!(freqs, parse_freqs(fixtures::AMD_DOUBLE_CPU));
+        assert_eq!(allocations, 0);
+    }
+
+    /// Goal: a poll reports only what it read, never a package left over from the last. Method:
+    /// parse the two-package dump, then the one-package dump into the same map.
+    #[test]
+    fn a_parse_into_last_polls_map_keeps_nothing_of_it() {
+        let mut freqs = parse_freqs(fixtures::AMD_DOUBLE_CPU);
+
+        parse_freqs_into(fixtures::AMD_SINGLE_CPU, &mut freqs);
+
+        assert_eq!(freqs, parse_freqs(fixtures::AMD_SINGLE_CPU));
     }
 
     /// Goal: Apple Silicon, whose cpuinfo names no model, is one package named by the board
