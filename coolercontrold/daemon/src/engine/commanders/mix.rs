@@ -246,7 +246,7 @@ impl MixProfileCommander {
         mix_duties: &HashMap<ProfileUID, Option<Duty>>,
         last_applied_duties: &HashMap<ProfileUID, Duty>,
     ) -> Option<Duty> {
-        let mut member_duties = MixFold::default();
+        let mut fold = MixFold::default();
         let mut members_have_no_output = true;
         for member_profile_uid in &mix_profile.member_profile_uids {
             // Fixed members have a constant duty - no cache lookup needed.
@@ -255,7 +255,7 @@ impl MixProfileCommander {
                 .get(member_profile_uid)
             {
                 members_have_no_output = false;
-                member_duties.push(fixed_duty);
+                fold.push(fixed_duty);
                 continue;
             }
             // Look up the member's output from the appropriate cache
@@ -291,12 +291,12 @@ impl MixProfileCommander {
                 };
                 last_duty
             };
-            member_duties.push(*duty_value_for_calculation);
+            fold.push(*duty_value_for_calculation);
         }
         if members_have_no_output {
             return None;
         }
-        Some(member_duties.finish(mix_profile.mix_function))
+        Some(fold.finish(mix_profile.mix_function))
     }
 
     /// Processes all the member Profiles and applies the appropriate output per Mix Profile.
