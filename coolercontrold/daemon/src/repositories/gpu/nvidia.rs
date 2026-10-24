@@ -1796,13 +1796,22 @@ struct NvmlProbe {
 /// it. True when the bus cannot be read, so detection runs as before.
 pub async fn nvidia_gpu_may_be_present() -> bool {
     rt::spawn_blocking(|| {
-        nvidia_gpu_may_be_present_in(Path::new(PCI_DEVICES_PATH), Path::new(NVIDIA_MODULE_PATH))
+        nvidia_gpu_may_be_present_in(
+            Path::new(PCI_DEVICES_PATH),
+            Path::new(NVIDIA_MODULE_PATH),
+            PCI_DEVICES_MAX,
+        )
     })
     .await
     .unwrap_or(true)
 }
 
-fn nvidia_gpu_may_be_present_in(pci_devices_path: &Path, nvidia_module_path: &Path) -> bool {
+fn nvidia_gpu_may_be_present_in(
+    pci_devices_path: &Path,
+    nvidia_module_path: &Path,
+    pci_devices_max: usize,
+) -> bool {
+    assert!(pci_devices_max > 0);
     if nvidia_module_path.exists() {
         return true;
     }
@@ -1810,7 +1819,7 @@ fn nvidia_gpu_may_be_present_in(pci_devices_path: &Path, nvidia_module_path: &Pa
         return true;
     };
     let mut device_count: usize = 0;
-    for entry in entries.take(PCI_DEVICES_MAX) {
+    for entry in entries.take(pci_devices_max) {
         device_count += 1;
         let Ok(entry) = entry else {
             continue;
@@ -1819,8 +1828,8 @@ fn nvidia_gpu_may_be_present_in(pci_devices_path: &Path, nvidia_module_path: &Pa
             return true;
         }
     }
-    assert!(device_count <= PCI_DEVICES_MAX);
-    device_count == PCI_DEVICES_MAX
+    assert!(device_count <= pci_devices_max);
+    device_count == pci_devices_max
 }
 
 /// Reads only `vendor` and `class`, which the kernel caches, so a GPU in D3cold stays asleep.
@@ -2086,8 +2095,11 @@ mod tests {
         add_pci_device(&pci_devices_path, "0000:03:00.0", "0x1002", "0x030000");
         add_pci_device(&pci_devices_path, "0000:03:00.1", "0x10de", "0x040300");
 
-        let present =
-            nvidia_gpu_may_be_present_in(&pci_devices_path, &root.path().join("module/nvidia"));
+        let present = nvidia_gpu_may_be_present_in(
+            &pci_devices_path,
+            &root.path().join("module/nvidia"),
+            PCI_DEVICES_MAX,
+        );
 
         assert!(present.not());
     }
@@ -2101,8 +2113,11 @@ mod tests {
             let pci_devices_path = root.path().join("devices");
             add_pci_device(&pci_devices_path, "0000:01:00.0", "0x10de", class);
 
-            let present =
-                nvidia_gpu_may_be_present_in(&pci_devices_path, &root.path().join("module/nvidia"));
+            let present = nvidia_gpu_may_be_present_in(
+                &pci_devices_path,
+                &root.path().join("module/nvidia"),
+                PCI_DEVICES_MAX,
+            );
 
             assert!(present, "class {class} is a display controller");
         }
@@ -2120,7 +2135,8 @@ mod tests {
 
         assert!(nvidia_gpu_may_be_present_in(
             &pci_devices_path,
-            &nvidia_module_path
+            &nvidia_module_path,
+            PCI_DEVICES_MAX,
         ));
     }
 
@@ -2132,9 +2148,34 @@ mod tests {
         let present = nvidia_gpu_may_be_present_in(
             &root.path().join("devices"),
             &root.path().join("module/nvidia"),
+            PCI_DEVICES_MAX,
         );
 
         assert!(present);
+    }
+
+    /// Goal: a bus too large to scan in full never hides an NVIDIA GPU, and one just under the
+    /// cap is scanned in full. Method: fake buses of non-NVIDIA display functions sized at the cap
+    /// and one below it.
+    #[test]
+    fn a_bus_at_the_device_cap_runs_detection() {
+        let pci_devices_max: usize = 4;
+        for (device_count, expected) in [(pci_devices_max, true), (pci_devices_max - 1, false)] {
+            let root = tempfile::tempdir().unwrap();
+            let pci_devices_path = root.path().join("devices");
+            for function in 0..device_count {
+                let slot = format!("0000:0{function}:00.0");
+                add_pci_device(&pci_devices_path, &slot, "0x1002", "0x030000");
+            }
+
+            let present = nvidia_gpu_may_be_present_in(
+                &pci_devices_path,
+                &root.path().join("module/nvidia"),
+                pci_devices_max,
+            );
+
+            assert_eq!(present, expected, "{device_count} functions");
+        }
     }
 
     /// Goal: only well-formed sysfs hex parses. Method: valid values with and without the
