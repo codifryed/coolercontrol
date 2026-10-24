@@ -185,13 +185,30 @@ impl Repositories {
 }
 
 /// A repository with no devices. Its preload counts itself finished, after waiting at `meeting`
-/// when there is one. Its duty writes fail while `failing_writes` is set.
+/// when there is one. Its duty writes fail while `failing_writes` is set, wait at
+/// `write_meeting` when there is one, and are counted in `written`.
 #[cfg(test)]
 pub struct StubRepo {
     pub device_type: DeviceType,
     pub meeting: Option<Rc<tokio::sync::Barrier>>,
     pub finished: Rc<std::cell::Cell<u8>>,
     pub failing_writes: Rc<std::cell::Cell<bool>>,
+    pub write_meeting: Option<Rc<tokio::sync::Barrier>>,
+    pub written: Rc<std::cell::Cell<u8>>,
+}
+
+#[cfg(test)]
+impl StubRepo {
+    pub fn new(device_type: DeviceType) -> Self {
+        Self {
+            device_type,
+            meeting: None,
+            finished: Rc::default(),
+            failing_writes: Rc::default(),
+            write_meeting: None,
+            written: Rc::default(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -233,9 +250,13 @@ impl Repository for StubRepo {
     }
 
     async fn apply_setting_speed_fixed(&self, _: &UID, _: &str, _: u8) -> Result<()> {
+        if let Some(write_meeting) = &self.write_meeting {
+            write_meeting.wait().await;
+        }
         if self.failing_writes.get() {
             return Err(anyhow::anyhow!("simulated failure"));
         }
+        self.written.set(self.written.get() + 1);
         Ok(())
     }
 
@@ -283,12 +304,7 @@ mod tests {
     use super::*;
 
     fn stub(device_type: DeviceType) -> Option<Rc<dyn Repository>> {
-        Some(Rc::new(StubRepo {
-            device_type,
-            meeting: None,
-            finished: Rc::default(),
-            failing_writes: Rc::default(),
-        }))
+        Some(Rc::new(StubRepo::new(device_type)))
     }
 
     fn all_repos() -> Repositories {
