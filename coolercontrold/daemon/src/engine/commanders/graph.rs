@@ -38,11 +38,21 @@ struct WriteFailureLog {
 impl WriteFailureLog {
     /// Records a failed write. Returns `true` when this failure starts a new run and should be
     /// logged, `false` while a run for this channel is already in progress.
+    ///
+    /// A run repeats on every tick, so it is found by borrowed lookups; keys are copied only when
+    /// a run starts.
     fn record_failure(&mut self, device_uid: &UID, channel_name: &str) -> bool {
-        self.failing_channels_by_device
-            .entry(device_uid.clone())
-            .or_default()
-            .insert(channel_name.to_string())
+        if let Some(failing_channels) = self.failing_channels_by_device.get_mut(device_uid) {
+            if failing_channels.contains(channel_name) {
+                return false;
+            }
+            return failing_channels.insert(channel_name.to_string());
+        }
+        self.failing_channels_by_device.insert(
+            device_uid.clone(),
+            HashSet::from([channel_name.to_string()]),
+        );
+        true
     }
 
     /// Records a successful write. Returns `true` when this ends a run and recovery should be
@@ -588,6 +598,23 @@ mod tests {
         assert_eq!(write_failure_log.failing_channels_by_device.len(), 1);
         write_failure_log.record_success(&DEVICE.to_string(), PUMP);
         assert!(write_failure_log.failing_channels_by_device.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_failure_in_a_run_allocates_nothing() {
+        // Goal: a device that keeps failing costs no allocation per tick. Method: start a run,
+        // then count a repeat.
+        let mut write_failure_log = WriteFailureLog::default();
+        let device_uid = DEVICE.to_string();
+        assert!(write_failure_log.record_failure(&device_uid, FAN));
+
+        let (starts_a_run, allocations) = crate::alloc_count::count_allocations(|| {
+            write_failure_log.record_failure(&device_uid, FAN)
+        });
+
+        assert!(starts_a_run.not());
+        assert_eq!(allocations, 0);
     }
 
     /// Schedules graph profile `g1` on the commander's fan, with `output` as its latest duty.
