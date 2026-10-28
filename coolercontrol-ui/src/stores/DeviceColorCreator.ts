@@ -5,6 +5,16 @@ import { Device, DeviceType, type UID } from '@/models/Device'
 import * as d3scale from 'd3-scale'
 import * as d3chromatic from 'd3-scale-chromatic'
 import { DeviceUISettings, SensorAndChannelSettings } from '@/models/UISettings'
+import type { ChannelStatus } from '@/models/Status'
+
+const CPU_THREAD_FREQ_PREFIX = 'CPU Freq Thread '
+// Per-thread frequencies take a violet band no other device type's ramp reaches, so they are
+// not mistaken for another device. Hue, saturation and lightness, from first to last thread.
+const THREAD_FREQ_HSL_START = [268, 70, 60]
+const THREAD_FREQ_HSL_END = [292, 70, 50]
+
+const isThreadFreq = (channel: ChannelStatus): boolean =>
+    channel.name.startsWith(CPU_THREAD_FREQ_PREFIX)
 
 function setDeviceColors(
     devices: Array<Device>,
@@ -18,7 +28,8 @@ function setDeviceColors(
         if (!device.status_history.length) {
             continue // no statuses means no colors needed for this device
         }
-        numberOfColors += device.status.channels.length
+        // Thread channels have a ramp of their own, so turning them on shifts no other color.
+        numberOfColors += device.status.channels.filter((c) => !isThreadFreq(c)).length
         numberOfColors += device.status.temps.length
     }
 
@@ -33,6 +44,9 @@ function setDeviceColors(
             c1.name.localeCompare(c2.name, undefined, { numeric: true, sensitivity: 'base' }),
         )
         for (const channelStatus of sortedChannels) {
+            if (isThreadFreq(channelStatus)) {
+                continue
+            }
             let channelSettings = settings.sensorsAndChannels.get(channelStatus.name)
             if (channelSettings == null) {
                 channelSettings = new SensorAndChannelSettings()
@@ -54,6 +68,50 @@ function setDeviceColors(
             colorIndex++
         }
     }
+}
+
+// Colors every CPU thread frequency channel from the violet band, spread across all of them.
+function setThreadFreqColors(
+    devices: Array<Device>,
+    deviceSettings: Map<UID, DeviceUISettings>,
+): void {
+    const threadChannels: Array<[UID, string]> = []
+    for (const device of devices) {
+        if (device.type !== DeviceType.CPU || !device.status_history.length) {
+            continue
+        }
+        const names = device.status.channels
+            .filter(isThreadFreq)
+            .map((channel) => channel.name)
+            .sort((n1, n2) => n1.localeCompare(n2, undefined, { numeric: true }))
+        for (const name of names) {
+            threadChannels.push([device.uid, name])
+        }
+    }
+    const lastIndex = Math.max(threadChannels.length - 1, 1)
+    threadChannels.forEach(([deviceUID, name], index) => {
+        const settings = deviceSettings.get(deviceUID)!
+        let channelSettings = settings.sensorsAndChannels.get(name)
+        if (channelSettings == null) {
+            channelSettings = new SensorAndChannelSettings()
+            settings.sensorsAndChannels.set(name, channelSettings)
+        }
+        channelSettings.defaultColor = threadFreqColor(index / lastIndex)
+    })
+}
+
+// The violet band at `t` from 0 to 1, as an rgb() string like the d3 ramps give.
+export function threadFreqColor(t: number): string {
+    const [h, s, l] = THREAD_FREQ_HSL_START.map(
+        (start, i) => start + (THREAD_FREQ_HSL_END[i] - start) * t,
+    )
+    const chroma = (1 - Math.abs((2 * l) / 100 - 1)) * (s / 100)
+    const channel = (n: number): number => {
+        const k = (n + h / 30) % 12
+        const value = l / 100 - (chroma / 2) * Math.max(-1, Math.min(k - 3, 9 - k, 1))
+        return Math.round(value * 255)
+    }
+    return `rgb(${channel(0)}, ${channel(8)}, ${channel(4)})`
 }
 
 function createColors(
@@ -102,6 +160,7 @@ export default function setDefaultSensorAndChannelColors(
     deviceSettings: Map<UID, DeviceUISettings>,
 ): void {
     setDeviceColors(devices, deviceSettings, [DeviceType.CPU], d3chromatic.interpolateReds)
+    setThreadFreqColors(devices, deviceSettings)
     setDeviceColors(devices, deviceSettings, [DeviceType.GPU], d3chromatic.interpolatePlasma)
     setDeviceColors(
         devices,
