@@ -58,6 +58,8 @@ export class DeviceInfo {
     readonly model?: string
     readonly thinkpad_fan_control?: boolean
     readonly amd_gpu_overdrive?: boolean
+    // Present on a CPU device that can show a frequency per thread. True when they are on.
+    readonly per_thread_freq?: boolean | null
 
     @Type(() => DriverInfo)
     readonly driver_info: DriverInfo

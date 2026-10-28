@@ -92,6 +92,18 @@ export function useDeviceActions() {
         }, onReject)
     }
 
+    const setPerThreadFreq = (deviceUID: UID, value: boolean, onReject: () => void): void => {
+        confirmRestart(async () => {
+            const ccSetting = settingsStore.ccDeviceSettings.get(deviceUID)!
+            const previous = ccSetting.extensions.per_thread_freq
+            ccSetting.extensions.per_thread_freq = value
+            if (!(await saveAndRestart(ccSetting))) {
+                ccSetting.extensions.per_thread_freq = previous
+                onReject()
+            }
+        }, onReject)
+    }
+
     // Disables the liquidctl device so the kernel hwmon driver takes over.
     const switchToHwmon = (deviceUID: UID, onReject: () => void): void => {
         confirm.require({
@@ -281,6 +293,7 @@ export function useDeviceActions() {
     return {
         setDirectAccess,
         setDelayMillis,
+        setPerThreadFreq,
         switchToHwmon,
         enableAmdOverdrive,
         applyThinkPadFanControl,
