@@ -363,7 +363,7 @@ fn processor_owners(entries: &[ProcessorEntry]) -> Vec<Option<PhysicalID>> {
 
 /// Each processor's `core id`, indexed by processor id, within the load collector's bound.
 fn core_ids(entries: &[ProcessorEntry]) -> Vec<Option<u32>> {
-    let mut core_ids: Vec<Option<u32>> = Vec::new();
+    let mut core_ids: Vec<Option<u32>> = Vec::with_capacity(entries.len().min(MAX_LOGICAL_CPUS));
     for entry in entries {
         let Some(processor_id) = entry.processor_id else {
             continue;
