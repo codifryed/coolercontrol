@@ -2238,6 +2238,92 @@ mod per_thread_freq_tests {
         assert_eq!(allocations, 0);
         assert_eq!(statuses.len(), 3 + 16);
     }
+
+    /// Goal: the device setting decides whether `init_channels` adds thread channels, and its
+    /// state is returned either way, while a later die of the same package, whose frequencies
+    /// the first device took, gets neither. Method: the AMD package with no setting, off and on,
+    /// each from a fresh cpuinfo map, then a second device from the map the last one left.
+    #[test]
+    #[serial]
+    fn init_channels_follows_the_device_setting() {
+        cc_fs::test_runtime(async {
+            let repo = repo_from_cpuinfo(fixtures::AMD_SINGLE_CPU);
+            let tmp = tempfile::tempdir().unwrap();
+            let io = DeviceIo::default();
+            let socket = CpuAssociation::Socket(0);
+            let fresh_freqs = || {
+                let mut freqs = HashMap::new();
+                topology::parse_freqs_into(fixtures::AMD_SINGLE_CPU, &mut freqs, &mut []);
+                freqs
+            };
+            let thread_count = |channels: &[HwmonChannelInfo]| {
+                channels
+                    .iter()
+                    .filter(|channel| thread_processor_id(&channel.name).is_some())
+                    .count()
+            };
+            let mut setting = CCDeviceSettings::default();
+
+            let (channels, state) = repo
+                .init_channels(tmp.path(), socket, &mut fresh_freqs(), &io, None)
+                .await;
+            assert_eq!(state, Some(false));
+            assert_eq!(thread_count(&channels), 0);
+
+            let (channels, state) = repo
+                .init_channels(tmp.path(), socket, &mut fresh_freqs(), &io, Some(&setting))
+                .await;
+            assert_eq!(state, Some(false));
+            assert_eq!(thread_count(&channels), 0);
+
+            setting.extensions.per_thread_freq = true;
+            let mut cpu_freqs = fresh_freqs();
+            let (channels, state) = repo
+                .init_channels(tmp.path(), socket, &mut cpu_freqs, &io, Some(&setting))
+                .await;
+            assert_eq!(state, Some(true));
+            assert_eq!(thread_count(&channels), 16);
+
+            let (channels, state) = repo
+                .init_channels(tmp.path(), socket, &mut cpu_freqs, &io, Some(&setting))
+                .await;
+            assert_eq!(state, None);
+            assert_eq!(thread_count(&channels), 0);
+        });
+    }
+
+    /// Goal: a poll fills the sized thread buffer from cpuinfo, each slot by processor id.
+    /// Method: the AMD dump in a temp cpuinfo file, the buffer sized from the package's thread
+    /// channels, then one frequency read.
+    #[test]
+    #[serial]
+    fn a_poll_fills_the_thread_buffer_from_cpuinfo() {
+        cc_fs::test_runtime(async {
+            let mut repo = repo_from_cpuinfo(fixtures::AMD_SINGLE_CPU);
+            let tmp = tempfile::tempdir().unwrap();
+            let cpuinfo_path = tmp.path().join("cpuinfo");
+            std::fs::write(&cpuinfo_path, fixtures::AMD_SINGLE_CPU).unwrap();
+            repo.cpuinfo = cc_fs::ProcFile::new(&cpuinfo_path, CPUINFO_MAX_BYTES);
+            let mut channels = socket_channels();
+            repo.add_thread_freqs(0, true, &mut channels);
+            let driver = HwmonDriverInfo {
+                channels,
+                ..Default::default()
+            };
+            repo.size_thread_freqs(std::iter::once(&driver));
+
+            let mut freqs = HashMap::new();
+            repo.collect_freq_into(&mut freqs).await;
+
+            assert!(freqs.contains_key(&0));
+            let thread_freqs = repo.thread_freqs.borrow();
+            assert_eq!(thread_freqs.len(), 16);
+            assert_eq!(thread_freqs[0], Some(3360));
+            assert_eq!(thread_freqs[1], Some(4200));
+            assert_eq!(thread_freqs[15], Some(3524));
+            assert!(thread_freqs.iter().all(Option::is_some));
+        });
+    }
 }
 
 #[cfg(all(test, feature = "gated-tests"))]
