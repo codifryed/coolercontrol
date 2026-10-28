@@ -2733,12 +2733,15 @@ mod tests {
         // through a recording device and compare every write, which also rules out an `r`.
         cc_fs::test_runtime(async {
             let info = recorded_fan_curve_info(true, true);
-            let (io, writes) = DeviceIo::recording_for_test();
+            let (io, mut recorder) = DeviceIo::recording_for_test();
 
-            GpuAMD::set_pmfw_duty(&info, 20, &io).await.unwrap();
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 20, &io))
+                .await
+                .unwrap();
 
             let expected = expected_apply(&info, Some("0\n"), None, &flat_points(20));
-            assert_eq!(writes.snapshot(), expected);
+            assert_eq!(recorder.writes(), expected);
         });
     }
 
@@ -2749,12 +2752,15 @@ mod tests {
         // through a recording device and compare every write.
         cc_fs::test_runtime(async {
             let info = recorded_fan_curve_info(true, true);
-            let (io, writes) = DeviceIo::recording_for_test();
+            let (io, mut recorder) = DeviceIo::recording_for_test();
 
-            GpuAMD::set_pmfw_duty(&info, 0, &io).await.unwrap();
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 0, &io))
+                .await
+                .unwrap();
 
             let expected = expected_apply(&info, Some("1\n"), Some("80\n"), &flat_points(15));
-            assert_eq!(writes.snapshot(), expected);
+            assert_eq!(recorder.writes(), expected);
         });
     }
 
@@ -2765,12 +2771,15 @@ mod tests {
         // Zero RPM file and compare every write.
         cc_fs::test_runtime(async {
             let info = recorded_fan_curve_info(true, false);
-            let (io, writes) = DeviceIo::recording_for_test();
+            let (io, mut recorder) = DeviceIo::recording_for_test();
 
-            GpuAMD::set_pmfw_duty(&info, 0, &io).await.unwrap();
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 0, &io))
+                .await
+                .unwrap();
 
             let expected = expected_apply(&info, Some("1\n"), None, &flat_points(15));
-            assert_eq!(writes.snapshot(), expected);
+            assert_eq!(recorder.writes(), expected);
         });
     }
 
@@ -2780,14 +2789,20 @@ mod tests {
         // and a zero duty, which clamps to the floor, and compare every write.
         cc_fs::test_runtime(async {
             let info = recorded_fan_curve_info(false, false);
-            let (io, writes) = DeviceIo::recording_for_test();
+            let (io, mut recorder) = DeviceIo::recording_for_test();
 
-            GpuAMD::set_pmfw_duty(&info, 20, &io).await.unwrap();
-            GpuAMD::set_pmfw_duty(&info, 0, &io).await.unwrap();
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 20, &io))
+                .await
+                .unwrap();
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 0, &io))
+                .await
+                .unwrap();
 
             let mut expected = expected_apply(&info, None, None, &flat_points(20));
             expected.extend(expected_apply(&info, None, None, &flat_points(15)));
-            assert_eq!(writes.snapshot(), expected);
+            assert_eq!(recorder.writes(), expected);
         });
     }
 
@@ -2798,16 +2813,17 @@ mod tests {
         // compare every write.
         cc_fs::test_runtime(async {
             let info = recorded_fan_curve_info(true, true);
-            let (io, writes) = DeviceIo::recording_for_test();
+            let (io, mut recorder) = DeviceIo::recording_for_test();
             let profile = [(40.0, 0), (60.0, 50), (80.0, 100)];
 
-            GpuAMD::set_pmfw_profile(&info, &profile, &io)
+            recorder
+                .serve(GpuAMD::set_pmfw_profile(&info, &profile, &io))
                 .await
                 .unwrap();
 
             let points = [(40, 15), (60, 50), (80, 100), (80, 100), (80, 100)];
             let expected = expected_apply(&info, Some("1\n"), Some("40\n"), &points);
-            assert_eq!(writes.snapshot(), expected);
+            assert_eq!(recorder.writes(), expected);
         });
     }
 
@@ -2817,16 +2833,17 @@ mod tests {
         // at the firmware's threshold. Method: apply such a profile and compare every write.
         cc_fs::test_runtime(async {
             let info = recorded_fan_curve_info(true, false);
-            let (io, writes) = DeviceIo::recording_for_test();
+            let (io, mut recorder) = DeviceIo::recording_for_test();
             let profile = [(40.0, 0), (60.0, 50), (80.0, 100)];
 
-            GpuAMD::set_pmfw_profile(&info, &profile, &io)
+            recorder
+                .serve(GpuAMD::set_pmfw_profile(&info, &profile, &io))
                 .await
                 .unwrap();
 
             let points = [(40, 15), (60, 50), (80, 100), (80, 100), (80, 100)];
             let expected = expected_apply(&info, Some("1\n"), None, &points);
-            assert_eq!(writes.snapshot(), expected);
+            assert_eq!(recorder.writes(), expected);
         });
     }
 
@@ -2837,16 +2854,17 @@ mod tests {
         // Method: apply such a profile to a card with both files and compare every write.
         cc_fs::test_runtime(async {
             let info = recorded_fan_curve_info(true, true);
-            let (io, writes) = DeviceIo::recording_for_test();
+            let (io, mut recorder) = DeviceIo::recording_for_test();
             let profile = [(40.0, 20), (60.0, 50), (80.0, 100)];
 
-            GpuAMD::set_pmfw_profile(&info, &profile, &io)
+            recorder
+                .serve(GpuAMD::set_pmfw_profile(&info, &profile, &io))
                 .await
                 .unwrap();
 
             let points = [(40, 20), (60, 50), (80, 100), (80, 100), (80, 100)];
             let expected = expected_apply(&info, Some("0\n"), None, &points);
-            assert_eq!(writes.snapshot(), expected);
+            assert_eq!(recorder.writes(), expected);
         });
     }
 
@@ -2905,9 +2923,10 @@ mod tests {
         // device and compare every write.
         cc_fs::test_runtime(async {
             let info = recorded_fan_curve_info(true, true);
-            let (io, writes) = DeviceIo::recording_for_test();
+            let (io, mut recorder) = DeviceIo::recording_for_test();
 
-            GpuAMD::reset_fan_curve_and_zero_rpm(&info, &io)
+            recorder
+                .serve(GpuAMD::reset_fan_curve_and_zero_rpm(&info, &io))
                 .await
                 .unwrap();
 
@@ -2916,7 +2935,7 @@ mod tests {
                 (info.zero_rpm_stop_temp.clone().unwrap(), "r\n".to_owned()),
                 (info.path.clone(), "r\n".to_owned()),
             ];
-            assert_eq!(writes.snapshot(), expected);
+            assert_eq!(recorder.writes(), expected);
         });
     }
 
