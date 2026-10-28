@@ -437,6 +437,36 @@ impl DeviceIo {
         (Self::Threaded(Rc::new(worker)), rx, running)
     }
 
+    /// A `DeviceIo` that answers every write with `Ok` and records it, for tests that check
+    /// which writes reach a device and in what order.
+    ///
+    /// A file only keeps its last write, so a file-backed test cannot tell one commit from two.
+    /// The worker is a plain thread draining the queue, so it needs no runtime of its own, and it
+    /// exits once every handle is dropped. Any other request is dropped unanswered, which its
+    /// caller sees as a gone worker.
+    #[cfg(test)]
+    #[must_use]
+    pub fn recording_for_test() -> (Self, RecordedWrites) {
+        let (io, mut rx, running) = Self::wedged_running_for_test(Duration::from_secs(5));
+        let writes = RecordedWrites::default();
+        let recorded = writes.clone();
+        std::thread::spawn(move || {
+            let _running = running;
+            while let Some(request) = rx.blocking_recv() {
+                if let Request::Write { path, data, reply } = request {
+                    let text = String::from_utf8_lossy(&data).into_owned();
+                    recorded
+                        .0
+                        .lock()
+                        .expect("no writer panics")
+                        .push((path, text));
+                    let _ = reply.send(Ok(()));
+                }
+            }
+        });
+        (io, writes)
+    }
+
     /// Whether this device's worker thread still runs, observable after every handle is
     /// dropped. `None` when not isolated.
     #[must_use]
@@ -860,6 +890,22 @@ pub enum Request {
         reply: oneshot::Sender<Result<usize>>,
     },
     ClearDescriptors,
+}
+
+/// The writes a `DeviceIo::recording_for_test` worker answered, in the order it received them.
+///
+/// Shared with the worker thread, hence the `Arc` and the lock.
+#[cfg(test)]
+#[derive(Clone, Debug, Default)]
+pub struct RecordedWrites(Arc<std::sync::Mutex<Vec<(PathBuf, String)>>>);
+
+#[cfg(test)]
+impl RecordedWrites {
+    /// A copy of every write so far, as `(path, data)`.
+    #[must_use]
+    pub fn snapshot(&self) -> Vec<(PathBuf, String)> {
+        self.0.lock().expect("no writer panics").clone()
+    }
 }
 
 /// One batch's slots and results, sent to the worker and back so a warm batch allocates neither.
@@ -2114,6 +2160,35 @@ mod tests {
             let (wedged, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             wedged.clear_descriptors();
             assert_eq!(wedged.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: the recording worker must answer writes and keep every one in order, repeats
+    /// included, since that is what a file-backed test cannot see. Method: write the same path
+    /// twice and another once, then compare the record, and check a read is refused.
+    #[test]
+    fn a_recording_device_keeps_every_write_in_order() {
+        crate::rt::test_runtime(async {
+            let (io, writes) = DeviceIo::recording_for_test();
+            let first = Path::new("/sys/fake/fan_curve");
+            let second = Path::new("/sys/fake/fan_zero_rpm_enable");
+
+            io.write_value(first, b"0 25 20\n".to_vec()).await.unwrap();
+            io.write_value(second, b"0\n".to_vec()).await.unwrap();
+            io.write_value(first, b"c\n".to_vec()).await.unwrap();
+
+            assert_eq!(
+                writes.snapshot(),
+                [
+                    (first.to_path_buf(), "0 25 20\n".to_owned()),
+                    (second.to_path_buf(), "0\n".to_owned()),
+                    (first.to_path_buf(), "c\n".to_owned()),
+                ]
+            );
+            assert!(
+                io.read_value(first).await.is_err(),
+                "reads are not answered"
+            );
         });
     }
 
