@@ -935,8 +935,8 @@ impl CpuRepo {
                 .filter(|channel| thread_processor_id(&channel.name).is_some())
                 .count()
         };
-        debug_assert!(thread_channel_count() <= MAX_NAMES);
-        debug_assert!(per_thread_freq == Some(true) || thread_channel_count() == 0);
+        assert!(thread_channel_count() <= MAX_NAMES);
+        assert!(per_thread_freq == Some(true) || thread_channel_count() == 0);
         (channels, per_thread_freq)
     }
 
@@ -975,7 +975,7 @@ impl CpuRepo {
         if enabled {
             channels.extend(threads.iter().map(thread_freq_channel));
         }
-        debug_assert!(
+        assert!(
             channels
                 .iter()
                 .filter(|channel| channel.hwmon_type != HwmonChannelType::Temp)
