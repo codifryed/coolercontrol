@@ -16,7 +16,7 @@ use crate::config::Config;
 use crate::device::{
     ChannelAttribute, ChannelInfo, ChannelKind, ChannelSample, ChannelStatus, Device, DeviceInfo,
     DeviceType, DriverInfo, DriverType, Mhz, Status, StatusRefill, Temp, TempInfo, TempStatus,
-    Watts, MAX_CHANNEL_ATTRIBUTES, UID,
+    Watts, MAX_CHANNEL_ATTRIBUTES, MAX_NAMES, UID,
 };
 use crate::overrides::OverridesController;
 use crate::repositories::cpu::apple_silicon::{self, AppleSilicon};
@@ -24,7 +24,7 @@ use crate::repositories::cpu::association::{
     self, CpuAssociation, CpuDriver, DriverCensus, ZoneID,
 };
 use crate::repositories::cpu::percent::{CpuPercentCollector, MAX_LOGICAL_CPUS};
-use crate::repositories::cpu::topology::{self, CpuFreqs, CpuTopology, PhysicalID};
+use crate::repositories::cpu::topology::{self, CpuFreqs, CpuTopology, PackageThread, PhysicalID};
 use crate::repositories::cpu::{CPU_DEVICE_NAMES_ORDERED, CPU_TEMP_NAME, INTEL_DEVICE_NAME};
 use crate::repositories::device_summary;
 use crate::repositories::hwmon::chip_name::{self, ChipName};
@@ -48,6 +48,8 @@ const SINGLE_CPU_FREQ_MIN_NAME: &str = "CPU Freq Min";
 const CPUINFO_PATH: &str = "/proc/cpuinfo";
 /// Avg, Max and Min, numbered 0 to 2. Apple Silicon numbers its clusters after them.
 pub const PACKAGE_FREQ_CHANNEL_COUNT: u8 = 3;
+/// Followed by the kernel's processor id, which a poll reads back to find the thread's value.
+const CPU_FREQ_THREAD_PREFIX: &str = "CPU Freq Thread ";
 /// Bound on cpuinfo: 8 KiB for each of `MAX_LOGICAL_CPUS`, well above the about 2 KiB each
 /// processor takes on x86 today.
 const CPUINFO_MAX_BYTES: usize = MAX_LOGICAL_CPUS * 8 * 1024;
@@ -92,6 +94,11 @@ pub struct CpuRepo {
     spare_statuses: RefCell<HashMap<CpuAssociation, CpuStatusBuffers>>,
     /// Each poll's package frequencies, read into last poll's map. Empty while a poll runs.
     poll_freqs: RefCell<HashMap<PhysicalID, CpuFreqs>>,
+    /// Each poll's thread frequencies, indexed by processor id. Sized once at init to the
+    /// highest thread channel, and empty when there is none, which skips the thread parse.
+    thread_freqs: RefCell<Vec<Option<Mhz>>>,
+    /// Each device that can show thread frequencies, and whether it does this run.
+    per_thread_freq_states: HashMap<CpuAssociation, bool>,
     energy_counters: HashMap<PhysicalID, Cell<f64>>,
     poll_rate: f64,
     /// Set on an Apple Silicon machine only, whose frequencies come from its clusters.
@@ -111,6 +118,8 @@ impl CpuRepo {
             preloaded_statuses: RefCell::new(HashMap::new()),
             spare_statuses: RefCell::new(HashMap::new()),
             poll_freqs: RefCell::new(HashMap::new()),
+            thread_freqs: RefCell::new(Vec::new()),
+            per_thread_freq_states: HashMap::new(),
             energy_counters: HashMap::new(),
             poll_rate: 0.,
         })
@@ -376,9 +385,13 @@ impl CpuRepo {
             *freqs = apple_silicon.read_freqs().await;
             return;
         }
-        let parse = |cpu_info_data: &str| topology::parse_freqs_into(cpu_info_data, freqs, &mut []);
+        let parse = |cpu_info_data: &str| {
+            let mut thread_freqs = self.thread_freqs.borrow_mut();
+            topology::parse_freqs_into(cpu_info_data, freqs, &mut thread_freqs);
+        };
         if self.cpuinfo.read_with(parse).await.is_err() {
             freqs.clear();
+            self.thread_freqs.borrow_mut().fill(None);
         }
     }
 
@@ -574,7 +587,7 @@ impl CpuRepo {
             }
         }
         if contains_freq {
-            Self::refill_freqs(driver, freqs, refill);
+            Self::refill_freqs(driver, freqs, &self.thread_freqs.borrow(), refill);
             if let Some(apple_silicon) = &self.apple_silicon {
                 apple_silicon.fill_cluster_freqs(refill.channels_mut());
             }
@@ -667,19 +680,27 @@ impl CpuRepo {
         }
     }
 
-    /// Refills the package's frequency channels from its cpuinfo frequencies.
+    /// Refills the package's frequency channels from its cpuinfo frequencies, and its thread
+    /// channels from `thread_freqs`.
     ///
     /// Every status carries every channel, so a package cpuinfo has no frequency for this poll
     /// reports 0 MHz. That only happens with every processor of the package offline, where 0 is
-    /// the true value.
-    fn refill_freqs(driver: &HwmonDriverInfo, freqs: Option<&CpuFreqs>, refill: &mut StatusRefill) {
+    /// the true value. A thread taken offline since startup reports 0 MHz the same way.
+    fn refill_freqs(
+        driver: &HwmonDriverInfo,
+        freqs: Option<&CpuFreqs>,
+        thread_freqs: &[Option<Mhz>],
+        refill: &mut StatusRefill,
+    ) {
         for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Freq {
                 continue;
             }
-            let freq = freqs
-                .and_then(|freqs| Self::freq_named(freqs, &channel.name))
-                .unwrap_or(0);
+            let freq = match thread_processor_id(&channel.name) {
+                Some(processor_id) => thread_freqs.get(processor_id).copied().flatten(),
+                None => freqs.and_then(|freqs| Self::freq_named(freqs, &channel.name)),
+            }
+            .unwrap_or(0);
             let sample = ChannelSample {
                 freq: Some(freq),
                 ..Default::default()
@@ -741,12 +762,16 @@ impl CpuRepo {
                 else {
                     continue;
                 };
-                let Some(hwmon_driver_info) = self
+                let Some((hwmon_driver_info, per_thread_freq)) = self
                     .init_cpu_device(device_name, path, association, &mut cpu_freqs, identity)
                     .await
                 else {
                     continue;
                 };
+                if let Some(per_thread_freq) = per_thread_freq {
+                    self.per_thread_freq_states
+                        .insert(association, per_thread_freq);
+                }
                 hwmon_devices.insert(association, hwmon_driver_info);
             }
             // Checked once the driver's devices are all seen, so a multi-die package's later dies
@@ -802,8 +827,9 @@ impl CpuRepo {
         Some(association)
     }
 
-    /// Builds the hwmon driver info for an associated CPU device, or returns `None` when the
-    /// device cannot be numbered or named, or the user disabled it.
+    /// Builds the hwmon driver info for an associated CPU device, with its `per_thread_freq`
+    /// state, or returns `None` when the device cannot be numbered or named, or the user disabled
+    /// it.
     async fn init_cpu_device(
         &self,
         device_name: &str,
@@ -811,7 +837,7 @@ impl CpuRepo {
         association: CpuAssociation,
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
         identity: &IdentityReader,
-    ) -> Option<HwmonDriverInfo> {
+    ) -> Option<(HwmonDriverInfo, Option<bool>)> {
         let Some(type_index) = association::device_type_index(&self.topology, association) else {
             error!(
                 "No device number left for {association:?}. Skipping {device_name} at {}.",
@@ -833,17 +859,18 @@ impl CpuRepo {
             info!("Skipping disabled device: {cpu_name} with UID: {device_uid}");
             return None;
         }
-        let mut channels = Vec::new();
         // Before any value read, so detection is isolated too.
         let io =
             DeviceIo::isolated_or_inline(device_name, device_io::reply_timeout_from(&self.config));
-        match Self::init_cpu_temp(path, &io).await {
-            Ok(temps) => channels.extend(temps),
-            Err(err) => error!("Error initializing CPU Temps: {err}"),
-        }
-        if let Some(physical_id) = association.physical_id() {
-            channels.extend(self.init_socket_channels(physical_id, cpu_freqs, &io).await);
-        }
+        let (channels, per_thread_freq) = self
+            .init_channels(
+                path,
+                association,
+                cpu_freqs,
+                &io,
+                cc_device_setting.as_ref(),
+            )
+            .await;
         let Ok(mut channels) = self
             .retain_visible_channels(channels, cc_device_setting.as_ref(), path, identity)
             .await
@@ -862,7 +889,7 @@ impl CpuRepo {
             identity::log_skipped(&device_name, path);
             return None;
         };
-        Some(HwmonDriverInfo {
+        let driver = HwmonDriverInfo {
             name: device_name.to_owned(),
             path: path.to_path_buf(),
             model,
@@ -870,7 +897,97 @@ impl CpuRepo {
             channels,
             io,
             ..Default::default()
-        })
+        };
+        Some((driver, per_thread_freq))
+    }
+
+    /// Every channel of a CPU device before the user's hidden ones are dropped, with its
+    /// `per_thread_freq` state. Load, frequencies, power and threads only exist on a device tied
+    /// to a package.
+    async fn init_channels(
+        &self,
+        path: &Path,
+        association: CpuAssociation,
+        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+        io: &DeviceIo,
+        cc_device_setting: Option<&CCDeviceSettings>,
+    ) -> (Vec<HwmonChannelInfo>, Option<bool>) {
+        let mut channels = Vec::new();
+        match Self::init_cpu_temp(path, io).await {
+            Ok(temps) => channels.extend(temps),
+            Err(err) => error!("Error initializing CPU Temps: {err}"),
+        }
+        let Some(physical_id) = association.physical_id() else {
+            return (channels, None);
+        };
+        // Taken before the socket channels consume the package's entry.
+        let has_cpuinfo_freq = cpu_freqs.contains_key(&physical_id);
+        channels.extend(self.init_socket_channels(physical_id, cpu_freqs, io).await);
+        if has_cpuinfo_freq.not() {
+            return (channels, None);
+        }
+        let enabled = cc_device_setting.is_some_and(|setting| setting.extensions.per_thread_freq);
+        let per_thread_freq = self.add_thread_freqs(physical_id, enabled, &mut channels);
+        (channels, per_thread_freq)
+    }
+
+    /// Adds a frequency channel for each of the package's threads when `enabled`, and returns
+    /// the device's `per_thread_freq` state.
+    ///
+    /// `None` when the package cannot show them: Apple Silicon reads clusters, not cpuinfo, and
+    /// a package with more threads than fit the device's channel limit beside `channels` would
+    /// have names refused by its history.
+    fn add_thread_freqs(
+        &self,
+        physical_id: PhysicalID,
+        enabled: bool,
+        channels: &mut Vec<HwmonChannelInfo>,
+    ) -> Option<bool> {
+        if self.apple_silicon.is_some() {
+            return None;
+        }
+        let threads = self.topology.package_threads(physical_id);
+        if threads.is_empty() {
+            return None;
+        }
+        // Temps have a limit of their own.
+        let other_channel_count = channels
+            .iter()
+            .filter(|channel| channel.hwmon_type != HwmonChannelType::Temp)
+            .count();
+        if threads.len() + other_channel_count > MAX_NAMES {
+            info!(
+                "Physical processor {physical_id} has {} threads, more than a CPU device can \
+                record beside its other channels, so it offers no per-thread frequencies.",
+                threads.len()
+            );
+            return None;
+        }
+        if enabled {
+            channels.extend(threads.iter().map(thread_freq_channel));
+        }
+        debug_assert!(
+            channels
+                .iter()
+                .filter(|channel| channel.hwmon_type != HwmonChannelType::Temp)
+                .count()
+                <= MAX_NAMES
+        );
+        Some(enabled)
+    }
+
+    /// Sizes the per-poll thread buffer to the highest processor id a thread channel names, so a
+    /// poll fills it in place. Left empty without thread channels, which skips the thread parse.
+    fn size_thread_freqs<'a>(&self, drivers: impl Iterator<Item = &'a HwmonDriverInfo>) {
+        let len = drivers
+            .flat_map(|driver| &driver.channels)
+            .filter(|channel| channel.hwmon_type == HwmonChannelType::Freq)
+            .filter_map(|channel| thread_processor_id(&channel.name))
+            .max()
+            .map_or(0, |processor_id| processor_id + 1);
+        // The topology only lists processors below the bound.
+        assert!(len <= MAX_LOGICAL_CPUS);
+        *self.thread_freqs.borrow_mut() = vec![None; len];
     }
 
     /// Whether a CPU channel is read from its hwmon device. Frequencies come from cpuinfo, so a
@@ -1018,6 +1135,8 @@ impl Repository for CpuRepo {
             }
         }
 
+        // Before the first status, so it already carries the thread values.
+        self.size_thread_freqs(hwmon_devices.values());
         let mut cpu_freqs = self.collect_freq().await;
         // A zone-keyed device has no cpuinfo entry of its own. The name has to be resolved the
         // same way it was when the device was built, or every such device would be dropped here.
@@ -1088,6 +1207,7 @@ impl Repository for CpuRepo {
                     channels: channel_infos,
                     temps: temp_infos,
                     temp_max: 100,
+                    per_thread_freq: self.per_thread_freq_states.get(&association).copied(),
                     driver_info: Self::driver_info(&driver, &identity).await,
                     ..Default::default()
                 },
@@ -1298,6 +1418,31 @@ impl Repository for CpuRepo {
     }
 }
 
+/// A thread's frequency channel, named by its processor id and labelled with its core.
+fn thread_freq_channel(thread: &PackageThread) -> HwmonChannelInfo {
+    let name = format!("{CPU_FREQ_THREAD_PREFIX}{}", thread.processor_id);
+    let label = thread.core_id.map_or_else(
+        || name.clone(),
+        |core_id| format!("{name} (Core {core_id})"),
+    );
+    HwmonChannelInfo {
+        hwmon_type: HwmonChannelType::Freq,
+        // Unused: cpuinfo feeds the channel, so no file is named by it.
+        number: 0,
+        name,
+        label: Some(label),
+        ..Default::default()
+    }
+}
+
+/// The processor id a thread frequency channel's name ends with. `None` for any other channel.
+fn thread_processor_id(channel_name: &str) -> Option<usize> {
+    channel_name
+        .strip_prefix(CPU_FREQ_THREAD_PREFIX)?
+        .parse()
+        .ok()
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "gated-tests")]
@@ -1306,6 +1451,7 @@ mod tests {
     use crate::config::Config;
     #[cfg(feature = "gated-tests")]
     use crate::device::ChannelStatus;
+    use crate::device::Mhz;
     use crate::device::{StatusRefill, TempStatus};
     #[cfg(feature = "gated-tests")]
     use crate::overrides::OverridesController;
@@ -1315,14 +1461,16 @@ mod tests {
     use crate::repositories::cpu::association::CpuAssociation;
     #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::cpu_repo::SINGLE_CPU_LOAD_NAME;
-    use crate::repositories::cpu::cpu_repo::{CpuRepo, PACKAGE_FREQ_CHANNEL_COUNT};
+    use crate::repositories::cpu::cpu_repo::{
+        thread_freq_channel, thread_processor_id, CpuRepo, PACKAGE_FREQ_CHANNEL_COUNT,
+    };
     #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::fixtures;
     #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::percent::CpuPercent;
     #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::topology::CpuTopology;
-    use crate::repositories::cpu::topology::{CpuFreqs, PhysicalID};
+    use crate::repositories::cpu::topology::{CpuFreqs, PackageThread, PhysicalID};
     use crate::repositories::hwmon::hwmon_repo::{
         HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
     };
@@ -1361,6 +1509,94 @@ mod tests {
             };
             assert_eq!(CpuRepo::reads_sysfs(&channel), reads_sysfs);
         }
+    }
+
+    /// Goal: a thread channel is named by its kernel processor id and labelled with its core,
+    /// or by its name alone when cpuinfo names no core. Method: a thread of each kind.
+    #[test]
+    fn thread_freq_channels_are_named_by_processor_and_labelled_by_core() {
+        let with_core = thread_freq_channel(&PackageThread {
+            processor_id: 17,
+            core_id: Some(1),
+        });
+        assert_eq!(with_core.hwmon_type, HwmonChannelType::Freq);
+        assert_eq!(with_core.name, "CPU Freq Thread 17");
+        assert_eq!(
+            with_core.label.as_deref(),
+            Some("CPU Freq Thread 17 (Core 1)")
+        );
+
+        let without_core = thread_freq_channel(&PackageThread {
+            processor_id: 3,
+            core_id: None,
+        });
+        assert_eq!(without_core.label.as_deref(), Some("CPU Freq Thread 3"));
+    }
+
+    /// Goal: only a thread channel's name yields a processor id, so package and Apple cluster
+    /// channels are never read from the thread buffer. Method: each kind of frequency name.
+    #[test]
+    fn only_thread_channels_name_a_processor() {
+        assert_eq!(thread_processor_id("CPU Freq Thread 0"), Some(0));
+        assert_eq!(thread_processor_id("CPU Freq Thread 2047"), Some(2047));
+        assert_eq!(thread_processor_id("CPU Freq Avg"), None);
+        assert_eq!(thread_processor_id("CPU Freq Performance Cluster 1"), None);
+        assert_eq!(thread_processor_id("CPU Freq Thread x"), None);
+    }
+
+    /// Goal: thread channels take their own processor's value, a thread missing from this poll
+    /// reports 0 MHz, and every channel is in every status in channel order. Method: package and
+    /// thread channels refilled from a poll with every thread, then one with thread 3 offline,
+    /// and a thread past the buffer.
+    #[test]
+    fn thread_freqs_are_refilled_by_processor_id() {
+        let freq_channel = |name: &str| HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Freq,
+            name: name.to_owned(),
+            ..Default::default()
+        };
+        let driver = HwmonDriverInfo {
+            channels: vec![
+                freq_channel("CPU Freq Avg"),
+                freq_channel("CPU Freq Thread 0"),
+                freq_channel("CPU Freq Thread 3"),
+                freq_channel("CPU Freq Thread 9"),
+            ],
+            ..Default::default()
+        };
+        let package = CpuFreqs {
+            min: 600,
+            max: 5000,
+            avg: 2800,
+        };
+        let refilled = |thread_freqs: &[Option<Mhz>]| {
+            let mut channels = Vec::new();
+            let mut temps = Vec::new();
+            CpuRepo::refill_freqs(
+                &driver,
+                Some(&package),
+                thread_freqs,
+                &mut StatusRefill::new(&mut channels, &mut temps),
+            );
+            channels
+        };
+
+        let online = refilled(&[Some(600), None, None, Some(5000)]);
+        let freqs: Vec<Option<u32>> = online.iter().map(|status| status.freq).collect();
+        assert_eq!(freqs, vec![Some(2800), Some(600), Some(5000), Some(0)]);
+
+        let offline = refilled(&[Some(600), None, None, None]);
+        let names: Vec<&str> = offline.iter().map(|status| status.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "CPU Freq Avg",
+                "CPU Freq Thread 0",
+                "CPU Freq Thread 3",
+                "CPU Freq Thread 9"
+            ]
+        );
+        assert_eq!(offline[2].freq, Some(0));
     }
 
     /// Goal: a package's frequency channels are numbered within its device, so any physical id
@@ -1614,6 +1850,7 @@ mod tests {
             CpuRepo::refill_freqs(
                 &driver,
                 freqs,
+                &[],
                 &mut StatusRefill::new(&mut channels, &mut temps),
             );
             channels
@@ -1788,6 +2025,209 @@ mod tests {
             // then: a processor with no counter yields nothing at all, rather than 0 watts.
             assert_eq!(cpu_repo.power_watts_since_last_tick(1, 30.0), None);
         });
+    }
+}
+
+#[cfg(all(test, feature = "gated-tests"))]
+mod per_thread_freq_tests {
+    use super::*;
+    use crate::repositories::cpu::fixtures;
+    use crate::setting::CCChannelSettings;
+    use serial_test::serial;
+
+    fn repo_from_cpuinfo(cpu_info_data: &str) -> CpuRepo {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        let mut repo = CpuRepo::new(config, Rc::new(OverridesController::empty())).unwrap();
+        repo.topology = CpuTopology::parse(cpu_info_data).unwrap();
+        repo
+    }
+
+    /// The channels a socket device has before thread channels: a temp, then load, the
+    /// package frequencies and power.
+    fn socket_channels() -> Vec<HwmonChannelInfo> {
+        let channel = |hwmon_type, name: &str| HwmonChannelInfo {
+            hwmon_type,
+            name: name.to_owned(),
+            ..Default::default()
+        };
+        vec![
+            channel(HwmonChannelType::Temp, "temp1"),
+            channel(HwmonChannelType::Load, SINGLE_CPU_LOAD_NAME),
+            channel(HwmonChannelType::Freq, SINGLE_CPU_FREQ_AVG_NAME),
+            channel(HwmonChannelType::Freq, SINGLE_CPU_FREQ_MAX_NAME),
+            channel(HwmonChannelType::Freq, SINGLE_CPU_FREQ_MIN_NAME),
+            channel(HwmonChannelType::PowerCap, "CPU Power"),
+        ]
+    }
+
+    /// cpuinfo for one package of `count` threads, each its own core.
+    fn package_of(count: usize) -> String {
+        let mut cpu_info_data = String::with_capacity(count * 80);
+        for processor_id in 0..count {
+            cpu_info_data.push_str(&format!(
+                "processor\t: {processor_id}\nmodel name\t: Test CPU\n\
+                 cpu MHz\t\t: 3000.0\nphysical id\t: 0\ncore id\t\t: {processor_id}\n\n"
+            ));
+        }
+        cpu_info_data
+    }
+
+    /// Goal: with the option off the device keeps exactly today's channels and still says it can
+    /// show threads; with it on, every online thread gets a channel after the others. Method:
+    /// the AMD dump's package, off and then on.
+    #[test]
+    fn the_option_adds_one_channel_per_thread() {
+        let repo = repo_from_cpuinfo(fixtures::AMD_SINGLE_CPU);
+
+        let mut off = socket_channels();
+        assert_eq!(repo.add_thread_freqs(0, false, &mut off), Some(false));
+        let off_names: Vec<&str> = off.iter().map(|channel| channel.name.as_str()).collect();
+        let today = socket_channels();
+        let today_names: Vec<&str> = today.iter().map(|channel| channel.name.as_str()).collect();
+        assert_eq!(off_names, today_names);
+
+        let mut on = socket_channels();
+        assert_eq!(repo.add_thread_freqs(0, true, &mut on), Some(true));
+        assert_eq!(on.len(), today.len() + 16);
+        assert_eq!(on[today.len()].name, "CPU Freq Thread 0");
+        assert_eq!(
+            on[today.len() + 8].label.as_deref(),
+            Some("CPU Freq Thread 8 (Core 0)")
+        );
+        assert_eq!(on.last().unwrap().name, "CPU Freq Thread 15");
+    }
+
+    /// Goal: a package whose threads do not fit the history's channel limit beside the others
+    /// is not offered the option, even when it is on, while one that just fits is. Method: one
+    /// package of exactly the room left, then one thread more.
+    #[test]
+    fn a_package_past_the_channel_limit_offers_no_threads() {
+        let other_channel_count = socket_channels().len() - 1; // all but the temp
+        let room = MAX_NAMES - other_channel_count;
+
+        let repo = repo_from_cpuinfo(&package_of(room));
+        let mut channels = socket_channels();
+        assert_eq!(repo.add_thread_freqs(0, true, &mut channels), Some(true));
+        assert_eq!(channels.len(), socket_channels().len() + room);
+
+        let repo = repo_from_cpuinfo(&package_of(room + 1));
+        let mut channels = socket_channels();
+        assert_eq!(repo.add_thread_freqs(0, true, &mut channels), None);
+        assert_eq!(channels.len(), socket_channels().len());
+    }
+
+    /// Goal: Apple Silicon, whose frequencies come from its clusters, and a package cpuinfo does
+    /// not list, are never offered threads. Method: the AMD dump with an Apple cluster reader
+    /// set, then a physical id the dump does not have.
+    #[test]
+    #[serial]
+    fn apple_silicon_and_unknown_packages_offer_no_threads() {
+        cc_fs::test_runtime(async {
+            let mut repo = repo_from_cpuinfo(fixtures::AMD_SINGLE_CPU);
+            let mut channels = socket_channels();
+            assert_eq!(repo.add_thread_freqs(7, true, &mut channels), None);
+
+            let tmp = tempfile::tempdir().unwrap();
+            let io = crate::repositories::hwmon::device_io::DeviceIo::default();
+            repo.apple_silicon = Some(AppleSilicon::find(tmp.path(), io).await);
+            assert_eq!(repo.add_thread_freqs(0, true, &mut channels), None);
+            assert_eq!(channels.len(), socket_channels().len());
+        });
+    }
+
+    /// Goal: a thread hidden in Manage Sensors is dropped like any other channel. Method: the
+    /// AMD package's thread channels with one disabled in the device settings.
+    #[test]
+    #[serial]
+    fn a_hidden_thread_is_dropped() {
+        cc_fs::test_runtime(async {
+            let repo = repo_from_cpuinfo(fixtures::AMD_SINGLE_CPU);
+            let mut channels = socket_channels();
+            repo.add_thread_freqs(0, true, &mut channels);
+            let mut settings = CCDeviceSettings::default();
+            settings.channel_settings.insert(
+                "CPU Freq Thread 3".to_owned(),
+                CCChannelSettings {
+                    disabled: true,
+                    ..Default::default()
+                },
+            );
+            let tmp = tempfile::tempdir().unwrap();
+
+            let channels = repo
+                .retain_visible_channels(
+                    channels,
+                    Some(&settings),
+                    tmp.path(),
+                    &IdentityReader::inline(),
+                )
+                .await
+                .unwrap();
+
+            let names: Vec<&str> = channels
+                .iter()
+                .map(|channel| channel.name.as_str())
+                .collect();
+            assert!(names.contains(&"CPU Freq Thread 2"));
+            assert!(names.contains(&"CPU Freq Thread 3").not());
+            assert_eq!(names.len(), socket_channels().len() + 15);
+        });
+    }
+
+    /// Goal: the poll buffer reaches the highest thread any device has, and stays empty without
+    /// thread channels, so the parse skips threads. Method: two devices whose threads end at 17,
+    /// then devices with package channels only.
+    #[test]
+    fn the_thread_buffer_covers_the_highest_thread() {
+        let repo = repo_from_cpuinfo(fixtures::AMD_SINGLE_CPU);
+        let driver = |channels| HwmonDriverInfo {
+            channels,
+            ..Default::default()
+        };
+        let threads = |ids: &[usize]| -> Vec<HwmonChannelInfo> {
+            ids.iter()
+                .map(|processor_id| {
+                    thread_freq_channel(&PackageThread {
+                        processor_id: *processor_id,
+                        core_id: None,
+                    })
+                })
+                .collect()
+        };
+        let drivers = [driver(threads(&[0, 5])), driver(threads(&[1, 17]))];
+        repo.size_thread_freqs(drivers.iter());
+        assert_eq!(repo.thread_freqs.borrow().len(), 18);
+
+        let drivers = [driver(socket_channels())];
+        repo.size_thread_freqs(drivers.iter());
+        assert!(repo.thread_freqs.borrow().is_empty());
+    }
+
+    /// Goal: a warm poll with thread channels allocates nothing. Method: refill the AMD
+    /// package's channels once, then count a second refill into the same buffers.
+    #[test]
+    fn a_warm_thread_refill_allocates_nothing() {
+        let repo = repo_from_cpuinfo(fixtures::AMD_SINGLE_CPU);
+        let mut channels = socket_channels();
+        repo.add_thread_freqs(0, true, &mut channels);
+        let driver = HwmonDriverInfo {
+            channels,
+            ..Default::default()
+        };
+        let thread_freqs = vec![Some(3000); 16];
+        let freqs = CpuFreqs::default();
+        let mut statuses = Vec::new();
+        let mut temps = Vec::new();
+        let mut refill = || {
+            let mut refill = StatusRefill::new(&mut statuses, &mut temps);
+            CpuRepo::refill_freqs(&driver, Some(&freqs), &thread_freqs, &mut refill);
+        };
+        refill();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(&mut refill);
+
+        assert_eq!(allocations, 0);
+        assert_eq!(statuses.len(), 3 + 16);
     }
 }
 

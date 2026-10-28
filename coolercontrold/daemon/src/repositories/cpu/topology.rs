@@ -41,6 +41,16 @@ pub struct CpuTopology {
     apic_order: Vec<PhysicalID>,
     /// Each online processor's physical id, indexed by processor id.
     processor_owners: RefCell<Vec<Option<PhysicalID>>>,
+    /// Each processor's `core id` at startup, indexed by processor id. Only labels use it.
+    core_ids: Vec<Option<u32>>,
+}
+
+/// One online processor (thread) of a package, as cpuinfo listed it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PackageThread {
+    pub processor_id: usize,
+    /// Siblings of one core share it. Absent when cpuinfo names no core.
+    pub core_id: Option<u32>,
 }
 
 impl CpuTopology {
@@ -88,6 +98,7 @@ impl CpuTopology {
         Ok(Self {
             apic_order: apic_order(&entries),
             processor_owners: RefCell::new(processor_owners(&entries)),
+            core_ids: core_ids(&entries),
             packages,
             model_names,
         })
@@ -154,6 +165,23 @@ impl CpuTopology {
         Ok(Some(processor_counts))
     }
 
+    /// The package's online processors, ascending by processor id.
+    pub fn package_threads(&self, physical_id: PhysicalID) -> Vec<PackageThread> {
+        let processor_owners = self.processor_owners.borrow();
+        let mut threads = Vec::with_capacity(processor_owners.len());
+        for (processor_id, owner) in processor_owners.iter().enumerate() {
+            if *owner == Some(physical_id) {
+                threads.push(PackageThread {
+                    processor_id,
+                    core_id: self.core_ids.get(processor_id).copied().flatten(),
+                });
+            }
+        }
+        debug_assert!(threads.len() <= MAX_LOGICAL_CPUS);
+        debug_assert!(threads.is_sorted_by_key(|thread| thread.processor_id));
+        threads
+    }
+
     /// The model name to show for a CPU device.
     ///
     /// A device keyed by its package zone has no physical id, so it takes the fallback.
@@ -218,6 +246,7 @@ struct ProcessorEntry {
     physical_id: Option<PhysicalID>,
     model_name: Option<String>,
     apic_id: Option<u32>,
+    core_id: Option<u32>,
 }
 
 /// Splits one cpuinfo line into its key and value. Skips empty and non-key-value lines.
@@ -260,6 +289,7 @@ fn parse_processor_entries(cpu_info_data: &str) -> Result<Vec<ProcessorEntry>> {
             }
             // `initial apicid` is a different key and never lands here.
             "apicid" => entry.apic_id = value.parse().ok(),
+            "core id" => entry.core_id = value.parse().ok(),
             _ => (),
         }
     }
@@ -329,6 +359,25 @@ fn processor_owners(entries: &[ProcessorEntry]) -> Vec<Option<PhysicalID>> {
     }
     debug_assert!(processor_owners.len() <= MAX_LOGICAL_CPUS);
     processor_owners
+}
+
+/// Each processor's `core id`, indexed by processor id, within the load collector's bound.
+fn core_ids(entries: &[ProcessorEntry]) -> Vec<Option<u32>> {
+    let mut core_ids: Vec<Option<u32>> = Vec::new();
+    for entry in entries {
+        let Some(processor_id) = entry.processor_id else {
+            continue;
+        };
+        if processor_id >= MAX_LOGICAL_CPUS {
+            continue;
+        }
+        if processor_id >= core_ids.len() {
+            core_ids.resize(processor_id + 1, None);
+        }
+        core_ids[processor_id] = entry.core_id;
+    }
+    debug_assert!(core_ids.len() <= MAX_LOGICAL_CPUS);
+    core_ids
 }
 
 /// The average, highest and lowest frequency of every package, from cpuinfo.
@@ -483,7 +532,9 @@ impl FreqTally {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_freqs, parse_freqs_into, CpuFreqs, CpuTopology, Not, PhysicalID};
+    use super::{
+        parse_freqs, parse_freqs_into, CpuFreqs, CpuTopology, Not, PackageThread, PhysicalID,
+    };
     use crate::repositories::cpu::fixtures;
     use crate::repositories::cpu::percent::CpuPercent;
     use std::collections::HashMap;
@@ -861,6 +912,40 @@ mod tests {
         parse_freqs_into(malformed, &mut freqs, &mut thread_freqs);
         assert!(thread_freqs.iter().all(Option::is_none));
         assert!(freqs.is_empty());
+    }
+
+    /// Goal: a package lists its own processors in order, siblings of a core share its core id,
+    /// and a processor with no `core id` has none. Method: the two-package Intel dump, whose
+    /// packages interleave processor ids, the AMD dump's siblings 0 and 8, and a dump without
+    /// core ids.
+    #[test]
+    fn package_threads_list_each_package_with_its_core_ids() {
+        let topology = CpuTopology::parse(fixtures::INTEL_DOUBLE_CPU).unwrap();
+        let ids = |physical_id| -> Vec<usize> {
+            let threads = topology.package_threads(physical_id);
+            threads.iter().map(|thread| thread.processor_id).collect()
+        };
+        assert_eq!(ids(0), vec![0, 2, 4, 6, 8, 10, 12, 14]);
+        assert_eq!(ids(1), vec![1, 3, 5, 7, 9, 11, 13, 15]);
+        assert_eq!(topology.package_threads(1)[6].core_id, Some(9));
+        assert!(topology.package_threads(2).is_empty());
+
+        let topology = CpuTopology::parse(fixtures::AMD_SINGLE_CPU).unwrap();
+        let threads = topology.package_threads(0);
+        assert_eq!(threads.len(), 16);
+        assert_eq!(threads[0].core_id, Some(0));
+        assert_eq!(threads[8].core_id, Some(0));
+        assert_eq!(threads[9].core_id, Some(1));
+
+        let topology = CpuTopology::parse(fixtures::INVERTED_APIC).unwrap();
+        let threads = topology.package_threads(1);
+        assert_eq!(
+            threads,
+            vec![PackageThread {
+                processor_id: 1,
+                core_id: None
+            }]
+        );
     }
 
     /// Goal: filling thread frequencies adds no allocation to the per-poll parse. Method: parse

@@ -8852,6 +8852,13 @@
               "null"
             ]
           },
+          "per_thread_freq": {
+            "description": "When present, then this is a CPU device that can show a frequency per thread: cpuinfo\n reports one for each, and they fit the device's channel limit. True indicates the\n per-thread channels are on.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "profile_max_length": {
             "type": "integer",
             "format": "uint8",
