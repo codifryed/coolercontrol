@@ -83,7 +83,9 @@ function setThreadFreqColors(
         const names = device.status.channels
             .filter(isThreadFreq)
             .map((channel) => channel.name)
-            .sort((n1, n2) => n1.localeCompare(n2, undefined, { numeric: true }))
+            .sort((n1, n2) =>
+                n1.localeCompare(n2, undefined, { numeric: true, sensitivity: 'base' }),
+            )
         for (const name of names) {
             threadChannels.push([device.uid, name])
         }
