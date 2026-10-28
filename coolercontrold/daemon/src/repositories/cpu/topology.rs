@@ -402,6 +402,7 @@ pub fn parse_freqs_into(
     freqs: &mut HashMap<PhysicalID, CpuFreqs>,
     thread_freqs: &mut [Option<Mhz>],
 ) {
+    debug_assert!(thread_freqs.len() <= MAX_LOGICAL_CPUS);
     freqs.clear();
     thread_freqs.fill(None);
     let reads_threads = thread_freqs.is_empty().not();

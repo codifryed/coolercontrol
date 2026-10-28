@@ -692,6 +692,7 @@ impl CpuRepo {
         thread_freqs: &[Option<Mhz>],
         refill: &mut StatusRefill,
     ) {
+        debug_assert!(thread_freqs.len() <= MAX_LOGICAL_CPUS);
         for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Freq {
                 continue;
@@ -928,6 +929,14 @@ impl CpuRepo {
         }
         let enabled = cc_device_setting.is_some_and(|setting| setting.extensions.per_thread_freq);
         let per_thread_freq = self.add_thread_freqs(physical_id, enabled, &mut channels);
+        let thread_channel_count = || {
+            channels
+                .iter()
+                .filter(|channel| thread_processor_id(&channel.name).is_some())
+                .count()
+        };
+        debug_assert!(thread_channel_count() <= MAX_NAMES);
+        debug_assert!(per_thread_freq == Some(true) || thread_channel_count() == 0);
         (channels, per_thread_freq)
     }
 
