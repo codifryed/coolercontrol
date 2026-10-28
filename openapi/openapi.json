@@ -8747,6 +8747,11 @@
           "direct_access": {
             "description": "Whether to enable Direct Access for the liquidctl driver,\n which will cause liquidctl to ignore the `HWMon` kernel driver",
             "type": "boolean"
+          },
+          "per_thread_freq": {
+            "description": "Whether a CPU device gets a frequency channel for each of its threads. Off by default:\n every channel keeps an hour of history. Absent from older clients, so it defaults.",
+            "type": "boolean",
+            "default": false
           }
         },
         "required": [

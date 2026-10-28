@@ -379,6 +379,11 @@ pub struct DeviceExtensions {
     /// This is to help with communication issues with some devices that may not handle
     /// multiple settings applied in quick succession. (The driver does not always handle this)
     pub delay_millis: u16,
+
+    /// Whether a CPU device gets a frequency channel for each of its threads. Off by default:
+    /// every channel keeps an hour of history. Absent from older clients, so it defaults.
+    #[serde(default)]
+    pub per_thread_freq: bool,
 }
 
 /// Device Channel specific settings
@@ -1170,6 +1175,24 @@ pub enum ChannelMetric {
 mod tests {
     use super::*;
     use serde_json::{json, Value};
+
+    /// Goal: a client that predates `per_thread_freq` can still save device settings. Method:
+    /// device settings JSON with extensions that lack the field, then with it set.
+    #[test]
+    fn device_extensions_without_per_thread_freq_deserialize() {
+        let mut settings = json!({
+            "name": "CPU",
+            "disable": false,
+            "extensions": { "direct_access": false, "delay_millis": 0 },
+            "channel_settings": {},
+        });
+        let parsed: CCDeviceSettings = serde_json::from_value(settings.clone()).unwrap();
+        assert!(parsed.extensions.per_thread_freq.not());
+
+        settings["extensions"]["per_thread_freq"] = json!(true);
+        let parsed: CCDeviceSettings = serde_json::from_value(settings).unwrap();
+        assert!(parsed.extensions.per_thread_freq);
+    }
 
     fn fan_channel() -> String {
         "fan1".to_string()
