@@ -29,7 +29,7 @@ use crate::repositories::cpu::{CPU_DEVICE_NAMES_ORDERED, CPU_TEMP_NAME, INTEL_DE
 use crate::repositories::device_summary;
 use crate::repositories::hwmon::chip_name::{self, ChipName};
 use crate::repositories::hwmon::hwmon_repo::{
-    install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+    install_read_registry_where, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
 use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{attributes, devices, power_cap, temps};
@@ -851,7 +851,9 @@ impl CpuRepo {
         };
         // Detection is done with this device's channel set, so the per-tick pass can address the
         // worker's table by slot from here on.
-        if let Err(err) = install_read_registry(path, None, &mut channels, &io).await {
+        if let Err(err) =
+            install_read_registry_where(path, None, &mut channels, &io, Self::reads_sysfs).await
+        {
             error!("Could not install the read table for {cpu_name}: {err}");
         }
         let Ok((model, u_id)) = Self::read_model_and_id(path, device_name, identity).await else {
@@ -867,6 +869,12 @@ impl CpuRepo {
             io,
             ..Default::default()
         })
+    }
+
+    /// Whether a CPU channel is read from its hwmon device. Frequencies come from cpuinfo, so a
+    /// slot for them would only register a `freqN_input` that does not exist.
+    fn reads_sysfs(channel: &HwmonChannelInfo) -> bool {
+        channel.hwmon_type != HwmonChannelType::Freq
     }
 
     /// The CPU device of an Apple Silicon machine, which has no CPU hwmon device to build one
@@ -1333,6 +1341,24 @@ mod tests {
             CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
         cpu_repo.topology = CpuTopology::parse(cpu_info_data).unwrap();
         cpu_repo
+    }
+
+    /// Goal: only frequency channels are kept out of the read table, since cpuinfo feeds them.
+    /// Method: one channel of each kind a CPU device can have.
+    #[test]
+    fn only_cpu_frequencies_skip_the_read_table() {
+        for (hwmon_type, reads_sysfs) in [
+            (HwmonChannelType::Temp, true),
+            (HwmonChannelType::Load, true),
+            (HwmonChannelType::PowerCap, true),
+            (HwmonChannelType::Freq, false),
+        ] {
+            let channel = HwmonChannelInfo {
+                hwmon_type,
+                ..Default::default()
+            };
+            assert_eq!(CpuRepo::reads_sysfs(&channel), reads_sysfs);
+        }
     }
 
     /// Goal: a package gets a load channel only if it had a load reading at initialization, and
