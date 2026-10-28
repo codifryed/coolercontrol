@@ -16,6 +16,10 @@ const THREAD_FREQ_HSL_END = [292, 70, 50]
 const isThreadFreq = (channel: ChannelStatus): boolean =>
     channel.name.startsWith(CPU_THREAD_FREQ_PREFIX)
 
+// Only a CPU device's thread channels take the violet band; any other device colors them as usual.
+const takesThreadBand = (device: Device, channel: ChannelStatus): boolean =>
+    device.type === DeviceType.CPU && isThreadFreq(channel)
+
 function setDeviceColors(
     devices: Array<Device>,
     deviceSettings: Map<UID, DeviceUISettings>,
@@ -29,7 +33,7 @@ function setDeviceColors(
             continue // no statuses means no colors needed for this device
         }
         // Thread channels have a ramp of their own, so turning them on shifts no other color.
-        numberOfColors += device.status.channels.filter((c) => !isThreadFreq(c)).length
+        numberOfColors += device.status.channels.filter((c) => !takesThreadBand(device, c)).length
         numberOfColors += device.status.temps.length
     }
 
@@ -44,7 +48,7 @@ function setDeviceColors(
             c1.name.localeCompare(c2.name, undefined, { numeric: true, sensitivity: 'base' }),
         )
         for (const channelStatus of sortedChannels) {
-            if (isThreadFreq(channelStatus)) {
+            if (takesThreadBand(device, channelStatus)) {
                 continue
             }
             let channelSettings = settings.sensorsAndChannels.get(channelStatus.name)

@@ -58,4 +58,32 @@ describe('per-thread frequency colors', () => {
     it('give a lone thread the start of the band', () => {
         expect(cpuColors([0]).get('CPU Freq Thread 0')).toBe(threadFreqColor(0))
     })
+
+    it('leave a non-CPU channel of the same name to its own ramp', () => {
+        const status = plainToInstance(Status, {
+            timestamp: '2026-10-28T12:00:00Z',
+            temps: [],
+            channels: [
+                { name: 'Pump', duty: 50 },
+                { name: 'CPU Freq Thread 0', freq: 3000 },
+            ],
+        })
+        const device = new Device(
+            'plugin',
+            'Plugin',
+            DeviceType.SERVICE_PLUGIN,
+            1,
+            undefined,
+            undefined,
+            [status],
+        )
+        const settings = new Map([['plugin', new DeviceUISettings()]])
+        setDefaultSensorAndChannelColors([device], settings)
+
+        const channels = settings.get('plugin')!.sensorsAndChannels
+        const threadColor = channels.get('CPU Freq Thread 0')?.defaultColor
+        expect(threadColor).toBeDefined()
+        expect(threadColor).not.toBe(threadFreqColor(0))
+        expect(threadColor).not.toBe(channels.get('Pump')?.defaultColor)
+    })
 })
