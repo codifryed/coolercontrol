@@ -376,7 +376,7 @@ impl CpuRepo {
             *freqs = apple_silicon.read_freqs().await;
             return;
         }
-        let parse = |cpu_info_data: &str| topology::parse_freqs_into(cpu_info_data, freqs);
+        let parse = |cpu_info_data: &str| topology::parse_freqs_into(cpu_info_data, freqs, &mut []);
         if self.cpuinfo.read_with(parse).await.is_err() {
             freqs.clear();
         }

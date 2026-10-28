@@ -344,23 +344,41 @@ fn processor_owners(entries: &[ProcessorEntry]) -> Vec<Option<PhysicalID>> {
 /// Frequencies are folded into a slot per physical id as they are read, and written into `freqs`,
 /// cleared first, so a poll into last poll's map allocates nothing. A malformed entry leaves it
 /// empty.
-pub fn parse_freqs_into(cpu_info_data: &str, freqs: &mut HashMap<PhysicalID, CpuFreqs>) {
+///
+/// Each processor's own frequency is also written to `thread_freqs`, indexed by processor id, in
+/// the same pass. It is cleared first, and a processor cpuinfo does not list, or one past its end,
+/// is left `None`. An empty slice skips this, keeping the loop as cheap as before.
+pub fn parse_freqs_into(
+    cpu_info_data: &str,
+    freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+    thread_freqs: &mut [Option<Mhz>],
+) {
     freqs.clear();
+    thread_freqs.fill(None);
+    let reads_threads = thread_freqs.is_empty().not();
     let mut tallies = [FreqTally::EMPTY; PHYSICAL_ID_SLOTS];
     let mut physical_id: PhysicalID = 0;
     let mut freq: f64 = 0.;
+    let mut processor_id: Option<usize> = None;
     let mut physical_id_present = false;
     let mut freq_present = false;
     for line in cpu_info_data.lines() {
         // Checked before splitting, since this runs on every poll over the whole file.
-        if line.starts_with("physical id").not() && line.starts_with("cpu MHz").not() {
+        if line.starts_with("physical id").not()
+            && line.starts_with("cpu MHz").not()
+            && (reads_threads && line.starts_with("processor")).not()
+        {
             continue;
         }
         let Some((key, value)) = cpuinfo_field(line) else {
             continue;
         };
+        if key == "processor" {
+            processor_id = value.parse().ok();
+        }
         if key == "physical id" {
             let Ok(parsed) = value.parse() else {
+                thread_freqs.fill(None);
                 return;
             };
             physical_id = parsed;
@@ -368,10 +386,14 @@ pub fn parse_freqs_into(cpu_info_data: &str, freqs: &mut HashMap<PhysicalID, Cpu
         }
         if key == "cpu MHz" {
             let Ok(parsed) = value.parse() else {
+                thread_freqs.fill(None);
                 return;
             };
             freq = parsed;
             freq_present = true;
+            if let Some(slot) = processor_id.and_then(|id| thread_freqs.get_mut(id)) {
+                *slot = Some(mhz_from(freq));
+            }
         }
         if physical_id_present && freq_present {
             // After each processor's entry. A package's slot index is its physical id.
@@ -388,12 +410,19 @@ pub fn parse_freqs_into(cpu_info_data: &str, freqs: &mut HashMap<PhysicalID, Cpu
     }
 }
 
-/// `parse_freqs_into` a new map.
+/// `parse_freqs_into` a new map, without thread frequencies.
 #[cfg(test)]
 pub fn parse_freqs(cpu_info_data: &str) -> HashMap<PhysicalID, CpuFreqs> {
     let mut freqs = HashMap::new();
-    parse_freqs_into(cpu_info_data, &mut freqs);
+    parse_freqs_into(cpu_info_data, &mut freqs, &mut []);
     freqs
+}
+
+/// A cpuinfo frequency in whole MHz. cpuinfo prints a positive decimal, so the cast only drops
+/// the rounded-off fraction.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn mhz_from(freq_mhz: f64) -> Mhz {
+    freq_mhz.round() as Mhz
 }
 
 /// A `PhysicalID` is a `u8`, so one slot per possible value holds every package without a map.
@@ -441,14 +470,13 @@ impl FreqTally {
         debug_assert!(self.count > 1);
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn freqs(&self) -> CpuFreqs {
         debug_assert!(self.count > 0);
         CpuFreqs {
-            min: self.freq_mhz_min.round() as Mhz,
-            max: self.freq_mhz_max.round() as Mhz,
+            min: mhz_from(self.freq_mhz_min),
+            max: mhz_from(self.freq_mhz_max),
             // The mean over every processor the package reported.
-            avg: (self.freq_mhz_sum / f64::from(self.count)).round() as Mhz,
+            avg: mhz_from(self.freq_mhz_sum / f64::from(self.count)),
         }
     }
 }
@@ -458,6 +486,7 @@ mod tests {
     use super::{parse_freqs, parse_freqs_into, CpuFreqs, CpuTopology, Not, PhysicalID};
     use crate::repositories::cpu::fixtures;
     use crate::repositories::cpu::percent::CpuPercent;
+    use std::collections::HashMap;
 
     /// Goal: a single-package machine parses to one package, named by its model name. Method: the
     /// AMD and Intel single-socket dumps.
@@ -760,7 +789,7 @@ mod tests {
         let mut freqs = parse_freqs(fixtures::AMD_DOUBLE_CPU);
 
         let ((), allocations) = crate::alloc_count::count_allocations(|| {
-            parse_freqs_into(fixtures::AMD_DOUBLE_CPU, &mut freqs);
+            parse_freqs_into(fixtures::AMD_DOUBLE_CPU, &mut freqs, &mut []);
         });
 
         assert_eq!(freqs, parse_freqs(fixtures::AMD_DOUBLE_CPU));
@@ -773,7 +802,7 @@ mod tests {
     fn a_parse_into_last_polls_map_keeps_nothing_of_it() {
         let mut freqs = parse_freqs(fixtures::AMD_DOUBLE_CPU);
 
-        parse_freqs_into(fixtures::AMD_SINGLE_CPU, &mut freqs);
+        parse_freqs_into(fixtures::AMD_SINGLE_CPU, &mut freqs, &mut []);
 
         assert_eq!(freqs, parse_freqs(fixtures::AMD_SINGLE_CPU));
     }
@@ -789,5 +818,64 @@ mod tests {
         assert_eq!(topology.package_count(), 1);
         assert_eq!(topology.model_name(Some(0)).as_deref(), Some(model));
         assert!(parse_freqs(fixtures::APPLE_M1_MAX).is_empty());
+    }
+    /// Goal: one pass gives every processor its own rounded frequency by processor id, leaves
+    /// slots cpuinfo does not fill empty, and reports the same package values as without
+    /// threads. Method: the AMD dump into a buffer with room past its 16 processors.
+    #[test]
+    fn thread_frequencies_are_parsed_by_processor_id() {
+        let mut freqs = HashMap::new();
+        let mut thread_freqs = [Some(1); 20];
+
+        parse_freqs_into(fixtures::AMD_SINGLE_CPU, &mut freqs, &mut thread_freqs);
+
+        assert_eq!(thread_freqs[0], Some(3360));
+        assert_eq!(thread_freqs[1], Some(4200));
+        assert_eq!(thread_freqs[8], Some(3358));
+        assert_eq!(thread_freqs[15], Some(3524));
+        assert!(thread_freqs[..16].iter().all(Option::is_some));
+        assert!(thread_freqs[16..].iter().all(Option::is_none));
+        assert_eq!(freqs, parse_freqs(fixtures::AMD_SINGLE_CPU));
+    }
+
+    /// Goal: processors past the buffer are skipped without touching the package values, and a
+    /// malformed frequency leaves no thread value at all. Method: a buffer of 4 for 16
+    /// processors, then a dump whose second frequency does not parse.
+    #[test]
+    fn thread_frequencies_stay_within_the_buffer_and_fail_empty() {
+        let mut freqs = HashMap::new();
+        let mut thread_freqs = [None; 4];
+        parse_freqs_into(fixtures::AMD_SINGLE_CPU, &mut freqs, &mut thread_freqs);
+        assert!(thread_freqs.iter().all(Option::is_some));
+        assert_eq!(freqs, parse_freqs(fixtures::AMD_SINGLE_CPU));
+
+        let malformed = concat!(
+            "processor\t: 0\n",
+            "cpu MHz\t\t: 3000.0\n",
+            "physical id\t: 0\n",
+            "\n",
+            "processor\t: 1\n",
+            "cpu MHz\t\t: fast\n",
+            "physical id\t: 0\n",
+        );
+        parse_freqs_into(malformed, &mut freqs, &mut thread_freqs);
+        assert!(thread_freqs.iter().all(Option::is_none));
+        assert!(freqs.is_empty());
+    }
+
+    /// Goal: filling thread frequencies adds no allocation to the per-poll parse. Method: parse
+    /// the two-package dump once, then count a second parse with a thread buffer.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn parsing_thread_frequencies_allocates_nothing() {
+        let mut freqs = parse_freqs(fixtures::INTEL_DOUBLE_CPU);
+        let mut thread_freqs = [None; 16];
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            parse_freqs_into(fixtures::INTEL_DOUBLE_CPU, &mut freqs, &mut thread_freqs);
+        });
+
+        assert!(thread_freqs.iter().all(Option::is_some));
+        assert_eq!(allocations, 0);
     }
 }
