@@ -46,6 +46,8 @@ const SINGLE_CPU_FREQ_AVG_NAME: &str = "CPU Freq Avg";
 const SINGLE_CPU_FREQ_MAX_NAME: &str = "CPU Freq Max";
 const SINGLE_CPU_FREQ_MIN_NAME: &str = "CPU Freq Min";
 const CPUINFO_PATH: &str = "/proc/cpuinfo";
+/// Avg, Max and Min, numbered 0 to 2. Apple Silicon numbers its clusters after them.
+pub const PACKAGE_FREQ_CHANNEL_COUNT: u8 = 3;
 /// Bound on cpuinfo: 8 KiB for each of `MAX_LOGICAL_CPUS`, well above the about 2 KiB each
 /// processor takes on x86 today.
 const CPUINFO_MAX_BYTES: usize = MAX_LOGICAL_CPUS * 8 * 1024;
@@ -411,25 +413,25 @@ impl CpuRepo {
         if cpu_freqs.remove(&physical_id).is_none() {
             Err(anyhow!("Error: no frequency found!"))
         } else {
+            // Numbered within the device: it holds one package, and the number names no file.
             Ok(vec![
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Freq,
-                    // This gives us a unique number for each frequency channel, also for multiple physical cpus
-                    number: physical_id * 64,
+                    number: 0,
                     name: SINGLE_CPU_FREQ_AVG_NAME.to_string(),
                     label: Some(SINGLE_CPU_FREQ_AVG_NAME.to_string()),
                     ..Default::default()
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Freq,
-                    number: physical_id * 64 + 1,
+                    number: 1,
                     name: SINGLE_CPU_FREQ_MAX_NAME.to_string(),
                     label: Some(SINGLE_CPU_FREQ_MAX_NAME.to_string()),
                     ..Default::default()
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Freq,
-                    number: physical_id * 64 + 2,
+                    number: 2,
                     name: SINGLE_CPU_FREQ_MIN_NAME.to_string(),
                     label: Some(SINGLE_CPU_FREQ_MIN_NAME.to_string()),
                     ..Default::default()
@@ -1311,16 +1313,16 @@ mod tests {
     use crate::repositories::cpu::apple_silicon::AppleSilicon;
     #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::association::CpuAssociation;
-    use crate::repositories::cpu::cpu_repo::CpuRepo;
     #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::cpu_repo::SINGLE_CPU_LOAD_NAME;
+    use crate::repositories::cpu::cpu_repo::{CpuRepo, PACKAGE_FREQ_CHANNEL_COUNT};
     #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::fixtures;
     #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::percent::CpuPercent;
-    use crate::repositories::cpu::topology::CpuFreqs;
     #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::topology::CpuTopology;
+    use crate::repositories::cpu::topology::{CpuFreqs, PhysicalID};
     use crate::repositories::hwmon::hwmon_repo::{
         HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
     };
@@ -1359,6 +1361,21 @@ mod tests {
             };
             assert_eq!(CpuRepo::reads_sysfs(&channel), reads_sysfs);
         }
+    }
+
+    /// Goal: a package's frequency channels are numbered within its device, so any physical id
+    /// builds them, and a package with no frequency builds none. Method: the lowest physical id,
+    /// the first one that overflowed the old `physical_id * 64` numbering, and the highest.
+    #[test]
+    fn freq_channels_are_numbered_within_the_device() {
+        for physical_id in [0, 4, PhysicalID::MAX] {
+            let mut cpu_freqs = HashMap::from([(physical_id, CpuFreqs::default())]);
+            let channels = CpuRepo::init_cpu_freq(physical_id, &mut cpu_freqs).unwrap();
+            let numbers: Vec<u8> = channels.iter().map(|channel| channel.number).collect();
+            assert_eq!(numbers, vec![0, 1, 2]);
+            assert_eq!(channels.len(), usize::from(PACKAGE_FREQ_CHANNEL_COUNT));
+        }
+        assert!(CpuRepo::init_cpu_freq(1, &mut HashMap::new()).is_err());
     }
 
     /// Goal: a package gets a load channel only if it had a load reading at initialization, and
