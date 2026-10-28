@@ -2940,6 +2940,38 @@ mod tests {
     }
 
     #[test]
+    #[serial]
+    fn failing_to_stage_the_stop_temp_fails_before_any_commit() {
+        // Goal: with Zero RPM on, a stop temperature that cannot be staged must fail the apply
+        // before the curve goes out, even though Zero RPM itself staged. Method: point the stop
+        // temperature under a file so its write fails, apply 0, and check Zero RPM was staged
+        // but the curve file was never written.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup();
+            let blocker = ctx.test_base_path.join("not_a_dir");
+            cc_fs::write(&blocker, b"x".to_vec()).await.unwrap();
+            let info = FanCurveInfo {
+                zero_rpm_stop_temp: Some(blocker.join("fan_zero_rpm_stop_temperature")),
+                ..fan_curve_info_with_paths(&ctx).await
+            };
+
+            let result = GpuAMD::set_pmfw_duty(&info, 0, &DeviceIo::default()).await;
+
+            let zero_rpm = cc_fs::read_txt(info.zero_rpm.as_ref().unwrap())
+                .await
+                .unwrap();
+            let curve = cc_fs::read_txt(&info.path).await.unwrap();
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Zero RPM Stop Temperature"), "actual: {err}");
+            assert_eq!(
+                zero_rpm, "1\n",
+                "Zero RPM stages before the stop temperature"
+            );
+            assert_eq!(curve, "OD_FAN_CURVE:\n", "nothing may be committed");
+        });
+    }
+
+    #[test]
     fn resetting_restores_every_setting_and_stages_nothing() {
         // Goal: the reset and shutdown path hands everything back with restores, each of which
         // commits by itself, and never stages a value. Method: reset through a recording
