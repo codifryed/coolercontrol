@@ -1792,33 +1792,7 @@ impl Config {
         )));
         device_settings_table["disable"] =
             Item::Value(Value::Boolean(Formatted::new(cc_device_settings.disable)));
-        let mut has_device_extension_setting = false;
-        device_settings_table["extensions"]["direct_access"] =
-            if cc_device_settings.extensions.direct_access {
-                has_device_extension_setting = true;
-                Item::Value(Value::Boolean(Formatted::new(
-                    cc_device_settings.extensions.direct_access,
-                )))
-            } else {
-                Item::None
-            };
-        let delay_millis_clamped = cc_device_settings.extensions.delay_millis.min(250);
-        device_settings_table["extensions"]["delay_millis"] = if delay_millis_clamped > 0 {
-            has_device_extension_setting = true;
-            Item::Value(Value::Integer(Formatted::new(delay_millis_clamped.into())))
-        } else {
-            Item::None
-        };
-        device_settings_table["extensions"]["per_thread_freq"] =
-            if cc_device_settings.extensions.per_thread_freq {
-                has_device_extension_setting = true;
-                Item::Value(Value::Boolean(Formatted::new(true)))
-            } else {
-                Item::None
-            };
-        if has_device_extension_setting.not() {
-            device_settings_table["extensions"] = Item::None;
-        }
+        Self::set_device_extensions(device_settings_table, &cc_device_settings.extensions);
         // deprecated (3.0.0). channel_settings is now used instead:
         device_settings_table["disable_channels"] = Item::None;
         let mut channel_settings_table = Item::Table(Table::new());
@@ -1851,6 +1825,33 @@ impl Config {
             }
         }
         device_settings_table["channel_settings"] = channel_settings_table;
+    }
+
+    /// Writes only the extensions that differ from their defaults, dropping an empty table.
+    fn set_device_extensions(device_settings_table: &mut Item, extensions: &DeviceExtensions) {
+        let mut has_device_extension_setting = false;
+        device_settings_table["extensions"]["direct_access"] = if extensions.direct_access {
+            has_device_extension_setting = true;
+            Item::Value(Value::Boolean(Formatted::new(true)))
+        } else {
+            Item::None
+        };
+        let delay_millis_clamped = extensions.delay_millis.min(250);
+        device_settings_table["extensions"]["delay_millis"] = if delay_millis_clamped > 0 {
+            has_device_extension_setting = true;
+            Item::Value(Value::Integer(Formatted::new(delay_millis_clamped.into())))
+        } else {
+            Item::None
+        };
+        device_settings_table["extensions"]["per_thread_freq"] = if extensions.per_thread_freq {
+            has_device_extension_setting = true;
+            Item::Value(Value::Boolean(Formatted::new(true)))
+        } else {
+            Item::None
+        };
+        if has_device_extension_setting.not() {
+            device_settings_table["extensions"] = Item::None;
+        }
     }
 
     /*
