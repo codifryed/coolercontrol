@@ -1197,6 +1197,11 @@ impl GpuAMD {
         io: &DeviceIo,
     ) -> Result<()> {
         assert!(fan_curve.points.is_empty().not(), "a curve needs points");
+        assert_eq!(
+            fan_curve.points.len(),
+            fan_curve_info.fan_curve.points.len(),
+            "an unstaged point would leave a stale table for the commit"
+        );
         let zero_rpm_enable = zero_rpm.is_on();
         if zero_rpm_enable {
             debug_assert!(fan_curve_info.zero_rpm.is_some());
@@ -1214,6 +1219,7 @@ impl GpuAMD {
         } = zero_rpm
         {
             debug_assert!(fan_curve_info.zero_rpm_stop_temp.is_some());
+            debug_assert!(fan_curve_info.zero_rpm_stop_temp_range.contains(&temp));
             if let Some(stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp {
                 Self::stage_zero_rpm_stop_temp(stop_temp_path, temp, io).await?;
             }
