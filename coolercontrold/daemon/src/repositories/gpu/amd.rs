@@ -1159,17 +1159,21 @@ impl GpuAMD {
     /// Zero RPM off, which would otherwise stop a fan asked to spin.
     async fn set_pmfw_duty(fan_curve_info: &FanCurveInfo, duty: Duty, io: &DeviceIo) -> Result<()> {
         debug_assert!(fan_curve_info.changeable);
-        if duty == 0 && fan_curve_info.zero_rpm.is_some() {
-            let stop_temperature_celsius = fan_curve_info
-                .zero_rpm_stop_temp
-                .as_ref()
-                .map(|_| *fan_curve_info.zero_rpm_stop_temp_range.end());
-            let floor_duty = *fan_curve_info.speed_range.start();
-            let floor_curve = Self::create_flat_curve(fan_curve_info, floor_duty);
-            let zero_rpm = ZeroRpm::On {
-                stop_temperature_celsius,
-            };
-            return Self::apply_fan_ctrl(fan_curve_info, zero_rpm, floor_curve, io).await;
+        if duty == 0 {
+            if fan_curve_info.zero_rpm.is_some() {
+                let stop_temperature_celsius = fan_curve_info
+                    .zero_rpm_stop_temp
+                    .as_ref()
+                    .map(|_| *fan_curve_info.zero_rpm_stop_temp_range.end());
+                let floor_duty = *fan_curve_info.speed_range.start();
+                let floor_curve = Self::create_flat_curve(fan_curve_info, floor_duty);
+                let zero_rpm = ZeroRpm::On {
+                    stop_temperature_celsius,
+                };
+                return Self::apply_fan_ctrl(fan_curve_info, zero_rpm, floor_curve, io).await;
+            }
+            // Without a Zero RPM file the fan cannot be stopped from here, so a zero duty
+            // falls through and clamps to the floor.
         }
         let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
         Self::apply_fan_ctrl(fan_curve_info, ZeroRpm::Off, flat_curve, io).await
