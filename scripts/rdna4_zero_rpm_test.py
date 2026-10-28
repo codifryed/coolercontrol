@@ -12,11 +12,12 @@ because the kernel prints its own cached OverDrive table, not the firmware state
 Each trial:
   1. Arm: reset fan control to firmware automatic and wait until the fan stops on its own.
   2. Apply: one write sequence (CoolerControl's, LACT's, reordered, delayed, ...).
-  3. Observe: SPUN as soon as the fan turns for a few seconds, STUCK if it never does.
+  3. Observe: SPUN as soon as the fan turns for a few seconds, STUCK if it is stopped at the
+     end of the window.
 
-The first trial replays CoolerControl's sequence. If it gets STUCK, a reset reproduces the boot
-state and every other trial runs without rebooting. If it SPINS, the reset is not equivalent,
-and each trial must be run once per boot with --boot-trial.
+The first trial replays CoolerControl's sequence. If the fan does not keep spinning, a reset
+reproduces the stuck state and every other trial runs without rebooting. If it SPINS, the reset
+is not equivalent, and each trial must be run once per boot with --boot-trial.
 
 Every commit that really reaches the firmware is detected through dynamic debug on the
 kernel's OverDrive table dump, which only runs when a commit uploads. A commit that changes
@@ -38,7 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import sleep, time
 
-__VERSION__ = "0.1.0"
+__VERSION__ = "0.1.1"
 
 LOG_FILE = "rdna4_zero_rpm_test.log"
 JSON_FILE = "rdna4_zero_rpm_test.json"
@@ -90,6 +91,8 @@ LADDER_DUTIES = (25, 30, 40, 50, 70, 100)
 # Consecutive one second readings that decide a verdict.
 SPIN_CONFIRM_SECONDS = 3
 STOP_CONFIRM_SECONDS = 3
+# Readings from before the last commit takes effect must not decide a verdict.
+STUCK_TAIL_SECONDS = 5
 
 SPUN = "SPUN"
 STUCK = "STUCK"
@@ -136,6 +139,7 @@ class Operation:
     errno: int = None
     error: str = ""
     kernel_log: list = field(default_factory=list)
+    fan_after: dict = None
 
     @property
     def errno_name(self):
@@ -157,6 +161,7 @@ class Operation:
             "error": self.error,
             "uploads": self.uploads,
             "kernel_log": self.kernel_log,
+            "fan_after": self.fan_after,
         }
 
     def log_result(self):
@@ -453,8 +458,16 @@ class FanCtrl:
                 f"fan_curve[{index}] {point_duty}%",
             )
 
+    def commit(self, path, value, label):
+        """Writes a commit or reset and reads the fan straight after, to see its effect alone."""
+        op = self.sysfs.write(path, value, label)
+        pwm, rpm = self.read_fan()
+        op.fan_after = {"pwm1": pwm, "rpm": rpm}
+        log.info(f"        fan after: pwm1={pwm} ({pwm_percent(pwm)})  rpm={rpm}")
+        return op
+
     def commit_curve(self):
-        return self.sysfs.write(self.fan_curve_path, "c\n", "fan_curve commit")
+        return self.commit(self.fan_curve_path, "c\n", "fan_curve commit")
 
     def apply_curve(self, duty):
         self.stage_curve(duty)
@@ -468,18 +481,18 @@ class FanCtrl:
 
     def apply_zero_rpm(self, enable):
         self.stage_zero_rpm(enable)
-        return self.sysfs.write(self.zero_rpm_path, "c\n", "fan_zero_rpm_enable commit")
+        return self.commit(self.zero_rpm_path, "c\n", "fan_zero_rpm_enable commit")
 
     def reset_to_auto(self):
         """Firmware automatic mode. Each 'r' commits by itself in the kernel."""
-        self.sysfs.write(self.zero_rpm_path, "r\n", "fan_zero_rpm_enable reset")
+        self.commit(self.zero_rpm_path, "r\n", "fan_zero_rpm_enable reset")
         if self.zero_rpm_stop_temp_supported:
-            self.sysfs.write(
+            self.commit(
                 self.zero_rpm_stop_temp_path,
                 "r\n",
                 "fan_zero_rpm_stop_temperature reset",
             )
-        self.sysfs.write(self.fan_curve_path, "r\n", "fan_curve reset")
+        self.commit(self.fan_curve_path, "r\n", "fan_curve reset")
 
 
 # -------------------------------------------------------------------------------- observing
@@ -521,7 +534,7 @@ def observe(fan, seconds, label):
     if verdict is None:
         if not rpms:
             verdict = NO_DATA
-        elif max(rpms) == 0:
+        elif max(rpms[-STUCK_TAIL_SECONDS:]) == 0:
             verdict = STUCK
         else:
             verdict = PARTIAL
@@ -582,7 +595,7 @@ class Trial:
         self.armed = None
         self.arm_seconds = None
 
-    def step(self, label, writes, seconds):
+    def step(self, kind, label, writes, seconds):
         """Runs the writes, then observes. Returns the verdict."""
         thin_filler()
         log.info(f"[{self.name}] {label}")
@@ -590,6 +603,7 @@ class Trial:
         writes()
         ops = self.fan.sysfs.operations[start_op:]
         result = observe(self.fan, seconds, label)
+        result["kind"] = kind
         result["uploads"] = sum(op.uploads for op in ops)
         result["failed_writes"] = sum(1 for op in ops if not op.ok)
         result["readback"] = self.fan.readback()
@@ -601,6 +615,14 @@ class Trial:
         if self.armed is False:
             return NOT_ARMED
         return self.steps[0]["verdict"] if self.steps else None
+
+    @property
+    def latched(self):
+        """The fan did not keep spinning after the first step."""
+        return self.verdict in (STUCK, PARTIAL)
+
+    def find_step(self, kind):
+        return next((step for step in self.steps if step["kind"] == kind), None)
 
     def as_dict(self):
         return {
@@ -626,26 +648,41 @@ def run_control(trial):
         fan.apply_zero_rpm(False)
         fan.apply_curve(duty)
 
-    verdict = trial.step(f"zero RPM off + {duty}% curve", control_writes, args.observe)
-    if verdict != STUCK:
+    verdict = trial.step(
+        "control", f"zero RPM off + {duty}% curve", control_writes, args.observe
+    )
+    if verdict in (SPUN, NO_DATA):
         return
 
-    # A lower duty that still uploads: tells "any upload" apart from "a higher duty".
-    chain = [fan.duty_min, duty + 1]
-    chain.extend(d for d in LADDER_DUTIES if duty + 1 < d <= fan.duty_max)
-    started_at = None
-    for step_duty in chain:
-        verdict = trial.step(
-            f"{step_duty}% curve from stuck",
-            lambda d=step_duty: fan.apply_curve(d),
-            args.step,
-        )
-        if verdict == SPUN:
-            started_at = step_duty
+    def with_zero_rpm_bit(step_duty):
+        # Staging an unchanged value still sets the zero RPM bit; the curve change uploads it.
+        fan.stage_zero_rpm(False)
+        fan.stage_curve(step_duty)
+        fan.commit_curve()
+
+    # A lower duty tells "any upload" apart from "a higher duty"; the re-staged zero RPM
+    # bit tells "any upload" apart from "an upload carrying the zero RPM bit".
+    chain = [
+        ("floor", f"{fan.duty_min}% curve", lambda: fan.apply_curve(fan.duty_min)),
+        ("nudge", f"{duty + 1}% curve", lambda: fan.apply_curve(duty + 1)),
+        (
+            "zero-rpm-bit",
+            f"zero RPM off re-staged + {duty + 2}% curve, one commit",
+            lambda: with_zero_rpm_bit(duty + 2),
+        ),
+    ]
+    chain.extend(
+        ("ladder", f"{d}% curve", lambda d=d: fan.apply_curve(d))
+        for d in LADDER_DUTIES
+        if duty + 2 < d <= fan.duty_max
+    )
+    for kind, label, writes in chain:
+        if trial.step(kind, f"from stopped: {label}", writes, args.step) == SPUN:
             break
-    if started_at is None:
+    else:
         return
     trial.step(
+        "hold",
         f"back to {duty}% after starting",
         lambda: fan.apply_curve(duty),
         args.step,
@@ -655,6 +692,7 @@ def run_control(trial):
 def run_curve_only(trial):
     duty = control_duty(trial.fan)
     trial.step(
+        "control",
         f"{duty}% curve, zero RPM left on",
         lambda: trial.fan.apply_curve(duty),
         trial.args.observe,
@@ -663,6 +701,7 @@ def run_curve_only(trial):
 
 def run_zr_only(trial):
     trial.step(
+        "control",
         "zero RPM off, firmware curve",
         lambda: trial.fan.apply_zero_rpm(False),
         trial.args.observe,
@@ -677,7 +716,9 @@ def run_curve_first(trial):
         fan.apply_curve(duty)
         fan.apply_zero_rpm(False)
 
-    trial.step(f"{duty}% curve, then zero RPM off", writes, trial.args.observe)
+    trial.step(
+        "control", f"{duty}% curve, then zero RPM off", writes, trial.args.observe
+    )
 
 
 def run_single_upload(trial):
@@ -689,7 +730,12 @@ def run_single_upload(trial):
         fan.stage_curve(duty)
         fan.commit_curve()
 
-    trial.step(f"zero RPM off + {duty}% curve, one commit", writes, trial.args.observe)
+    trial.step(
+        "control",
+        f"zero RPM off + {duty}% curve, one commit",
+        writes,
+        trial.args.observe,
+    )
 
 
 def run_gap(trial):
@@ -702,7 +748,9 @@ def run_gap(trial):
         fan.sysfs.wait(args.gap)
         fan.apply_curve(duty)
 
-    trial.step(f"zero RPM off, {args.gap}s gap, {duty}% curve", writes, args.observe)
+    trial.step(
+        "control", f"zero RPM off, {args.gap}s gap, {duty}% curve", writes, args.observe
+    )
 
 
 CONTROL = "control"
@@ -877,11 +925,11 @@ def conclude(trials, dynamic_debug_on, boot):
     by_name = {trial.name: trial for trial in trials}
     control = by_name.get(CONTROL)
     if control is not None and not boot:
-        if control.verdict == STUCK:
+        if control.latched:
             findings["reset_reproduces_boot_state"] = True
             log.info(
-                "Reset reproduces the stuck state: CoolerControl's sequence left the fan "
-                "stopped after a reset, with no reboot needed."
+                "Reset reproduces the stuck state: CoolerControl's sequence did not keep the "
+                "fan spinning after a reset, with no reboot needed."
             )
         elif control.verdict == SPUN:
             findings["reset_reproduces_boot_state"] = False
@@ -891,16 +939,23 @@ def conclude(trials, dynamic_debug_on, boot):
             )
 
     for trial in trials:
-        if trial.name not in (CONTROL, "control-again") or trial.verdict != STUCK:
+        if trial.name not in (CONTROL, "control-again") or not trial.latched:
             continue
-        floor_step = trial.steps[1] if len(trial.steps) > 1 else None
         restarted = [step for step in trial.steps[1:] if step["verdict"] == SPUN]
         key = trial.name.replace("-", "_")
+        floor_step = trial.find_step("floor")
         if floor_step is not None and floor_step["verdict"] == SPUN:
             findings[f"{key}_any_upload_restarts"] = True
             log.info(
                 f"[{trial.name}] A LOWER duty upload restarted the fan: any real upload "
                 "clears the latch, the duty is irrelevant."
+            )
+        bit_step = trial.find_step("zero-rpm-bit")
+        if bit_step is not None and bit_step["verdict"] == SPUN:
+            findings[f"{key}_zero_rpm_bit_restarts"] = True
+            log.info(
+                f"[{trial.name}] Plain curve uploads did not restart the fan, but one carrying "
+                "the zero RPM bit did: zero RPM off only holds when uploaded with the curve."
             )
         if restarted:
             findings[f"{key}_restarted_by"] = restarted[0]["label"]
@@ -919,7 +974,7 @@ def conclude(trials, dynamic_debug_on, boot):
             if silent:
                 log.info(f"[{trial.name}] Steps that uploaded nothing: {silent}")
 
-    if control is not None and control.verdict == STUCK:
+    if control is not None and control.latched:
         candidates = [
             trial.name
             for trial in trials
@@ -927,7 +982,9 @@ def conclude(trials, dynamic_debug_on, boot):
             and trial.verdict == SPUN
         ]
         findings["workaround_candidates"] = candidates
-        log.info(f"Workaround candidates (SPUN while control was STUCK): {candidates}")
+        log.info(
+            f"Workaround candidates (SPUN while control did not keep spinning): {candidates}"
+        )
 
     again = by_name.get("control-again")
     if control is not None and again is not None:
@@ -1102,10 +1159,10 @@ def main():
         for name in names:
             trial = run_trial(name, fan, args, boot)
             trials.append(trial)
-            if name == CONTROL and not boot and trial.verdict != STUCK:
+            if name == CONTROL and not boot and not trial.latched:
                 log.warning(
-                    f"'control' was {trial.verdict}, not STUCK. The other trials need the "
-                    "stuck state, so they are skipped."
+                    f"'control' was {trial.verdict}. The other trials need a fan that does "
+                    "not keep spinning, so they are skipped."
                 )
                 break
     except KeyboardInterrupt:
