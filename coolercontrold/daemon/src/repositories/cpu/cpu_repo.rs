@@ -96,7 +96,7 @@ pub struct CpuRepo {
     poll_freqs: RefCell<HashMap<PhysicalID, CpuFreqs>>,
     /// Each poll's thread frequencies, indexed by processor id. Sized once at init to the
     /// highest thread channel, and empty when there is none, which skips the thread parse.
-    thread_freqs: RefCell<Vec<Option<Mhz>>>,
+    thread_freqs: RefCell<Box<[Option<Mhz>]>>,
     /// Each device that can show thread frequencies, and whether it does this run.
     per_thread_freq_states: HashMap<CpuAssociation, bool>,
     energy_counters: HashMap<PhysicalID, Cell<f64>>,
@@ -118,7 +118,7 @@ impl CpuRepo {
             preloaded_statuses: RefCell::new(HashMap::new()),
             spare_statuses: RefCell::new(HashMap::new()),
             poll_freqs: RefCell::new(HashMap::new()),
-            thread_freqs: RefCell::new(Vec::new()),
+            thread_freqs: RefCell::new(Box::default()),
             per_thread_freq_states: HashMap::new(),
             energy_counters: HashMap::new(),
             poll_rate: 0.,
@@ -987,7 +987,7 @@ impl CpuRepo {
             .map_or(0, |processor_id| processor_id + 1);
         // The topology only lists processors below the bound.
         assert!(len <= MAX_LOGICAL_CPUS);
-        *self.thread_freqs.borrow_mut() = vec![None; len];
+        *self.thread_freqs.borrow_mut() = vec![None; len].into_boxed_slice();
     }
 
     /// Whether a CPU channel is read from its hwmon device. Frequencies come from cpuinfo, so a
