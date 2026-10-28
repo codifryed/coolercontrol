@@ -413,10 +413,10 @@ pub fn parse_freqs_into(
     let mut freq_present = false;
     for line in cpu_info_data.lines() {
         // Checked before splitting, since this runs on every poll over the whole file.
-        if line.starts_with("physical id").not()
-            && line.starts_with("cpu MHz").not()
-            && (reads_threads && line.starts_with("processor")).not()
-        {
+        let wanted = line.starts_with("physical id")
+            || line.starts_with("cpu MHz")
+            || (reads_threads && line.starts_with("processor"));
+        if wanted.not() {
             continue;
         }
         let Some((key, value)) = cpuinfo_field(line) else {
