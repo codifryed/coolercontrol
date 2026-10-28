@@ -1160,16 +1160,19 @@ impl GpuAMD {
     async fn set_pmfw_duty(fan_curve_info: &FanCurveInfo, duty: Duty, io: &DeviceIo) -> Result<()> {
         debug_assert!(fan_curve_info.changeable);
         if duty == 0 && fan_curve_info.zero_rpm.is_some() {
-            let stop_temp = fan_curve_info
+            let stop_temperature_celsius = fan_curve_info
                 .zero_rpm_stop_temp
                 .as_ref()
                 .map(|_| *fan_curve_info.zero_rpm_stop_temp_range.end());
             let floor_duty = *fan_curve_info.speed_range.start();
             let floor_curve = Self::create_flat_curve(fan_curve_info, floor_duty);
-            return Self::apply_fan_ctrl(fan_curve_info, true, stop_temp, floor_curve, io).await;
+            let zero_rpm = ZeroRpm::On {
+                stop_temperature_celsius,
+            };
+            return Self::apply_fan_ctrl(fan_curve_info, zero_rpm, floor_curve, io).await;
         }
         let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
-        Self::apply_fan_ctrl(fan_curve_info, false, None, flat_curve, io).await
+        Self::apply_fan_ctrl(fan_curve_info, ZeroRpm::Off, flat_curve, io).await
     }
 
     /// Stages Zero RPM, its stop temperature and every curve point, then commits them once.
@@ -1185,21 +1188,14 @@ impl GpuAMD {
     /// fan is the safe side. A failure to turn it on fails the apply.
     async fn apply_fan_ctrl(
         fan_curve_info: &FanCurveInfo,
-        zero_rpm_enable: bool,
-        zero_rpm_stop_temp: Option<CurveTemp>,
+        zero_rpm: ZeroRpm,
         fan_curve: FanCurve,
         io: &DeviceIo,
     ) -> Result<()> {
         assert!(fan_curve.points.is_empty().not(), "a curve needs points");
+        let zero_rpm_enable = zero_rpm.is_on();
         if zero_rpm_enable {
             debug_assert!(fan_curve_info.zero_rpm.is_some());
-        }
-        if zero_rpm_stop_temp.is_some() {
-            debug_assert!(
-                zero_rpm_enable,
-                "a stop temperature only applies with Zero RPM on"
-            );
-            debug_assert!(fan_curve_info.zero_rpm_stop_temp.is_some());
         }
         if let Some(zero_rpm_path) = &fan_curve_info.zero_rpm {
             if let Err(err) = Self::stage_zero_rpm(zero_rpm_path, zero_rpm_enable, io).await {
@@ -1209,7 +1205,11 @@ impl GpuAMD {
                 error!("{err}. Applying the Fan Curve anyway, so the fan may still stop at idle");
             }
         }
-        if let Some(temp) = zero_rpm_stop_temp {
+        if let ZeroRpm::On {
+            stop_temperature_celsius: Some(temp),
+        } = zero_rpm
+        {
+            debug_assert!(fan_curve_info.zero_rpm_stop_temp.is_some());
             if let Some(stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp {
                 Self::stage_zero_rpm_stop_temp(stop_temp_path, temp, io).await?;
             }
@@ -1377,36 +1377,32 @@ impl GpuAMD {
         io: &DeviceIo,
     ) -> Result<()> {
         debug_assert!(fan_curve_info.changeable);
-        let (zero_rpm_enable, zero_rpm_stop_temp) =
-            Self::profile_zero_rpm(fan_curve_info, speed_profile);
-        let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile, zero_rpm_enable);
-        Self::apply_fan_ctrl(
-            fan_curve_info,
-            zero_rpm_enable,
-            zero_rpm_stop_temp,
-            fan_curve,
-            io,
-        )
-        .await
+        let zero_rpm = Self::profile_zero_rpm(fan_curve_info, speed_profile);
+        let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile, zero_rpm.is_on());
+        Self::apply_fan_ctrl(fan_curve_info, zero_rpm, fan_curve, io).await
     }
 
     /// Whether a profile turns Zero RPM on, and the stop temperature to stage with it.
     ///
     /// The stop temperature is where the profile reaches 0. Without a stop temperature file,
     /// the firmware's own threshold applies.
-    fn profile_zero_rpm(
-        fan_curve_info: &FanCurveInfo,
-        speed_profile: &[(Temp, Duty)],
-    ) -> (bool, Option<CurveTemp>) {
+    fn profile_zero_rpm(fan_curve_info: &FanCurveInfo, speed_profile: &[(Temp, Duty)]) -> ZeroRpm {
         if fan_curve_info.zero_rpm.is_none() {
-            return (false, None);
+            return ZeroRpm::Off;
         }
         if fan_curve_info.zero_rpm_stop_temp.is_some() {
             let stop_temp = Self::find_zero_rpm_stop_temp(fan_curve_info, speed_profile);
-            return (stop_temp.is_some(), stop_temp);
+            return stop_temp.map_or(ZeroRpm::Off, |temp| ZeroRpm::On {
+                stop_temperature_celsius: Some(temp),
+            });
         }
         let reaches_zero = speed_profile.iter().any(|(_, duty)| *duty < 1);
-        (reaches_zero, None)
+        if reaches_zero {
+            return ZeroRpm::On {
+                stop_temperature_celsius: None,
+            };
+        }
+        ZeroRpm::Off
     }
 
     /// Returns the temperature at which the fan curve hits 0.
@@ -1520,6 +1516,23 @@ impl GpuAMD {
             capped_profile.push(speed_profile.last().copied().unwrap_or((100., 100_u8)));
         }
         capped_profile
+    }
+}
+
+/// The Zero RPM setting an apply stages with its curve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ZeroRpm {
+    /// The firmware never stops the fan.
+    Off,
+    /// The fan stops below the stop temperature, or the firmware's own threshold without one.
+    On {
+        stop_temperature_celsius: Option<CurveTemp>,
+    },
+}
+
+impl ZeroRpm {
+    fn is_on(self) -> bool {
+        matches!(self, Self::On { .. })
     }
 }
 
