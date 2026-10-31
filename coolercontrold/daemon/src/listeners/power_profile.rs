@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::ENV_DBUS;
 use crate::api::actor::ModeHandle;
 use crate::device::UID;
 use crate::events::system_event::{SystemEvent, SystemEventHandle, SystemEventKind};
+use crate::ENV_DBUS;
 use futures_util::StreamExt;
 use log::{error, info, warn};
 use schemars::JsonSchema;
@@ -14,7 +14,7 @@ use std::env;
 use std::ops::Not;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Duration;
-use tokio::time::{Instant, sleep, sleep_until, timeout};
+use tokio::time::{sleep, sleep_until, timeout, Instant};
 use tokio_util::sync::CancellationToken;
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
@@ -862,7 +862,6 @@ fn profile_names(profiles: &[HashMap<String, OwnedValue>]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AllDevices;
     use crate::calibration::{CalibrationStore, FanStateMap};
     use crate::config::Config;
     use crate::engine::main::Engine;
@@ -870,6 +869,7 @@ mod tests {
     use crate::overrides::OverridesController;
     use crate::paths;
     use crate::repositories::repository::Repositories;
+    use crate::AllDevices;
     use serial_test::serial;
     use std::rc::Rc;
 
