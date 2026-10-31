@@ -274,6 +274,8 @@ export default {
                     saveFailed: 'The power profile mapping could not be saved.',
                     modeNotActive: '{mode} is set for the current profile but is not active.',
                     modeNotActiveRestart: 'It is activated again the next time the daemon starts.',
+                    cooldownTooltip:
+                        'When the system leaves the Performance profile, the mapped mode only becomes active after a 10-second cooldown, so the system can shed heat before the fans ramp down.',
                     profileNames: {
                         'power-saver': 'Power Saver',
                         balanced: 'Balanced',

@@ -280,6 +280,8 @@ export default {
                     modeNotActive: '{mode} está asignado al perfil actual, pero no está activo.',
                     modeNotActiveRestart:
                         'Se activará de nuevo la próxima vez que se inicie el daemon.',
+                    cooldownTooltip:
+                        'Cuando el sistema sale del perfil de Rendimiento, el modo asignado solo se activa tras una pausa de 10 segundos, para que el sistema disipe el calor antes de reducir los ventiladores.',
                     profileNames: {
                         'power-saver': 'Ahorro de energia',
                         balanced: 'Equilibrado',

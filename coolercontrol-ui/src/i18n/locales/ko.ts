@@ -274,6 +274,8 @@ export default {
                     modeNotActive:
                         '{mode}이(가) 현재 프로필에 지정되어 있지만 활성 상태가 아닙니다.',
                     modeNotActiveRestart: '다음에 데몬이 시작될 때 다시 활성화됩니다.',
+                    cooldownTooltip:
+                        '시스템이 성능 프로필을 벗어나면 매핑된 모드는 10초의 쿨다운 후에만 활성화되어, 팬이 감속하기 전에 시스템이 열을 식힙니다.',
                     profileNames: {
                         'power-saver': '절전',
                         balanced: '균형',

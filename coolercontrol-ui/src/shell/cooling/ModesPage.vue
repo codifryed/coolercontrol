@@ -11,6 +11,7 @@ import {
     mdiBookmarkCheck,
     mdiBookmarkMinusOutline,
     mdiBookmarkMultipleOutline,
+    mdiInformationOutline,
 } from '@mdi/js'
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -162,7 +163,6 @@ const setMappedMode = async (profile: string, modeUID: string | undefined): Prom
             :title="t('layout.shell.coolingPage.powerProfiles.title')"
         >
             <UiSettingRow
-                :label="t('layout.shell.coolingPage.powerProfiles.description')"
                 :description="
                     settingsStore.powerProfileActive
                         ? t('layout.shell.coolingPage.powerProfiles.activeProfile', {
@@ -170,7 +170,29 @@ const setMappedMode = async (profile: string, modeUID: string | undefined): Prom
                           })
                         : ''
                 "
-            />
+            >
+                <!-- The cooldown is daemon behavior with no setting, so it gets an
+                     info tooltip: users watching a switch lag 10s would otherwise
+                     file it as a bug. -->
+                <template #label>
+                    {{ t('layout.shell.coolingPage.powerProfiles.description') }}
+                    <!-- The tooltip binds to the icon alone, so floating-vue
+                         centers it above the cursor. On the whole label it
+                         would center above the span and sit left of the
+                         cursor. -->
+                    <span
+                        class="inline-flex cursor-help"
+                        v-tooltip.top="t('layout.shell.coolingPage.powerProfiles.cooldownTooltip')"
+                    >
+                        <svg-icon
+                            type="mdi"
+                            :path="mdiInformationOutline"
+                            :size="16"
+                            class="text-text-color-secondary"
+                        />
+                    </span>
+                </template>
+            </UiSettingRow>
             <div
                 v-if="unappliedModeName != null"
                 class="flex items-start gap-2 px-4 py-3 text-base text-text-color"

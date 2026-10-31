@@ -264,6 +264,8 @@ export default {
                     saveFailed: '无法保存电源配置映射。',
                     modeNotActive: '{mode} 已分配给当前配置，但未激活。',
                     modeNotActiveRestart: '后台服务下次启动时将再次激活它。',
+                    cooldownTooltip:
+                        '系统离开性能配置文件后，所映射的模式将在 10 秒冷却后才激活，让系统先散去热量再降低风扇转速。',
                     profileNames: {
                         'power-saver': '节能',
                         balanced: '平衡',

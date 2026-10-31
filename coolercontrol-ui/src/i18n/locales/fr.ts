@@ -282,6 +282,8 @@ export default {
                         "L'association des profils d'alimentation n'a pas pu etre enregistree.",
                     modeNotActive: "{mode} est associé au profil actuel, mais n'est pas actif.",
                     modeNotActiveRestart: 'Il sera réactivé au prochain démarrage du daemon.',
+                    cooldownTooltip:
+                        "Quand le système quitte le profil Performance, le mode associé n'est actif qu'après une pause de 10 secondes, pour que le système évacue la chaleur avant la décélération des ventilateurs.",
                     profileNames: {
                         'power-saver': "Economie d'energie",
                         balanced: 'Equilibre',

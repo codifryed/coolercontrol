@@ -277,6 +277,8 @@ export default {
                     modeNotActive:
                         '{mode} は現在のプロファイルに割り当てられていますが、有効ではありません。',
                     modeNotActiveRestart: '次回デーモンの起動時に再び有効になります。',
+                    cooldownTooltip:
+                        'システムがパフォーマンスプロファイルから離れると、マッピングされたモードは10秒のクールダウン後に有効になり、ファンが低速化する前にシステムが熱を放出します。',
                     profileNames: {
                         'power-saver': '省電力',
                         balanced: 'バランス',
