@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::ENV_DBUS;
 use crate::api::actor::ModeHandle;
 use crate::device::UID;
 use crate::events::system_event::{SystemEvent, SystemEventHandle, SystemEventKind};
-use crate::ENV_DBUS;
 use futures_util::StreamExt;
 use log::{error, info, warn};
 use schemars::JsonSchema;
@@ -14,7 +14,7 @@ use std::env;
 use std::ops::Not;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Duration;
-use tokio::time::{sleep, sleep_until, timeout, Instant};
+use tokio::time::{Instant, sleep, sleep_until, timeout};
 use tokio_util::sync::CancellationToken;
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
@@ -47,6 +47,15 @@ const RETURN_GRACE_S: u64 = 10;
 
 // The grace is the quick path. Past it the retry loop takes over, so it must not outlast a retry.
 const _: () = assert!(RETURN_GRACE_S < RECONNECT_DELAY_S);
+
+/// The profile that marks sustained system load. Leaving it means the package is still hot and
+/// likely was boosting, so the ramp down has to wait.
+const PERFORMANCE_PROFILE: &str = "performance";
+
+/// How long to hold the current cooling when leaving `performance`, so the system can shed heat
+/// before the fans ramp down. Fixed, not user configurable: this is a correctness guard against
+/// thermal spikes, not a preference.
+const PERFORMANCE_COOLDOWN_S: u64 = 10;
 
 /// A point-in-time view of the power profile integration, for API consumers.
 #[derive(Debug, Clone, Default, Serialize, JsonSchema)]
@@ -228,6 +237,7 @@ pub fn start(
         run_token,
         current: None,
         seeded: false,
+        cooldown_until: None,
     };
     crate::sidecar::handle().spawn(move || listener.run());
 }
@@ -285,6 +295,13 @@ fn is_new_profile(current: Option<&str>, signalled: &str) -> bool {
 /// too, so the profile we hold stays.
 fn named_profile(read: Option<String>) -> Option<String> {
     read.filter(|profile| profile.is_empty().not())
+}
+
+/// Whether a profile change is a ramp down out of `performance`. Only that direction waits:
+/// entering `performance` must raise cooling immediately and the `balanced -> power-saver`
+/// transition is ignored too.
+fn ramping_down_from_performance(previous: Option<&str>, next: &str) -> bool {
+    previous == Some(PERFORMANCE_PROFILE) && next != PERFORMANCE_PROFILE
 }
 
 /// Why `watch` gave up an established connection.
@@ -366,6 +383,9 @@ struct Listener {
     current: Option<String>,
     /// False until the first successful connect has recorded `current`.
     seeded: bool,
+    /// When the hold after leaving `performance` ends. `None` when no ramp down is pending.
+    /// The profile current at that deadline decides which Mode is applied.
+    cooldown_until: Option<Instant>,
 }
 
 impl Listener {
@@ -435,8 +455,10 @@ impl Listener {
         debug_assert!(self.seeded, "Every connect leaves the listener seeded");
         let mut return_deadline: Option<Instant> = None;
         loop {
+            let cooldown_until = self.cooldown_until;
             // Biased so the owner is looked at first: once it changed, anything still in the
-            // property cache is from the previous instance.
+            // property cache is from the previous instance. Active changes come before the
+            // cooldown so a newer profile supersedes a stale activation at the deadline.
             let owner_event = tokio::select! {
                 biased;
                 () = self.run_token.cancelled() => return WatchEnd::Shutdown,
@@ -452,6 +474,10 @@ impl Listener {
                 },
                 Some(_) = profiles_changes.next() => {
                     self.refresh_available(proxy).await;
+                    continue;
+                },
+                () = until(cooldown_until) => {
+                    self.finish_cooldown().await;
                     continue;
                 },
             };
@@ -546,7 +572,8 @@ impl Listener {
         }
     }
 
-    /// Records the new profile, broadcasts it, then activates the mapped Mode if there is one.
+    /// Records the new profile, broadcasts it, then either activates its mapped Mode or schedules
+    /// the hold after leaving `performance`.
     ///
     /// The broadcast is unconditional so external consumers see every change even when the user
     /// has mapped no Modes at all.
@@ -571,16 +598,51 @@ impl Listener {
         );
         self.profiles.set_active(Some(profile.clone()));
         let mode_uid = self.profiles.mode_for(&profile);
+        let entering_performance = profile == PERFORMANCE_PROFILE;
+        let ramping_down = ramping_down_from_performance(previous.as_deref(), &profile);
         self.system_event_handle.broadcast(SystemEvent {
             kind: SystemEventKind::PowerProfile,
-            value: profile,
+            value: profile.clone(),
             previous,
         });
+        if entering_performance {
+            // Raising cooling again must happen now and cancels any pending ramp down.
+            self.cooldown_until = None;
+        } else if self.cooldown_until.is_some() {
+            // Still cooling since performance was last left. The deadline will use whatever
+            // profile is current then, including this one.
+            return;
+        } else if ramping_down {
+            self.cooldown_until =
+                Some(Instant::now() + Duration::from_secs(PERFORMANCE_COOLDOWN_S));
+            info!(
+                "Waiting {PERFORMANCE_COOLDOWN_S}s before applying the '{profile}' Mode so the \
+                 system can cool down."
+            );
+            return;
+        }
         let Some(mode_uid) = mode_uid else {
             return;
         };
         if let Err(err) = self.mode_handle.activate(mode_uid.clone()).await {
             error!("Failed to activate Mode {mode_uid} for the new power profile: {err}");
+        }
+    }
+
+    /// Applies the Mode belonging to the profile that is current when the cooldown ends. A newer
+    /// profile may have superseded the one that started the cooldown, so resolve it now.
+    async fn finish_cooldown(&mut self) {
+        if self.cooldown_until.take().is_none() {
+            return;
+        }
+        let Some(profile) = self.current.as_deref() else {
+            return;
+        };
+        let Some(mode_uid) = self.profiles.mode_for(profile) else {
+            return;
+        };
+        if let Err(err) = self.mode_handle.activate(mode_uid.clone()).await {
+            error!("Failed to activate Mode {mode_uid} after the cooldown: {err}");
         }
     }
 
@@ -800,6 +862,7 @@ fn profile_names(profiles: &[HashMap<String, OwnedValue>]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AllDevices;
     use crate::calibration::{CalibrationStore, FanStateMap};
     use crate::config::Config;
     use crate::engine::main::Engine;
@@ -807,7 +870,6 @@ mod tests {
     use crate::overrides::OverridesController;
     use crate::paths;
     use crate::repositories::repository::Repositories;
-    use crate::AllDevices;
     use serial_test::serial;
     use std::rc::Rc;
 
@@ -898,6 +960,144 @@ mod tests {
             Reconnect::Unchanged,
             "A daemon that will not report its profile must not look like a change"
         );
+    }
+
+    /// Goal: only the transition out of `performance` earns the cooldown, so cooling never waits
+    /// when it is being raised and the guarantee costs nothing on unrelated changes.
+    /// Methodology: drive the predicate across leaving, entering, and unrelated transitions.
+    #[test]
+    fn only_ramping_down_from_performance_cools() {
+        assert!(ramping_down_from_performance(
+            Some("performance"),
+            "balanced"
+        ));
+        assert!(ramping_down_from_performance(
+            Some("performance"),
+            "power-saver"
+        ));
+        assert!(
+            ramping_down_from_performance(Some("performance"), "performance").not(),
+            "An unchanged profile never reaches apply, but must not cool if it did"
+        );
+        assert!(
+            ramping_down_from_performance(Some("balanced"), "power-saver").not(),
+            "Only performance leaves a hot package behind"
+        );
+        assert!(
+            ramping_down_from_performance(Some("balanced"), "performance").not(),
+            "Entering performance must raise cooling immediately"
+        );
+        assert!(
+            ramping_down_from_performance(None, "power-saver").not(),
+            "The first observed profile has no previous state to leave"
+        );
+    }
+
+    /// Goal: leaving `performance` must hold the current Mode, but returning to `performance`
+    /// before the deadline must cancel the hold and raise cooling immediately.
+    /// Methodology: apply the leave and assert nothing switched, then apply `performance` and
+    /// finish the (now cancelled) cooldown to prove it cannot activate the stale profile.
+    #[test]
+    #[serial(modes_file)]
+    fn returning_to_performance_cancels_the_cooldown() {
+        crate::rt::test_runtime(async {
+            let profiles = PowerProfiles::default();
+            let (controller, idle, active) = controller_with_two_modes(&profiles).await;
+            profiles.set_modes(HashMap::from([
+                (STARTUP_PROFILE.to_string(), active.clone()),
+                ("balanced".to_string(), idle.clone()),
+            ]));
+            let actor_token = CancellationToken::new();
+            moro_local::async_scope!(|scope| -> anyhow::Result<()> {
+                let mode_handle =
+                    ModeHandle::new(Rc::clone(&controller), actor_token.clone(), scope);
+                let mut listener = unconnected_listener(mode_handle, profiles.clone(), None);
+                listener.current = Some(STARTUP_PROFILE.to_string());
+
+                listener.apply("balanced".to_string()).await;
+                assert!(
+                    listener.cooldown_until.is_some(),
+                    "Leaving performance must schedule the cooldown"
+                );
+                assert_eq!(
+                    controller.get_active_modes().current_mode_uid.as_ref(),
+                    Some(&active),
+                    "The hold must not switch Modes yet"
+                );
+
+                listener.apply(STARTUP_PROFILE.to_string()).await;
+                assert!(
+                    listener.cooldown_until.is_none(),
+                    "Returning to performance must cancel the cooldown"
+                );
+                listener.finish_cooldown().await;
+                assert_eq!(
+                    controller.get_active_modes().current_mode_uid,
+                    Some(active),
+                    "A cancelled cooldown must not activate the stale profile's Mode"
+                );
+
+                actor_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
+    /// Goal: a profile change during the hold must not restart or end it, and the Mode applied at
+    /// the deadline must be the one mapped to the profile current at that time.
+    /// Methodology: leave performance, change to another non-performance profile, assert the
+    /// deadline is unchanged and nothing switched, then finish the cooldown and read the Mode.
+    #[test]
+    #[serial(modes_file)]
+    fn later_profiles_keep_the_cooldown_and_use_the_latest_mode() {
+        crate::rt::test_runtime(async {
+            let profiles = PowerProfiles::default();
+            let (controller, idle, active) = controller_with_two_modes(&profiles).await;
+            profiles.set_modes(HashMap::from([
+                (STARTUP_PROFILE.to_string(), active.clone()),
+                ("balanced".to_string(), idle.clone()),
+                ("power-saver".to_string(), idle.clone()),
+            ]));
+            let actor_token = CancellationToken::new();
+            moro_local::async_scope!(|scope| -> anyhow::Result<()> {
+                let mode_handle =
+                    ModeHandle::new(Rc::clone(&controller), actor_token.clone(), scope);
+                let mut listener = unconnected_listener(mode_handle, profiles.clone(), None);
+                listener.current = Some(STARTUP_PROFILE.to_string());
+
+                listener.apply("balanced".to_string()).await;
+                let deadline = listener.cooldown_until;
+                assert!(
+                    deadline.is_some(),
+                    "Leaving performance must schedule the cooldown"
+                );
+
+                listener.apply("power-saver".to_string()).await;
+                assert_eq!(
+                    listener.cooldown_until, deadline,
+                    "A later non-performance change must keep the original deadline"
+                );
+                assert_eq!(
+                    controller.get_active_modes().current_mode_uid.as_ref(),
+                    Some(&active),
+                    "The hold must continue through the later profile change"
+                );
+
+                listener.finish_cooldown().await;
+                assert_eq!(
+                    controller.get_active_modes().current_mode_uid,
+                    Some(idle),
+                    "The cooldown must activate the latest profile's mapped Mode"
+                );
+
+                actor_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
     }
 
     /// Goal: a restarted power profile daemon must be read again at once, one that stays away
@@ -1149,6 +1349,7 @@ mod tests {
             run_token,
             current: None,
             seeded: false,
+            cooldown_until: None,
         }
     }
 
