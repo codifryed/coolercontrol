@@ -14,14 +14,13 @@ Release notes are automatically generated from this file and git tags.
 
 ### Changed
 
-- On RDNA3/4 AMD GPUs, a Profile that never reaches 0% duty now turns Zero RPM off, so the firmware
-  no longer stops a fan the Profile wants spinning
+- On RDNA3/4 AMD GPUs, a Profile that never reaches 0% duty now turns Zero RPM off
 
 ### Fixed
 
-- RDNA3/4 AMD GPU fans could stay stopped after Zero RPM was disabled, until the fan speed changed.
-  Zero RPM, its stop temperature and the fan curve are now applied in one firmware upload
-- The Zero RPM stop temperature set by a Profile could be lost on RDNA3/4 AMD GPUs
+- RDNA3/4 AMD GPU fans on newer firmwares could stay stopped after Zero RPM was disabled, until the
+  fan speed changed. Changed our commit method so that everything is applied in one firmware upload,
+  which works for newer and older firmwares despite the same kernel driver
 
 ## [5.1.1] - 2026-10-19
 
