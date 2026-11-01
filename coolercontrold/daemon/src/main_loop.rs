@@ -287,8 +287,8 @@ fn fire_lcd_update<'s>(
 /// One tick while the system goes to sleep: hold the widened watchdog deadline, prepare every
 /// repo once per sleep, then let logind go ahead. The deadline comes first, so a slow repo is
 /// covered too. The lock goes only once both are done, so logind waits for both. A deadline the
-/// service manager has no room for is retried next tick; a failed one holds the lock until
-/// logind's `InhibitDelayMaxSec` runs out.
+/// service manager has no room for is retried next tick; a failed one is retried once a ping
+/// interval, so with logind's default `InhibitDelayMaxSec` it holds the lock until that runs out.
 async fn sleep_arm_tick(
     repos: &Repos,
     watchdog: &Watchdog,
