@@ -6,7 +6,7 @@ use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, UID};
 use crate::overrides::OverridesDocument;
 use crate::setting::{
-    CCChannelSettings, CCDeviceSettings, CoolerControlSettings, DeviceExtensions,
+    CCChannelSettings, CCDeviceSettingsUpdate, CoolerControlSettings, DeviceExtensions,
     STARTUP_DELAY_SECONDS_MAX,
 };
 use axum::extract::{Path, State};
@@ -65,7 +65,7 @@ pub async fn get_cc_device(
 pub async fn update_cc_device(
     Path(path): Path<DevicePath>,
     State(AppState { setting_handle, .. }): State<AppState>,
-    Json(cc_device_settings_request): Json<CCDeviceSettings>,
+    Json(cc_device_settings_request): Json<CCDeviceSettingsUpdate>,
 ) -> Result<(), CCError> {
     setting_handle
         .update_cc_device(path.device_uid, cc_device_settings_request)

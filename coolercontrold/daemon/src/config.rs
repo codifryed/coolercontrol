@@ -1672,6 +1672,11 @@ impl Config {
                         as u16)
                         .min(250);
                 }
+                if let Some(value) = device_ext_table.get("per_thread_freq") {
+                    extensions.per_thread_freq = value
+                        .as_bool()
+                        .with_context(|| "per_thread_freq should be a boolean value")?;
+                }
             }
             // deprecated(3.0.0). We convert this to the new model for backwards compatibility:
             let disable_channels =
@@ -1787,26 +1792,7 @@ impl Config {
         )));
         device_settings_table["disable"] =
             Item::Value(Value::Boolean(Formatted::new(cc_device_settings.disable)));
-        let mut has_device_extension_setting = false;
-        device_settings_table["extensions"]["direct_access"] =
-            if cc_device_settings.extensions.direct_access {
-                has_device_extension_setting = true;
-                Item::Value(Value::Boolean(Formatted::new(
-                    cc_device_settings.extensions.direct_access,
-                )))
-            } else {
-                Item::None
-            };
-        let delay_millis_clamped = cc_device_settings.extensions.delay_millis.min(250);
-        device_settings_table["extensions"]["delay_millis"] = if delay_millis_clamped > 0 {
-            has_device_extension_setting = true;
-            Item::Value(Value::Integer(Formatted::new(delay_millis_clamped.into())))
-        } else {
-            Item::None
-        };
-        if has_device_extension_setting.not() {
-            device_settings_table["extensions"] = Item::None;
-        }
+        Self::set_device_extensions(device_settings_table, &cc_device_settings.extensions);
         // deprecated (3.0.0). channel_settings is now used instead:
         device_settings_table["disable_channels"] = Item::None;
         let mut channel_settings_table = Item::Table(Table::new());
@@ -1839,6 +1825,33 @@ impl Config {
             }
         }
         device_settings_table["channel_settings"] = channel_settings_table;
+    }
+
+    /// Writes only the extensions that differ from their defaults, dropping an empty table.
+    fn set_device_extensions(device_settings_table: &mut Item, extensions: &DeviceExtensions) {
+        let mut has_device_extension_setting = false;
+        device_settings_table["extensions"]["direct_access"] = if extensions.direct_access {
+            has_device_extension_setting = true;
+            Item::Value(Value::Boolean(Formatted::new(true)))
+        } else {
+            Item::None
+        };
+        let delay_millis_clamped = extensions.delay_millis.min(250);
+        device_settings_table["extensions"]["delay_millis"] = if delay_millis_clamped > 0 {
+            has_device_extension_setting = true;
+            Item::Value(Value::Integer(Formatted::new(delay_millis_clamped.into())))
+        } else {
+            Item::None
+        };
+        device_settings_table["extensions"]["per_thread_freq"] = if extensions.per_thread_freq {
+            has_device_extension_setting = true;
+            Item::Value(Value::Boolean(Formatted::new(true)))
+        } else {
+            Item::None
+        };
+        if has_device_extension_setting.not() {
+            device_settings_table["extensions"] = Item::None;
+        }
     }
 
     /*
@@ -3106,8 +3119,8 @@ mod tests {
     use crate::config::{Config, POWER_PROFILE_MODES_KEY};
     use crate::paths;
     use crate::setting::{
-        LcdCarouselSettings, LcdModeKind, LcdSettings, LightingSettings, Setting, SettingKind,
-        TempSource,
+        CCDeviceSettings, LcdCarouselSettings, LcdModeKind, LcdSettings, LightingSettings, Setting,
+        SettingKind, TempSource,
     };
     use serial_test::serial;
     use std::cell::{Cell, RefCell};
@@ -3165,6 +3178,47 @@ mod tests {
     const LEGACY_UID: &str = "8ef08515338cc1f7727415a1d6bc45e84d5a818e94bd2072ac34b9d8d87f4210";
     const CURRENT_UID: &str = "67ada747f6820bb2e4a9b5b639657e0971998a6f5ca5f50480ecf36b46c7ec29";
     const OTHER_UID: &str = "4350edabc2d968f414830277d0062764b9ad664d481e517c1fe47019b750ce7b";
+
+    /// Goal: `per_thread_freq` survives a save and a load, is only written when on, and reads as
+    /// off when absent. Method: save device settings with it on, read them back, then save them
+    /// with it off, and read a document whose extensions never had it.
+    #[test]
+    fn per_thread_freq_is_written_only_when_on() {
+        let config = config_from("");
+        let mut settings = CCDeviceSettings {
+            name: "CPU".to_string(),
+            ..Default::default()
+        };
+        settings.extensions.per_thread_freq = true;
+
+        config.set_cc_settings_for_device(CURRENT_UID, &settings);
+        assert!(config
+            .document
+            .borrow()
+            .to_string()
+            .contains("per_thread_freq = true"));
+        let read = config
+            .get_cc_settings_for_device(CURRENT_UID)
+            .unwrap()
+            .unwrap();
+        assert!(read.extensions.per_thread_freq);
+
+        settings.extensions.per_thread_freq = false;
+        config.set_cc_settings_for_device(CURRENT_UID, &settings);
+        let document = config.document.borrow().to_string();
+        assert!(document.contains("per_thread_freq").not());
+        assert!(document.contains("extensions").not());
+
+        let config = config_from(&format!(
+            "[settings.{CURRENT_UID}]\nname = \"CPU\"\nextensions = {{ delay_millis = 20 }}\n"
+        ));
+        let read = config
+            .get_cc_settings_for_device(CURRENT_UID)
+            .unwrap()
+            .unwrap();
+        assert!(read.extensions.per_thread_freq.not());
+        assert_eq!(read.extensions.delay_millis, 20);
+    }
 
     fn config_from(document: &str) -> Config {
         Config {

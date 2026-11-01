@@ -1504,6 +1504,9 @@ export default {
             commandDelay: 'Befehlsverzögerung',
             commandDelayDesc:
                 'Verzögerung in Millisekunden zwischen Befehlen, die an dieses Gerät gesendet werden.\nDies kann bei Geräten helfen, die Kommunikationsprobleme haben,\nwenn mehrere Befehle schnell hintereinander gesendet werden.',
+            perThreadFreq: 'Frequenz pro Thread',
+            perThreadFreqDesc:
+                'Fügt für jeden CPU-Thread einen Frequenzkanal hinzu.\nJeder behält eine Stunde Verlauf, was die Daten, die die UI lädt, und den Speicherbedarf des Daemons erhöht.',
             overdrive: 'GPU Overdrive',
             overdriveDesc:
                 'AMD RDNA3/4 GPUs erfordern die Aktivierung von Overdrive für die Lüftersteuerung.\nDies konfiguriert den Kernelparameter amdgpu.ppfeaturemask\nund erfordert einen Systemneustart.',

@@ -107,16 +107,27 @@ const isAmdGpuWithOverdrive = computed(() => device.value?.info?.amd_gpu_overdri
 const amdOverdriveEnabled = computed(() => device.value?.info?.amd_gpu_overdrive === true)
 const amdOverdriveEnabling = ref(false)
 const isThinkPad = computed(() => device.value?.info?.thinkpad_fan_control != null)
+const hasPerThreadFreq = computed(() => device.value?.info?.per_thread_freq != null)
 
 const deviceExtensions = computed(() => ccSetting.value?.extensions)
 const directAccess = ref(deviceExtensions.value?.direct_access ?? false)
 const useHwmon = ref(false)
 const delayMillis = ref(deviceExtensions.value?.delay_millis ?? 0)
+const perThreadFreq = ref(deviceExtensions.value?.per_thread_freq ?? false)
 
 const onDirectAccessChange = (value: boolean): void => {
     if (deviceExtensions.value == null || value === deviceExtensions.value.direct_access) return
     deviceActions.setDirectAccess(props.deviceUID, value, () => {
         directAccess.value = deviceExtensions.value!.direct_access
+    })
+}
+
+// A daemon that predates the option sends no value, which is off.
+const storedPerThreadFreq = (): boolean => deviceExtensions.value?.per_thread_freq ?? false
+const onPerThreadFreqChange = (value: boolean): void => {
+    if (deviceExtensions.value == null || value === storedPerThreadFreq()) return
+    deviceActions.setPerThreadFreq(props.deviceUID, value, () => {
+        perThreadFreq.value = storedPerThreadFreq()
     })
 }
 
@@ -388,7 +399,29 @@ const enableDevice = openManageSensors
                             <UiSwitch v-model="thinkPadFullSpeed" />
                         </div>
                     </template>
-                    <UiSeparator v-if="isLiquidctl || isAmdGpuWithOverdrive || isThinkPad" />
+                    <template v-if="hasPerThreadFreq">
+                        <UiSeparator v-if="isLiquidctl || isAmdGpuWithOverdrive || isThinkPad" />
+                        <div class="flex items-center justify-between gap-8 px-4 py-3">
+                            <span class="flex items-center gap-2 text-base text-text-color">
+                                <HelpIcon
+                                    :text="
+                                        t('components.deviceExtensionSettings.perThreadFreqDesc')
+                                    "
+                                    :size="1.125"
+                                />
+                                {{ t('components.deviceExtensionSettings.perThreadFreq') }}
+                            </span>
+                            <UiSwitch
+                                v-model="perThreadFreq"
+                                @update:model-value="onPerThreadFreqChange"
+                            />
+                        </div>
+                    </template>
+                    <UiSeparator
+                        v-if="
+                            isLiquidctl || isAmdGpuWithOverdrive || isThinkPad || hasPerThreadFreq
+                        "
+                    />
                     <div class="flex items-center justify-between gap-8 px-4 py-3">
                         <span class="flex items-center gap-2 text-base text-text-color">
                             <HelpIcon

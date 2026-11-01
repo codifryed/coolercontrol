@@ -20,7 +20,8 @@ use crate::repositories::liquidctl::base_driver::BaseDriver;
 use log::warn;
 pub use status_refill::StatusRefill;
 pub use status_ring::StatusSnapshot;
-use status_ring::{local_time, timestamp_ns, SnapshotFilter, StatusRing, MAX_NAMES};
+pub use status_ring::MAX_NAMES;
+use status_ring::{local_time, timestamp_ns, SnapshotFilter, StatusRing};
 
 const STATUS_SIZE_SECONDS: f64 = 3600.; // only store the last 60 min. of recorded data
 
@@ -934,6 +935,11 @@ pub struct DeviceInfo {
     /// True indicates overdrive is enabled and fan control is available.
     /// False indicates overdrive needs to be enabled via kernel boot parameter.
     pub amd_gpu_overdrive: Option<bool>,
+
+    /// When present, then this is a CPU device that can show a frequency per thread: cpuinfo
+    /// reports one for each, and they fit the device's channel limit. True indicates the
+    /// per-thread channels are on.
+    pub per_thread_freq: Option<bool>,
     pub driver_info: DriverInfo,
 }
 
@@ -962,6 +968,7 @@ impl Default for DeviceInfo {
             model: None,
             thinkpad_fan_control: None,
             amd_gpu_overdrive: None,
+            per_thread_freq: None,
             driver_info: DriverInfo::default(),
         }
     }

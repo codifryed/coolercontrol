@@ -393,6 +393,7 @@ impl DeviceServiceClient {
                     model: info_res.model,
                     thinkpad_fan_control: None,
                     amd_gpu_overdrive: None,
+                    per_thread_freq: None,
                     driver_info: info_res.driver_info.map_or_else(
                         || DriverInfo {
                             drv_type: DriverType::External,

@@ -8,8 +8,8 @@ use crate::config::Config;
 use crate::device::{ChannelName, DeviceInfo, DeviceName, DeviceType, DeviceUID, UID};
 use crate::overrides::{OverridesController, OverridesDocument};
 use crate::setting::{
-    CCChannelSettings, CCDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorId,
-    DeviceExtensions, Profile, ProfileType, Setting, SettingKind,
+    CCChannelSettings, CCDeviceSettings, CCDeviceSettingsUpdate, CoolerControlSettings,
+    CustomSensor, CustomSensorId, DeviceExtensions, Profile, ProfileType, Setting, SettingKind,
 };
 use crate::AllDevices;
 use anyhow::Result;
@@ -50,7 +50,7 @@ enum SettingMessage {
     },
     UpdateCCDevice {
         device_uid: DeviceUID,
-        update: CCDeviceSettings,
+        update: CCDeviceSettingsUpdate,
         respond_to: oneshot::Sender<Result<()>>,
     },
     GetUI {
@@ -340,7 +340,7 @@ impl ApiActor<SettingMessage> for SettingActor {
             }
             SettingMessage::UpdateCCDevice {
                 device_uid,
-                mut update,
+                update,
                 respond_to,
             } => {
                 let result = async {
@@ -348,6 +348,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                         .config
                         .get_cc_settings_for_device(&device_uid)?
                         .unwrap_or_default();
+                    let mut update = update.merged_onto(&current_settings.extensions);
                     // Detection memos: the daemon stamps the last-detected names.
                     // Client-supplied values are ignored (write-deprecated); user
                     // names live in overrides.toml.
@@ -520,7 +521,7 @@ impl SettingHandle {
     pub async fn update_cc_device(
         &self,
         device_uid: DeviceUID,
-        update: CCDeviceSettings,
+        update: CCDeviceSettingsUpdate,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let msg = SettingMessage::UpdateCCDevice {

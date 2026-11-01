@@ -78,6 +78,9 @@ export class DeviceExtensions {
     // This is to help with communication issues with some devices that may not handle
     // multiple settings applied in quick succession. (The driver does not always handle this)
     delay_millis: number = 0
+
+    // Whether a CPU device gets a frequency channel for each of its threads.
+    per_thread_freq: boolean = false
 }
 
 // since TS doesn't have the same kind of enum power as Rust, we include all options
