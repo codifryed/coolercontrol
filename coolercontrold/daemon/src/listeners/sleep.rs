@@ -30,10 +30,11 @@ const INHIBIT_WHO: &str = "CoolerControl";
 const INHIBIT_WHY: &str = "Prepare devices and the watchdog for sleep";
 const INHIBIT_MODE: &str = "delay";
 const LOGIND_OPERATION_IN_PROGRESS: &str = "org.freedesktop.login1.OperationInProgress";
-// The whole DBus handshake (connect + proxy + AddMatch for PrepareForSleep) should complete in
-// tens of milliseconds on a healthy system. We cap it so a wedged logind/dbus-broker can't block
-// the listener from ever connecting; on timeout we simply run deaf (nothing is recorded).
-const DBUS_SETUP_TIMEOUT_S: u64 = 5;
+// Bounds the DBus handshake (connect + proxy + AddMatch for PrepareForSleep) and each Inhibit
+// call, which take tens of milliseconds on a healthy system. A wedged logind/dbus-broker then
+// cannot block the listener: a setup that times out runs deaf (nothing is recorded), and an
+// Inhibit that times out leaves the next sleep without a lock.
+const DBUS_CALL_TIMEOUT_S: u64 = 5;
 
 /// What the main loop should do this tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -293,7 +294,7 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
         Ok::<_, zbus::Error>((conn, proxy, signal))
     };
     let (conn, proxy, sleep_signal) =
-        match timeout(Duration::from_secs(DBUS_SETUP_TIMEOUT_S), setup).await {
+        match timeout(Duration::from_secs(DBUS_CALL_TIMEOUT_S), setup).await {
             Ok(Ok(connected)) => connected,
             Ok(Err(err)) => {
                 warn!("Could not connect to DBUS, sleep listener will not work: {err}");
@@ -301,7 +302,7 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
             }
             Err(_) => {
                 warn!(
-                    "DBUS sleep listener setup timed out after {DBUS_SETUP_TIMEOUT_S}s; \
+                    "DBUS sleep listener setup timed out after {DBUS_CALL_TIMEOUT_S}s; \
                      continuing without it. Sleep/resume events will not be handled on this run."
                 );
                 return;
@@ -355,8 +356,8 @@ async fn record_signals(
 }
 
 /// Without a delay lock logind sleeps at once, and the freeze can land before the sleep arm has
-/// widened the watchdog deadline or prepared the devices. Bounded like the setup, for the same
-/// wedged-logind reason. Without one the daemon runs on, as before.
+/// widened the watchdog deadline or prepared the devices. Bounded by `DBUS_CALL_TIMEOUT_S`, for the
+/// same wedged-logind reason as the setup. Without one the daemon runs on, as before.
 async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
     if signals.renew_inhibitor() {
         return;
@@ -365,14 +366,14 @@ async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
         METHOD_INHIBIT,
         &(INHIBIT_WHAT, INHIBIT_WHO, INHIBIT_WHY, INHIBIT_MODE),
     );
-    match timeout(Duration::from_secs(DBUS_SETUP_TIMEOUT_S), call).await {
+    match timeout(Duration::from_secs(DBUS_CALL_TIMEOUT_S), call).await {
         Ok(Ok(inhibitor)) => hold_new_inhibitor(signals, inhibitor.into()),
         Ok(Err(zbus::Error::MethodError(name, _, _))) if is_sleep_in_progress(name.as_str()) => {
             info!("Sleep already in progress; taking the sleep delay lock after the wake.");
         }
         Ok(Err(err)) => warn!("Could not take a sleep delay lock from logind: {err}"),
         Err(_) => {
-            warn!("Taking a sleep delay lock from logind timed out after {DBUS_SETUP_TIMEOUT_S}s.");
+            warn!("Taking a sleep delay lock from logind timed out after {DBUS_CALL_TIMEOUT_S}s.");
         }
     }
 }
