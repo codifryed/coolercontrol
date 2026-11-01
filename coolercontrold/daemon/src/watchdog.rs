@@ -241,8 +241,8 @@ impl Watchdog {
     /// thaws of suspend-then-hibernate do not use it up, until the arm has run for
     /// `SLEEP_REFRESH_MAX`. True once the budget is in force, or with no supervisor to hand it
     /// to: only then may the system sleep.
-    pub fn sleep_tick(&self, poll_rate: Duration) -> bool {
-        debug_assert!(poll_rate.is_zero().not());
+    pub fn sleep_tick(&self, poll_period: Duration) -> bool {
+        debug_assert!(poll_period.is_zero().not());
         let Some(supervisor_interval) = self.supervisor_interval else {
             return true;
         };
@@ -250,7 +250,7 @@ impl Watchdog {
         let Some(watch) = self.sleep_watch.get() else {
             return self.begin_sleep(supervisor_interval, now);
         };
-        let running = watch.running + sleep_running_step(watch.last_tick, now, poll_rate);
+        let running = watch.running + sleep_running_step(watch.last_tick, now, poll_period);
         self.sleep_watch.set(Some(SleepWatch {
             last_tick: now,
             running,
@@ -441,10 +441,12 @@ fn deadline_message(deadline: Duration) -> String {
 
 /// The running time one sleep-arm tick adds. A gap longer than two polls was spent frozen or
 /// suspended rather than running, so it counts as two polls at most.
-fn sleep_running_step(last_tick: Instant, now: Instant, poll_rate: Duration) -> Duration {
-    debug_assert!(poll_rate.is_zero().not());
-    let step = now.saturating_duration_since(last_tick).min(poll_rate * 2);
-    debug_assert!(step <= poll_rate * 2);
+fn sleep_running_step(last_tick: Instant, now: Instant, poll_period: Duration) -> Duration {
+    debug_assert!(poll_period.is_zero().not());
+    let step = now
+        .saturating_duration_since(last_tick)
+        .min(poll_period * 2);
+    debug_assert!(step <= poll_period * 2);
     step
 }
 
@@ -497,8 +499,8 @@ mod tests {
     /// `WatchdogSec=` in `packaging/systemd/coolercontrold.service`.
     const SHIPPED_UNIT_INTERVAL: Duration = Duration::from_secs(30);
 
-    /// The default `poll_rate`.
-    const POLL_RATE: Duration = Duration::from_secs(1);
+    /// The default `poll_rate`, as a period.
+    const POLL_PERIOD: Duration = Duration::from_secs(1);
 
     /// The interval systemd hands us is halved. Getting this wrong in either
     /// direction is invisible until production: too long and the daemon is
@@ -828,7 +830,7 @@ mod tests {
     #[test]
     fn a_disabled_watchdog_never_widens() {
         let watchdog = Watchdog::disabled();
-        assert!(watchdog.sleep_tick(POLL_RATE), "nothing to wait for");
+        assert!(watchdog.sleep_tick(POLL_PERIOD), "nothing to wait for");
         assert!(watchdog.sleep_budget_in_force().not());
         assert_eq!(watchdog.last_ping(), None);
     }
@@ -841,7 +843,7 @@ mod tests {
         watchdog.ping();
         assert_eq!(watchdog.ping_count(), 1);
 
-        assert!(watchdog.sleep_tick(POLL_RATE));
+        assert!(watchdog.sleep_tick(POLL_PERIOD));
         assert!(watchdog.sleep_budget_in_force());
         assert_eq!(watchdog.ping_count(), 2, "widening is a heartbeat");
 
@@ -866,8 +868,8 @@ mod tests {
         let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL))
             .with_notify_socket(Some(path.clone().into_os_string()));
 
-        watchdog.sleep_tick(POLL_RATE);
-        watchdog.sleep_tick(POLL_RATE);
+        watchdog.sleep_tick(POLL_PERIOD);
+        watchdog.sleep_tick(POLL_PERIOD);
         watchdog.ping();
 
         let mut datagram = [0_u8; 64];
@@ -892,7 +894,7 @@ mod tests {
         let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL))
             .with_notify_socket(Some(path.clone().into_os_string()));
 
-        assert!(watchdog.sleep_tick(POLL_RATE).not());
+        assert!(watchdog.sleep_tick(POLL_PERIOD).not());
         assert!(watchdog.sleep_budget_in_force().not());
         assert_eq!(watchdog.last_ping(), None);
 
@@ -900,7 +902,7 @@ mod tests {
         for _ in 0..filled {
             manager.recv(&mut datagram).unwrap();
         }
-        assert!(watchdog.sleep_tick(POLL_RATE));
+        assert!(watchdog.sleep_tick(POLL_PERIOD));
 
         assert!(watchdog.sleep_budget_in_force());
         assert!(watchdog.last_ping().is_some());
@@ -914,12 +916,12 @@ mod tests {
     fn a_running_sleep_arm_keeps_the_budget_fresh() {
         let interval = Duration::from_millis(40);
         let watchdog = Watchdog::with_supervisor_interval(Some(interval));
-        watchdog.sleep_tick(POLL_RATE);
-        watchdog.sleep_tick(POLL_RATE);
+        watchdog.sleep_tick(POLL_PERIOD);
+        watchdog.sleep_tick(POLL_PERIOD);
         assert_eq!(watchdog.ping_count(), 1, "rate limited within the interval");
 
         std::thread::sleep(ping_interval_for(interval));
-        watchdog.sleep_tick(POLL_RATE);
+        watchdog.sleep_tick(POLL_PERIOD);
 
         assert_eq!(watchdog.ping_count(), 2);
         assert!(watchdog.sleep_budget_in_force());
@@ -932,7 +934,7 @@ mod tests {
     fn the_budget_lapses_once_the_arm_has_run_too_long() {
         let interval = Duration::from_millis(40);
         let watchdog = Watchdog::with_supervisor_interval(Some(interval));
-        watchdog.sleep_tick(POLL_RATE);
+        watchdog.sleep_tick(POLL_PERIOD);
         let watch = watchdog
             .sleep_watch
             .get()
@@ -943,7 +945,7 @@ mod tests {
         }));
 
         std::thread::sleep(ping_interval_for(interval));
-        watchdog.sleep_tick(POLL_RATE);
+        watchdog.sleep_tick(POLL_PERIOD);
 
         assert_eq!(watchdog.ping_count(), 1);
     }
@@ -955,15 +957,15 @@ mod tests {
     fn only_tick_sized_gaps_count_as_running() {
         let last_tick = Instant::now();
         assert_eq!(
-            sleep_running_step(last_tick, last_tick + POLL_RATE, POLL_RATE),
-            POLL_RATE
+            sleep_running_step(last_tick, last_tick + POLL_PERIOD, POLL_PERIOD),
+            POLL_PERIOD
         );
         assert_eq!(
-            sleep_running_step(last_tick, last_tick + Duration::from_secs(600), POLL_RATE),
-            POLL_RATE * 2
+            sleep_running_step(last_tick, last_tick + Duration::from_secs(600), POLL_PERIOD),
+            POLL_PERIOD * 2
         );
         assert_eq!(
-            sleep_running_step(last_tick, last_tick, POLL_RATE),
+            sleep_running_step(last_tick, last_tick, POLL_PERIOD),
             Duration::ZERO
         );
     }
@@ -980,17 +982,17 @@ mod tests {
         let watchdog = Watchdog::with_supervisor_interval(Some(interval))
             .with_notify_socket(Some(path.clone().into_os_string()));
 
-        assert!(watchdog.sleep_tick(POLL_RATE).not());
+        assert!(watchdog.sleep_tick(POLL_PERIOD).not());
         assert!(watchdog.sleep_budget_in_force().not());
         let manager = UnixDatagram::bind(&path).unwrap();
-        assert!(watchdog.sleep_tick(POLL_RATE).not());
+        assert!(watchdog.sleep_tick(POLL_PERIOD).not());
         assert!(
             watchdog.sleep_budget_in_force().not(),
             "retried within the interval"
         );
 
         std::thread::sleep(ping_interval_for(interval));
-        assert!(watchdog.sleep_tick(POLL_RATE));
+        assert!(watchdog.sleep_tick(POLL_PERIOD));
 
         assert!(watchdog.sleep_budget_in_force());
         let mut datagram = [0_u8; 64];
