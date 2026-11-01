@@ -136,15 +136,36 @@ pub async fn run(
                 watchdog.ping();
             } else if let SleepPhase::Woken { wake_count } = sleep_phase {
                 sleep_prepared = false;
-                let woke = wake_from_sleep(&config, &engine, &mode_controller, &sleep_listener, &watchdog).await?;
+                let woke = wake_from_sleep(
+                    &config,
+                    &engine,
+                    &mode_controller,
+                    &sleep_listener,
+                    &watchdog,
+                )
+                .await?;
                 // Wakes that arrived meanwhile stay pending for the next tick.
                 sleep_listener.wake_handled(wake_count);
                 if woke.not() {
                     // Asleep again: logind is waiting on the lock, so do not wait for a tick.
-                    sleep_arm_tick(&repos, &watchdog, &sleep_listener, &mut sleep_prepared, poll_period).await;
+                    sleep_arm_tick(
+                        &repos,
+                        &watchdog,
+                        &sleep_listener,
+                        &mut sleep_prepared,
+                        poll_period,
+                    )
+                    .await;
                 }
             } else {
-                sleep_arm_tick(&repos, &watchdog, &sleep_listener, &mut sleep_prepared, poll_period).await;
+                sleep_arm_tick(
+                    &repos,
+                    &watchdog,
+                    &sleep_listener,
+                    &mut sleep_prepared,
+                    poll_period,
+                )
+                .await;
             }
         }
         // run_token has been cancelled. Signal each repo to abort
