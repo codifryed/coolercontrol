@@ -152,7 +152,7 @@ impl Watchdog {
     }
 
     /// A watchdog under a `WatchdogSec=` unit, sending to `notify_socket`.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "gated-tests"))]
     pub fn supervised_at(supervisor_interval: Duration, notify_socket: OsString) -> Self {
         Self::with_supervisor_interval(Some(supervisor_interval))
             .with_notify_socket(Some(notify_socket))
