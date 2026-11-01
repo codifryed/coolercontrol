@@ -10,7 +10,7 @@ use std::env;
 use std::future::Future;
 use std::ops::Not;
 use std::os::fd::OwnedFd;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 use tokio::sync::Notify;
@@ -35,6 +35,8 @@ const LOGIND_OPERATION_IN_PROGRESS: &str = "org.freedesktop.login1.OperationInPr
 // cannot block the listener: a setup that times out runs deaf (nothing is recorded), and an
 // Inhibit that times out leaves the next sleep without a lock.
 const DBUS_CALL_TIMEOUT_S: u64 = 5;
+/// The low bit of `SleepSignals::state`; the bits above it are the wake count.
+const PREPARING_BIT: u64 = 1;
 
 /// What the main loop should do this tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,11 +53,11 @@ pub enum SleepPhase {
 /// arrives while the main loop is handling an earlier one is never overwritten.
 #[derive(Default)]
 struct SleepSignals {
-    /// Follows the latest signal.
-    preparing: AtomicBool,
-    /// Every wake, counted. A wake that arrives with no sleep seen before it, as when the daemon
-    /// started mid-sleep, still counts: the devices went through the sleep all the same.
-    wake_count: AtomicU64,
+    /// The wake count shifted up one bit, with `PREPARING_BIT` following the latest signal. One
+    /// word, so the main loop never pairs a new count with a stale `preparing`. Every wake counts,
+    /// even one with no sleep seen before it, as when the daemon started mid-sleep: the devices
+    /// went through the sleep all the same.
+    state: AtomicU64,
     /// The delay lock, held while awake so logind waits for the sleep arm before it sleeps.
     inhibitor: Mutex<Option<HeldInhibitor>>,
     /// Wakes the main loop on each signal, so a sleep is not left waiting on the next tick.
@@ -71,15 +73,36 @@ struct HeldInhibitor {
 
 impl SleepSignals {
     fn record(&self, going_to_sleep: bool) {
-        if going_to_sleep.not() {
-            let previous = self.wake_count.fetch_add(1, Ordering::Relaxed);
-            debug_assert!(previous < u64::MAX);
-        }
-        // Last, with Release: a main loop that sees `preparing` cleared also sees the wake.
-        self.preparing.store(going_to_sleep, Ordering::Release);
-        // The listener is the only writer, so the store reads back.
-        debug_assert_eq!(self.preparing.load(Ordering::Relaxed), going_to_sleep);
+        let next = |state: u64| {
+            let wake_count = state >> 1;
+            if going_to_sleep {
+                (wake_count << 1) | PREPARING_BIT
+            } else {
+                debug_assert!(wake_count < u64::MAX >> 1);
+                (wake_count + 1) << 1
+            }
+        };
+        // One RMW: the count and `preparing` change together.
+        let previous = self
+            .state
+            .update(Ordering::Release, Ordering::Relaxed, next);
+        debug_assert_eq!(self.preparing(), going_to_sleep);
+        debug_assert!(self.wake_count() >= previous >> 1);
         self.changed.notify_one();
+    }
+
+    /// Both halves of one load: whether going to sleep, and the wake count.
+    fn load(&self) -> (bool, u64) {
+        let state = self.state.load(Ordering::Acquire);
+        (state & PREPARING_BIT == PREPARING_BIT, state >> 1)
+    }
+
+    fn preparing(&self) -> bool {
+        self.load().0
+    }
+
+    fn wake_count(&self) -> u64 {
+        self.load().1
     }
 
     fn holds_inhibitor(&self) -> bool {
@@ -95,7 +118,7 @@ impl SleepSignals {
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         // The listener is the only writer, so this is the latest wake.
-        let wake_count = self.wake_count.load(Ordering::Relaxed);
+        let wake_count = self.wake_count();
         // A second lock would only hold logind up for longer; dropping it releases it.
         match held.as_mut() {
             Some(held) => held.wake_count = wake_count,
@@ -122,7 +145,7 @@ impl SleepSignals {
         let Some(held) = held.as_mut() else {
             return false;
         };
-        let wake_count = self.wake_count.load(Ordering::Relaxed);
+        let wake_count = self.wake_count();
         debug_assert!(held.wake_count <= wake_count);
         held.wake_count = wake_count;
         true
@@ -133,10 +156,10 @@ impl SleepSignals {
     /// fans again beats idling. A held lock would hold up every later sleep, so it goes too.
     fn listener_lost(&self) {
         self.drop_inhibitor();
-        if self.preparing.load(Ordering::Acquire) {
+        if self.preparing() {
             self.record(false);
         }
-        debug_assert!(self.preparing.load(Ordering::Relaxed).not());
+        debug_assert!(self.preparing().not());
     }
 
     /// Releases a lock taken for the sleep after `wake_count` or an earlier one. A lock taken
@@ -201,15 +224,12 @@ impl SleepListener {
     /// Sleeping comes first: a wake followed by another sleep before this tick is handled once,
     /// after the second wake, rather than once while going down and again after.
     pub fn phase(&self) -> SleepPhase {
-        // Read first: a wake landing between the two reads then makes the lock look newer than
-        // this sleep, so it is kept rather than released unprepared.
-        let sleeping_wake_count = self.signals.wake_count.load(Ordering::Relaxed);
-        if self.signals.preparing.load(Ordering::Acquire) {
-            return SleepPhase::Sleeping {
-                wake_count: sleeping_wake_count,
-            };
+        // One load: a count and `preparing` read apart could pair a wake with the sleep before
+        // it, and the lock renewed at that wake would be released unprepared.
+        let (preparing, wake_count) = self.signals.load();
+        if preparing {
+            return SleepPhase::Sleeping { wake_count };
         }
-        let wake_count = self.signals.wake_count.load(Ordering::Relaxed);
         let handled_wake_count = self.handled_wake_count.get();
         debug_assert!(handled_wake_count <= wake_count);
         if wake_count == handled_wake_count {
@@ -224,7 +244,7 @@ impl SleepListener {
     /// main loop handles them on a later tick.
     pub fn wake_handled(&self, wake_count: u64) {
         debug_assert!(wake_count >= self.handled_wake_count.get());
-        debug_assert!(wake_count <= self.signals.wake_count.load(Ordering::Relaxed));
+        debug_assert!(wake_count <= self.signals.wake_count());
         self.handled_wake_count.set(wake_count);
     }
 
@@ -409,6 +429,24 @@ mod tests {
 
     fn listener() -> SleepListener {
         SleepListener::from_signals(Arc::default())
+    }
+
+    /// The count and `preparing` share one word, so each signal must move both and leave the
+    /// other half intact. Sleep, wake, sleep again, then a wake with no sleep seen before it.
+    #[test]
+    fn each_signal_sets_both_halves_of_the_state() {
+        let signals = SleepSignals::default();
+        assert_eq!(signals.load(), (false, 0));
+        signals.record(true);
+        assert_eq!(signals.load(), (true, 0));
+        signals.record(false);
+        assert_eq!(signals.load(), (false, 1));
+        signals.record(true);
+        assert_eq!(signals.load(), (true, 1));
+        signals.record(false);
+        assert_eq!(signals.load(), (false, 2));
+        signals.record(false);
+        assert_eq!(signals.load(), (false, 3));
     }
 
     /// A deaf listener, dbus disabled or never connected, must leave the main loop polling.
@@ -618,7 +656,7 @@ mod tests {
         let listener = listener();
         listener.signals.listener_lost();
         assert_eq!(listener.phase(), SleepPhase::Awake);
-        assert_eq!(listener.signals.wake_count.load(Ordering::Relaxed), 0);
+        assert_eq!(listener.signals.wake_count(), 0);
     }
 
     /// A lock left held would hold up every later sleep once nobody can release it. Hold a pipe
@@ -654,6 +692,6 @@ mod tests {
         listener.signals.record(true);
         listener.signals.record(true);
         assert_eq!(listener.phase(), SleepPhase::Sleeping { wake_count: 0 });
-        assert_eq!(listener.signals.wake_count.load(Ordering::Relaxed), 0);
+        assert_eq!(listener.signals.wake_count(), 0);
     }
 }
