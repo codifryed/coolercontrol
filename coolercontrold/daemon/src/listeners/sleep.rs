@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::ENV_DBUS;
+use futures_util::{Stream, StreamExt};
 use log::{info, warn};
 use nix::fcntl::{fcntl, FcntlArg, FdFlag};
 use std::cell::Cell;
@@ -15,7 +16,6 @@ use std::time::Duration;
 use tokio::sync::Notify;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
-use zbus::export::ordered_stream::OrderedStreamExt;
 use zbus::{zvariant, Connection, Proxy};
 
 const SLEEP_DEFAULT_BUS_NAME: &str = "org.freedesktop.login1";
@@ -234,7 +234,7 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
         let signal = proxy.receive_signal(SIGNAL_PREPARE_FOR_SLEEP).await?;
         Ok::<_, zbus::Error>((conn, proxy, signal))
     };
-    let (conn, proxy, mut sleep_signal) =
+    let (conn, proxy, sleep_signal) =
         match timeout(Duration::from_secs(DBUS_SETUP_TIMEOUT_S), setup).await {
             Ok(Ok(connected)) => connected,
             Ok(Err(err)) => {
@@ -251,26 +251,40 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
         };
     info!("DBUS sleep listener connected.");
     take_inhibitor(&proxy, &signals).await;
+    // true when entering sleep, false when waking.
+    let sleep_signal = sleep_signal.map(|msg| msg.body().deserialize::<bool>());
+    // The sleep arm released the last lock; the next sleep needs its own.
+    let on_wake = async || take_inhibitor(&proxy, &signals).await;
+    record_signals(&run_token, &signals, sleep_signal, on_wake).await;
+    let _ = conn.close().await;
+}
+
+/// Records each signal until the run is cancelled or the stream ends. A stream that ends while
+/// the daemon runs on is a lost listener.
+async fn record_signals(
+    run_token: &CancellationToken,
+    signals: &SleepSignals,
+    mut sleep_signal: impl Stream<Item = zbus::Result<bool>> + Unpin,
+    mut on_wake: impl AsyncFnMut(),
+) {
     loop {
+        // Matched inside the arm: a `Some(..)` pattern would only disable the branch on `None`,
+        // and the cancellation branch never is, so a lost stream would never break the loop.
         tokio::select! {
             () = run_token.cancelled() => break,
-            Some(msg) = sleep_signal.next() => {
-                // true when entering sleep, false when waking.
-                match msg.body().deserialize::<bool>() {
-                    Ok(true) => {
-                        info!("Received message that system is going to sleep.");
-                        signals.record(true);
-                    }
-                    Ok(false) => {
-                        info!("Received message that system is waking from sleep");
-                        signals.record(false);
-                        // The sleep arm released the last one; the next sleep needs its own.
-                        take_inhibitor(&proxy, &signals).await;
-                    }
-                    Err(err) => warn!("Failed to read PrepareForSleep signal body: {err}"),
+            msg = sleep_signal.next() => match msg {
+                None => break,
+                Some(Ok(true)) => {
+                    info!("Received message that system is going to sleep.");
+                    signals.record(true);
                 }
+                Some(Ok(false)) => {
+                    info!("Received message that system is waking from sleep");
+                    signals.record(false);
+                    on_wake().await;
+                }
+                Some(Err(err)) => warn!("Failed to read PrepareForSleep signal body: {err}"),
             },
-            else => break,
         }
     }
     if run_token.is_cancelled().not() {
@@ -280,7 +294,6 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
         );
         signals.listener_lost();
     }
-    let _ = conn.close().await;
 }
 
 /// Without a delay lock logind sleeps at once, and the freeze can land before the sleep arm has
@@ -484,6 +497,21 @@ mod tests {
 
         listener.signals.listener_lost();
 
+        assert_eq!(listener.phase(), SleepPhase::Woken { wake_count: 1 });
+    }
+
+    /// A stream that ends mid-sleep must end the loop and count as a wake, or the main loop
+    /// sits in the sleep arm for good. Feed one sleep, then end the stream, and poll once.
+    #[test]
+    fn an_ended_signal_stream_counts_as_a_wake() {
+        use futures_util::FutureExt;
+        let listener = listener();
+        let run_token = CancellationToken::new();
+        let sleep_signal = futures_util::stream::iter([Ok(true)]);
+
+        let recording = record_signals(&run_token, &listener.signals, sleep_signal, async || {});
+
+        assert_eq!(recording.now_or_never(), Some(()));
         assert_eq!(listener.phase(), SleepPhase::Woken { wake_count: 1 });
     }
 
