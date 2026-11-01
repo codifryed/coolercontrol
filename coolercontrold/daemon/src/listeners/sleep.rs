@@ -3,6 +3,7 @@
 
 use crate::ENV_DBUS;
 use log::{info, warn};
+use nix::fcntl::{fcntl, FcntlArg, FdFlag};
 use std::cell::Cell;
 use std::env;
 use std::future::Future;
@@ -294,7 +295,7 @@ async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
         &(INHIBIT_WHAT, INHIBIT_WHO, INHIBIT_WHY, INHIBIT_MODE),
     );
     match timeout(Duration::from_secs(DBUS_SETUP_TIMEOUT_S), call).await {
-        Ok(Ok(inhibitor)) => signals.hold_inhibitor(inhibitor.into()),
+        Ok(Ok(inhibitor)) => hold_new_inhibitor(signals, inhibitor.into()),
         Ok(Err(zbus::Error::MethodError(name, _, _))) if is_sleep_in_progress(name.as_str()) => {
             info!("Sleep already in progress; taking the sleep delay lock after the wake.");
         }
@@ -303,6 +304,22 @@ async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
             warn!("Taking a sleep delay lock from logind timed out after {DBUS_SETUP_TIMEOUT_S}s.");
         }
     }
+}
+
+/// zbus receives the descriptor without close-on-exec, so every child the daemon spawns would
+/// inherit the lock and keep it alive past its release. One that cannot be fixed is dropped.
+fn hold_new_inhibitor(signals: &SleepSignals, inhibitor: OwnedFd) {
+    if let Err(err) = fcntl(&inhibitor, FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC)) {
+        warn!("Could not keep the sleep delay lock from child processes, releasing it: {err}");
+        return;
+    }
+    debug_assert!(is_close_on_exec(&inhibitor));
+    signals.hold_inhibitor(inhibitor);
+}
+
+fn is_close_on_exec(fd: &OwnedFd) -> bool {
+    fcntl(fd, FcntlArg::F_GETFD)
+        .is_ok_and(|bits| FdFlag::from_bits_truncate(bits).contains(FdFlag::FD_CLOEXEC))
 }
 
 /// logind refuses new delay locks once a sleep has begun, as when the daemon starts mid-sleep.
@@ -439,6 +456,23 @@ mod tests {
         assert!(listener.holds_inhibitor().not());
         listener.release_inhibitor();
         assert!(listener.holds_inhibitor().not());
+    }
+
+    /// A lock a child inherits outlives its release and holds up every later sleep. Clear
+    /// close-on-exec on a pipe, as zbus hands the lock over, hold it, and check the held copy.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_held_lock_is_closed_on_exec() {
+        let listener = listener();
+        let (reader, _writer) = std::io::pipe().unwrap();
+        let reader = OwnedFd::from(reader);
+        fcntl(&reader, FcntlArg::F_SETFD(FdFlag::empty())).unwrap();
+        assert!(is_close_on_exec(&reader).not());
+
+        hold_new_inhibitor(&listener.signals, reader);
+
+        let held = listener.signals.inhibitor.lock().unwrap();
+        assert!(is_close_on_exec(held.as_ref().expect("the lock is held")));
     }
 
     /// A listener lost mid-sleep would leave the loop in the sleep arm for good, with no
