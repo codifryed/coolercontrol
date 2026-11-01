@@ -278,7 +278,8 @@ fn fire_lcd_update<'s>(
 
 /// One tick while the system goes to sleep: hold the widened watchdog deadline, prepare every
 /// repo once per sleep, then let logind go ahead. The deadline comes first, so a slow repo is
-/// covered too, and the lock goes last, so logind waits for both.
+/// covered too. The lock goes only once both are done, so logind waits for both; a deadline the
+/// service manager has not taken yet is retried next tick, within logind's `InhibitDelayMaxSec`.
 async fn sleep_arm_tick(
     repos: &Repos,
     watchdog: &Watchdog,
@@ -287,14 +288,16 @@ async fn sleep_arm_tick(
     poll_period: Duration,
 ) {
     debug_assert!(poll_period.is_zero().not());
-    watchdog.sleep_tick(poll_period);
+    let sleep_budget_in_force = watchdog.sleep_tick(poll_period);
     if sleep_prepared.not() {
         for repo in repos.iter() {
             repo.prepare_for_sleep().await;
         }
         *sleep_prepared = true;
     }
-    sleep_listener.release_inhibitor();
+    if sleep_budget_in_force {
+        sleep_listener.release_inhibitor();
+    }
     debug_assert!(*sleep_prepared);
     debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
 }
@@ -547,6 +550,37 @@ mod tests {
 
         assert!(held_at_prepare.get());
         assert!(sleep_listener.holds_inhibitor().not());
+    }
+
+    /// Released on the unit's own deadline, logind would sleep on it and the freeze would read
+    /// as a wedge. Hold a pipe as the lock, point the watchdog at a missing service manager so
+    /// the widening fails, tick, and check the lock is still held.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn the_sleep_arm_keeps_the_lock_until_the_deadline_is_widened() {
+        let dir = tempfile::tempdir().unwrap();
+        let notify_socket = dir.path().join("absent").into_os_string();
+        let watchdog = Watchdog::supervised_at(Duration::from_secs(30), notify_socket);
+        let sleep_listener = SleepListener::deaf();
+        let (reader, _writer) = std::io::pipe().unwrap();
+        sleep_listener.hold_inhibitor(reader.into());
+        let repos: Repos = Rc::new(Repositories::default());
+        let mut sleep_prepared = false;
+
+        rt::test_runtime(async {
+            sleep_arm_tick(
+                &repos,
+                &watchdog,
+                &sleep_listener,
+                &mut sleep_prepared,
+                Duration::from_secs(1),
+            )
+            .await;
+        });
+
+        assert!(watchdog.sleep_budget_in_force().not());
+        assert!(sleep_prepared);
+        assert!(sleep_listener.holds_inhibitor());
     }
 
     /// A sleep that begins during the wake pause must end it at once, since logind is waiting
