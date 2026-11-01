@@ -102,12 +102,7 @@ pub async fn run(
         let mut loop_interval = rt::interval(poll_period);
         let mut sleep_prepared = false;
         while run_token.is_cancelled().not() {
-            // A sleep signal starts a tick at once: logind waits on the delay lock for only a few
-            // seconds, and the next tick can be a whole poll away.
-            tokio::select! {
-                _ = loop_interval.tick() => {}
-                () = sleep_listener.changed() => {}
-            }
+            next_tick(&mut loop_interval, &sleep_listener).await;
             lcd_update_trigger.tick();
             let sleep_phase = sleep_listener.phase();
             if sleep_phase == SleepPhase::Awake {
@@ -187,6 +182,15 @@ pub async fn run(
         Ok(())
     })
     .await
+}
+
+/// Waits for the next tick. A sleep signal starts one at once: logind waits on the delay lock
+/// for only a few seconds, and the next tick can be a whole poll away.
+async fn next_tick(loop_interval: &mut rt::Interval, sleep_listener: &SleepListener) {
+    tokio::select! {
+        _ = loop_interval.tick() => {}
+        () = sleep_listener.changed() => {}
+    }
 }
 
 /// Aligns the main loop's timing with the system clock.
@@ -591,6 +595,24 @@ mod tests {
         assert!(watchdog.sleep_budget_in_force().not());
         assert!(sleep_prepared);
         assert!(sleep_listener.holds_inhibitor());
+    }
+
+    /// logind waits on the delay lock for only a few seconds, so a sleep signal must start a
+    /// tick rather than wait out the poll. Take the interval's first tick, signal a sleep, then
+    /// poll the next tick once with the interval far from due.
+    #[test]
+    fn a_sleep_signal_starts_a_tick_at_once() {
+        use futures_util::FutureExt;
+        let sleep_listener = SleepListener::deaf();
+
+        rt::test_runtime(async {
+            let mut loop_interval = rt::interval(Duration::from_secs(3_600));
+            next_tick(&mut loop_interval, &sleep_listener).await;
+            sleep_listener.record(true);
+
+            let tick = next_tick(&mut loop_interval, &sleep_listener);
+            assert_eq!(tick.now_or_never(), Some(()));
+        });
     }
 
     /// A sleep that begins during the wake pause must end it at once, since logind is waiting
