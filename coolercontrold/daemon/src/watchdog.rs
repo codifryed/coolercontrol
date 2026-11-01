@@ -142,7 +142,7 @@ impl Watchdog {
         self.last_ping.get()
     }
 
-    #[cfg(all(test, feature = "gated-tests"))]
+    #[cfg(test)]
     pub fn ping_count(&self) -> u32 {
         self.ping_count.get()
     }
@@ -186,6 +186,7 @@ impl Watchdog {
             return;
         };
         let ping_interval = ping_interval_for(supervisor_interval);
+        debug_assert!(ping_interval.is_zero().not());
         let now = Instant::now();
         if self.sleep_budget_in_force.get() {
             // Not rate limited: the unit's deadline should be back in force at once.
@@ -219,6 +220,7 @@ impl Watchdog {
         if self.sleep_budget_in_force.get() {
             return;
         }
+        debug_assert!(supervisor_interval.is_zero().not());
         let now = Instant::now();
         if self
             .send_deadline(sleep_budget_for(supervisor_interval), now)
@@ -228,7 +230,10 @@ impl Watchdog {
         }
         self.sleep_budget_in_force.set(true);
         self.last_ping.set(Some(now));
+        #[cfg(test)]
+        self.ping_count.set(self.ping_count.get() + 1);
         debug_assert!(self.sleep_budget_in_force.get());
+        debug_assert_eq!(self.last_ping.get(), Some(now));
     }
 
     /// Replaces the service manager's deadline. True once it has the message. Unlike a lost
@@ -756,24 +761,23 @@ mod tests {
     }
 
     /// Resume must restore the unit's deadline at once, not after the rate limit. Ping, widen,
-    /// then ping straight away: the second ping restores, and a third is rate limited again.
+    /// then ping straight away: each counts as a send, and a fourth ping is rate limited again.
     #[test]
     fn the_first_ping_after_sleep_restores_the_deadline() {
         let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL));
         watchdog.ping();
-        assert!(watchdog.sleep_budget_in_force().not());
+        assert_eq!(watchdog.ping_count(), 1);
 
         watchdog.widen_for_sleep();
         assert!(watchdog.sleep_budget_in_force());
-        let widened = watchdog.last_ping().expect("widening is a heartbeat");
+        assert_eq!(watchdog.ping_count(), 2, "widening is a heartbeat");
 
         watchdog.ping();
         assert!(watchdog.sleep_budget_in_force().not());
-        let restored = watchdog.last_ping().expect("restoring is a heartbeat");
-        assert!(restored >= widened);
+        assert_eq!(watchdog.ping_count(), 3, "the restore skips the rate limit");
 
         watchdog.ping();
-        assert_eq!(watchdog.last_ping(), Some(restored));
+        assert_eq!(watchdog.ping_count(), 3);
     }
 
     /// The service manager must see exactly one widening per sleep and one restore, though the

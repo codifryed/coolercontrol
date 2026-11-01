@@ -53,6 +53,8 @@ impl SleepSignals {
         }
         // Last, with Release: a main loop that sees `preparing` cleared also sees the wake.
         self.preparing.store(going_to_sleep, Ordering::Release);
+        // The listener is the only writer, so the store reads back.
+        debug_assert_eq!(self.preparing.load(Ordering::Relaxed), going_to_sleep);
     }
 }
 
@@ -97,6 +99,7 @@ impl SleepListener {
         if wake_count == handled_wake_count {
             SleepPhase::Awake
         } else {
+            debug_assert!(wake_count > handled_wake_count);
             SleepPhase::Woken { wake_count }
         }
     }
