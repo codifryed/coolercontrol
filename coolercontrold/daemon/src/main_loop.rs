@@ -48,7 +48,7 @@ use crate::api::actor::StatusHandle;
 use crate::config::Config;
 use crate::device::health::DeviceHealthController;
 use crate::engine::main::Engine;
-use crate::listeners::sleep::SleepListener;
+use crate::listeners::sleep::{SleepListener, SleepPhase};
 use crate::modes::ModeController;
 use crate::rt;
 use crate::watchdog::Watchdog;
@@ -103,7 +103,8 @@ pub async fn run(
         while run_token.is_cancelled().not() {
             loop_interval.tick().await;
             lcd_update_trigger.tick();
-            if sleep_listener.is_not_preparing_to_sleep() {
+            let sleep_phase = sleep_listener.phase();
+            if sleep_phase == SleepPhase::Awake {
                 let snapshot_timeout_token = CancellationToken::new();
                 fire_preloads(&repos, snapshot_timeout_token.clone(), scope);
                 tokio::select! {
@@ -127,16 +128,11 @@ pub async fn run(
                 // so it widens the deadline instead of claiming liveness. The
                 // resume arm heartbeats from inside `wake_from_sleep`.
                 watchdog.ping();
-            } else if sleep_listener.is_resuming() {
+            } else if let SleepPhase::Woken { wake_count } = sleep_phase {
                 sleep_prepared = false;
-                wake_from_sleep(
-                    &config,
-                    &engine,
-                    &mode_controller,
-                    &sleep_listener,
-                    &watchdog,
-                )
-                .await?;
+                wake_from_sleep(&config, &engine, &mode_controller, &watchdog).await?;
+                // Wakes that arrived meanwhile stay pending for the next tick.
+                sleep_listener.wake_handled(wake_count);
             } else {
                 // Before preparing, so a slow repo is covered too.
                 watchdog.widen_for_sleep();
@@ -263,13 +259,11 @@ fn fire_lcd_update<'s>(
 /// to fully power up before re-initializing and re-applying device settings. It checks if
 /// settings should be applied on boot and takes appropriate actions, such as reinitializing
 /// devices and applying saved device settings. Additionally, it reinitializes all status
-/// histories to maintain sequential data integrity and resets the sleep listener's state
-/// flags to indicate that the system is no longer preparing to sleep or resuming.
+/// histories to maintain sequential data integrity.
 async fn wake_from_sleep(
     config: &Rc<Config>,
     engine: &Rc<Engine>,
     mode_controller: &Rc<ModeController>,
-    sleep_listener: &SleepListener,
     watchdog: &Watchdog,
 ) -> Result<()> {
     // Restores the unit's deadline, which the sleep arm widened.
@@ -299,8 +293,6 @@ async fn wake_from_sleep(
         watchdog.ping();
     }
     engine.reinitialize_all_status_histories()?;
-    sleep_listener.resuming(false);
-    sleep_listener.preparing_to_sleep(false);
     Ok(())
 }
 
