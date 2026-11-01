@@ -9,6 +9,12 @@
 //! than a timer of its own: a timer would keep pinging while the loop is stuck,
 //! which is the failure this exists to catch.
 //!
+//! System sleep is the exception. Every process, the service manager included,
+//! is frozen through the task freeze and device suspend and resume, while the
+//! monotonic clock the deadline runs on keeps counting. No heartbeat can cover
+//! that, so the sleep arm hands the service manager a longer deadline and the
+//! next heartbeat after resume restores the unit's own.
+//!
 //! No-op when `NOTIFY_SOCKET` is unset, so `OpenRC`, container, and `AppImage`
 //! runs are unaffected.
 
@@ -44,6 +50,15 @@ const NOTIFY_SOCKET: &str = "NOTIFY_SOCKET";
 
 const HEARTBEAT: &[u8] = b"WATCHDOG=1\n";
 
+/// The deadline while the system sleeps. It must outlast the kernel's 20s
+/// freeze timeout plus a slow device resume. It also bounds a resume signal
+/// that never arrives: past it the daemon is restarted and re-applies settings.
+const SLEEP_BUDGET: Duration = Duration::from_secs(120);
+
+/// The kernel's default `freeze_timeout_msecs`.
+const KERNEL_FREEZE_TIMEOUT: Duration = Duration::from_secs(20);
+const _: () = assert!(SLEEP_BUDGET.as_secs() > KERNEL_FREEZE_TIMEOUT.as_secs());
+
 /// How long READY or STOPPING may hold up startup or shutdown. Past it the send carries on, on
 /// the blocking pool, and the daemon goes on without waiting for it.
 const NOTIFY_WAIT: Duration = Duration::from_secs(2);
@@ -60,6 +75,8 @@ pub struct Watchdog {
     notify_socket: Option<OsString>,
     /// `None` until the first ping, so the first one is always due.
     last_ping: Cell<Option<Instant>>,
+    /// Set while the service manager holds `SLEEP_BUDGET` instead of the unit's deadline.
+    sleep_budget_in_force: Cell<bool>,
     /// The datagram needs a service manager to observe, so tests count the
     /// heartbeats instead.
     #[cfg(test)]
@@ -86,6 +103,7 @@ impl Watchdog {
             supervisor_interval,
             notify_socket: None,
             last_ping: Cell::new(None),
+            sleep_budget_in_force: Cell::new(false),
             #[cfg(test)]
             ping_count: Cell::new(0),
         }
@@ -117,6 +135,11 @@ impl Watchdog {
         self.ping_count.get()
     }
 
+    #[cfg(test)]
+    pub fn sleep_budget_in_force(&self) -> bool {
+        self.sleep_budget_in_force.get()
+    }
+
     /// Warns when the poll rate cannot sustain the supervisor's deadline, which
     /// would restart the daemon while it is healthy. Only a hand-edited
     /// `WatchdogSec=` reaches this: the shipped 30s unit leaves 10s spare
@@ -145,31 +168,77 @@ impl Watchdog {
 
     /// Sends a heartbeat if one is due. Cheap to call on every tick, and never waits: a
     /// heartbeat the service manager has no room for stays due, so the next tick sends it.
+    /// After sleep, the first heartbeat also restores the unit's own deadline.
     pub fn ping(&self) {
-        let Some(ping_interval) = self.ping_interval() else {
+        let Some(supervisor_interval) = self.supervisor_interval else {
             return;
         };
-        debug_assert!(ping_interval.is_zero().not());
+        let ping_interval = ping_interval_for(supervisor_interval);
         let now = Instant::now();
-        if ping_is_due(self.last_ping.get(), ping_interval, now).not() {
-            return;
-        }
-        if let Some(socket) = &self.notify_socket {
-            if let Err(err) = send_now(socket, HEARTBEAT) {
-                if err.kind() == io::ErrorKind::WouldBlock {
-                    // Not stamped: one more whole interval would land past the deadline.
-                    debug!("The service manager has no room for a heartbeat yet, retrying");
-                    return;
-                }
-                // A lost heartbeat costs a restart, which is visible; panicking would not help.
-                warn!("Could not send watchdog heartbeat to the service manager: {err}");
+        if self.sleep_budget_in_force.get() {
+            // Not rate limited: the unit's deadline should be back in force at once.
+            let message = deadline_message(supervisor_interval);
+            if self.send(message.as_bytes(), "watchdog deadline").not() {
+                return;
+            }
+            self.sleep_budget_in_force.set(false);
+        } else {
+            if ping_is_due(self.last_ping.get(), ping_interval, now).not() {
+                return;
+            }
+            if self.send(HEARTBEAT, "watchdog heartbeat").not() {
+                return;
             }
         }
         self.last_ping.set(Some(now));
         #[cfg(test)]
         self.ping_count.set(self.ping_count.get() + 1);
+        debug_assert!(self.sleep_budget_in_force.get().not());
         // The rate limit must now hold, or every tick sends a datagram.
         debug_assert!(ping_is_due(self.last_ping.get(), ping_interval, now).not());
+    }
+
+    /// Hands the service manager `SLEEP_BUDGET` along with a heartbeat. Called on every tick of
+    /// the sleep arm, so a send the service manager has no room for goes out on the next one.
+    pub fn widen_for_sleep(&self) {
+        let Some(supervisor_interval) = self.supervisor_interval else {
+            return;
+        };
+        if self.sleep_budget_in_force.get() {
+            return;
+        }
+        let message = deadline_message(sleep_budget_for(supervisor_interval));
+        if self
+            .send(message.as_bytes(), "watchdog sleep deadline")
+            .not()
+        {
+            return;
+        }
+        self.sleep_budget_in_force.set(true);
+        self.last_ping.set(Some(Instant::now()));
+        debug_assert!(self.sleep_budget_in_force.get());
+    }
+
+    /// Sends `message` if a service manager is listening. False only when it has no room yet,
+    /// so the caller keeps the message due: one more whole interval would land past the
+    /// deadline. Any other failure counts as sent. A lost heartbeat costs a restart, which is
+    /// visible; panicking would not help.
+    fn send(&self, message: &[u8], description: &str) -> bool {
+        debug_assert!(message.starts_with(HEARTBEAT));
+        let Some(socket) = &self.notify_socket else {
+            return true;
+        };
+        match send_now(socket, message) {
+            Ok(()) => true,
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                debug!("The service manager has no room for the {description} yet, retrying");
+                false
+            }
+            Err(err) => {
+                warn!("Could not send {description} to the service manager: {err}");
+                true
+            }
+        }
     }
 
     /// Sleeps for `total`, pinging throughout. For waits the daemon takes on
@@ -256,6 +325,25 @@ fn send_now(socket: &OsStr, message: &[u8]) -> io::Result<()> {
     } else {
         Err(io::Error::new(io::ErrorKind::WriteZero, "incomplete write"))
     }
+}
+
+/// A heartbeat that also replaces the service manager's deadline. systemd re-arms the
+/// deadline from the moment it reads this.
+fn deadline_message(deadline: Duration) -> String {
+    debug_assert!(deadline.is_zero().not());
+    let deadline_usec = u64::try_from(deadline.as_micros()).unwrap_or(u64::MAX);
+    let message = format!("WATCHDOG=1\nWATCHDOG_USEC={deadline_usec}\n");
+    debug_assert!(message.as_bytes().starts_with(HEARTBEAT));
+    message
+}
+
+/// Never shorter than the unit's own deadline, should a hand-edited `WatchdogSec=` exceed
+/// `SLEEP_BUDGET`.
+fn sleep_budget_for(supervisor_interval: Duration) -> Duration {
+    let budget = SLEEP_BUDGET.max(supervisor_interval);
+    debug_assert!(budget >= SLEEP_BUDGET);
+    debug_assert!(budget >= supervisor_interval);
+    budget
 }
 
 /// Half the supervisor's deadline, floored so an absurd `WatchdogSec=` cannot
@@ -596,6 +684,113 @@ mod tests {
                 start.elapsed()
             );
         });
+    }
+
+    /// The sleep budget replaces the unit's deadline, so it must never be the shorter of the
+    /// two. Check the shipped unit and a hand-edited one longer than the budget.
+    #[test]
+    fn a_sleep_budget_never_undercuts_the_unit_deadline() {
+        assert_eq!(sleep_budget_for(SHIPPED_UNIT_INTERVAL), SLEEP_BUDGET);
+        let long_unit = SLEEP_BUDGET + Duration::from_secs(180);
+        assert_eq!(sleep_budget_for(long_unit), long_unit);
+    }
+
+    /// systemd reads `WATCHDOG_USEC` in microseconds, and the message must still count as a
+    /// heartbeat. Format the shipped deadline and the sleep budget.
+    #[test]
+    fn a_deadline_message_is_a_heartbeat_with_microseconds() {
+        assert_eq!(
+            deadline_message(SHIPPED_UNIT_INTERVAL),
+            "WATCHDOG=1\nWATCHDOG_USEC=30000000\n"
+        );
+        assert_eq!(
+            deadline_message(SLEEP_BUDGET),
+            "WATCHDOG=1\nWATCHDOG_USEC=120000000\n"
+        );
+    }
+
+    /// Outside a `WatchdogSec=` unit there is no deadline to widen. Widen a disabled watchdog
+    /// and check nothing changed.
+    #[test]
+    fn a_disabled_watchdog_never_widens() {
+        let watchdog = Watchdog::disabled();
+        watchdog.widen_for_sleep();
+        assert!(watchdog.sleep_budget_in_force().not());
+        assert_eq!(watchdog.last_ping(), None);
+    }
+
+    /// Resume must restore the unit's deadline at once, not after the rate limit. Ping, widen,
+    /// then ping straight away: the second ping restores, and a third is rate limited again.
+    #[test]
+    fn the_first_ping_after_sleep_restores_the_deadline() {
+        let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL));
+        watchdog.ping();
+        assert!(watchdog.sleep_budget_in_force().not());
+
+        watchdog.widen_for_sleep();
+        assert!(watchdog.sleep_budget_in_force());
+        let widened = watchdog.last_ping().expect("widening is a heartbeat");
+
+        watchdog.ping();
+        assert!(watchdog.sleep_budget_in_force().not());
+        let restored = watchdog.last_ping().expect("restoring is a heartbeat");
+        assert!(restored >= widened);
+
+        watchdog.ping();
+        assert_eq!(watchdog.last_ping(), Some(restored));
+    }
+
+    /// The service manager must see exactly one widening per sleep and one restore, though the
+    /// sleep arm widens on every tick. Widen twice and ping against a stand-in socket, then
+    /// read back every datagram it got.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_sleep_sends_one_widening_and_one_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notify");
+        let manager = UnixDatagram::bind(&path).unwrap();
+        manager.set_nonblocking(true).unwrap();
+        let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL))
+            .with_notify_socket(Some(path.clone().into_os_string()));
+
+        watchdog.widen_for_sleep();
+        watchdog.widen_for_sleep();
+        watchdog.ping();
+
+        let mut datagram = [0_u8; 64];
+        let len = manager.recv(&mut datagram).unwrap();
+        assert_eq!(&datagram[..len], b"WATCHDOG=1\nWATCHDOG_USEC=120000000\n");
+        let len = manager.recv(&mut datagram).unwrap();
+        assert_eq!(&datagram[..len], b"WATCHDOG=1\nWATCHDOG_USEC=30000000\n");
+        let err = manager.recv(&mut datagram).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+    }
+
+    /// A widening the service manager has no room for must stay due, or the daemon sleeps on
+    /// the short deadline. Fill a stand-in socket's queue, widen, then empty it and widen again.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_full_service_manager_queue_leaves_the_widening_due() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notify");
+        let manager = UnixDatagram::bind(&path).unwrap();
+        manager.set_nonblocking(true).unwrap();
+        let filled = fill_queue(path.as_os_str());
+        let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL))
+            .with_notify_socket(Some(path.clone().into_os_string()));
+
+        watchdog.widen_for_sleep();
+        assert!(watchdog.sleep_budget_in_force().not());
+        assert_eq!(watchdog.last_ping(), None);
+
+        let mut datagram = [0_u8; 64];
+        for _ in 0..filled {
+            manager.recv(&mut datagram).unwrap();
+        }
+        watchdog.widen_for_sleep();
+
+        assert!(watchdog.sleep_budget_in_force());
+        assert!(watchdog.last_ping().is_some());
     }
 
     /// A caller that overruns the cap must get the same (clamped) duration

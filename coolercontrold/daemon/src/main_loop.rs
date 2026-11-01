@@ -123,9 +123,9 @@ pub async fn run(
                 alert_controller.process_alerts();
                 device_health_controller.process().await;
                 // At the foot of the working arm: a heartbeat asserts the tick
-                // did its work. The sleep-preparation arm below deliberately
-                // does nothing, so it must not claim liveness. The resume arm
-                // heartbeats from inside `wake_from_sleep`.
+                // did its work. The sleep-preparation arm below does no work,
+                // so it widens the deadline instead of claiming liveness. The
+                // resume arm heartbeats from inside `wake_from_sleep`.
                 watchdog.ping();
             } else if sleep_listener.is_resuming() {
                 sleep_prepared = false;
@@ -138,6 +138,8 @@ pub async fn run(
                 )
                 .await?;
             } else {
+                // Before preparing, so a slow repo is covered too.
+                watchdog.widen_for_sleep();
                 if sleep_prepared.not() {
                     for repo in repos.iter() {
                         repo.prepare_for_sleep().await;
@@ -270,6 +272,8 @@ async fn wake_from_sleep(
     sleep_listener: &SleepListener,
     watchdog: &Watchdog,
 ) -> Result<()> {
+    // Restores the unit's deadline, which the sleep arm widened.
+    watchdog.ping();
     let startup_delay = config
         .get_settings()?
         .startup_delay
