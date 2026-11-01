@@ -5,19 +5,29 @@ use crate::ENV_DBUS;
 use log::{info, warn};
 use std::cell::Cell;
 use std::env;
+use std::future::Future;
 use std::ops::Not;
+use std::os::fd::OwnedFd;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use zbus::export::ordered_stream::OrderedStreamExt;
-use zbus::{Connection, Proxy};
+use zbus::{zvariant, Connection, Proxy};
 
 const SLEEP_DEFAULT_BUS_NAME: &str = "org.freedesktop.login1";
 const SLEEP_OBJECTPATH: &str = "/org/freedesktop/login1";
 const SLEEP_INTERFACE: &str = "org.freedesktop.login1.Manager";
 const SIGNAL_PREPARE_FOR_SLEEP: &str = "PrepareForSleep";
+/// A logind delay lock on sleep: logind waits for it to be released before sleeping, for at most
+/// its `InhibitDelayMaxSec`.
+const METHOD_INHIBIT: &str = "Inhibit";
+const INHIBIT_WHAT: &str = "sleep";
+const INHIBIT_WHO: &str = "CoolerControl";
+const INHIBIT_WHY: &str = "Prepare devices and the watchdog for sleep";
+const INHIBIT_MODE: &str = "delay";
 // The whole DBus handshake (connect + proxy + AddMatch for PrepareForSleep) should complete in
 // tens of milliseconds on a healthy system. We cap it so a wedged logind/dbus-broker can't block
 // the listener from ever connecting; on timeout we simply run deaf (nothing is recorded).
@@ -43,6 +53,10 @@ struct SleepSignals {
     /// Every wake, counted. A wake that arrives with no sleep seen before it, as when the daemon
     /// started mid-sleep, still counts: the devices went through the sleep all the same.
     wake_count: AtomicU64,
+    /// The delay lock, held while awake so logind waits for the sleep arm before it sleeps.
+    inhibitor: Mutex<Option<OwnedFd>>,
+    /// Wakes the main loop on each signal, so a sleep is not left waiting on the next tick.
+    changed: Notify,
 }
 
 impl SleepSignals {
@@ -55,6 +69,37 @@ impl SleepSignals {
         self.preparing.store(going_to_sleep, Ordering::Release);
         // The listener is the only writer, so the store reads back.
         debug_assert_eq!(self.preparing.load(Ordering::Relaxed), going_to_sleep);
+        self.changed.notify_one();
+    }
+
+    fn holds_inhibitor(&self) -> bool {
+        self.inhibitor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some()
+    }
+
+    fn hold_inhibitor(&self, inhibitor: OwnedFd) {
+        let mut held = self
+            .inhibitor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        // A second lock would only hold logind up for longer; dropping it releases it.
+        if held.is_none() {
+            *held = Some(inhibitor);
+        }
+        debug_assert!(held.is_some());
+    }
+
+    /// Closing the descriptor is what releases the lock.
+    fn release_inhibitor(&self) {
+        let mut held = self
+            .inhibitor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        drop(held.take());
+        // Checked under the lock: the listener may take a fresh one as soon as it is free.
+        debug_assert!(held.is_none());
     }
 }
 
@@ -111,6 +156,32 @@ impl SleepListener {
         debug_assert!(wake_count <= self.signals.wake_count.load(Ordering::Relaxed));
         self.handled_wake_count.set(wake_count);
     }
+
+    /// Lets logind go ahead with the sleep, once the sleep arm has done its part. A no-op when
+    /// no lock is held.
+    pub fn release_inhibitor(&self) {
+        self.signals.release_inhibitor();
+    }
+
+    /// Completes when a sleep signal has arrived since the last call.
+    pub fn changed(&self) -> impl Future<Output = ()> + '_ {
+        self.signals.changed.notified()
+    }
+
+    #[cfg(test)]
+    pub fn deaf() -> Self {
+        Self::from_signals(Arc::default())
+    }
+
+    #[cfg(all(test, feature = "gated-tests"))]
+    pub fn hold_inhibitor(&self, inhibitor: OwnedFd) {
+        self.signals.hold_inhibitor(inhibitor);
+    }
+
+    #[cfg(all(test, feature = "gated-tests"))]
+    pub fn holds_inhibitor(&self) -> bool {
+        self.signals.holds_inhibitor()
+    }
 }
 
 fn dbus_listener_enabled() -> bool {
@@ -142,11 +213,11 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
         )
         .await?;
         let signal = proxy.receive_signal(SIGNAL_PREPARE_FOR_SLEEP).await?;
-        Ok::<_, zbus::Error>((conn, signal))
+        Ok::<_, zbus::Error>((conn, proxy, signal))
     };
-    let (conn, mut sleep_signal) =
+    let (conn, proxy, mut sleep_signal) =
         match timeout(Duration::from_secs(DBUS_SETUP_TIMEOUT_S), setup).await {
-            Ok(Ok(pair)) => pair,
+            Ok(Ok(connected)) => connected,
             Ok(Err(err)) => {
                 warn!("Could not connect to DBUS, sleep listener will not work: {err}");
                 return;
@@ -160,6 +231,7 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
             }
         };
     info!("DBUS sleep listener connected.");
+    take_inhibitor(&proxy, &signals).await;
     loop {
         tokio::select! {
             () = run_token.cancelled() => break,
@@ -173,6 +245,8 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
                     Ok(false) => {
                         info!("Received message that system is waking from sleep");
                         signals.record(false);
+                        // The sleep arm released the last one; the next sleep needs its own.
+                        take_inhibitor(&proxy, &signals).await;
                     }
                     Err(err) => warn!("Failed to read PrepareForSleep signal body: {err}"),
                 }
@@ -181,6 +255,30 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
         }
     }
     let _ = conn.close().await;
+}
+
+/// Without a delay lock logind sleeps at once, and the freeze can land before the sleep arm has
+/// widened the watchdog deadline or prepared the devices. Bounded like the setup, for the same
+/// wedged-logind reason. Without one the daemon runs on, as before.
+async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
+    if signals.holds_inhibitor() {
+        return;
+    }
+    let call = proxy.call::<_, _, zvariant::OwnedFd>(
+        METHOD_INHIBIT,
+        &(INHIBIT_WHAT, INHIBIT_WHO, INHIBIT_WHY, INHIBIT_MODE),
+    );
+    match timeout(Duration::from_secs(DBUS_SETUP_TIMEOUT_S), call).await {
+        Ok(Ok(inhibitor)) => signals.hold_inhibitor(inhibitor.into()),
+        Ok(Err(err)) => warn!(
+            "Could not take a sleep delay lock from logind, so devices may not be prepared \
+             before sleep: {err}"
+        ),
+        Err(_) => warn!(
+            "Taking a sleep delay lock from logind timed out after {DBUS_SETUP_TIMEOUT_S}s, so \
+             devices may not be prepared before sleep."
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -274,6 +372,42 @@ mod tests {
         assert_eq!(listener.phase(), SleepPhase::Woken { wake_count: 1 });
         listener.wake_handled(1);
         assert_eq!(listener.phase(), SleepPhase::Awake);
+    }
+
+    /// logind waits on the delay lock for only a few seconds, so a signal must wake the main
+    /// loop rather than wait for its next tick. Poll the change once before and after a signal.
+    #[test]
+    fn a_signal_wakes_the_main_loop() {
+        use futures_util::FutureExt;
+        let listener = listener();
+        assert_eq!(listener.changed().now_or_never(), None);
+
+        listener.signals.record(true);
+
+        assert_eq!(listener.changed().now_or_never(), Some(()));
+        assert_eq!(
+            listener.changed().now_or_never(),
+            None,
+            "one wake per signal"
+        );
+    }
+
+    /// A second lock would hold logind up for longer, and a released one must be gone. Hold two
+    /// pipes as locks, check only one is kept, then release it.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn one_delay_lock_is_held_and_released() {
+        let listener = listener();
+        let (first, _first_writer) = std::io::pipe().unwrap();
+        let (second, _second_writer) = std::io::pipe().unwrap();
+        listener.hold_inhibitor(first.into());
+        listener.hold_inhibitor(second.into());
+        assert!(listener.holds_inhibitor());
+
+        listener.release_inhibitor();
+        assert!(listener.holds_inhibitor().not());
+        listener.release_inhibitor();
+        assert!(listener.holds_inhibitor().not());
     }
 
     /// A wake that never arrives leaves the loop in the sleep arm; the watchdog's sleep budget

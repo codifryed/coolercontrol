@@ -102,7 +102,12 @@ pub async fn run(
         let mut loop_interval = rt::interval(poll_period);
         let mut sleep_prepared = false;
         while run_token.is_cancelled().not() {
-            loop_interval.tick().await;
+            // A sleep signal starts a tick at once: logind waits on the delay lock for only a few
+            // seconds, and the next tick can be a whole poll away.
+            tokio::select! {
+                _ = loop_interval.tick() => {}
+                () = sleep_listener.changed() => {}
+            }
             lcd_update_trigger.tick();
             let sleep_phase = sleep_listener.phase();
             if sleep_phase == SleepPhase::Awake {
@@ -135,15 +140,7 @@ pub async fn run(
                 // Wakes that arrived meanwhile stay pending for the next tick.
                 sleep_listener.wake_handled(wake_count);
             } else {
-                // Before preparing, so a slow repo is covered too.
-                watchdog.sleep_tick(poll_period);
-                if sleep_prepared.not() {
-                    for repo in repos.iter() {
-                        repo.prepare_for_sleep().await;
-                    }
-                    sleep_prepared = true;
-                }
-                debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
+                sleep_arm_tick(&repos, &watchdog, &sleep_listener, &mut sleep_prepared, poll_period).await;
             }
         }
         // run_token has been cancelled. Signal each repo to abort
@@ -252,6 +249,29 @@ fn fire_lcd_update<'s>(
             );
         }
     });
+}
+
+/// One tick while the system goes to sleep: hold the widened watchdog deadline, prepare every
+/// repo once per sleep, then let logind go ahead. The deadline comes first, so a slow repo is
+/// covered too, and the lock goes last, so logind waits for both.
+async fn sleep_arm_tick(
+    repos: &Repos,
+    watchdog: &Watchdog,
+    sleep_listener: &SleepListener,
+    sleep_prepared: &mut bool,
+    poll_period: Duration,
+) {
+    debug_assert!(poll_period.is_zero().not());
+    watchdog.sleep_tick(poll_period);
+    if sleep_prepared.not() {
+        for repo in repos.iter() {
+            repo.prepare_for_sleep().await;
+        }
+        *sleep_prepared = true;
+    }
+    sleep_listener.release_inhibitor();
+    debug_assert!(*sleep_prepared);
+    debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
 }
 
 /// Handles the actions needed to properly wake the system from sleep mode.
@@ -386,6 +406,95 @@ mod tests {
         assert!(outcome.is_ok());
         assert_eq!(finished.get(), 2);
         assert!(token.is_cancelled());
+    }
+
+    /// A repo with a slow sleep preparation must already be covered by the widened deadline,
+    /// and a sleep is prepared once however many ticks it lasts. Record the budget state from
+    /// inside the preparation, then tick the sleep arm twice.
+    #[test]
+    fn the_sleep_arm_widens_before_preparing_once() {
+        let watchdog = Rc::new(Watchdog::supervised(Duration::from_secs(30)));
+        let widened_at_prepare = Rc::new(Cell::new(false));
+        let on_prepare: Rc<dyn Fn()> = {
+            let watchdog = Rc::clone(&watchdog);
+            let widened_at_prepare = Rc::clone(&widened_at_prepare);
+            Rc::new(move || widened_at_prepare.set(watchdog.sleep_budget_in_force()))
+        };
+        let stub = StubRepo {
+            on_prepare: Some(on_prepare),
+            ..StubRepo::new(DeviceType::Hwmon)
+        };
+        let prepared = Rc::clone(&stub.prepared);
+        let repos: Repos = Rc::new(Repositories {
+            hwmon: Some(Rc::new(stub)),
+            ..Default::default()
+        });
+        let sleep_listener = SleepListener::deaf();
+        let mut sleep_prepared = false;
+        let poll_period = Duration::from_secs(1);
+
+        rt::test_runtime(async {
+            sleep_arm_tick(
+                &repos,
+                &watchdog,
+                &sleep_listener,
+                &mut sleep_prepared,
+                poll_period,
+            )
+            .await;
+            sleep_arm_tick(
+                &repos,
+                &watchdog,
+                &sleep_listener,
+                &mut sleep_prepared,
+                poll_period,
+            )
+            .await;
+        });
+
+        assert!(widened_at_prepare.get());
+        assert_eq!(prepared.get(), 1);
+        assert!(sleep_prepared);
+    }
+
+    /// logind sleeps once the delay lock is gone, so it must outlast the preparation and then
+    /// be released. Hold a pipe as the lock, record whether it is held from inside the
+    /// preparation, then check it is gone after the tick.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn the_sleep_arm_releases_the_lock_after_preparing() {
+        let sleep_listener = Rc::new(SleepListener::deaf());
+        let (reader, _writer) = std::io::pipe().unwrap();
+        sleep_listener.hold_inhibitor(reader.into());
+        let held_at_prepare = Rc::new(Cell::new(false));
+        let on_prepare: Rc<dyn Fn()> = {
+            let sleep_listener = Rc::clone(&sleep_listener);
+            let held_at_prepare = Rc::clone(&held_at_prepare);
+            Rc::new(move || held_at_prepare.set(sleep_listener.holds_inhibitor()))
+        };
+        let repos: Repos = Rc::new(Repositories {
+            hwmon: Some(Rc::new(StubRepo {
+                on_prepare: Some(on_prepare),
+                ..StubRepo::new(DeviceType::Hwmon)
+            })),
+            ..Default::default()
+        });
+        let watchdog = Watchdog::disabled();
+        let mut sleep_prepared = false;
+
+        rt::test_runtime(async {
+            sleep_arm_tick(
+                &repos,
+                &watchdog,
+                &sleep_listener,
+                &mut sleep_prepared,
+                Duration::from_secs(1),
+            )
+            .await;
+        });
+
+        assert!(held_at_prepare.get());
+        assert!(sleep_listener.holds_inhibitor().not());
     }
 
     /// Regression: the snapshot timeout must stay at the historical

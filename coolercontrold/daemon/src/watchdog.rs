@@ -145,6 +145,12 @@ impl Watchdog {
         Self::with_supervisor_interval(None)
     }
 
+    /// A watchdog under a `WatchdogSec=` unit, with no service manager to send to.
+    #[cfg(test)]
+    pub fn supervised(supervisor_interval: Duration) -> Self {
+        Self::with_supervisor_interval(Some(supervisor_interval))
+    }
+
     /// How often a heartbeat goes out. `None` outside a `WatchdogSec=` unit.
     pub fn ping_interval(&self) -> Option<Duration> {
         self.supervisor_interval.map(ping_interval_for)
