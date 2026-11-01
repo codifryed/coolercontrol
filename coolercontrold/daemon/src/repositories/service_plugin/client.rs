@@ -24,7 +24,7 @@ use crate::repositories::service_plugin::transport::PluginChannel;
 use crate::repositories::service_plugin::{transport, trust};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Result};
-use log::error;
+use log::{debug, error};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::default::Default;
@@ -38,6 +38,11 @@ use tonic::metadata::{Ascii, MetadataValue};
 use tonic::{Code, Request, Status};
 
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
+
+/// How long a plugin gets to acknowledge the shutdown, lock wait included. Telling it we are
+/// leaving is best effort, and the whole stop has to fit in systemd's `TimeoutStopSec` of 10 s.
+/// Plugins shut down concurrently, so this does not add up per plugin.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Derives the service-plugin wait timeout from `poll_rate`. Pure
 /// helper so the formula is testable without a live gRPC client.
@@ -99,6 +104,9 @@ pub struct DeviceServiceClient {
     /// client's lifetime and is computed once in `new` to avoid per-
     /// retry f64 math on the hot path.
     service_wait_timeout: Duration,
+
+    /// `SHUTDOWN_TIMEOUT`, held here so tests can shorten it.
+    shutdown_timeout: Duration,
 
     /// Using a `tokio::Mutex` has the advantage of being able to hold a lock over an await point,
     /// and for the small amount of requests we make, performance is shown to be on par with std.
@@ -246,6 +254,7 @@ impl DeviceServiceClient {
             service_id,
             credentials,
             service_wait_timeout,
+            shutdown_timeout: SHUTDOWN_TIMEOUT,
             service_client,
             device_clients: RefCell::new(HashMap::new()),
             device_ids: RefCell::new(HashMap::new()),
@@ -364,7 +373,7 @@ impl DeviceServiceClient {
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        self.timed(|| "shutdown service".to_owned(), async {
+        let call = async {
             self.wait_till_all_clients_are_free().await;
             let request = self.request(ShutdownRequest {});
             let mut service_client = self.service_client.lock().await;
@@ -374,8 +383,16 @@ impl DeviceServiceClient {
                 Err(s) if s.code() == tonic::Code::Unavailable => Ok(()),
                 Err(s) => Err(anyhow!("Failed to shutdown service: {s}")),
             }
-        })
-        .await
+        };
+        // No answer reads like `Unavailable`: an unreachable remote is nothing to act on at stop.
+        let Ok(result) = timeout(self.shutdown_timeout, call).await else {
+            debug!(
+                "Device Service Plugin {} did not acknowledge the shutdown",
+                self.service_id
+            );
+            return Ok(());
+        };
+        result
     }
 
     /// Maps a raw list-devices response into `Device`s. Static (takes `client_address`/`poll_rate`)
@@ -1371,11 +1388,11 @@ mod stub_plugin_tests {
     }
 
     #[test]
-    fn a_silent_plugin_fails_every_call_at_the_deadline() {
+    fn a_silent_plugin_fails_every_device_call_at_the_deadline() {
         // Goal: a peer that accepts a request and never answers cannot hold any call open. A
         // silent TCP peer leaves the RPC in the retransmit queue for minutes, so the deadline
         // has to span the RPC as well as the wait for the lock. Method: silence the stub after
-        // connecting, so the locks are free, and run every call against it.
+        // connecting, so the locks are free, and run every call but the shutdown against it.
         let dir = tempfile::tempdir().expect("a temp dir");
         let path = dir.path().join("stub.sock");
         crate::rt::test_runtime(async {
@@ -1400,7 +1417,6 @@ mod stub_plugin_tests {
             assert_times_out(client.health()).await;
             assert_times_out(client.list_devices_raw()).await;
             assert_times_out(client.initialize_device(&device_uid)).await;
-            assert_times_out(client.shutdown()).await;
             assert_times_out(client.status(&device_uid)).await;
             assert_times_out(client.reset_channel(&device_uid, CHANNEL)).await;
             assert_times_out(client.enable_manual_fan_control(&device_uid, CHANNEL)).await;
@@ -1457,6 +1473,70 @@ mod stub_plugin_tests {
 
             assert_eq!(channels.len(), 2);
             assert_eq!(temps.len(), 2);
+        });
+    }
+
+    /// Asserts that a shutdown of `client` succeeds once its budget runs out.
+    async fn assert_shutdown_gives_up(client: &DeviceServiceClient) {
+        let started = Instant::now();
+        let result = timeout(GUARD, client.shutdown()).await;
+        result
+            .expect("the budget must end the shutdown")
+            .expect("a peer that cannot be told is not a failure");
+        assert!(started.elapsed() >= client.shutdown_timeout);
+    }
+
+    #[test]
+    fn a_silent_plugin_cannot_hold_up_the_shutdown() {
+        // Goal: the stop that hit SIGKILL: the network drops with the locks free, so the shutdown
+        // RPC itself goes unanswered. Telling a remote we are leaving is best effort, so this
+        // ends on the short budget and is not an error. Method: a wait timeout past the guard
+        // leaves the budget as the only thing that can end the call.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        crate::rt::test_runtime(async {
+            let mut client = silent_client(&path).await;
+            client.service_wait_timeout = GUARD * 2;
+            client.shutdown_timeout = DEADLINE;
+            assert_shutdown_gives_up(&client).await;
+        });
+    }
+
+    #[test]
+    fn a_stuck_status_cannot_hold_up_the_shutdown() {
+        // Goal: the awake shape of the same stop: a status holds the device lock when the stop
+        // arrives, so the shutdown waits on the lock and never reaches its RPC. The budget has to
+        // cover that wait too. Method: leave a status in flight, then shut down beside it.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        crate::rt::test_runtime(async {
+            let mut client = silent_client(&path).await;
+            client.service_wait_timeout = GUARD * 2;
+            client.shutdown_timeout = DEADLINE;
+            let device_uid = DEVICE_UID.to_string();
+            let mut status = std::pin::pin!(client.status(&device_uid));
+            let status_ran = futures_util::future::poll_immediate(status.as_mut()).await;
+            assert!(status_ran.is_none(), "the status takes the lock and stalls");
+            let shutdown = assert_shutdown_gives_up(&client);
+            futures_util::future::select(status, std::pin::pin!(shutdown)).await;
+        });
+    }
+
+    #[test]
+    fn a_plugin_that_refuses_the_shutdown_is_still_reported() {
+        // Goal: the budget changes nothing for a plugin that answers: its refusal still surfaces
+        // as an error rather than reading like a peer that never replied. Method: the stub
+        // refuses every call by default, so a timeout would be `Ok` and this `Err`.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        crate::rt::test_runtime(async {
+            serve_stub(&path);
+            let client = connected_client(&path, DEVICE_UID).await;
+            let error = client.shutdown().await.expect_err("the stub refuses it");
+            assert!(
+                error.to_string().starts_with("Failed to shutdown"),
+                "{error}"
+            );
         });
     }
 
