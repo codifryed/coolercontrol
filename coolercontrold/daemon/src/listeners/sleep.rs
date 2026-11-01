@@ -10,7 +10,6 @@ use std::env;
 use std::future::Future;
 use std::ops::Not;
 use std::os::fd::OwnedFd;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 use tokio::sync::Notify;
@@ -35,8 +34,6 @@ const LOGIND_OPERATION_IN_PROGRESS: &str = "org.freedesktop.login1.OperationInPr
 // cannot block the listener: a setup that times out runs deaf (nothing is recorded), and an
 // Inhibit that times out leaves the next sleep without a lock.
 const DBUS_CALL_TIMEOUT_S: u64 = 5;
-/// The low bit of `SleepSignals::state`; the bits above it are the wake count.
-const PREPARING_BIT: u64 = 1;
 
 /// What the main loop should do this tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,15 +46,21 @@ pub enum SleepPhase {
     Woken { wake_count: u64 },
 }
 
+#[derive(Default, Clone, Copy)]
+struct SleepState {
+    /// Follows the latest signal.
+    preparing: bool,
+    /// Every wake counts, even one with no sleep seen before it, as when the daemon started
+    /// mid-sleep: the devices went through the sleep all the same.
+    wake_count: u64,
+}
+
 /// The `PrepareForSleep` signals seen so far. Only the listener writes them, so a signal that
 /// arrives while the main loop is handling an earlier one is never overwritten.
 #[derive(Default)]
 struct SleepSignals {
-    /// The wake count shifted up one bit, with `PREPARING_BIT` following the latest signal. One
-    /// word, so the main loop never pairs a new count with a stale `preparing`. Every wake counts,
-    /// even one with no sleep seen before it, as when the daemon started mid-sleep: the devices
-    /// went through the sleep all the same.
-    state: AtomicU64,
+    /// One lock for both fields, so the main loop never pairs a new count with a stale `preparing`.
+    state: Mutex<SleepState>,
     /// The delay lock, held while awake so logind waits for the sleep arm before it sleeps.
     inhibitor: Mutex<Option<HeldInhibitor>>,
     /// Wakes the main loop on each signal, so a sleep is not left waiting on the next tick.
@@ -73,36 +76,27 @@ struct HeldInhibitor {
 
 impl SleepSignals {
     fn record(&self, going_to_sleep: bool) {
-        let next = |state: u64| {
-            let wake_count = state >> 1;
-            if going_to_sleep {
-                (wake_count << 1) | PREPARING_BIT
-            } else {
-                debug_assert!(wake_count < u64::MAX >> 1);
-                (wake_count + 1) << 1
-            }
-        };
-        // One RMW: the count and `preparing` change together.
-        let previous = self
-            .state
-            .update(Ordering::Release, Ordering::Relaxed, next);
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if going_to_sleep.not() {
+            debug_assert!(state.wake_count < u64::MAX);
+            state.wake_count += 1;
+        }
+        state.preparing = going_to_sleep;
+        drop(state);
         debug_assert_eq!(self.preparing(), going_to_sleep);
-        debug_assert!(self.wake_count() >= previous >> 1);
         self.changed.notify_one();
     }
 
-    /// Both halves of one load: whether going to sleep, and the wake count.
-    fn load(&self) -> (bool, u64) {
-        let state = self.state.load(Ordering::Acquire);
-        (state & PREPARING_BIT == PREPARING_BIT, state >> 1)
+    fn load(&self) -> SleepState {
+        *self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn preparing(&self) -> bool {
-        self.load().0
+        self.load().preparing
     }
 
     fn wake_count(&self) -> u64 {
-        self.load().1
+        self.load().wake_count
     }
 
     fn holds_inhibitor(&self) -> bool {
@@ -224,9 +218,12 @@ impl SleepListener {
     /// Sleeping comes first: a wake followed by another sleep before this tick is handled once,
     /// after the second wake, rather than once while going down and again after.
     pub fn phase(&self) -> SleepPhase {
-        // One load: a count and `preparing` read apart could pair a wake with the sleep before
-        // it, and the lock renewed at that wake would be released unprepared.
-        let (preparing, wake_count) = self.signals.load();
+        // Read together: a count and `preparing` read apart could pair a wake with the sleep
+        // before it, and the lock renewed at that wake would be released unprepared.
+        let SleepState {
+            preparing,
+            wake_count,
+        } = self.signals.load();
         if preparing {
             return SleepPhase::Sleeping { wake_count };
         }
@@ -432,22 +429,23 @@ mod tests {
         SleepListener::from_signals(Arc::default())
     }
 
-    /// The count and `preparing` share one word, so each signal must move both and leave the
-    /// other half intact. Sleep, wake, sleep again, then a wake with no sleep seen before it.
+    /// Each signal must set `preparing` and count only wakes. Sleep, wake, sleep again, then a
+    /// wake with no sleep seen before it, checking both fields after every step.
     #[test]
-    fn each_signal_sets_both_halves_of_the_state() {
+    fn each_signal_updates_preparing_and_counts_wakes() {
         let signals = SleepSignals::default();
-        assert_eq!(signals.load(), (false, 0));
+        let read = || (signals.preparing(), signals.wake_count());
+        assert_eq!(read(), (false, 0));
         signals.record(true);
-        assert_eq!(signals.load(), (true, 0));
+        assert_eq!(read(), (true, 0));
         signals.record(false);
-        assert_eq!(signals.load(), (false, 1));
+        assert_eq!(read(), (false, 1));
         signals.record(true);
-        assert_eq!(signals.load(), (true, 1));
+        assert_eq!(read(), (true, 1));
         signals.record(false);
-        assert_eq!(signals.load(), (false, 2));
+        assert_eq!(read(), (false, 2));
         signals.record(false);
-        assert_eq!(signals.load(), (false, 3));
+        assert_eq!(read(), (false, 3));
     }
 
     /// A deaf listener, dbus disabled or never connected, must leave the main loop polling.
