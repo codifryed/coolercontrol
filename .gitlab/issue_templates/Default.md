@@ -15,6 +15,11 @@
 
 Describe the issue you are experiencing and the steps needed to reproduce it, in your own words.
 
+## Hardware Report
+
+If this involves a device, open **Home**, select **Hardware Report** under **Hardware Support**,
+then select **Copy** and paste it here. Available in CoolerControl 5.0 and newer.
+
 ## Logs and/or Screenshots
 
 Please use English as the UI language for screenshots and it's best to give us as much information
