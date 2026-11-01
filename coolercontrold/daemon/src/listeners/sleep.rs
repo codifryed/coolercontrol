@@ -28,6 +28,7 @@ const INHIBIT_WHAT: &str = "sleep";
 const INHIBIT_WHO: &str = "CoolerControl";
 const INHIBIT_WHY: &str = "Prepare devices and the watchdog for sleep";
 const INHIBIT_MODE: &str = "delay";
+const LOGIND_OPERATION_IN_PROGRESS: &str = "org.freedesktop.login1.OperationInProgress";
 // The whole DBus handshake (connect + proxy + AddMatch for PrepareForSleep) should complete in
 // tens of milliseconds on a healthy system. We cap it so a wedged logind/dbus-broker can't block
 // the listener from ever connecting; on timeout we simply run deaf (nothing is recorded).
@@ -294,15 +295,21 @@ async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
     );
     match timeout(Duration::from_secs(DBUS_SETUP_TIMEOUT_S), call).await {
         Ok(Ok(inhibitor)) => signals.hold_inhibitor(inhibitor.into()),
-        Ok(Err(err)) => warn!(
-            "Could not take a sleep delay lock from logind, so devices may not be prepared \
-             before sleep: {err}"
-        ),
-        Err(_) => warn!(
-            "Taking a sleep delay lock from logind timed out after {DBUS_SETUP_TIMEOUT_S}s, so \
-             devices may not be prepared before sleep."
-        ),
+        Ok(Err(zbus::Error::MethodError(name, _, _))) if is_sleep_in_progress(name.as_str()) => {
+            info!("Sleep already in progress; taking the sleep delay lock after the wake.");
+        }
+        Ok(Err(err)) => warn!("Could not take a sleep delay lock from logind: {err}"),
+        Err(_) => {
+            warn!("Taking a sleep delay lock from logind timed out after {DBUS_SETUP_TIMEOUT_S}s.");
+        }
     }
+}
+
+/// logind refuses new delay locks once a sleep has begun, as when the daemon starts mid-sleep.
+/// That is expected: the next wake takes the lock.
+fn is_sleep_in_progress(error_name: &str) -> bool {
+    debug_assert!(error_name.is_empty().not());
+    error_name == LOGIND_OPERATION_IN_PROGRESS
 }
 
 #[cfg(test)]
@@ -468,6 +475,17 @@ mod tests {
         listener.signals.listener_lost();
 
         assert!(listener.holds_inhibitor().not());
+    }
+
+    /// A daemon started mid-sleep is refused the lock, which is expected and must not read as
+    /// a fault; anything else still must. Check logind's refusal and two other errors.
+    #[test]
+    fn only_a_sleep_in_progress_counts_as_expected() {
+        assert!(is_sleep_in_progress(
+            "org.freedesktop.login1.OperationInProgress"
+        ));
+        assert!(is_sleep_in_progress("org.freedesktop.DBus.Error.AccessDenied").not());
+        assert!(is_sleep_in_progress("org.freedesktop.login1.OperationInProgressX").not());
     }
 
     /// A wake that never arrives leaves the loop in the sleep arm; the watchdog's sleep budget
