@@ -64,6 +64,15 @@ const _: () = assert!(SLEEP_BUDGET.as_secs() > KERNEL_FREEZE_TIMEOUT.as_secs());
 const NOTIFY_WAIT: Duration = Duration::from_secs(2);
 const _: () = assert!(NOTIFY_WAIT.as_millis() > 0);
 
+/// How a send to the service manager went.
+enum Sent {
+    Yes,
+    /// Its queue is full: retry on the next tick.
+    NoRoom,
+    /// Any other error, likely lasting.
+    Failed,
+}
+
 /// Single-threaded like the rest of the main-thread daemon, so `ping` takes
 /// `&self` and keeps its rate limit in a `Cell`.
 pub struct Watchdog {
@@ -77,6 +86,8 @@ pub struct Watchdog {
     last_ping: Cell<Option<Instant>>,
     /// Set while the service manager holds `SLEEP_BUDGET` instead of the unit's deadline.
     sleep_budget_in_force: Cell<bool>,
+    /// When a deadline change last failed, to space out its retries.
+    deadline_failed_at: Cell<Option<Instant>>,
     /// The datagram needs a service manager to observe, so tests count the
     /// heartbeats instead.
     #[cfg(test)]
@@ -104,6 +115,7 @@ impl Watchdog {
             notify_socket: None,
             last_ping: Cell::new(None),
             sleep_budget_in_force: Cell::new(false),
+            deadline_failed_at: Cell::new(None),
             #[cfg(test)]
             ping_count: Cell::new(0),
         }
@@ -177,8 +189,7 @@ impl Watchdog {
         let now = Instant::now();
         if self.sleep_budget_in_force.get() {
             // Not rate limited: the unit's deadline should be back in force at once.
-            let message = deadline_message(supervisor_interval);
-            if self.send(message.as_bytes(), "watchdog deadline").not() {
+            if self.send_deadline(supervisor_interval, now).not() {
                 return;
             }
             self.sleep_budget_in_force.set(false);
@@ -186,7 +197,8 @@ impl Watchdog {
             if ping_is_due(self.last_ping.get(), ping_interval, now).not() {
                 return;
             }
-            if self.send(HEARTBEAT, "watchdog heartbeat").not() {
+            if let Sent::NoRoom = self.send(HEARTBEAT, "watchdog heartbeat") {
+                // Not stamped: one more whole interval would land past the deadline.
                 return;
             }
         }
@@ -207,36 +219,60 @@ impl Watchdog {
         if self.sleep_budget_in_force.get() {
             return;
         }
-        let message = deadline_message(sleep_budget_for(supervisor_interval));
+        let now = Instant::now();
         if self
-            .send(message.as_bytes(), "watchdog sleep deadline")
+            .send_deadline(sleep_budget_for(supervisor_interval), now)
             .not()
         {
             return;
         }
         self.sleep_budget_in_force.set(true);
-        self.last_ping.set(Some(Instant::now()));
+        self.last_ping.set(Some(now));
         debug_assert!(self.sleep_budget_in_force.get());
     }
 
-    /// Sends `message` if a service manager is listening. False only when it has no room yet,
-    /// so the caller keeps the message due: one more whole interval would land past the
-    /// deadline. Any other failure counts as sent. A lost heartbeat costs a restart, which is
-    /// visible; panicking would not help.
-    fn send(&self, message: &[u8], description: &str) -> bool {
+    /// Replaces the service manager's deadline. True once it has the message. Unlike a lost
+    /// heartbeat, a lost deadline stays wrong for the rest of the run, so a failed send stays
+    /// due, retried at most once a ping interval so a missing manager is not warned of each tick.
+    fn send_deadline(&self, deadline: Duration, now: Instant) -> bool {
+        let Some(supervisor_interval) = self.supervisor_interval else {
+            return false;
+        };
+        let ping_interval = ping_interval_for(supervisor_interval);
+        if ping_is_due(self.deadline_failed_at.get(), ping_interval, now).not() {
+            return false;
+        }
+        let message = deadline_message(deadline);
+        match self.send(message.as_bytes(), "watchdog deadline") {
+            Sent::Yes => {
+                self.deadline_failed_at.set(None);
+                true
+            }
+            Sent::NoRoom => false,
+            Sent::Failed => {
+                self.deadline_failed_at.set(Some(now));
+                false
+            }
+        }
+    }
+
+    /// Sends `message` if a service manager is listening; without one there is nobody to miss
+    /// it, so it counts as sent.
+    fn send(&self, message: &[u8], description: &str) -> Sent {
         debug_assert!(message.starts_with(HEARTBEAT));
+        debug_assert!(description.is_empty().not());
         let Some(socket) = &self.notify_socket else {
-            return true;
+            return Sent::Yes;
         };
         match send_now(socket, message) {
-            Ok(()) => true,
+            Ok(()) => Sent::Yes,
             Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                 debug!("The service manager has no room for the {description} yet, retrying");
-                false
+                Sent::NoRoom
             }
             Err(err) => {
                 warn!("Could not send {description} to the service manager: {err}");
-                true
+                Sent::Failed
             }
         }
     }
@@ -791,6 +827,36 @@ mod tests {
 
         assert!(watchdog.sleep_budget_in_force());
         assert!(watchdog.last_ping().is_some());
+    }
+
+    /// A deadline change the service manager never got would stay wrong for the rest of the
+    /// run, so it must stay due, but be retried only once a ping interval. Widen against a
+    /// missing socket, bind it, widen again at once, then again after the interval.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_failed_widening_is_retried_after_a_ping_interval() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notify");
+        let interval = Duration::from_millis(40);
+        let watchdog = Watchdog::with_supervisor_interval(Some(interval))
+            .with_notify_socket(Some(path.clone().into_os_string()));
+
+        watchdog.widen_for_sleep();
+        assert!(watchdog.sleep_budget_in_force().not());
+        let manager = UnixDatagram::bind(&path).unwrap();
+        watchdog.widen_for_sleep();
+        assert!(
+            watchdog.sleep_budget_in_force().not(),
+            "retried within the interval"
+        );
+
+        std::thread::sleep(ping_interval_for(interval));
+        watchdog.widen_for_sleep();
+
+        assert!(watchdog.sleep_budget_in_force());
+        let mut datagram = [0_u8; 64];
+        let len = manager.recv(&mut datagram).unwrap();
+        assert!(datagram[..len].starts_with(b"WATCHDOG=1\nWATCHDOG_USEC="));
     }
 
     /// A caller that overruns the cap must get the same (clamped) duration
