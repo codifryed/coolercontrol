@@ -36,6 +36,7 @@ use futures_util::future::join_all;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::ops::Not;
 use std::path::Path;
 use std::rc::Rc;
@@ -83,6 +84,9 @@ pub struct ServicePluginRepo {
     disabled_channels: HashMap<DeviceUID, HashSet<String>>,
     /// Cached per-device command delay in milliseconds. Loaded at startup from config.
     device_delays: HashMap<DeviceUID, u16>,
+    /// Cancelled by `abort_pending`, so a call to a silent plugin cannot hold the main loop's
+    /// scope open: no repository shuts down until that scope ends.
+    abort_token: CancellationToken,
 }
 
 /// The last preloaded status per device, kept as an upsert cache so a sensor
@@ -210,6 +214,7 @@ impl ServicePluginRepo {
             failsafe_statuses: RefCell::new(HashMap::new()),
             disabled_channels: HashMap::new(),
             device_delays: HashMap::new(),
+            abort_token: CancellationToken::new(),
         })
     }
 
@@ -824,14 +829,24 @@ impl ServicePluginRepo {
         );
     }
 
+    /// Waits for `call` until `abort_pending`, for the calls the main loop's scope runs. The
+    /// request itself stays on the sidecar, which drops it on exit: this only stops the scope
+    /// waiting. Not for the calls of the stop itself, which come after the abort.
+    async fn until_aborted<T>(&self, call: impl Future<Output = Result<T>>) -> Result<T> {
+        tokio::select! {
+            () = self.abort_token.cancelled() => Err(anyhow!("Aborted by the daemon stopping")),
+            result = call => result,
+        }
+    }
+
     async fn preload_device_status(
         &self,
         device_uid: &DeviceUID,
         service: &Rc<DeviceServiceConnection>,
     ) {
         let delay = self.device_delay(device_uid);
-        let Ok((mut channel_statuses, mut temp_statuses)) = service.client.status(device_uid).await
-        else {
+        let status = self.until_aborted(service.client.status(device_uid)).await;
+        let Ok((mut channel_statuses, mut temp_statuses)) = status else {
             self.note_status_failure(device_uid);
             apply_device_command_delay(delay).await;
             return;
@@ -1089,6 +1104,10 @@ impl Repository for ServicePluginRepo {
         Ok(())
     }
 
+    async fn abort_pending(&self) {
+        self.abort_token.cancel();
+    }
+
     async fn shutdown(&self) -> Result<()> {
         moro_local::async_scope!(|scope| {
             for (service_id, (optional_service_connection, service_manifest)) in &self.services {
@@ -1203,9 +1222,12 @@ impl Repository for ServicePluginRepo {
             "Applying Service Plugin device: {device_uid} channel: {channel_name}; \
              Device Duty: {speed_fixed}%"
         );
-        let result = device_service
-            .client
-            .fixed_duty(device_uid, channel_name, speed_fixed)
+        let result = self
+            .until_aborted(
+                device_service
+                    .client
+                    .fixed_duty(device_uid, channel_name, speed_fixed),
+            )
             .await
             .map_err(|status| anyhow!("Error applying fixed speed for device channel: {status}"));
         apply_device_command_delay(self.device_delay(device_uid)).await;
@@ -1394,6 +1416,195 @@ mod tests {
     use crate::repositories::failsafe::{self, MISSING_TEMP_FAILSAFE};
     use std::ops::Not;
     use std::path::Path;
+
+    mod abort {
+        use super::super::{DeviceServiceConnection, ServicePluginRepo};
+        use crate::config::Config;
+        use crate::device::{
+            ChannelInfo, ChannelKind, Device, DeviceInfo, DeviceType, DeviceUID, LcdMode,
+            LcdModeType, SpeedOptions,
+        };
+        use crate::overrides::OverridesController;
+        use crate::repositories::repository::Repository;
+        use crate::repositories::service_plugin::client_proxy::{
+            DeviceServiceClientHandle, DeviceServiceRequest,
+        };
+        use crate::repositories::service_plugin::service_management::manager::Manager;
+        use crate::repositories::service_plugin::service_manifest::{
+            ConnectionType, ServiceManifest, ServiceType,
+        };
+        use crate::setting::{LcdModeKind, LcdSettings};
+        use futures_util::future::poll_immediate;
+        use std::cell::RefCell;
+        use std::collections::HashMap;
+        use std::path::PathBuf;
+        use std::pin::pin;
+        use std::rc::Rc;
+        use tokio::sync::mpsc;
+        use tokio_util::sync::CancellationToken;
+
+        const FAN: &str = "fan1";
+        const LCD: &str = "lcd";
+
+        fn speed_channel() -> ChannelInfo {
+            ChannelInfo {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
+                    fixed_enabled: true,
+                    ..SpeedOptions::default()
+                }),
+            }
+        }
+
+        fn lcd_channel() -> ChannelInfo {
+            let mode = LcdMode {
+                name: "image".to_string(),
+                frontend_name: "Image".to_string(),
+                brightness: false,
+                orientation: false,
+                image: true,
+                colors_min: 0,
+                colors_max: 0,
+                type_: LcdModeType::None,
+            };
+            ChannelInfo {
+                label: None,
+                kind: ChannelKind::Lcd {
+                    modes: vec![mode],
+                    info: None,
+                },
+            }
+        }
+
+        fn manifest() -> ServiceManifest {
+            ServiceManifest {
+                id: "silent".to_string(),
+                service_type: ServiceType::Device,
+                description: None,
+                version: None,
+                url: None,
+                executable: None,
+                args: Vec::new(),
+                envs: Vec::new(),
+                address: ConnectionType::Tcp("10.0.0.1:11987".to_string()),
+                tls: None,
+                privileged: false,
+                proxy: None,
+                path: PathBuf::new(),
+            }
+        }
+
+        /// A repo with one plugin device. The receiver takes the plugin's requests and answers
+        /// none, which is how a silent peer looks from the main thread.
+        fn repo_with_silent_device() -> (
+            ServicePluginRepo,
+            DeviceUID,
+            mpsc::Receiver<DeviceServiceRequest>,
+        ) {
+            let (client, requests) = DeviceServiceClientHandle::for_test();
+            let manifest = manifest();
+            let service = Rc::new(DeviceServiceConnection {
+                id: manifest.id.clone(),
+                version: "1.0.0".to_string(),
+                client,
+            });
+            let mut info = DeviceInfo::default();
+            info.channels.insert(FAN.to_string(), speed_channel());
+            info.channels.insert(LCD.to_string(), lcd_channel());
+            let device = Device::new(
+                "silent device".to_string(),
+                DeviceType::ServicePlugin,
+                1,
+                None,
+                info,
+                None,
+                1.0,
+            );
+            let device_uid = device.uid.clone();
+            let device_entry = (Rc::new(RefCell::new(device)), Rc::clone(&service));
+            let repo = ServicePluginRepo {
+                config: Rc::new(Config::init_default_config().unwrap()),
+                overrides: Rc::new(OverridesController::empty()),
+                service_manager: Manager::Disabled,
+                api_up_token: CancellationToken::new(),
+                reset_plugin_user: false,
+                services: HashMap::from([(manifest.id.clone(), (Some(service), manifest))]),
+                runtime_plugins: Rc::new(RefCell::new(Vec::new())),
+                devices: HashMap::from([(device_uid.clone(), device_entry)]),
+                hardware_support: None,
+                preloaded_statuses: RefCell::new(HashMap::new()),
+                failsafe_statuses: RefCell::new(HashMap::new()),
+                disabled_channels: HashMap::new(),
+                device_delays: HashMap::new(),
+                abort_token: CancellationToken::new(),
+            };
+            (repo, device_uid, requests)
+        }
+
+        // Goal: a status that never lands must not hold the main loop's scope. That scope ends
+        // before any repository shuts down, so a stuck preload costs the fans their reset, not
+        // only the plugin its notice. Method: leave a preload in flight, abort, poll it again.
+        #[test]
+        fn abort_pending_ends_a_preload_in_flight() {
+            crate::rt::test_runtime(async {
+                let (repo, _device_uid, _requests) = repo_with_silent_device();
+                let repo = Rc::new(repo);
+                let mut preload = pin!(Rc::clone(&repo).preload_statuses());
+                assert!(poll_immediate(preload.as_mut()).await.is_none());
+
+                repo.abort_pending().await;
+
+                assert!(poll_immediate(preload.as_mut()).await.is_some());
+            });
+        }
+
+        // Goal: the same for the other plugin call the main loop's scope runs, the duty writes
+        // the engine spawns into it. Method: as above, and the write must report that it failed.
+        #[test]
+        fn abort_pending_ends_a_duty_write_in_flight() {
+            crate::rt::test_runtime(async {
+                let (repo, device_uid, _requests) = repo_with_silent_device();
+                let mut write = pin!(repo.apply_setting_speed_fixed(&device_uid, FAN, 50));
+                assert!(poll_immediate(write.as_mut()).await.is_none());
+
+                repo.abort_pending().await;
+
+                let finished = poll_immediate(write.as_mut()).await;
+                assert!(finished.expect("the abort ends the write").is_err());
+            });
+        }
+
+        // Goal: the negative space. The abort comes before the LCD shutdown images and the
+        // repository's shutdown, and neither may be cut off by it. Method: abort first, then
+        // start both and require their requests to reach the plugin.
+        #[test]
+        fn abort_pending_leaves_the_calls_of_the_stop_alone() {
+            crate::rt::test_runtime(async {
+                let (repo, device_uid, mut requests) = repo_with_silent_device();
+                let lcd = LcdSettings {
+                    brightness: None,
+                    orientation: None,
+                    colors: Vec::new(),
+                    mode: LcdModeKind::None,
+                };
+                repo.abort_pending().await;
+
+                let mut image = pin!(repo.apply_setting_lcd(&device_uid, LCD, &lcd));
+                assert!(poll_immediate(image.as_mut()).await.is_none());
+                let mut shutdown = pin!(repo.shutdown());
+                assert!(poll_immediate(shutdown.as_mut()).await.is_none());
+
+                let sent_image = requests
+                    .try_recv()
+                    .expect("the LCD image reaches the plugin");
+                assert!(matches!(sent_image, DeviceServiceRequest::Lcd { .. }));
+                let sent_stop = requests
+                    .try_recv()
+                    .expect("the shutdown reaches the plugin");
+                assert!(matches!(sent_stop, DeviceServiceRequest::Shutdown { .. }));
+            });
+        }
+    }
 
     /// Goal: a tick with no failsafe transition never formats the device's name, since every
     /// tick passes through here and the name allocates, while each transition still names it.
