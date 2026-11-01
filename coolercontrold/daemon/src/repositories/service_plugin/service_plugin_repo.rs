@@ -26,7 +26,7 @@ use crate::repositories::service_plugin::service_management::{
 };
 use crate::repositories::service_plugin::service_manifest::{EnvVar, ServiceManifest, ServiceType};
 use crate::repositories::utils::apply_device_command_delay;
-use crate::rt::sleep;
+use crate::rt::{sleep, sleep_until};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
 use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
@@ -34,7 +34,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use futures_util::future::join_all;
 use log::{debug, error, info, trace, warn, LevelFilter};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::ops::Not;
@@ -58,6 +58,11 @@ const HEALTH_RETRY_DELAY: Duration = Duration::from_secs(1);
 // The give-up message names seconds, so any other spacing puts it at odds with the
 // attempt count.
 const _: () = assert!(HEALTH_RETRY_DELAY.as_secs() == 1);
+
+/// What all plugin LCD calls share once the daemon is stopping, so that the shutdown images of
+/// silent plugins cannot run the stop past `TimeoutStopSec`, which would cost the fans their reset.
+const LCD_STOP_BUDGET: Duration = Duration::from_secs(2);
+const _: () = assert!(LCD_STOP_BUDGET.as_secs() == 2);
 
 #[derive(Debug)]
 struct DeviceServiceConnection {
@@ -87,6 +92,8 @@ pub struct ServicePluginRepo {
     /// Cancelled by `abort_pending`, so a call to a silent plugin cannot hold the main loop's
     /// scope open: no repository shuts down until that scope ends.
     abort_token: CancellationToken,
+    /// When `LCD_STOP_BUDGET` runs out. Set by `abort_pending`, before it cancels `abort_token`.
+    lcd_stop_deadline: Cell<Option<Instant>>,
 }
 
 /// The last preloaded status per device, kept as an upsert cache so a sensor
@@ -215,6 +222,7 @@ impl ServicePluginRepo {
             disabled_channels: HashMap::new(),
             device_delays: HashMap::new(),
             abort_token: CancellationToken::new(),
+            lcd_stop_deadline: Cell::new(None),
         })
     }
 
@@ -831,11 +839,33 @@ impl ServicePluginRepo {
 
     /// Waits for `call` until `abort_pending`, for the calls the main loop's scope runs. The
     /// request itself stays on the sidecar, which drops it on exit: this only stops the scope
-    /// waiting. Not for the calls of the stop itself, which come after the abort.
+    /// waiting. Not for the calls of the stop itself, which come after the abort: LCD has
+    /// `within_lcd_stop_budget` and Shutdown its own timeout.
     async fn until_aborted<T>(&self, call: impl Future<Output = Result<T>>) -> Result<T> {
         tokio::select! {
             () = self.abort_token.cancelled() => Err(anyhow!("Aborted by the daemon stopping")),
             result = call => result,
+        }
+    }
+
+    /// Waits for an LCD `call` until `LCD_STOP_BUDGET` runs out. Before the abort this changes
+    /// nothing, so that a slow panel keeps the full deadline. The abort still lets the shutdown
+    /// images go out, and the budget also ends one already in flight on the main loop's scope.
+    async fn within_lcd_stop_budget(&self, call: impl Future<Output = Result<()>>) -> Result<()> {
+        tokio::select! {
+            // First, so that a call past the deadline never sends its request.
+            biased;
+            () = self.lcd_stop_budget_spent() => Err(anyhow!("The stop's LCD budget ran out")),
+            result = call => result,
+        }
+    }
+
+    async fn lcd_stop_budget_spent(&self) {
+        self.abort_token.cancelled().await;
+        if let Some(deadline) = self.lcd_stop_deadline.get() {
+            if Instant::now() < deadline {
+                sleep_until(deadline).await;
+            }
         }
     }
 
@@ -1105,6 +1135,8 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn abort_pending(&self) {
+        self.lcd_stop_deadline
+            .set(Some(Instant::now() + LCD_STOP_BUDGET));
         self.abort_token.cancel();
     }
 
@@ -1363,9 +1395,8 @@ impl Repository for ServicePluginRepo {
         debug!(
             "Applying Service Plugin device: {device_uid} channel: {channel_name}; LCD: {lcd:?}"
         );
-        let result = device_service
-            .client
-            .lcd(device_uid, channel_name, lcd)
+        let result = self
+            .within_lcd_stop_budget(device_service.client.lcd(device_uid, channel_name, lcd))
             .await
             .map_err(|status| {
                 anyhow!("Error applying lighting settings for device channel: {status}")
@@ -1433,18 +1464,21 @@ mod tests {
         use crate::repositories::service_plugin::service_manifest::{
             ConnectionType, ServiceManifest, ServiceType,
         };
+        use crate::rt::sleep_until;
         use crate::setting::{LcdModeKind, LcdSettings};
         use futures_util::future::poll_immediate;
-        use std::cell::RefCell;
+        use std::cell::{Cell, RefCell};
         use std::collections::HashMap;
         use std::path::PathBuf;
         use std::pin::pin;
         use std::rc::Rc;
+        use std::time::{Duration, Instant};
         use tokio::sync::mpsc;
         use tokio_util::sync::CancellationToken;
 
         const FAN: &str = "fan1";
         const LCD: &str = "lcd";
+        const SHORT_DEADLINE: Duration = Duration::from_millis(20);
 
         fn speed_channel() -> ChannelInfo {
             ChannelInfo {
@@ -1473,6 +1507,15 @@ mod tests {
                     modes: vec![mode],
                     info: None,
                 },
+            }
+        }
+
+        fn lcd_settings() -> LcdSettings {
+            LcdSettings {
+                brightness: None,
+                orientation: None,
+                colors: Vec::new(),
+                mode: LcdModeKind::None,
             }
         }
 
@@ -1537,6 +1580,7 @@ mod tests {
                 disabled_channels: HashMap::new(),
                 device_delays: HashMap::new(),
                 abort_token: CancellationToken::new(),
+                lcd_stop_deadline: Cell::new(None),
             };
             (repo, device_uid, requests)
         }
@@ -1581,12 +1625,7 @@ mod tests {
         fn abort_pending_leaves_the_calls_of_the_stop_alone() {
             crate::rt::test_runtime(async {
                 let (repo, device_uid, mut requests) = repo_with_silent_device();
-                let lcd = LcdSettings {
-                    brightness: None,
-                    orientation: None,
-                    colors: Vec::new(),
-                    mode: LcdModeKind::None,
-                };
+                let lcd = lcd_settings();
                 repo.abort_pending().await;
 
                 let mut image = pin!(repo.apply_setting_lcd(&device_uid, LCD, &lcd));
@@ -1602,6 +1641,75 @@ mod tests {
                     .try_recv()
                     .expect("the shutdown reaches the plugin");
                 assert!(matches!(sent_stop, DeviceServiceRequest::Shutdown { .. }));
+            });
+        }
+
+        // Goal: a silent plugin's shutdown image costs the stop the budget, not the full call
+        // deadline. Method: abort, shorten the deadline, then race the call against a timer on
+        // that same deadline, with the call polled first. Both are due when the task wakes, so
+        // this holds however late it wakes, and a call that outlives the deadline loses.
+        #[test]
+        fn an_lcd_call_after_the_abort_ends_at_the_deadline() {
+            crate::rt::test_runtime(async {
+                let (repo, device_uid, _requests) = repo_with_silent_device();
+                let lcd = lcd_settings();
+                repo.abort_pending().await;
+                let deadline = Instant::now() + SHORT_DEADLINE;
+                repo.lcd_stop_deadline.set(Some(deadline));
+
+                let finished = tokio::select! {
+                    biased;
+                    result = repo.apply_setting_lcd(&device_uid, LCD, &lcd) => Some(result),
+                    () = sleep_until(deadline) => None,
+                };
+
+                assert!(finished.expect("the deadline ends the call").is_err());
+                assert!(Instant::now() >= deadline);
+            });
+        }
+
+        // Goal: the budget is shared. Once it is spent, further silent channels add nothing.
+        // Method: put the deadline in the past, then require the call to fail on its first poll
+        // without sending anything.
+        #[test]
+        fn an_lcd_call_past_the_deadline_returns_at_once() {
+            crate::rt::test_runtime(async {
+                let (repo, device_uid, mut requests) = repo_with_silent_device();
+                let lcd = lcd_settings();
+                repo.abort_pending().await;
+                repo.lcd_stop_deadline.set(Some(Instant::now()));
+
+                let image = pin!(repo.apply_setting_lcd(&device_uid, LCD, &lcd));
+                let finished = poll_immediate(image).await;
+
+                assert!(finished.expect("the call ends at once").is_err());
+                assert!(requests.try_recv().is_err());
+            });
+        }
+
+        // Goal: an LCD update the engine spawned into the main loop's scope cannot hold that
+        // scope past the budget, while before the abort it keeps waiting. Method: leave a call
+        // in flight, abort, shorten the deadline, and race it as above.
+        #[test]
+        fn an_lcd_call_in_flight_at_the_abort_ends_at_the_deadline() {
+            crate::rt::test_runtime(async {
+                let (repo, device_uid, _requests) = repo_with_silent_device();
+                let lcd = lcd_settings();
+                let mut image = pin!(repo.apply_setting_lcd(&device_uid, LCD, &lcd));
+                assert!(poll_immediate(image.as_mut()).await.is_none());
+
+                repo.abort_pending().await;
+                let deadline = Instant::now() + SHORT_DEADLINE;
+                repo.lcd_stop_deadline.set(Some(deadline));
+
+                let finished = tokio::select! {
+                    biased;
+                    result = image.as_mut() => Some(result),
+                    () = sleep_until(deadline) => None,
+                };
+
+                assert!(finished.expect("the deadline ends the call").is_err());
+                assert!(Instant::now() >= deadline);
             });
         }
     }
