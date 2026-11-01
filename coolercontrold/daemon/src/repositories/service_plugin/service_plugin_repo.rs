@@ -837,14 +837,14 @@ impl ServicePluginRepo {
         );
     }
 
-    /// Waits for `call` until `abort_pending`, for the calls the main loop's scope runs. The
-    /// request itself stays on the sidecar, which drops it on exit: this only stops the scope
-    /// waiting. Not for the calls of the stop itself, which come after the abort: LCD has
-    /// `within_lcd_stop_budget` and Shutdown its own timeout.
-    async fn until_aborted<T>(&self, call: impl Future<Output = Result<T>>) -> Result<T> {
+    /// Waits for `call` until `abort_pending`, for the calls the main loop's scope runs, and
+    /// returns `None` if the abort came first. The request itself stays on the sidecar, which
+    /// drops it on exit: this only stops the scope waiting. Not for the calls of the stop itself,
+    /// which come after the abort: LCD has `within_lcd_stop_budget` and Shutdown its own timeout.
+    async fn until_aborted<T>(&self, call: impl Future<Output = Result<T>>) -> Option<Result<T>> {
         tokio::select! {
-            () = self.abort_token.cancelled() => Err(anyhow!("Aborted by the daemon stopping")),
-            result = call => result,
+            () = self.abort_token.cancelled() => None,
+            result = call => Some(result),
         }
     }
 
@@ -876,7 +876,7 @@ impl ServicePluginRepo {
     ) {
         let delay = self.device_delay(device_uid);
         let status = self.until_aborted(service.client.status(device_uid)).await;
-        let Ok((mut channel_statuses, mut temp_statuses)) = status else {
+        let Some(Ok((mut channel_statuses, mut temp_statuses))) = status else {
             self.note_status_failure(device_uid);
             apply_device_command_delay(delay).await;
             return;
@@ -1254,13 +1254,15 @@ impl Repository for ServicePluginRepo {
             "Applying Service Plugin device: {device_uid} channel: {channel_name}; \
              Device Duty: {speed_fixed}%"
         );
-        let result = self
-            .until_aborted(
-                device_service
-                    .client
-                    .fixed_duty(device_uid, channel_name, speed_fixed),
-            )
-            .await
+        let write = device_service
+            .client
+            .fixed_duty(device_uid, channel_name, speed_fixed);
+        let Some(result) = self.until_aborted(write).await else {
+            // A normal stop, with nothing for the user to act on.
+            debug!("Stopped waiting for device: {device_uid} channel: {channel_name} duty write");
+            return Ok(());
+        };
+        let result = result
             .map_err(|status| anyhow!("Error applying fixed speed for device channel: {status}"));
         apply_device_command_delay(self.device_delay(device_uid)).await;
         result
@@ -1466,6 +1468,7 @@ mod tests {
         };
         use crate::rt::sleep_until;
         use crate::setting::{LcdModeKind, LcdSettings};
+        use anyhow::anyhow;
         use futures_util::future::poll_immediate;
         use std::cell::{Cell, RefCell};
         use std::collections::HashMap;
@@ -1603,7 +1606,8 @@ mod tests {
         }
 
         // Goal: the same for the other plugin call the main loop's scope runs, the duty writes
-        // the engine spawns into it. Method: as above, and the write must report that it failed.
+        // the engine spawns into it. A stop is no failure of the write, which would warn the
+        // user. Method: as above, and the write must end without an error.
         #[test]
         fn abort_pending_ends_a_duty_write_in_flight() {
             crate::rt::test_runtime(async {
@@ -1614,7 +1618,27 @@ mod tests {
                 repo.abort_pending().await;
 
                 let finished = poll_immediate(write.as_mut()).await;
-                assert!(finished.expect("the abort ends the write").is_err());
+                assert!(finished.expect("the abort ends the write").is_ok());
+            });
+        }
+
+        // Goal: the negative space. Only the abort reads as nothing to report: an error from the
+        // plugin itself still reaches the engine. Method: answer the write with an error.
+        #[test]
+        fn a_plugin_error_on_a_duty_write_is_still_an_error() {
+            crate::rt::test_runtime(async {
+                let (repo, device_uid, mut requests) = repo_with_silent_device();
+                let mut write = pin!(repo.apply_setting_speed_fixed(&device_uid, FAN, 50));
+                assert!(poll_immediate(write.as_mut()).await.is_none());
+
+                let sent = requests.try_recv().expect("the write reaches the plugin");
+                let DeviceServiceRequest::FixedDuty { respond_to, .. } = sent else {
+                    panic!("expected a fixed duty request");
+                };
+                let refused = respond_to.send(Err(anyhow!("refused")));
+                assert!(refused.is_ok());
+
+                assert!(write.await.is_err());
             });
         }
 
