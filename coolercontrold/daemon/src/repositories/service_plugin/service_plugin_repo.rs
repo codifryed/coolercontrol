@@ -61,6 +61,8 @@ const _: () = assert!(HEALTH_RETRY_DELAY.as_secs() == 1);
 
 /// What all plugin LCD calls share once the daemon is stopping, so that the shutdown images of
 /// silent plugins cannot run the stop past `TimeoutStopSec`, which would cost the fans their reset.
+/// The first such call starts the clock, so that time spent on other repositories' images is not
+/// charged to the plugins.
 const LCD_STOP_BUDGET: Duration = Duration::from_secs(2);
 const _: () = assert!(LCD_STOP_BUDGET.as_secs() == 2);
 
@@ -92,7 +94,7 @@ pub struct ServicePluginRepo {
     /// Cancelled by `abort_pending`, so a call to a silent plugin cannot hold the main loop's
     /// scope open: no repository shuts down until that scope ends.
     abort_token: CancellationToken,
-    /// When `LCD_STOP_BUDGET` runs out. Set by `abort_pending`, before it cancels `abort_token`.
+    /// When `LCD_STOP_BUDGET` runs out. Set by the first LCD call to see the abort.
     lcd_stop_deadline: Cell<Option<Instant>>,
 }
 
@@ -862,10 +864,13 @@ impl ServicePluginRepo {
 
     async fn lcd_stop_budget_spent(&self) {
         self.abort_token.cancelled().await;
-        if let Some(deadline) = self.lcd_stop_deadline.get() {
-            if Instant::now() < deadline {
-                sleep_until(deadline).await;
-            }
+        let deadline = self
+            .lcd_stop_deadline
+            .get()
+            .unwrap_or_else(|| Instant::now() + LCD_STOP_BUDGET);
+        self.lcd_stop_deadline.set(Some(deadline));
+        if Instant::now() < deadline {
+            sleep_until(deadline).await;
         }
     }
 
@@ -1135,8 +1140,6 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn abort_pending(&self) {
-        self.lcd_stop_deadline
-            .set(Some(Instant::now() + LCD_STOP_BUDGET));
         self.abort_token.cancel();
     }
 
@@ -1451,7 +1454,7 @@ mod tests {
     use std::path::Path;
 
     mod abort {
-        use super::super::{DeviceServiceConnection, ServicePluginRepo};
+        use super::super::{DeviceServiceConnection, ServicePluginRepo, LCD_STOP_BUDGET};
         use crate::config::Config;
         use crate::device::{
             ChannelInfo, ChannelKind, Device, DeviceInfo, DeviceType, DeviceUID, LcdMode,
@@ -1466,7 +1469,7 @@ mod tests {
         use crate::repositories::service_plugin::service_manifest::{
             ConnectionType, ServiceManifest, ServiceType,
         };
-        use crate::rt::sleep_until;
+        use crate::rt::{sleep, sleep_until};
         use crate::setting::{LcdModeKind, LcdSettings};
         use anyhow::anyhow;
         use futures_util::future::poll_immediate;
@@ -1689,6 +1692,32 @@ mod tests {
 
                 assert!(finished.expect("the deadline ends the call").is_err());
                 assert!(Instant::now() >= deadline);
+            });
+        }
+
+        // Goal: time the stop spends elsewhere, such as on another repository's images, is not
+        // charged to the plugins, while they still share one clock. Method: abort, let more than
+        // the budget pass, then require the first call to send its request and to set the
+        // deadline, and a second call to keep that deadline.
+        #[test]
+        fn the_first_lcd_call_after_the_abort_starts_the_budget() {
+            crate::rt::test_runtime(async {
+                let (repo, device_uid, mut requests) = repo_with_silent_device();
+                let lcd = lcd_settings();
+                repo.abort_pending().await;
+                sleep(LCD_STOP_BUDGET + SHORT_DEADLINE).await;
+
+                let mut image = pin!(repo.apply_setting_lcd(&device_uid, LCD, &lcd));
+                assert!(poll_immediate(image.as_mut()).await.is_none());
+
+                let sent = requests.try_recv().expect("the image reaches the plugin");
+                assert!(matches!(sent, DeviceServiceRequest::Lcd { .. }));
+                let deadline = repo.lcd_stop_deadline.get();
+                assert!(deadline.is_some());
+
+                let mut second = pin!(repo.apply_setting_lcd(&device_uid, LCD, &lcd));
+                assert!(poll_immediate(second.as_mut()).await.is_none());
+                assert_eq!(repo.lcd_stop_deadline.get(), deadline);
             });
         }
 

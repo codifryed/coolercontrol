@@ -21,7 +21,7 @@ import "coolercontrol/device_service/v1/status.proto";
 // The daemon gives every call eight poll intervals (8 seconds at the default poll rate) to finish,
 // and Shutdown 2 seconds. A call past that is cancelled and the next one may follow straight away,
 // so a handler should stop its work on cancellation. When the daemon stops, it stops waiting for
-// calls in flight, and all Lcd calls share 2 seconds.
+// calls in flight, and the Lcd calls still to finish share 2 seconds, counted from the first.
 service DeviceService {
   // Used to confirm service connection and retrieve service health information.
   rpc Health(HealthRequest) returns (HealthResponse);
