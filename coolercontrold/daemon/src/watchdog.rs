@@ -304,6 +304,8 @@ impl Watchdog {
         let Some(supervisor_interval) = self.supervisor_interval else {
             return false;
         };
+        // Shorter than the unit's own, the deadline would restart a healthy daemon.
+        debug_assert!(deadline >= supervisor_interval);
         let ping_interval = ping_interval_for(supervisor_interval);
         if ping_is_due(self.deadline_failed_at.get(), ping_interval, now).not() {
             return false;
@@ -312,11 +314,13 @@ impl Watchdog {
         match self.send(message.as_bytes(), "watchdog deadline") {
             Sent::Yes => {
                 self.deadline_failed_at.set(None);
+                debug_assert!(self.deadline_failed_at.get().is_none());
                 true
             }
             Sent::NoRoom => false,
             Sent::Failed => {
                 self.deadline_failed_at.set(Some(now));
+                debug_assert!(ping_is_due(self.deadline_failed_at.get(), ping_interval, now).not());
                 false
             }
         }

@@ -82,7 +82,6 @@ impl SleepSignals {
         self.changed.notify_one();
     }
 
-    #[cfg(all(test, feature = "gated-tests"))]
     fn holds_inhibitor(&self) -> bool {
         self.inhibitor
             .lock()
@@ -362,6 +361,8 @@ async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
     if signals.renew_inhibitor() {
         return;
     }
+    // Only the listener takes locks, so none can appear before the call below returns.
+    debug_assert!(signals.holds_inhibitor().not());
     let call = proxy.call::<_, _, zvariant::OwnedFd>(
         METHOD_INHIBIT,
         &(INHIBIT_WHAT, INHIBIT_WHO, INHIBIT_WHY, INHIBIT_MODE),
@@ -387,6 +388,7 @@ fn hold_new_inhibitor(signals: &SleepSignals, inhibitor: OwnedFd) {
     }
     debug_assert!(is_close_on_exec(&inhibitor));
     signals.hold_inhibitor(inhibitor);
+    debug_assert!(signals.holds_inhibitor());
 }
 
 fn is_close_on_exec(fd: &OwnedFd) -> bool {

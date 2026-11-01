@@ -369,14 +369,19 @@ async fn wake_from_sleep(
 /// further wake does not cut it short. Each pass of the loop takes a signal, and the pause
 /// ends it, so it is bounded by `total`.
 async fn wake_pause(watchdog: &Watchdog, sleep_listener: &SleepListener, total: Duration) -> bool {
+    // `WAKE_PAUSE_MINIMUM_S` floors it: devices need time to power up.
+    debug_assert!(total.is_zero().not());
     let mut pause = std::pin::pin!(watchdog.sleep_with_heartbeat(total));
     loop {
         tokio::select! {
             () = pause.as_mut() => return true,
             () = sleep_listener.changed() => {
-                if let SleepPhase::Sleeping { .. } = sleep_listener.phase() {
+                let phase = sleep_listener.phase();
+                if let SleepPhase::Sleeping { .. } = phase {
                     return false;
                 }
+                // A further wake leaves the one being handled pending, never handled.
+                debug_assert_ne!(phase, SleepPhase::Awake);
             }
         }
     }
