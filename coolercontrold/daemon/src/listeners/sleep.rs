@@ -91,6 +91,17 @@ impl SleepSignals {
         debug_assert!(held.is_some());
     }
 
+    /// The listener stopped while the daemon runs on. A sleep still recorded would hold the main
+    /// loop in the sleep arm with nothing left to end it, so it counts as woken: controlling the
+    /// fans again beats idling. A held lock would hold up every later sleep, so it goes too.
+    fn listener_lost(&self) {
+        self.release_inhibitor();
+        if self.preparing.load(Ordering::Acquire) {
+            self.record(false);
+        }
+        debug_assert!(self.preparing.load(Ordering::Relaxed).not());
+    }
+
     /// Closing the descriptor is what releases the lock.
     fn release_inhibitor(&self) {
         let mut held = self
@@ -260,6 +271,13 @@ async fn run_listener(run_token: CancellationToken, signals: Arc<SleepSignals>) 
             else => break,
         }
     }
+    if run_token.is_cancelled().not() {
+        warn!(
+            "DBUS sleep listener stopped; sleep and resume will not be handled for the rest of \
+             this run."
+        );
+        signals.listener_lost();
+    }
     let _ = conn.close().await;
 }
 
@@ -413,6 +431,42 @@ mod tests {
         listener.release_inhibitor();
         assert!(listener.holds_inhibitor().not());
         listener.release_inhibitor();
+        assert!(listener.holds_inhibitor().not());
+    }
+
+    /// A listener lost mid-sleep would leave the loop in the sleep arm for good, with no
+    /// watchdog to end it outside systemd. Lose it after a sleep signal: that counts as a wake.
+    #[test]
+    fn a_listener_lost_while_sleeping_counts_as_a_wake() {
+        let listener = listener();
+        listener.signals.record(true);
+
+        listener.signals.listener_lost();
+
+        assert_eq!(listener.phase(), SleepPhase::Woken { wake_count: 1 });
+    }
+
+    /// Lost while awake there is nothing to wake from, so no wake may be invented. Lose it with
+    /// no sleep recorded.
+    #[test]
+    fn a_listener_lost_while_awake_changes_nothing() {
+        let listener = listener();
+        listener.signals.listener_lost();
+        assert_eq!(listener.phase(), SleepPhase::Awake);
+        assert_eq!(listener.signals.wake_count.load(Ordering::Relaxed), 0);
+    }
+
+    /// A lock left held would hold up every later sleep once nobody can release it. Hold a pipe
+    /// as the lock, then lose the listener.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_listener_lost_releases_its_lock() {
+        let listener = listener();
+        let (reader, _writer) = std::io::pipe().unwrap();
+        listener.hold_inhibitor(reader.into());
+
+        listener.signals.listener_lost();
+
         assert!(listener.holds_inhibitor().not());
     }
 
