@@ -148,22 +148,26 @@ pub async fn run(
                 sleep_listener.wake_handled(wake_count);
                 if woke.not() {
                     // Asleep again: logind is waiting on the lock, so do not wait for a tick.
-                    sleep_arm_tick(
-                        &repos,
-                        &watchdog,
-                        &sleep_listener,
-                        &mut sleep_prepared,
-                        poll_period,
-                    )
-                    .await;
+                    if let SleepPhase::Sleeping { wake_count } = sleep_listener.phase() {
+                        sleep_arm_tick(
+                            &repos,
+                            &watchdog,
+                            &sleep_listener,
+                            &mut sleep_prepared,
+                            poll_period,
+                            wake_count,
+                        )
+                        .await;
+                    }
                 }
-            } else {
+            } else if let SleepPhase::Sleeping { wake_count } = sleep_phase {
                 sleep_arm_tick(
                     &repos,
                     &watchdog,
                     &sleep_listener,
                     &mut sleep_prepared,
                     poll_period,
+                    wake_count,
                 )
                 .await;
             }
@@ -286,6 +290,7 @@ async fn sleep_arm_tick(
     sleep_listener: &SleepListener,
     sleep_prepared: &mut bool,
     poll_period: Duration,
+    wake_count: u64,
 ) {
     debug_assert!(poll_period.is_zero().not());
     let sleep_budget_in_force = watchdog.sleep_tick(poll_period);
@@ -296,7 +301,8 @@ async fn sleep_arm_tick(
         *sleep_prepared = true;
     }
     if sleep_budget_in_force {
-        sleep_listener.release_inhibitor();
+        // Not a lock taken since `wake_count`: that is for a later sleep, not yet prepared for.
+        sleep_listener.release_inhibitor(wake_count);
     }
     debug_assert!(*sleep_prepared);
     debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
@@ -364,7 +370,7 @@ async fn wake_pause(watchdog: &Watchdog, sleep_listener: &SleepListener, total: 
         tokio::select! {
             () = pause.as_mut() => return true,
             () = sleep_listener.changed() => {
-                if sleep_listener.phase() == SleepPhase::Sleeping {
+                if let SleepPhase::Sleeping { .. } = sleep_listener.phase() {
                     return false;
                 }
             }
@@ -495,6 +501,7 @@ mod tests {
                 &sleep_listener,
                 &mut sleep_prepared,
                 poll_period,
+                0,
             )
             .await;
             sleep_arm_tick(
@@ -503,6 +510,7 @@ mod tests {
                 &sleep_listener,
                 &mut sleep_prepared,
                 poll_period,
+                0,
             )
             .await;
         });
@@ -544,6 +552,7 @@ mod tests {
                 &sleep_listener,
                 &mut sleep_prepared,
                 Duration::from_secs(1),
+                0,
             )
             .await;
         });
@@ -574,6 +583,7 @@ mod tests {
                 &sleep_listener,
                 &mut sleep_prepared,
                 Duration::from_secs(1),
+                0,
             )
             .await;
         });

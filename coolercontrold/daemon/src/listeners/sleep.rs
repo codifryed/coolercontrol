@@ -40,8 +40,8 @@ const DBUS_SETUP_TIMEOUT_S: u64 = 5;
 pub enum SleepPhase {
     /// No sleep in progress: poll as usual.
     Awake,
-    /// Going to sleep, or not woken yet.
-    Sleeping,
+    /// Going to sleep, or not woken yet. Pass `wake_count` to `release_inhibitor`.
+    Sleeping { wake_count: u64 },
     /// Woken since the last handled wake. Pass `wake_count` to `wake_handled` once done.
     Woken { wake_count: u64 },
 }
@@ -56,9 +56,16 @@ struct SleepSignals {
     /// started mid-sleep, still counts: the devices went through the sleep all the same.
     wake_count: AtomicU64,
     /// The delay lock, held while awake so logind waits for the sleep arm before it sleeps.
-    inhibitor: Mutex<Option<OwnedFd>>,
+    inhibitor: Mutex<Option<HeldInhibitor>>,
     /// Wakes the main loop on each signal, so a sleep is not left waiting on the next tick.
     changed: Notify,
+}
+
+/// A delay lock, and the wake after which it was taken or last renewed: the sleep it is for.
+struct HeldInhibitor {
+    /// Held only to be dropped: closing it releases the lock.
+    _fd: OwnedFd,
+    wake_count: u64,
 }
 
 impl SleepSignals {
@@ -74,6 +81,7 @@ impl SleepSignals {
         self.changed.notify_one();
     }
 
+    #[cfg(all(test, feature = "gated-tests"))]
     fn holds_inhibitor(&self) -> bool {
         self.inhibitor
             .lock()
@@ -86,32 +94,77 @@ impl SleepSignals {
             .inhibitor
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
+        // The listener is the only writer, so this is the latest wake.
+        let wake_count = self.wake_count.load(Ordering::Relaxed);
         // A second lock would only hold logind up for longer; dropping it releases it.
-        if held.is_none() {
-            *held = Some(inhibitor);
+        match held.as_mut() {
+            Some(held) => held.wake_count = wake_count,
+            None => {
+                *held = Some(HeldInhibitor {
+                    _fd: inhibitor,
+                    wake_count,
+                });
+            }
         }
-        debug_assert!(held.is_some());
+        debug_assert!(held
+            .as_ref()
+            .is_some_and(|held| held.wake_count == wake_count));
+    }
+
+    /// A lock still held at a wake, as when logind slept once its delay ran out, now serves the
+    /// next sleep. Retagged, the sleep arm still preparing for the last sleep leaves it held.
+    /// False when no lock is held.
+    fn renew_inhibitor(&self) -> bool {
+        let mut held = self
+            .inhibitor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let Some(held) = held.as_mut() else {
+            return false;
+        };
+        let wake_count = self.wake_count.load(Ordering::Relaxed);
+        debug_assert!(held.wake_count <= wake_count);
+        held.wake_count = wake_count;
+        true
     }
 
     /// The listener stopped while the daemon runs on. A sleep still recorded would hold the main
     /// loop in the sleep arm with nothing left to end it, so it counts as woken: controlling the
     /// fans again beats idling. A held lock would hold up every later sleep, so it goes too.
     fn listener_lost(&self) {
-        self.release_inhibitor();
+        self.drop_inhibitor();
         if self.preparing.load(Ordering::Acquire) {
             self.record(false);
         }
         debug_assert!(self.preparing.load(Ordering::Relaxed).not());
     }
 
-    /// Closing the descriptor is what releases the lock.
-    fn release_inhibitor(&self) {
+    /// Releases a lock taken for the sleep after `wake_count` or an earlier one. A lock taken
+    /// since is for a later sleep, which the sleep arm has not prepared for.
+    fn release_inhibitor(&self, wake_count: u64) {
+        let mut held = self
+            .inhibitor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if held
+            .as_ref()
+            .is_some_and(|held| held.wake_count <= wake_count)
+        {
+            // Closing the descriptor is what releases the lock.
+            drop(held.take());
+        }
+        // Checked under the lock: the listener may take a fresh one as soon as it is free.
+        debug_assert!(held
+            .as_ref()
+            .is_none_or(|held| held.wake_count > wake_count));
+    }
+
+    fn drop_inhibitor(&self) {
         let mut held = self
             .inhibitor
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         drop(held.take());
-        // Checked under the lock: the listener may take a fresh one as soon as it is free.
         debug_assert!(held.is_none());
     }
 }
@@ -148,8 +201,13 @@ impl SleepListener {
     /// Sleeping comes first: a wake followed by another sleep before this tick is handled once,
     /// after the second wake, rather than once while going down and again after.
     pub fn phase(&self) -> SleepPhase {
+        // Read first: a wake landing between the two reads then makes the lock look newer than
+        // this sleep, so it is kept rather than released unprepared.
+        let sleeping_wake_count = self.signals.wake_count.load(Ordering::Relaxed);
         if self.signals.preparing.load(Ordering::Acquire) {
-            return SleepPhase::Sleeping;
+            return SleepPhase::Sleeping {
+                wake_count: sleeping_wake_count,
+            };
         }
         let wake_count = self.signals.wake_count.load(Ordering::Relaxed);
         let handled_wake_count = self.handled_wake_count.get();
@@ -170,10 +228,10 @@ impl SleepListener {
         self.handled_wake_count.set(wake_count);
     }
 
-    /// Lets logind go ahead with the sleep, once the sleep arm has done its part. A no-op when
-    /// no lock is held.
-    pub fn release_inhibitor(&self) {
-        self.signals.release_inhibitor();
+    /// Lets logind go ahead with the sleep the `Sleeping` phase's `wake_count` names, once the
+    /// sleep arm has done its part. A no-op when no lock for it is held.
+    pub fn release_inhibitor(&self, wake_count: u64) {
+        self.signals.release_inhibitor(wake_count);
     }
 
     /// Completes when a sleep signal has arrived since the last call.
@@ -300,7 +358,7 @@ async fn record_signals(
 /// widened the watchdog deadline or prepared the devices. Bounded like the setup, for the same
 /// wedged-logind reason. Without one the daemon runs on, as before.
 async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
-    if signals.holds_inhibitor() {
+    if signals.renew_inhibitor() {
         return;
     }
     let call = proxy.call::<_, _, zvariant::OwnedFd>(
@@ -364,7 +422,7 @@ mod tests {
     fn a_sleep_and_wake_is_handled_once() {
         let listener = listener();
         listener.signals.record(true);
-        assert_eq!(listener.phase(), SleepPhase::Sleeping);
+        assert_eq!(listener.phase(), SleepPhase::Sleeping { wake_count: 0 });
 
         listener.signals.record(false);
         assert_eq!(listener.phase(), SleepPhase::Woken { wake_count: 1 });
@@ -405,7 +463,7 @@ mod tests {
         listener.signals.record(true);
         listener.wake_handled(1);
 
-        assert_eq!(listener.phase(), SleepPhase::Sleeping);
+        assert_eq!(listener.phase(), SleepPhase::Sleeping { wake_count: 1 });
         listener.signals.record(false);
         assert_eq!(listener.phase(), SleepPhase::Woken { wake_count: 2 });
     }
@@ -419,7 +477,7 @@ mod tests {
         listener.signals.record(false);
         listener.signals.record(true);
 
-        assert_eq!(listener.phase(), SleepPhase::Sleeping);
+        assert_eq!(listener.phase(), SleepPhase::Sleeping { wake_count: 1 });
         listener.signals.record(false);
         assert_eq!(listener.phase(), SleepPhase::Woken { wake_count: 2 });
     }
@@ -465,9 +523,9 @@ mod tests {
         listener.hold_inhibitor(second.into());
         assert!(listener.holds_inhibitor());
 
-        listener.release_inhibitor();
+        listener.release_inhibitor(0);
         assert!(listener.holds_inhibitor().not());
-        listener.release_inhibitor();
+        listener.release_inhibitor(0);
         assert!(listener.holds_inhibitor().not());
     }
 
@@ -485,7 +543,42 @@ mod tests {
         hold_new_inhibitor(&listener.signals, reader);
 
         let held = listener.signals.inhibitor.lock().unwrap();
-        assert!(is_close_on_exec(held.as_ref().expect("the lock is held")));
+        assert!(is_close_on_exec(
+            &held.as_ref().expect("the lock is held")._fd
+        ));
+    }
+
+    /// A lock that serves a later sleep must outlast the sleep arm still preparing for this
+    /// one, or that later sleep runs unlocked. Read the sleep's wake count, then sleep and wake
+    /// mid-preparation: a lock renewed at that wake, or a fresh one, must survive the release.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_lock_for_a_later_sleep_outlasts_the_release() {
+        let listener = listener();
+        let (first, _first_writer) = std::io::pipe().unwrap();
+        listener.hold_inhibitor(first.into());
+        listener.signals.record(true);
+        let SleepPhase::Sleeping { wake_count } = listener.phase() else {
+            panic!("expected a sleep");
+        };
+
+        listener.signals.record(false);
+        assert!(listener.signals.renew_inhibitor());
+        listener.release_inhibitor(wake_count);
+        assert!(listener.holds_inhibitor(), "a renewed lock is kept");
+
+        listener.signals.drop_inhibitor();
+        let (second, _second_writer) = std::io::pipe().unwrap();
+        listener.hold_inhibitor(second.into());
+        listener.release_inhibitor(wake_count);
+        assert!(listener.holds_inhibitor(), "a fresh lock is kept");
+
+        listener.signals.record(true);
+        let SleepPhase::Sleeping { wake_count } = listener.phase() else {
+            panic!("expected a sleep");
+        };
+        listener.release_inhibitor(wake_count);
+        assert!(listener.holds_inhibitor().not());
     }
 
     /// A listener lost mid-sleep would leave the loop in the sleep arm for good, with no
@@ -557,7 +650,7 @@ mod tests {
         let listener = listener();
         listener.signals.record(true);
         listener.signals.record(true);
-        assert_eq!(listener.phase(), SleepPhase::Sleeping);
+        assert_eq!(listener.phase(), SleepPhase::Sleeping { wake_count: 0 });
         assert_eq!(listener.signals.wake_count.load(Ordering::Relaxed), 0);
     }
 }
