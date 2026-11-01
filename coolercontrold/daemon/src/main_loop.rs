@@ -136,9 +136,13 @@ pub async fn run(
                 watchdog.ping();
             } else if let SleepPhase::Woken { wake_count } = sleep_phase {
                 sleep_prepared = false;
-                wake_from_sleep(&config, &engine, &mode_controller, &watchdog).await?;
+                let woke = wake_from_sleep(&config, &engine, &mode_controller, &sleep_listener, &watchdog).await?;
                 // Wakes that arrived meanwhile stay pending for the next tick.
                 sleep_listener.wake_handled(wake_count);
+                if woke.not() {
+                    // Asleep again: logind is waiting on the lock, so do not wait for a tick.
+                    sleep_arm_tick(&repos, &watchdog, &sleep_listener, &mut sleep_prepared, poll_period).await;
+                }
             } else {
                 sleep_arm_tick(&repos, &watchdog, &sleep_listener, &mut sleep_prepared, poll_period).await;
             }
@@ -281,12 +285,16 @@ async fn sleep_arm_tick(
 /// settings should be applied on boot and takes appropriate actions, such as reinitializing
 /// devices and applying saved device settings. Additionally, it reinitializes all status
 /// histories to maintain sequential data integrity.
+///
+/// False when a new sleep began during the pause: re-init and re-apply would only run against
+/// devices that are suspending, so they wait for the next wake.
 async fn wake_from_sleep(
     config: &Rc<Config>,
     engine: &Rc<Engine>,
     mode_controller: &Rc<ModeController>,
+    sleep_listener: &SleepListener,
     watchdog: &Watchdog,
-) -> Result<()> {
+) -> Result<bool> {
     // Restores the unit's deadline, which the sleep arm widened.
     watchdog.ping();
     let startup_delay = config
@@ -299,7 +307,13 @@ async fn wake_from_sleep(
     );
     // `startup_delay` reaches 120s and blocks the loop. The daemon is idle here
     // on purpose, which must not read to systemd as a wedged loop.
-    watchdog.sleep_with_heartbeat(startup_delay).await;
+    if wake_pause(watchdog, sleep_listener, startup_delay)
+        .await
+        .not()
+    {
+        info!("The system is going to sleep again; re-initializing after the next wake instead.");
+        return Ok(false);
+    }
     if config.get_settings()?.apply_on_boot {
         info!("Re-initializing and re-applying settings after waking from sleep");
         engine.reinitialize_devices().await;
@@ -314,7 +328,24 @@ async fn wake_from_sleep(
         watchdog.ping();
     }
     engine.reinitialize_all_status_histories()?;
-    Ok(())
+    Ok(true)
+}
+
+/// The wake pause, with heartbeats. Cut short, returning false, when a new sleep begins; a
+/// further wake does not cut it short. Each pass of the loop takes a signal, and the pause
+/// ends it, so it is bounded by `total`.
+async fn wake_pause(watchdog: &Watchdog, sleep_listener: &SleepListener, total: Duration) -> bool {
+    let mut pause = std::pin::pin!(watchdog.sleep_with_heartbeat(total));
+    loop {
+        tokio::select! {
+            () = pause.as_mut() => return true,
+            () = sleep_listener.changed() => {
+                if sleep_listener.phase() == SleepPhase::Sleeping {
+                    return false;
+                }
+            }
+        }
+    }
 }
 
 /// A helper struct used to limit LCD updates to a maximum frequency.
@@ -495,6 +526,49 @@ mod tests {
 
         assert!(held_at_prepare.get());
         assert!(sleep_listener.holds_inhibitor().not());
+    }
+
+    /// A sleep that begins during the wake pause must end it at once, since logind is waiting
+    /// on the delay lock. Signal a sleep, then poll a long pause once.
+    #[test]
+    fn a_new_sleep_cuts_the_wake_pause_short() {
+        use futures_util::FutureExt;
+        let watchdog = Watchdog::disabled();
+        let sleep_listener = SleepListener::deaf();
+        sleep_listener.record(true);
+
+        rt::test_runtime(async {
+            let pause = wake_pause(&watchdog, &sleep_listener, Duration::from_secs(120));
+            assert_eq!(pause.now_or_never(), Some(false));
+        });
+    }
+
+    /// A further wake is handled after this one, so it must not cut the pause short. Signal a
+    /// wake, then poll a long pause once: it is still waiting.
+    #[test]
+    fn a_further_wake_leaves_the_wake_pause_running() {
+        use futures_util::FutureExt;
+        let watchdog = Watchdog::disabled();
+        let sleep_listener = SleepListener::deaf();
+        sleep_listener.record(false);
+
+        rt::test_runtime(async {
+            let pause = wake_pause(&watchdog, &sleep_listener, Duration::from_secs(120));
+            assert_eq!(pause.now_or_never(), None);
+        });
+    }
+
+    /// With no signal the pause runs to the end and reports it. Pause briefly and check.
+    #[test]
+    fn an_undisturbed_wake_pause_runs_to_the_end() {
+        let watchdog = Watchdog::disabled();
+        let sleep_listener = SleepListener::deaf();
+
+        rt::test_runtime(async {
+            let start = std::time::Instant::now();
+            assert!(wake_pause(&watchdog, &sleep_listener, Duration::from_millis(10)).await);
+            assert!(start.elapsed() >= Duration::from_millis(10));
+        });
     }
 
     /// Regression: the snapshot timeout must stay at the historical

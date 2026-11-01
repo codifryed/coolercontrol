@@ -173,6 +173,12 @@ impl SleepListener {
         Self::from_signals(Arc::default())
     }
 
+    /// Stands in for a `PrepareForSleep` signal.
+    #[cfg(test)]
+    pub fn record(&self, going_to_sleep: bool) {
+        self.signals.record(going_to_sleep);
+    }
+
     #[cfg(all(test, feature = "gated-tests"))]
     pub fn hold_inhibitor(&self, inhibitor: OwnedFd) {
         self.signals.hold_inhibitor(inhibitor);
