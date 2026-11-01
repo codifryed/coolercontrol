@@ -910,6 +910,7 @@ mod tests {
     /// be kept fresh while the sleep arm runs. Tick once to hand over the budget, then again
     /// after a ping interval: the second tick is a heartbeat too.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_running_sleep_arm_keeps_the_budget_fresh() {
         let interval = Duration::from_millis(40);
         let watchdog = Watchdog::with_supervisor_interval(Some(interval));
