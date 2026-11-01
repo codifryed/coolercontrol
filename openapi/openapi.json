@@ -3700,11 +3700,11 @@
           }
         ],
         "requestBody": {
-          "description": "Device Specific settings that generally apply to how the application deals with the device.",
+          "description": "A save of `CoolerControl` settings for a specific Device. Extensions it leaves out keep their\n saved values, so a client that predates one does not reset it.",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CCDeviceSettings"
+                "$ref": "#/components/schemas/CCDeviceSettingsUpdate"
               }
             }
           },
@@ -6983,8 +6983,8 @@
           "disabled"
         ]
       },
-      "CCDeviceSettings": {
-        "description": "Device Specific settings that generally apply to how the application deals with the device.",
+      "CCDeviceSettingsUpdate": {
+        "description": "A save of `CoolerControl` settings for a specific Device. Extensions it leaves out keep their\n saved values, so a client that predates one does not reset it.",
         "type": "object",
         "properties": {
           "channel_settings": {
@@ -7002,19 +7002,18 @@
             "description": "Specialized settings (extensions) that apply to a specific device.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/DeviceExtensions"
+                "$ref": "#/components/schemas/DeviceExtensionsUpdate"
               }
             ]
           },
           "name": {
-            "description": "The last-detected device name, stamped by the daemon. Names disabled\n (blacklisted) devices and keeps the config file hand-navigable.\n Deprecated as a writable field: client-supplied values are ignored.\n User-defined names belong in the name overrides (overrides.toml).\n On read it carries the resolved display name.",
+            "description": "Ignored: the daemon stamps the last-detected device name.",
             "type": "string"
           }
         },
         "required": [
           "name",
           "disable",
-          "extensions",
           "channel_settings"
         ]
       },
@@ -8749,7 +8748,7 @@
             "type": "boolean"
           },
           "per_thread_freq": {
-            "description": "Whether a CPU device gets a frequency channel for each of its threads. Off by default:\n every channel keeps an hour of history. Absent from older clients, so it defaults.",
+            "description": "Whether a CPU device gets a frequency channel for each of its threads. Off by default:\n every channel keeps an hour of history.",
             "type": "boolean",
             "default": false
           }
@@ -8758,6 +8757,36 @@
           "direct_access",
           "delay_millis"
         ]
+      },
+      "DeviceExtensionsUpdate": {
+        "description": "Device extensions in a save. Each one left out keeps its saved value.",
+        "type": "object",
+        "properties": {
+          "delay_millis": {
+            "description": "See `DeviceExtensions.delay_millis`.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0
+          },
+          "direct_access": {
+            "description": "See `DeviceExtensions.direct_access`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "per_thread_freq": {
+            "description": "See `DeviceExtensions.per_thread_freq`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
       },
       "DeviceHealthDto": {
         "description": "Full current health snapshot returned by `GET /devices/health`.\n\n Two sections with different meanings, deliberately not interleaved.\n `failsafe`, `missing`, `stale_source` and `firmware_overrides` are\n **current state**: conditions that can clear on their own.\n `channel_capabilities` and `system_findings` are **permanent**: facts about\n what this hardware can do, which will not change while the machine is\n running. Presenting a permanent capability as a fault would imply the user\n should wait for it to resolve; presenting a fault as a capability would\n imply the opposite.",
