@@ -51,9 +51,15 @@ const NOTIFY_SOCKET: &str = "NOTIFY_SOCKET";
 const HEARTBEAT: &[u8] = b"WATCHDOG=1\n";
 
 /// The deadline while the system sleeps. It must outlast the kernel's 20s
-/// freeze timeout plus a slow device resume. It also bounds a resume signal
-/// that never arrives: past it the daemon is restarted and re-applies settings.
+/// freeze timeout plus a slow device resume. With `SLEEP_REFRESH_MAX` it also
+/// bounds a resume signal that never arrives: past both the daemon is
+/// restarted and re-applies settings.
 const SLEEP_BUDGET: Duration = Duration::from_secs(120);
+
+/// How long the sleep arm may keep the budget fresh. The thaws between the
+/// sleeps of suspend-then-hibernate last seconds; an arm still running this
+/// long has missed its resume signal.
+const SLEEP_REFRESH_MAX: Duration = Duration::from_secs(120);
 
 /// The kernel's default `freeze_timeout_msecs`.
 const KERNEL_FREEZE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -63,6 +69,13 @@ const _: () = assert!(SLEEP_BUDGET.as_secs() > KERNEL_FREEZE_TIMEOUT.as_secs());
 /// the blocking pool, and the daemon goes on without waiting for it.
 const NOTIFY_WAIT: Duration = Duration::from_secs(2);
 const _: () = assert!(NOTIFY_WAIT.as_millis() > 0);
+
+/// The sleep budget in force, and how long the sleep arm has run since it was handed over.
+#[derive(Clone, Copy)]
+struct SleepWatch {
+    last_tick: Instant,
+    running: Duration,
+}
 
 /// How a send to the service manager went.
 enum Sent {
@@ -85,7 +98,7 @@ pub struct Watchdog {
     /// `None` until the first ping, so the first one is always due.
     last_ping: Cell<Option<Instant>>,
     /// Set while the service manager holds `SLEEP_BUDGET` instead of the unit's deadline.
-    sleep_budget_in_force: Cell<bool>,
+    sleep_watch: Cell<Option<SleepWatch>>,
     /// When a deadline change last failed, to space out its retries.
     deadline_failed_at: Cell<Option<Instant>>,
     /// The datagram needs a service manager to observe, so tests count the
@@ -114,7 +127,7 @@ impl Watchdog {
             supervisor_interval,
             notify_socket: None,
             last_ping: Cell::new(None),
-            sleep_budget_in_force: Cell::new(false),
+            sleep_watch: Cell::new(None),
             deadline_failed_at: Cell::new(None),
             #[cfg(test)]
             ping_count: Cell::new(0),
@@ -149,7 +162,7 @@ impl Watchdog {
 
     #[cfg(test)]
     pub fn sleep_budget_in_force(&self) -> bool {
-        self.sleep_budget_in_force.get()
+        self.sleep_watch.get().is_some()
     }
 
     /// Warns when the poll rate cannot sustain the supervisor's deadline, which
@@ -188,12 +201,12 @@ impl Watchdog {
         let ping_interval = ping_interval_for(supervisor_interval);
         debug_assert!(ping_interval.is_zero().not());
         let now = Instant::now();
-        if self.sleep_budget_in_force.get() {
+        if self.sleep_watch.get().is_some() {
             // Not rate limited: the unit's deadline should be back in force at once.
             if self.send_deadline(supervisor_interval, now).not() {
                 return;
             }
-            self.sleep_budget_in_force.set(false);
+            self.sleep_watch.set(None);
         } else {
             if ping_is_due(self.last_ping.get(), ping_interval, now).not() {
                 return;
@@ -203,36 +216,68 @@ impl Watchdog {
                 return;
             }
         }
-        self.last_ping.set(Some(now));
-        #[cfg(test)]
-        self.ping_count.set(self.ping_count.get() + 1);
-        debug_assert!(self.sleep_budget_in_force.get().not());
+        self.stamp(now);
+        debug_assert!(self.sleep_watch.get().is_none());
         // The rate limit must now hold, or every tick sends a datagram.
         debug_assert!(ping_is_due(self.last_ping.get(), ping_interval, now).not());
     }
 
-    /// Hands the service manager `SLEEP_BUDGET` along with a heartbeat. Called on every tick of
-    /// the sleep arm, so a send the service manager has no room for goes out on the next one.
-    pub fn widen_for_sleep(&self) {
+    /// Called on every tick of the sleep arm. The first hands the service manager
+    /// `SLEEP_BUDGET` along with a heartbeat; a send it has no room for goes out on the next
+    /// tick. Later ticks keep the budget fresh with a heartbeat each ping interval, so the
+    /// thaws of suspend-then-hibernate do not use it up, until the arm has run for
+    /// `SLEEP_REFRESH_MAX`.
+    pub fn sleep_tick(&self, poll_rate: Duration) {
+        debug_assert!(poll_rate.is_zero().not());
         let Some(supervisor_interval) = self.supervisor_interval else {
             return;
         };
-        if self.sleep_budget_in_force.get() {
+        let now = Instant::now();
+        let Some(watch) = self.sleep_watch.get() else {
+            self.begin_sleep(supervisor_interval, now);
+            return;
+        };
+        let running = watch.running + sleep_running_step(watch.last_tick, now, poll_rate);
+        self.sleep_watch.set(Some(SleepWatch {
+            last_tick: now,
+            running,
+        }));
+        if running >= SLEEP_REFRESH_MAX {
+            // The resume signal was likely lost: let the budget run out into a restart.
             return;
         }
+        let ping_interval = ping_interval_for(supervisor_interval);
+        if ping_is_due(self.last_ping.get(), ping_interval, now).not() {
+            return;
+        }
+        if let Sent::NoRoom = self.send(HEARTBEAT, "watchdog heartbeat") {
+            return;
+        }
+        self.stamp(now);
+    }
+
+    fn begin_sleep(&self, supervisor_interval: Duration, now: Instant) {
+        debug_assert!(self.sleep_watch.get().is_none());
         debug_assert!(supervisor_interval.is_zero().not());
-        let now = Instant::now();
         if self
             .send_deadline(sleep_budget_for(supervisor_interval), now)
             .not()
         {
             return;
         }
-        self.sleep_budget_in_force.set(true);
+        self.sleep_watch.set(Some(SleepWatch {
+            last_tick: now,
+            running: Duration::ZERO,
+        }));
+        self.stamp(now);
+        debug_assert!(self.sleep_watch.get().is_some());
+    }
+
+    /// Records a heartbeat the service manager got.
+    fn stamp(&self, now: Instant) {
         self.last_ping.set(Some(now));
         #[cfg(test)]
         self.ping_count.set(self.ping_count.get() + 1);
-        debug_assert!(self.sleep_budget_in_force.get());
         debug_assert_eq!(self.last_ping.get(), Some(now));
     }
 
@@ -378,6 +423,15 @@ fn deadline_message(deadline: Duration) -> String {
     message
 }
 
+/// The running time one sleep-arm tick adds. A gap longer than two polls was spent frozen or
+/// suspended rather than running, so it counts as two polls at most.
+fn sleep_running_step(last_tick: Instant, now: Instant, poll_rate: Duration) -> Duration {
+    debug_assert!(poll_rate.is_zero().not());
+    let step = now.saturating_duration_since(last_tick).min(poll_rate * 2);
+    debug_assert!(step <= poll_rate * 2);
+    step
+}
+
 /// Never shorter than the unit's own deadline, should a hand-edited `WatchdogSec=` exceed
 /// `SLEEP_BUDGET`.
 fn sleep_budget_for(supervisor_interval: Duration) -> Duration {
@@ -426,6 +480,9 @@ mod tests {
 
     /// `WatchdogSec=` in `packaging/systemd/coolercontrold.service`.
     const SHIPPED_UNIT_INTERVAL: Duration = Duration::from_secs(30);
+
+    /// The default `poll_rate`.
+    const POLL_RATE: Duration = Duration::from_secs(1);
 
     /// The interval systemd hands us is halved. Getting this wrong in either
     /// direction is invisible until production: too long and the daemon is
@@ -755,7 +812,7 @@ mod tests {
     #[test]
     fn a_disabled_watchdog_never_widens() {
         let watchdog = Watchdog::disabled();
-        watchdog.widen_for_sleep();
+        watchdog.sleep_tick(POLL_RATE);
         assert!(watchdog.sleep_budget_in_force().not());
         assert_eq!(watchdog.last_ping(), None);
     }
@@ -768,7 +825,7 @@ mod tests {
         watchdog.ping();
         assert_eq!(watchdog.ping_count(), 1);
 
-        watchdog.widen_for_sleep();
+        watchdog.sleep_tick(POLL_RATE);
         assert!(watchdog.sleep_budget_in_force());
         assert_eq!(watchdog.ping_count(), 2, "widening is a heartbeat");
 
@@ -793,8 +850,8 @@ mod tests {
         let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL))
             .with_notify_socket(Some(path.clone().into_os_string()));
 
-        watchdog.widen_for_sleep();
-        watchdog.widen_for_sleep();
+        watchdog.sleep_tick(POLL_RATE);
+        watchdog.sleep_tick(POLL_RATE);
         watchdog.ping();
 
         let mut datagram = [0_u8; 64];
@@ -819,7 +876,7 @@ mod tests {
         let watchdog = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL))
             .with_notify_socket(Some(path.clone().into_os_string()));
 
-        watchdog.widen_for_sleep();
+        watchdog.sleep_tick(POLL_RATE);
         assert!(watchdog.sleep_budget_in_force().not());
         assert_eq!(watchdog.last_ping(), None);
 
@@ -827,10 +884,71 @@ mod tests {
         for _ in 0..filled {
             manager.recv(&mut datagram).unwrap();
         }
-        watchdog.widen_for_sleep();
+        watchdog.sleep_tick(POLL_RATE);
 
         assert!(watchdog.sleep_budget_in_force());
         assert!(watchdog.last_ping().is_some());
+    }
+
+    /// Suspend-then-hibernate thaws and refreezes without a resume signal, so the budget must
+    /// be kept fresh while the sleep arm runs. Tick once to hand over the budget, then again
+    /// after a ping interval: the second tick is a heartbeat too.
+    #[test]
+    fn a_running_sleep_arm_keeps_the_budget_fresh() {
+        let interval = Duration::from_millis(40);
+        let watchdog = Watchdog::with_supervisor_interval(Some(interval));
+        watchdog.sleep_tick(POLL_RATE);
+        watchdog.sleep_tick(POLL_RATE);
+        assert_eq!(watchdog.ping_count(), 1, "rate limited within the interval");
+
+        std::thread::sleep(ping_interval_for(interval));
+        watchdog.sleep_tick(POLL_RATE);
+
+        assert_eq!(watchdog.ping_count(), 2);
+        assert!(watchdog.sleep_budget_in_force());
+    }
+
+    /// An arm that has run for `SLEEP_REFRESH_MAX` is waiting on a resume signal that was
+    /// lost, and must let the budget run out. Start the watch at the cap, wait out the rate
+    /// limit, and check the tick sends nothing.
+    #[test]
+    fn the_budget_lapses_once_the_arm_has_run_too_long() {
+        let interval = Duration::from_millis(40);
+        let watchdog = Watchdog::with_supervisor_interval(Some(interval));
+        watchdog.sleep_tick(POLL_RATE);
+        let watch = watchdog
+            .sleep_watch
+            .get()
+            .expect("the budget was handed over");
+        watchdog.sleep_watch.set(Some(SleepWatch {
+            running: SLEEP_REFRESH_MAX,
+            ..watch
+        }));
+
+        std::thread::sleep(ping_interval_for(interval));
+        watchdog.sleep_tick(POLL_RATE);
+
+        assert_eq!(watchdog.ping_count(), 1);
+    }
+
+    /// Frozen and suspended time must not count as running, or a night of
+    /// suspend-then-hibernate would use up `SLEEP_REFRESH_MAX`. Check a tick-sized gap counts
+    /// whole and a long one counts as two polls.
+    #[test]
+    fn only_tick_sized_gaps_count_as_running() {
+        let last_tick = Instant::now();
+        assert_eq!(
+            sleep_running_step(last_tick, last_tick + POLL_RATE, POLL_RATE),
+            POLL_RATE
+        );
+        assert_eq!(
+            sleep_running_step(last_tick, last_tick + Duration::from_secs(600), POLL_RATE),
+            POLL_RATE * 2
+        );
+        assert_eq!(
+            sleep_running_step(last_tick, last_tick, POLL_RATE),
+            Duration::ZERO
+        );
     }
 
     /// A deadline change the service manager never got would stay wrong for the rest of the
@@ -845,17 +963,17 @@ mod tests {
         let watchdog = Watchdog::with_supervisor_interval(Some(interval))
             .with_notify_socket(Some(path.clone().into_os_string()));
 
-        watchdog.widen_for_sleep();
+        watchdog.sleep_tick(POLL_RATE);
         assert!(watchdog.sleep_budget_in_force().not());
         let manager = UnixDatagram::bind(&path).unwrap();
-        watchdog.widen_for_sleep();
+        watchdog.sleep_tick(POLL_RATE);
         assert!(
             watchdog.sleep_budget_in_force().not(),
             "retried within the interval"
         );
 
         std::thread::sleep(ping_interval_for(interval));
-        watchdog.widen_for_sleep();
+        watchdog.sleep_tick(POLL_RATE);
 
         assert!(watchdog.sleep_budget_in_force());
         let mut datagram = [0_u8; 64];

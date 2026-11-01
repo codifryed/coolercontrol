@@ -91,14 +91,15 @@ pub async fn run(
     run_token: CancellationToken,
 ) -> Result<()> {
     let poll_rate = config.get_settings()?.poll_rate;
-    watchdog.warn_if_poll_rate_too_slow(Duration::from_secs_f64(poll_rate));
+    let poll_period = Duration::from_secs_f64(poll_rate);
+    watchdog.warn_if_poll_rate_too_slow(poll_period);
     let snapshot_timeout_duration = Duration::from_millis(SNAPSHOT_TIMEOUT_MS);
     let mut lcd_update_trigger = LCDUpdateTrigger::new(poll_rate);
     moro_local::async_scope!(|scope| -> Result<()> {
         let sleep_listener = SleepListener::new(run_token.clone());
         align_loop_timing_with_clock().await;
         // The sub-second position is set on interval creation:
-        let mut loop_interval = rt::interval(Duration::from_secs_f64(poll_rate));
+        let mut loop_interval = rt::interval(poll_period);
         let mut sleep_prepared = false;
         while run_token.is_cancelled().not() {
             loop_interval.tick().await;
@@ -125,7 +126,7 @@ pub async fn run(
                 device_health_controller.process().await;
                 // At the foot of the working arm: a heartbeat asserts the tick
                 // did its work. The sleep-preparation arm below does no work,
-                // so it widens the deadline instead of claiming liveness. The
+                // so it holds a widened deadline instead (`sleep_tick`). The
                 // resume arm heartbeats from inside `wake_from_sleep`.
                 watchdog.ping();
             } else if let SleepPhase::Woken { wake_count } = sleep_phase {
@@ -135,7 +136,7 @@ pub async fn run(
                 sleep_listener.wake_handled(wake_count);
             } else {
                 // Before preparing, so a slow repo is covered too.
-                watchdog.widen_for_sleep();
+                watchdog.sleep_tick(poll_period);
                 if sleep_prepared.not() {
                     for repo in repos.iter() {
                         repo.prepare_for_sleep().await;
