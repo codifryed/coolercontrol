@@ -401,6 +401,7 @@ async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
 
 /// zbus receives the descriptor without close-on-exec, so every child the daemon spawns would
 /// inherit the lock and keep it alive past its release. One that cannot be fixed is dropped.
+/// A child spawned between zbus's `recvmsg` and the flag below can still inherit it.
 fn hold_new_inhibitor(signals: &SleepSignals, inhibitor: OwnedFd) {
     if let Err(err) = fcntl(&inhibitor, FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC)) {
         warn!("Could not keep the sleep delay lock from child processes, releasing it: {err}");
