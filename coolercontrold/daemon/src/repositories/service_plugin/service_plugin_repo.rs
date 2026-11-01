@@ -853,12 +853,16 @@ impl ServicePluginRepo {
     /// Waits for an LCD `call` until `LCD_STOP_BUDGET` runs out. Before the abort this changes
     /// nothing, so that a slow panel keeps the full deadline. The abort still lets the shutdown
     /// images go out, and the budget also ends one already in flight on the main loop's scope.
-    async fn within_lcd_stop_budget(&self, call: impl Future<Output = Result<()>>) -> Result<()> {
+    /// Returns `None` if the budget ran out first.
+    async fn within_lcd_stop_budget(
+        &self,
+        call: impl Future<Output = Result<()>>,
+    ) -> Option<Result<()>> {
         tokio::select! {
             // First, so that a call past the deadline never sends its request.
             biased;
-            () = self.lcd_stop_budget_spent() => Err(anyhow!("The stop's LCD budget ran out")),
-            result = call => result,
+            () = self.lcd_stop_budget_spent() => None,
+            result = call => Some(result),
         }
     }
 
@@ -1400,12 +1404,20 @@ impl Repository for ServicePluginRepo {
         debug!(
             "Applying Service Plugin device: {device_uid} channel: {channel_name}; LCD: {lcd:?}"
         );
-        let result = self
-            .within_lcd_stop_budget(device_service.client.lcd(device_uid, channel_name, lcd))
-            .await
-            .map_err(|status| {
-                anyhow!("Error applying lighting settings for device channel: {status}")
-            });
+        let in_flight_at_abort = self.abort_token.is_cancelled().not();
+        let call = device_service.client.lcd(device_uid, channel_name, lcd);
+        let Some(result) = self.within_lcd_stop_budget(call).await else {
+            if in_flight_at_abort {
+                // A normal stop, with nothing for the user to act on.
+                debug!("Stopped waiting for device: {device_uid} channel: {channel_name} LCD");
+                return Ok(());
+            }
+            // A shutdown image that never went out is worth reporting.
+            return Err(anyhow!("The stop's LCD budget ran out"));
+        };
+        let result = result.map_err(|status| {
+            anyhow!("Error applying lighting settings for device channel: {status}")
+        });
         apply_device_command_delay(self.device_delay(device_uid)).await;
         result
     }
@@ -1741,8 +1753,9 @@ mod tests {
         }
 
         // Goal: an LCD update the engine spawned into the main loop's scope cannot hold that
-        // scope past the budget, while before the abort it keeps waiting. Method: leave a call
-        // in flight, abort, shorten the deadline, and race it as above.
+        // scope past the budget, while before the abort it keeps waiting. A stop is no failure of
+        // the update, which would warn the user. Method: leave a call in flight, abort, shorten
+        // the deadline, race it as above, and the call must end without an error.
         #[test]
         fn an_lcd_call_in_flight_at_the_abort_ends_at_the_deadline() {
             crate::rt::test_runtime(async {
@@ -1761,8 +1774,31 @@ mod tests {
                     () = sleep_until(deadline) => None,
                 };
 
-                assert!(finished.expect("the deadline ends the call").is_err());
+                assert!(finished.expect("the deadline ends the call").is_ok());
                 assert!(Instant::now() >= deadline);
+            });
+        }
+
+        // Goal: the negative space. Only the budget reads as nothing to report: an error from
+        // the plugin itself still reaches the engine after the abort. Method: leave a call in
+        // flight, abort, and answer it with an error.
+        #[test]
+        fn a_plugin_error_on_an_lcd_call_in_flight_at_the_abort_is_still_an_error() {
+            crate::rt::test_runtime(async {
+                let (repo, device_uid, mut requests) = repo_with_silent_device();
+                let lcd = lcd_settings();
+                let mut image = pin!(repo.apply_setting_lcd(&device_uid, LCD, &lcd));
+                assert!(poll_immediate(image.as_mut()).await.is_none());
+
+                repo.abort_pending().await;
+                let sent = requests.try_recv().expect("the update reaches the plugin");
+                let DeviceServiceRequest::Lcd { respond_to, .. } = sent else {
+                    panic!("expected an LCD request");
+                };
+                let refused = respond_to.send(Err(anyhow!("refused")));
+                assert!(refused.is_ok());
+
+                assert!(image.await.is_err());
             });
         }
     }
