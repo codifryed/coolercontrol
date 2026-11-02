@@ -6521,6 +6521,14 @@ mod slow_device_tests {
     }
 }
 
+/// Stands in for a run that drove every device's fan. Only gated tests call it.
+#[cfg(all(test, feature = "gated-tests"))]
+fn take_every_fan1(repo: &HwmonRepo) {
+    for (_, driver) in repo.devices.values() {
+        driver.taken_channels.mark("fan1");
+    }
+}
+
 #[cfg(all(test, feature = "gated-tests"))]
 mod prepare_for_sleep_tests {
     use super::*;
@@ -6620,9 +6628,7 @@ mod prepare_for_sleep_tests {
                 dir.clone(),
                 vec![thinkpad_fan(1, "fan1", &dir, Some(2))],
             );
-            for (_, driver) in repo.devices.values() {
-                driver.taken_channels.mark("fan1");
-            }
+            take_every_fan1(&repo);
 
             repo.prepare_for_sleep().await;
 
@@ -6696,10 +6702,7 @@ mod prepare_for_sleep_tests {
                 dir.clone(),
                 vec![thinkpad_fan(1, "fan1", &dir, Some(2))],
             );
-
-            for (_, driver) in repo.devices.values() {
-                driver.taken_channels.mark("fan1");
-            }
+            take_every_fan1(&repo);
             let start = Instant::now();
             repo.prepare_for_sleep().await;
             let elapsed = start.elapsed();
@@ -7323,14 +7326,6 @@ mod shutdown_tests {
             let after = cc_fs::read_sysfs(&dir.join("pwm1_enable")).await.unwrap();
             assert_eq!(after.trim(), "2", "channel should be reset to default");
         });
-    }
-
-    /// Stands in for a run that drove every device's fan.
-    #[cfg(feature = "gated-tests")]
-    fn take_every_fan1(repo: &HwmonRepo) {
-        for (_, driver) in repo.devices.values() {
-            driver.taken_channels.mark("fan1");
-        }
     }
 
     fn single_device_uid(repo: &HwmonRepo) -> UID {
