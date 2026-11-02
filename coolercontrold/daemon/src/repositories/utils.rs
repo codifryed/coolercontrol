@@ -6,12 +6,13 @@
 //! directly except where process lifecycle management is needed (e.g. `liqctld_service.rs`
 //! for stdin piping, `stress_test.rs` for long-running child processes).
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
 use std::ops::Not;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::rc::Rc;
 use std::time::Duration;
 
 use crate::cc_fs;
@@ -179,18 +180,19 @@ async fn wait_and_capture(child: &mut Child, timeout: Duration, label: &str) -> 
 
 /// One pipe, read by its own task while the child runs. Dropping this detaches the task, which
 /// ends when the last writer closes the pipe: closing the read end sooner would kill a descendant
-/// that outlives the child with SIGPIPE at its next write.
+/// that outlives the child with SIGPIPE at its next write. The task outlives its caller, so it
+/// shares the capture rather than borrowing it. Runs on the sidecar's `LocalSet`.
 struct PipeDrain {
-    captured: Arc<Mutex<Vec<u8>>>,
+    captured: Rc<RefCell<Vec<u8>>>,
     task: JoinHandle<()>,
 }
 
 impl PipeDrain {
-    fn spawn(pipe: Option<impl AsyncRead + Unpin + Send + 'static>, label: &str) -> Self {
-        let captured = Arc::new(Mutex::new(Vec::with_capacity(OUTPUT_CAPTURE_BYTES)));
-        let shared = Arc::clone(&captured);
+    fn spawn(pipe: Option<impl AsyncRead + Unpin + 'static>, label: &str) -> Self {
+        let captured = Rc::new(RefCell::new(Vec::with_capacity(OUTPUT_CAPTURE_BYTES)));
+        let shared = Rc::clone(&captured);
         let label = label.to_owned();
-        let task = tokio::spawn(async move {
+        let task = tokio::task::spawn_local(async move {
             if let Err(err) = drain_pipe(pipe, &shared).await {
                 warn!("Error reading output for: {label}, {err}");
             }
@@ -199,8 +201,7 @@ impl PipeDrain {
     }
 
     fn output(&self) -> String {
-        let captured = self.captured.lock().unwrap_or_else(PoisonError::into_inner);
-        captured_to_string(&captured)
+        captured_to_string(&self.captured.borrow())
     }
 }
 
@@ -208,7 +209,7 @@ impl PipeDrain {
 /// would block on a full pipe. The last writer closing the pipe bounds this.
 async fn drain_pipe(
     pipe: Option<impl AsyncRead + Unpin>,
-    captured: &Mutex<Vec<u8>>,
+    captured: &RefCell<Vec<u8>>,
 ) -> io::Result<()> {
     let Some(mut pipe) = pipe else {
         return Ok(());
@@ -219,7 +220,8 @@ async fn drain_pipe(
         if read_bytes == 0 {
             return Ok(());
         }
-        let mut captured = captured.lock().unwrap_or_else(PoisonError::into_inner);
+        // The borrow ends with this iteration, before the next read awaits.
+        let mut captured = captured.borrow_mut();
         let room_bytes = OUTPUT_CAPTURE_BYTES.saturating_sub(captured.len());
         captured.extend_from_slice(&chunk[..read_bytes.min(room_bytes)]);
         assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
@@ -412,8 +414,8 @@ mod tests {
         captured_to_string, drain_pipe, limit_output_length, MAX_OUTPUT_LENGTH_BYTES,
         OUTPUT_CAPTURE_BYTES,
     };
+    use std::cell::RefCell;
     use std::ops::Not;
-    use std::sync::Mutex;
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -423,9 +425,9 @@ mod tests {
         // afterwards, and check that nothing is left to read from it.
         let written = vec![b'x'; OUTPUT_CAPTURE_BYTES * 8];
         let mut pipe = written.as_slice();
-        let captured = Mutex::new(Vec::new());
+        let captured = RefCell::new(Vec::new());
         drain_pipe(Some(&mut pipe), &captured).await.unwrap();
-        assert_eq!(captured.lock().unwrap().len(), OUTPUT_CAPTURE_BYTES);
+        assert_eq!(captured.borrow().len(), OUTPUT_CAPTURE_BYTES);
         let mut left = Vec::new();
         pipe.read_to_end(&mut left).await.unwrap();
         assert!(left.is_empty());
@@ -435,9 +437,9 @@ mod tests {
     async fn drain_handles_a_missing_pipe() {
         // Goal: a child without a pipe captures nothing, and is not an error.
         // Method: drain `None`.
-        let captured = Mutex::new(Vec::new());
+        let captured = RefCell::new(Vec::new());
         drain_pipe(None::<&[u8]>, &captured).await.unwrap();
-        assert!(captured.lock().unwrap().is_empty());
+        assert!(captured.borrow().is_empty());
     }
 
     #[test]
