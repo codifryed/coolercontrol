@@ -154,11 +154,15 @@ impl PipeReader {
 
     fn output(&self) -> String {
         let captured = self.captured.lock().unwrap_or_else(PoisonError::into_inner);
-        debug_assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
-        let mut output = String::from_utf8_lossy(&captured).trim().to_string();
-        limit_output_length(&mut output);
-        output
+        captured_to_string(&captured)
     }
+}
+
+fn captured_to_string(captured: &[u8]) -> String {
+    debug_assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
+    let mut output = String::from_utf8_lossy(captured).into_owned();
+    limit_output_length(&mut output);
+    output.trim().to_string()
 }
 
 fn spawn_pipe_readers(child: &mut Child) -> io::Result<(PipeReader, PipeReader)> {
@@ -238,6 +242,19 @@ mod capture_tests {
             assert!(output.ends_with("...[truncated]"));
             assert!(output.len() <= MAX_OUTPUT_LENGTH_BYTES + "...[truncated]".len());
         }
+    }
+
+    #[test]
+    fn whitespace_does_not_hide_a_cut() {
+        // Goal: output cut at the capture size is marked, even if trimming brings it within the
+        // limit.
+        // Method: fill a capture with whitespace at its end, and with a newline at its start.
+        let mut trailing = vec![b'x'; MAX_OUTPUT_LENGTH_BYTES];
+        trailing.push(b' ');
+        assert!(captured_to_string(&trailing).ends_with("...[truncated]"));
+        let mut leading = vec![b'\n'];
+        leading.extend_from_slice(&[b'x'; MAX_OUTPUT_LENGTH_BYTES]);
+        assert!(captured_to_string(&leading).ends_with("...[truncated]"));
     }
 
     #[test]
