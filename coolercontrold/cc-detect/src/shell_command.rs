@@ -212,8 +212,10 @@ fn wait_for_exit(child: &mut Child, deadline: Instant) -> io::Result<Option<Exit
 fn wait_for_readers(stdout: &PipeReader, stderr: &PipeReader, deadline: Instant) {
     assert!(deadline <= Instant::now() + PIPE_DRAIN_GRACE);
     while Instant::now() < deadline {
-        if stdout.thread.is_finished() && stderr.thread.is_finished() {
-            return;
+        if stdout.thread.is_finished() {
+            if stderr.thread.is_finished() {
+                return;
+            }
         }
         std::thread::sleep(PIPE_POLL_INTERVAL);
     }
