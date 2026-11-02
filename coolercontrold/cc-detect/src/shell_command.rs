@@ -326,6 +326,15 @@ mod tests {
         false
     }
 
+    /// The script writes this before it exits. A pipe would not do: a descendant holding it uses
+    /// up the drain grace, so what is in it may still be unread when the run returns.
+    fn read_pid(pid_file: &std::path::Path) -> String {
+        let contents = std::fs::read_to_string(pid_file).unwrap();
+        let pid = contents.trim();
+        assert!(pid.parse::<u32>().is_ok(), "{pid}");
+        pid.to_owned()
+    }
+
     #[test]
     fn output_past_the_pipe_buffer_does_not_hang() {
         // Goal: a child that writes more than a pipe holds exits instead of blocking until the
@@ -397,15 +406,16 @@ mod tests {
     fn exit_status_is_trusted_when_a_descendant_holds_the_pipes() {
         // Goal: a child that exits 0 is a success, even though a background process it left
         // behind still holds its pipes, and that process is not killed.
-        // Method: background a sleep past the timeout and report its pid on stdout.
+        // Method: background a sleep past the timeout and report its pid in a file.
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("pid");
+        let script = format!("sleep 15 & echo $! > '{}'", pid_file.display());
         let start = Instant::now();
-        let result = ShellCommand::new("sleep 15 & echo $!", TIMEOUT_GENEROUS).run();
+        let result = ShellCommand::new(&script, TIMEOUT_GENEROUS).run();
         assert!(start.elapsed() < ELAPSED_MAX);
-        let ShellCommandResult::Success { stdout, .. } = result else {
-            panic!("expected success");
-        };
-        assert!(stdout.parse::<u32>().is_ok(), "{stdout}");
-        assert!(std::path::Path::new(&format!("/proc/{stdout}")).exists());
+        assert!(matches!(result, ShellCommandResult::Success { .. }));
+        let pid = read_pid(&pid_file);
+        assert!(std::path::Path::new(&format!("/proc/{pid}")).exists());
     }
 
     #[test]
@@ -424,13 +434,17 @@ mod tests {
         // Goal: the wait ends soon after the child exits, even if a pipe never goes quiet.
         // Method: leave a writer that outlasts ELAPSED_MAX, then kill it. `timeout` ends it if an
         // assert fails first.
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("pid");
+        let script = format!("timeout 10 yes & echo $! > '{}'", pid_file.display());
         let start = Instant::now();
-        let result = ShellCommand::new("timeout 10 yes & echo $! >&2", TIMEOUT_GENEROUS).run();
+        let result = ShellCommand::new(&script, TIMEOUT_GENEROUS).run();
         let elapsed = start.elapsed();
-        let ShellCommandResult::Success { stderr: pid, .. } = result else {
-            panic!("expected success");
-        };
-        let killed = Command::new("kill").arg(&pid).status().unwrap();
+        assert!(matches!(result, ShellCommandResult::Success { .. }));
+        let killed = Command::new("kill")
+            .arg(read_pid(&pid_file))
+            .status()
+            .unwrap();
         assert!(killed.success(), "the writer should still run");
         assert!(elapsed < ELAPSED_MAX);
     }
