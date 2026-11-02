@@ -1044,15 +1044,15 @@ impl GpuAMD {
         }
     }
 
-    /// Hands the Zero RPM settings back to their firmware boot defaults.
+    /// Returns the whole fan control interface to firmware automatic mode.
     ///
-    /// This discards any value `CoolerControl` forced; it does not disable Zero RPM. The boot
-    /// default is enabled on most RDNA3/4 cards, which is the intent: a profile that does not
-    /// ask for Zero RPM gets stock firmware behavior rather than an override.
-    /// Deliberately does not touch the fan curve: an apply always stages every curve point,
-    /// so resetting the curve first only costs an extra upload and leaves the card briefly
-    /// in firmware automatic mode with an all-zero table.
-    async fn reset_zero_rpm_settings(fan_curve_info: &FanCurveInfo, io: &DeviceIo) {
+    /// For the reset-to-default and shutdown paths, where the curve itself must be given back.
+    /// Zero RPM goes back to its boot default, which is enabled on most RDNA3/4 cards. Each
+    /// restore commits by itself, since the kernel falls through from restore into commit.
+    async fn reset_fan_curve_and_zero_rpm(
+        fan_curve_info: &FanCurveInfo,
+        io: &DeviceIo,
+    ) -> Result<()> {
         if let Some(zero_rpm_path) = &fan_curve_info.zero_rpm {
             if let Err(err) = io.write_value(zero_rpm_path, b"r\n".to_vec()).await {
                 warn!("Error resetting Zero RPM Enable: {err}");
@@ -1066,16 +1066,6 @@ impl GpuAMD {
                 warn!("Error resetting Zero RPM Stop Temperature: {err}");
             }
         }
-    }
-
-    /// Returns the whole fan control interface to firmware automatic mode.
-    ///
-    /// For the reset-to-default and shutdown paths, where the curve itself must be given back.
-    async fn reset_fan_curve_and_zero_rpm(
-        fan_curve_info: &FanCurveInfo,
-        io: &DeviceIo,
-    ) -> Result<()> {
-        Self::reset_zero_rpm_settings(fan_curve_info, io).await;
         io.write_value(&fan_curve_info.path, b"r\n".to_vec())
             .await
             .with_context(|| "Resetting Fan Curve file to automatic mode")
@@ -1113,39 +1103,14 @@ impl GpuAMD {
                     "PMFW Fan Curve control is present for this device, but not enabled. Please see documentation."
                 ));
             }
-            if fixed_speed == 0 && fan_curve_info.zero_rpm.is_some() {
-                if fan_curve_info.zero_rpm_stop_temp.is_some() {
-                    Self::set_zero_rpm(fan_curve_info, true, &amd_driver_info.hwmon.io).await?;
-                    Self::set_zero_rpm_stop_temp_highest(fan_curve_info, &amd_driver_info.hwmon.io)
-                        .await
-                } else {
-                    Self::set_zero_rpm(fan_curve_info, true, &amd_driver_info.hwmon.io).await?;
-                    let lowest_fan_curve_speed = fan_curve_info.speed_range.start();
-                    Self::set_fan_curve_duty(
-                        fan_curve_info,
-                        *lowest_fan_curve_speed,
-                        &amd_driver_info.hwmon.io,
-                    )
-                    .await
-                }
-            } else {
-                if let Err(err) =
-                    Self::set_zero_rpm(fan_curve_info, false, &amd_driver_info.hwmon.io).await
-                {
-                    error!(
-                        "Failed to disable Zero RPM Mode for {}: {err}",
+            Self::set_pmfw_duty(fan_curve_info, fixed_speed, &amd_driver_info.hwmon.io)
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Error setting PMFW device duty of {fixed_speed}% on {} - {err}",
                         amd_driver_info.hwmon.name
-                    );
-                }
-                Self::set_fan_curve_duty(fan_curve_info, fixed_speed, &amd_driver_info.hwmon.io)
-                    .await
-                    .map_err(|err| {
-                        anyhow!(
-                            "Error setting PMFW device duty of {fixed_speed}% on {} - {err}",
-                            amd_driver_info.hwmon.name
-                        )
-                    })
-            }
+                    )
+                })
         } else if amd_driver_info.uses_pmfw_fan_control() {
             // RDNA3/4 without a usable PMFW fan curve: the legacy pwm interface
             // returns EINVAL on these cards, so refuse with actionable guidance
@@ -1187,54 +1152,98 @@ impl GpuAMD {
         }
     }
 
-    async fn set_zero_rpm(
+    /// Applies a fixed duty as a flat curve.
+    ///
+    /// A duty of 0 turns Zero RPM on, with the stop temperature at its highest so the fan
+    /// stays stopped as long as it can, and the floor curve for above it. Any other duty turns
+    /// Zero RPM off, which would otherwise stop a fan asked to spin.
+    async fn set_pmfw_duty(fan_curve_info: &FanCurveInfo, duty: Duty, io: &DeviceIo) -> Result<()> {
+        debug_assert!(fan_curve_info.changeable);
+        if duty == 0 {
+            if fan_curve_info.zero_rpm.is_some() {
+                let stop_temperature_celsius = fan_curve_info
+                    .zero_rpm_stop_temp
+                    .as_ref()
+                    .map(|_| *fan_curve_info.zero_rpm_stop_temp_range.end());
+                let floor_duty = *fan_curve_info.speed_range.start();
+                let floor_curve = Self::create_flat_curve(fan_curve_info, floor_duty);
+                let zero_rpm = ZeroRpm::On {
+                    stop_temperature_celsius,
+                };
+                return Self::apply_fan_ctrl(fan_curve_info, zero_rpm, floor_curve, io).await;
+            }
+            // Without a Zero RPM file the fan cannot be stopped from here, so a zero duty
+            // falls through and clamps to the floor.
+        }
+        let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
+        Self::apply_fan_ctrl(fan_curve_info, ZeroRpm::Off, flat_curve, io).await
+    }
+
+    /// Stages Zero RPM, its stop temperature and every curve point, then commits them once.
+    ///
+    /// Each staged setting flags its feature for the next upload, and the kernel clears the
+    /// flags after every upload. Current PMFW resets any feature an upload does not flag, so
+    /// settings committed one by one undo each other: a curve uploaded alone turns Zero RPM back
+    /// on, and Zero RPM uploaded alone drops the curve. One commit flags them all. Zero RPM is
+    /// staged every time, because an unchanged value still sets its flag, and the kernel skips
+    /// the upload when nothing changed.
+    ///
+    /// A failure to turn Zero RPM off is logged and the curve still goes out, since a spinning
+    /// fan is the safe side. A failure to turn it on fails the apply.
+    async fn apply_fan_ctrl(
         fan_curve_info: &FanCurveInfo,
-        enable: bool,
+        zero_rpm: ZeroRpm,
+        fan_curve: FanCurve,
         io: &DeviceIo,
     ) -> Result<()> {
-        let Some(zero_rpm_path) = &fan_curve_info.zero_rpm else {
-            return Ok(());
-        };
+        assert!(fan_curve.points.is_empty().not(), "a curve needs points");
+        assert_eq!(
+            fan_curve.points.len(),
+            fan_curve_info.fan_curve.points.len(),
+            "an unstaged point would leave a stale table for the commit"
+        );
+        let zero_rpm_enable = zero_rpm.is_on();
+        if zero_rpm_enable {
+            debug_assert!(fan_curve_info.zero_rpm.is_some());
+        }
+        if let Some(zero_rpm_path) = &fan_curve_info.zero_rpm {
+            if let Err(err) = Self::stage_zero_rpm(zero_rpm_path, zero_rpm_enable, io).await {
+                if zero_rpm_enable {
+                    return Err(err);
+                }
+                error!("{err}. Applying the Fan Curve anyway, so the fan may still stop at idle");
+            }
+        }
+        if let ZeroRpm::On {
+            stop_temperature_celsius: Some(temp),
+        } = zero_rpm
+        {
+            debug_assert!(fan_curve_info.zero_rpm_stop_temp.is_some());
+            debug_assert!(fan_curve_info.zero_rpm_stop_temp_range.contains(&temp));
+            if let Some(stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp {
+                Self::stage_zero_rpm_stop_temp(stop_temp_path, temp, io).await?;
+            }
+        }
+        Self::set_fan_curve(fan_curve, &fan_curve_info.path, io).await
+    }
+
+    /// Stages Zero RPM on or off. Nothing reaches the firmware until the next commit.
+    async fn stage_zero_rpm(zero_rpm_path: &Path, enable: bool, io: &DeviceIo) -> Result<()> {
         let binary_bool = u8::from(enable);
         io.write_value(zero_rpm_path, format!("{binary_bool}\n").into_bytes())
             .await
-            .map_err(|err| anyhow!("Error applying {binary_bool} to Zero RPM Enable: {err}"))?;
-        io.write_value(zero_rpm_path, b"c\n".to_vec())
-            .await
-            .map_err(|err| anyhow!("Error Committing Zero RPM Enable: {err}"))
+            .map_err(|err| anyhow!("Error applying {binary_bool} to Zero RPM Enable: {err}"))
     }
 
-    async fn set_zero_rpm_stop_temp_highest(
-        fan_curve_info: &FanCurveInfo,
+    /// Stages the Zero RPM stop temperature. Nothing reaches the firmware until the next commit.
+    async fn stage_zero_rpm_stop_temp(
+        stop_temp_path: &Path,
+        temp: CurveTemp,
         io: &DeviceIo,
     ) -> Result<()> {
-        let highest_temp = fan_curve_info.zero_rpm_stop_temp_range.end();
-        Self::set_zero_rpm_stop_temp(fan_curve_info, highest_temp, io).await
-    }
-
-    async fn set_zero_rpm_stop_temp(
-        fan_curve_info: &FanCurveInfo,
-        temp: &CurveTemp,
-        io: &DeviceIo,
-    ) -> Result<()> {
-        let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp else {
-            return Ok(());
-        };
-        io.write_value(zero_rpm_stop_temp_path, format!("{temp}\n").into_bytes())
+        io.write_value(stop_temp_path, format!("{temp}\n").into_bytes())
             .await
-            .map_err(|err| anyhow!("Error applying {temp} to Zero RPM Stop Temperature: {err}"))?;
-        io.write_value(zero_rpm_stop_temp_path, b"c\n".to_vec())
-            .await
-            .map_err(|err| anyhow!("Error Committing Zero RPM Stop Temperature: {err}"))
-    }
-
-    async fn set_fan_curve_duty(
-        fan_curve_info: &FanCurveInfo,
-        duty: Duty,
-        io: &DeviceIo,
-    ) -> Result<()> {
-        let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
-        Self::set_fan_curve(flat_curve, &fan_curve_info.path, io).await
+            .map_err(|err| anyhow!("Error applying {temp} to Zero RPM Stop Temperature: {err}"))
     }
 
     /// Stages every curve point and commits them as one table.
@@ -1358,22 +1367,7 @@ impl GpuAMD {
                 but not enabled. Please see the documentation about enabling this in the kernel."
             ));
         }
-        // if present and fan curve hits 0, enable Zero RPM with interpolated temp
-        // Otherwise we let the firmware handle it like stock.
-        let mut set_zero_rpm = false;
-        if fan_curve_info.zero_rpm.is_some() && fan_curve_info.zero_rpm_stop_temp.is_some() {
-            if let Some(stop_temp) = Self::find_zero_rpm_stop_temp(fan_curve_info, speed_profile) {
-                Self::set_zero_rpm(fan_curve_info, true, &amd_driver_info.hwmon.io).await?;
-                Self::set_zero_rpm_stop_temp(fan_curve_info, &stop_temp, &amd_driver_info.hwmon.io)
-                    .await?;
-                set_zero_rpm = true;
-            }
-        }
-        if set_zero_rpm.not() {
-            Self::reset_zero_rpm_settings(fan_curve_info, &amd_driver_info.hwmon.io).await;
-        }
-        let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile, set_zero_rpm);
-        Self::set_fan_curve(fan_curve, &fan_curve_info.path, &amd_driver_info.hwmon.io)
+        Self::set_pmfw_profile(fan_curve_info, speed_profile, &amd_driver_info.hwmon.io)
             .await
             .map_err(|err| {
                 anyhow!(
@@ -1381,6 +1375,44 @@ impl GpuAMD {
                     amd_driver_info.hwmon.name
                 )
             })
+    }
+
+    /// Applies a speed profile as the firmware curve.
+    ///
+    /// Zero RPM follows the profile: on when the profile reaches 0, off otherwise, so the
+    /// firmware never stops a fan the profile wants spinning.
+    async fn set_pmfw_profile(
+        fan_curve_info: &FanCurveInfo,
+        speed_profile: &[(Temp, Duty)],
+        io: &DeviceIo,
+    ) -> Result<()> {
+        debug_assert!(fan_curve_info.changeable);
+        let zero_rpm = Self::profile_zero_rpm(fan_curve_info, speed_profile);
+        let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile, zero_rpm.is_on());
+        Self::apply_fan_ctrl(fan_curve_info, zero_rpm, fan_curve, io).await
+    }
+
+    /// Whether a profile turns Zero RPM on, and the stop temperature to stage with it.
+    ///
+    /// The stop temperature is where the profile reaches 0. Without a stop temperature file,
+    /// the firmware's own threshold applies.
+    fn profile_zero_rpm(fan_curve_info: &FanCurveInfo, speed_profile: &[(Temp, Duty)]) -> ZeroRpm {
+        if fan_curve_info.zero_rpm.is_none() {
+            return ZeroRpm::Off;
+        }
+        if fan_curve_info.zero_rpm_stop_temp.is_some() {
+            let stop_temp = Self::find_zero_rpm_stop_temp(fan_curve_info, speed_profile);
+            return stop_temp.map_or(ZeroRpm::Off, |temp| ZeroRpm::On {
+                stop_temperature_celsius: Some(temp),
+            });
+        }
+        let reaches_zero = speed_profile.iter().any(|(_, duty)| *duty < 1);
+        if reaches_zero {
+            return ZeroRpm::On {
+                stop_temperature_celsius: None,
+            };
+        }
+        ZeroRpm::Off
     }
 
     /// Returns the temperature at which the fan curve hits 0.
@@ -1494,6 +1526,23 @@ impl GpuAMD {
             capped_profile.push(speed_profile.last().copied().unwrap_or((100., 100_u8)));
         }
         capped_profile
+    }
+}
+
+/// The Zero RPM setting an apply stages with its curve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ZeroRpm {
+    /// The firmware never stops the fan.
+    Off,
+    /// The fan stops below the stop temperature, or the firmware's own threshold without one.
+    On {
+        stop_temperature_celsius: Option<CurveTemp>,
+    },
+}
+
+impl ZeroRpm {
+    fn is_on(self) -> bool {
+        matches!(self, Self::On { .. })
     }
 }
 
@@ -1618,9 +1667,10 @@ struct FanCurve {
 
 #[cfg(test)]
 mod tests {
+    use crate::device::Duty;
     use crate::repositories::gpu::amd::{
-        AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HwmonLoad, HEADER_ZERO_RPM_ENABLE,
-        HEADER_ZERO_RPM_STOP_TEMP,
+        AMDDriverInfo, CurveTemp, FanCurve, FanCurveInfo, GpuAMD, HwmonLoad,
+        HEADER_ZERO_RPM_ENABLE, HEADER_ZERO_RPM_STOP_TEMP,
     };
     use crate::repositories::hwmon::device_io::DeviceIo;
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
@@ -2652,31 +2702,295 @@ mod tests {
         }
     }
 
+    /// A five point card with the given Zero RPM endpoints, for a recording device. The paths
+    /// are never opened.
+    fn recorded_fan_curve_info(zero_rpm: bool, stop_temp: bool) -> FanCurveInfo {
+        FanCurveInfo {
+            temperature_range: RangeInclusive::new(25, 100),
+            speed_range: RangeInclusive::new(15, 100),
+            path: PathBuf::from("/fake/fan_curve"),
+            zero_rpm: zero_rpm.then(|| PathBuf::from("/fake/fan_zero_rpm_enable")),
+            zero_rpm_stop_temp: stop_temp
+                .then(|| PathBuf::from("/fake/fan_zero_rpm_stop_temperature")),
+            zero_rpm_stop_temp_range: RangeInclusive::new(30, 80),
+            ..basic_test_fan_curve_info()
+        }
+    }
+
+    /// The writes one apply must make, in order: Zero RPM and its stop temperature when given,
+    /// every curve point, then the single commit.
+    fn expected_apply(
+        info: &FanCurveInfo,
+        zero_rpm: Option<&str>,
+        stop_temp: Option<&str>,
+        points: &[(CurveTemp, Duty)],
+    ) -> Vec<(PathBuf, String)> {
+        let mut writes = Vec::with_capacity(points.len() + 3);
+        if let Some(value) = zero_rpm {
+            writes.push((info.zero_rpm.clone().unwrap(), value.to_owned()));
+        }
+        if let Some(value) = stop_temp {
+            writes.push((info.zero_rpm_stop_temp.clone().unwrap(), value.to_owned()));
+        }
+        for (i, (temp, duty)) in points.iter().enumerate() {
+            writes.push((info.path.clone(), format!("{i} {temp} {duty}\n")));
+        }
+        writes.push((info.path.clone(), "c\n".to_owned()));
+        writes
+    }
+
+    fn flat_points(duty: Duty) -> [(CurveTemp, Duty); 5] {
+        [
+            (25, duty),
+            (100, duty),
+            (100, duty),
+            (100, duty),
+            (100, duty),
+        ]
+    }
+
+    #[test]
+    fn a_duty_turns_zero_rpm_off_in_the_same_upload_as_the_curve() {
+        // Goal: current PMFW stops the fan when a curve upload lacks the Zero RPM flag, so
+        // Zero RPM off must be staged with the curve and committed once. Method: apply a duty
+        // through a recording device and compare every write, which also rules out an `r`.
+        cc_fs::test_runtime(async {
+            let info = recorded_fan_curve_info(true, true);
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 20, &io))
+                .await
+                .unwrap();
+
+            let expected = expected_apply(&info, Some("0\n"), None, &flat_points(20));
+            assert_eq!(recorder.writes(), expected);
+        });
+    }
+
+    #[test]
+    fn a_zero_duty_stages_the_highest_stop_temp_and_the_floor_curve() {
+        // Goal: a zero duty keeps the fan stopped as long as possible and leaves the firmware
+        // on a CoolerControl curve, not its own, above the stop temperature. Method: apply 0
+        // through a recording device and compare every write.
+        cc_fs::test_runtime(async {
+            let info = recorded_fan_curve_info(true, true);
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 0, &io))
+                .await
+                .unwrap();
+
+            let expected = expected_apply(&info, Some("1\n"), Some("80\n"), &flat_points(15));
+            assert_eq!(recorder.writes(), expected);
+        });
+    }
+
+    #[test]
+    fn a_zero_duty_without_a_stop_temp_file_stages_the_floor_curve() {
+        // Goal: RDNA4 on kernels without the stop temperature file still stops the fan on a
+        // zero duty, at the firmware's threshold. Method: apply 0 to a card with only the
+        // Zero RPM file and compare every write.
+        cc_fs::test_runtime(async {
+            let info = recorded_fan_curve_info(true, false);
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 0, &io))
+                .await
+                .unwrap();
+
+            let expected = expected_apply(&info, Some("1\n"), None, &flat_points(15));
+            assert_eq!(recorder.writes(), expected);
+        });
+    }
+
+    #[test]
+    fn a_card_without_zero_rpm_gets_only_the_curve() {
+        // Goal: a card without the Zero RPM file is never written one. Method: apply a duty
+        // and a zero duty, which clamps to the floor, and compare every write.
+        cc_fs::test_runtime(async {
+            let info = recorded_fan_curve_info(false, false);
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 20, &io))
+                .await
+                .unwrap();
+            recorder
+                .serve(GpuAMD::set_pmfw_duty(&info, 0, &io))
+                .await
+                .unwrap();
+
+            let mut expected = expected_apply(&info, None, None, &flat_points(20));
+            expected.extend(expected_apply(&info, None, None, &flat_points(15)));
+            assert_eq!(recorder.writes(), expected);
+        });
+    }
+
+    #[test]
+    fn a_profile_reaching_zero_stages_its_stop_temp_with_the_curve() {
+        // Goal: the stop temperature shares the Zero RPM flag, so it must ride in the curve's
+        // upload or the firmware resets it. Method: apply a profile that reaches 0 at 40C and
+        // compare every write.
+        cc_fs::test_runtime(async {
+            let info = recorded_fan_curve_info(true, true);
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+            let profile = [(40.0, 0), (60.0, 50), (80.0, 100)];
+
+            recorder
+                .serve(GpuAMD::set_pmfw_profile(&info, &profile, &io))
+                .await
+                .unwrap();
+
+            let points = [(40, 15), (60, 50), (80, 100), (80, 100), (80, 100)];
+            let expected = expected_apply(&info, Some("1\n"), Some("40\n"), &points);
+            assert_eq!(recorder.writes(), expected);
+        });
+    }
+
+    #[test]
+    fn a_profile_reaching_zero_without_a_stop_temp_file_turns_zero_rpm_on() {
+        // Goal: without a stop temperature file, a profile that reaches 0 still gets Zero RPM,
+        // at the firmware's threshold. Method: apply such a profile and compare every write.
+        cc_fs::test_runtime(async {
+            let info = recorded_fan_curve_info(true, false);
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+            let profile = [(40.0, 0), (60.0, 50), (80.0, 100)];
+
+            recorder
+                .serve(GpuAMD::set_pmfw_profile(&info, &profile, &io))
+                .await
+                .unwrap();
+
+            let points = [(40, 15), (60, 50), (80, 100), (80, 100), (80, 100)];
+            let expected = expected_apply(&info, Some("1\n"), None, &points);
+            assert_eq!(recorder.writes(), expected);
+        });
+    }
+
+    #[test]
+    fn a_profile_that_never_reaches_zero_turns_zero_rpm_off() {
+        // Goal: the firmware must not stop a fan the profile wants spinning, so a profile that
+        // stays above 0 turns Zero RPM off, and no stop temperature or reset is written.
+        // Method: apply such a profile to a card with both files and compare every write.
+        cc_fs::test_runtime(async {
+            let info = recorded_fan_curve_info(true, true);
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+            let profile = [(40.0, 20), (60.0, 50), (80.0, 100)];
+
+            recorder
+                .serve(GpuAMD::set_pmfw_profile(&info, &profile, &io))
+                .await
+                .unwrap();
+
+            let points = [(40, 20), (60, 50), (80, 100), (80, 100), (80, 100)];
+            let expected = expected_apply(&info, Some("0\n"), None, &points);
+            assert_eq!(recorder.writes(), expected);
+        });
+    }
+
     #[test]
     #[serial]
-    fn resetting_zero_rpm_leaves_the_fan_curve_alone() {
-        // Verifies the apply path no longer resets the curve. Staging always writes every
-        // point, so a reset first would only add an upload and drop the card into firmware
-        // automatic mode with an all-zero table in between.
+    fn failing_to_turn_zero_rpm_off_still_applies_the_curve() {
+        // Goal: a spinning fan is the safe side, so a Zero RPM write that fails must not block
+        // the duty. Method: point Zero RPM under a file so its write fails, apply a duty, and
+        // check the curve was still committed.
         cc_fs::test_runtime(async {
             let ctx = load_setup();
-            // given: a device with both Zero RPM endpoints present.
-            let info = fan_curve_info_with_paths(&ctx).await;
+            let blocker = ctx.test_base_path.join("not_a_dir");
+            cc_fs::write(&blocker, b"x".to_vec()).await.unwrap();
+            let info = FanCurveInfo {
+                zero_rpm: Some(blocker.join("fan_zero_rpm_enable")),
+                zero_rpm_stop_temp: None,
+                ..fan_curve_info_with_paths(&ctx).await
+            };
 
-            // when:
-            GpuAMD::reset_zero_rpm_settings(&info, &DeviceIo::default()).await;
+            let result = GpuAMD::set_pmfw_duty(&info, 20, &DeviceIo::default()).await;
 
-            // then:
             let curve = cc_fs::read_txt(&info.path).await.unwrap();
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(curve, "c\n");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn failing_to_turn_zero_rpm_on_fails_before_any_commit() {
+        // Goal: a zero duty that cannot turn Zero RPM on must say so, not commit a floor curve
+        // that leaves the fan spinning silently. Method: point Zero RPM under a file so its
+        // write fails, apply 0, and check the curve file was never written.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup();
+            let blocker = ctx.test_base_path.join("not_a_dir");
+            cc_fs::write(&blocker, b"x".to_vec()).await.unwrap();
+            let info = FanCurveInfo {
+                zero_rpm: Some(blocker.join("fan_zero_rpm_enable")),
+                ..fan_curve_info_with_paths(&ctx).await
+            };
+
+            let result = GpuAMD::set_pmfw_duty(&info, 0, &DeviceIo::default()).await;
+
+            let curve = cc_fs::read_txt(&info.path).await.unwrap();
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Zero RPM Enable"), "actual: {err}");
+            assert_eq!(curve, "OD_FAN_CURVE:\n", "nothing may be committed");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn failing_to_stage_the_stop_temp_fails_before_any_commit() {
+        // Goal: with Zero RPM on, a stop temperature that cannot be staged must fail the apply
+        // before the curve goes out, even though Zero RPM itself staged. Method: point the stop
+        // temperature under a file so its write fails, apply 0, and check Zero RPM was staged
+        // but the curve file was never written.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup();
+            let blocker = ctx.test_base_path.join("not_a_dir");
+            cc_fs::write(&blocker, b"x".to_vec()).await.unwrap();
+            let info = FanCurveInfo {
+                zero_rpm_stop_temp: Some(blocker.join("fan_zero_rpm_stop_temperature")),
+                ..fan_curve_info_with_paths(&ctx).await
+            };
+
+            let result = GpuAMD::set_pmfw_duty(&info, 0, &DeviceIo::default()).await;
+
             let zero_rpm = cc_fs::read_txt(info.zero_rpm.as_ref().unwrap())
                 .await
                 .unwrap();
-            let stop_temp = cc_fs::read_txt(info.zero_rpm_stop_temp.as_ref().unwrap())
+            let curve = cc_fs::read_txt(&info.path).await.unwrap();
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Zero RPM Stop Temperature"), "actual: {err}");
+            assert_eq!(
+                zero_rpm, "1\n",
+                "Zero RPM stages before the stop temperature"
+            );
+            assert_eq!(curve, "OD_FAN_CURVE:\n", "nothing may be committed");
+        });
+    }
+
+    #[test]
+    fn resetting_restores_every_setting_and_stages_nothing() {
+        // Goal: the reset and shutdown path hands everything back with restores, each of which
+        // commits by itself, and never stages a value. Method: reset through a recording
+        // device and compare every write.
+        cc_fs::test_runtime(async {
+            let info = recorded_fan_curve_info(true, true);
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+
+            recorder
+                .serve(GpuAMD::reset_fan_curve_and_zero_rpm(&info, &io))
                 .await
                 .unwrap();
-            assert_eq!(curve, "OD_FAN_CURVE:\n", "the fan curve must not be reset");
-            assert_eq!(zero_rpm, "r\n");
-            assert_eq!(stop_temp, "r\n");
+
+            let expected = [
+                (info.zero_rpm.clone().unwrap(), "r\n".to_owned()),
+                (info.zero_rpm_stop_temp.clone().unwrap(), "r\n".to_owned()),
+                (info.path.clone(), "r\n".to_owned()),
+            ];
+            assert_eq!(recorder.writes(), expected);
         });
     }
 
