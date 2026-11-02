@@ -1065,8 +1065,9 @@ impl GpuAMD {
     /// Zero RPM goes back to its boot default, which is enabled on most RDNA3/4 cards. Each
     /// restore commits by itself, since the kernel falls through from restore into commit.
     ///
-    /// Every restore is attempted, so one failure hands back what it can, then the first error
-    /// returns: firmware keeps a stop temperature that was not restored, so the card stays taken.
+    /// Every restore is attempted, so one failure hands back what it can, then any error returns:
+    /// firmware keeps a stop temperature that was not restored, so the card stays taken. The
+    /// curve's error returns first, as the fan is still on our curve and Zero RPM's are warned.
     async fn reset_fan_curve_and_zero_rpm(
         fan_curve_info: &FanCurveInfo,
         io: &DeviceIo,
@@ -1091,7 +1092,7 @@ impl GpuAMD {
             .write_value(&fan_curve_info.path, b"r\n".to_vec())
             .await
             .with_context(|| "Resetting Fan Curve file to automatic mode");
-        zero_rpm_reset.and(stop_temp_reset).and(curve_reset)
+        curve_reset.and(zero_rpm_reset).and(stop_temp_reset)
     }
 
     /// PMFW `FAN_CURVE_SPEED` floor for an RDNA3/4 card, `None` for any
@@ -3077,6 +3078,29 @@ mod tests {
             let curve = cc_fs::read_txt(&info.path).await.unwrap();
             assert!(result.is_err(), "a wedged device must not report success");
             assert!(curve.contains('r').not(), "nothing may reach the card");
+        });
+    }
+
+    /// Goal: a failed curve reset must surface even when the Zero RPM resets also fail, since the
+    /// fan is then still on the daemon's curve. Method: fail all three writes through a worker
+    /// nobody drains and assert the returned error is the curve's.
+    #[test]
+    #[serial]
+    fn a_failed_curve_reset_outranks_failed_zero_rpm_resets() {
+        cc_fs::test_runtime(async {
+            let ctx = load_setup();
+            let info = fan_curve_info_with_paths(&ctx).await;
+            assert!(info.zero_rpm.is_some());
+            assert!(info.zero_rpm_stop_temp.is_some());
+            let (wedged, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+
+            let result = GpuAMD::reset_fan_curve_and_zero_rpm(&info, &wedged).await;
+
+            let err = result.expect_err("a wedged device must not report success");
+            assert_eq!(
+                err.to_string(),
+                "Resetting Fan Curve file to automatic mode"
+            );
         });
     }
 
