@@ -296,15 +296,24 @@ mod tests {
     const TRUNCATED_OUTPUT_BYTES_MAX: usize = MAX_OUTPUT_LENGTH_BYTES + "...[truncated]".len();
     const PIPE_BUFFER_BYTES: usize = 64 * 1024;
     const TIMEOUT_GENEROUS: Duration = Duration::from_secs(10);
-    const TIMEOUT_SHORT: Duration = Duration::from_secs(1);
-    const TIMEOUT_TINY: Duration = Duration::from_millis(100);
-    /// Under the 5 s the scripts sleep for, and loose enough for a loaded CI machine.
-    const ELAPSED_MAX: Duration = Duration::from_secs(4);
+    /// Long enough for a starved shell to reach its last line before it is killed.
+    const TIMEOUT_SHORT: Duration = Duration::from_secs(3);
+    /// Under the 10 s the scripts sleep for, and loose enough for a loaded CI machine.
+    const ELAPSED_MAX: Duration = Duration::from_secs(8);
     const POLL_INTERVAL: Duration = Duration::from_millis(20);
-    const POLL_COUNT_MAX: usize = 200;
+    const POLL_COUNT_MAX: usize = 1000;
 
     fn fill_script(size_bytes: usize) -> String {
         format!("head -c {size_bytes} /dev/zero | tr '\\0' x")
+    }
+
+    /// A job that blocks until `gate` exists, so a test can decide when it writes. `timeout` ends
+    /// the wait if the test fails before opening the gate.
+    fn wait_for_gate(gate: &std::path::Path) -> String {
+        format!(
+            "timeout 30 sh -c 'until [ -e \"$0\" ]; do sleep 0.02; done' '{}'",
+            gate.display()
+        )
     }
 
     fn path_appears(path: &std::path::Path) -> bool {
@@ -390,11 +399,12 @@ mod tests {
         // behind still holds its pipes, and that process is not killed.
         // Method: background a sleep past the timeout and report its pid on stdout.
         let start = Instant::now();
-        let result = ShellCommand::new("sleep 5 & echo $!", TIMEOUT_SHORT).run();
+        let result = ShellCommand::new("sleep 15 & echo $!", TIMEOUT_GENEROUS).run();
         assert!(start.elapsed() < ELAPSED_MAX);
         let ShellCommandResult::Success { stdout, .. } = result else {
             panic!("expected success");
         };
+        assert!(stdout.parse::<u32>().is_ok(), "{stdout}");
         assert!(std::path::Path::new(&format!("/proc/{stdout}")).exists());
     }
 
@@ -404,7 +414,7 @@ mod tests {
         // still holding the pipes.
         // Method: the shell waits on a sleep past the timeout. Killing the shell leaves the sleep.
         let start = Instant::now();
-        let result = ShellCommand::new("sleep 5; true", TIMEOUT_SHORT).run();
+        let result = ShellCommand::new("sleep 10; true", TIMEOUT_SHORT).run();
         assert!(start.elapsed() < ELAPSED_MAX);
         assert!(matches!(result, ShellCommandResult::Error(_)));
     }
@@ -415,7 +425,7 @@ mod tests {
         // Method: leave a writer that outlasts ELAPSED_MAX, then kill it. `timeout` ends it if an
         // assert fails first.
         let start = Instant::now();
-        let result = ShellCommand::new("timeout 5 yes & echo $! >&2", TIMEOUT_GENEROUS).run();
+        let result = ShellCommand::new("timeout 10 yes & echo $! >&2", TIMEOUT_GENEROUS).run();
         let elapsed = start.elapsed();
         let ShellCommandResult::Success { stderr: pid, .. } = result else {
             panic!("expected success");
@@ -429,17 +439,21 @@ mod tests {
     fn a_descendant_can_still_write_after_the_caller_returns() {
         // Goal: nothing here ends a descendant. Closing the read end would kill it with SIGPIPE at
         // its next write.
-        // Method: background a job that writes twice after the grace, as a reader that gives up
-        // does so only once the first write wakes it. It then touches a marker it never reaches
-        // if a write kills it. One child exits, the other is killed at the timeout.
-        for (foreground, timeout) in [("", TIMEOUT_GENEROUS), ("exec sleep 60", TIMEOUT_TINY)] {
+        // Method: background a job that writes only once the caller has returned, and writes
+        // twice, as a reader that gives up does so only once the first write wakes it. It then
+        // touches a marker it never reaches if a write kills it. One child exits, the other is
+        // killed at the timeout.
+        for (foreground, timeout) in [("", TIMEOUT_GENEROUS), ("exec sleep 60", TIMEOUT_SHORT)] {
             let dir = tempfile::tempdir().unwrap();
+            let gate = dir.path().join("returned");
             let marker = dir.path().join("survived");
             let job = format!(
-                "(sleep 0.3; echo out; sleep 0.2; echo out; touch '{}')",
+                "({}; echo out; sleep 0.2; echo out; touch '{}')",
+                wait_for_gate(&gate),
                 marker.display()
             );
             let _ = ShellCommand::new(&format!("{job} & {foreground}"), timeout).run();
+            std::fs::File::create(&gate).unwrap();
             assert!(path_appears(&marker), "{foreground}");
         }
     }

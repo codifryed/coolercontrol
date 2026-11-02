@@ -509,12 +509,12 @@ mod command_tests {
     const TRUNCATED_OUTPUT_BYTES_MAX: usize = MAX_OUTPUT_LENGTH_BYTES + "... (truncated)".len();
     const PIPE_BUFFER_BYTES: usize = 64 * 1024;
     const TIMEOUT_GENEROUS: Duration = Duration::from_secs(10);
-    const TIMEOUT_SHORT: Duration = Duration::from_secs(1);
-    const TIMEOUT_TINY: Duration = Duration::from_millis(100);
-    /// Under the 5 s the scripts sleep for, and loose enough for a loaded CI machine.
-    const ELAPSED_MAX: Duration = Duration::from_secs(4);
+    /// Long enough for a starved shell to reach its last line before it is killed.
+    const TIMEOUT_SHORT: Duration = Duration::from_secs(3);
+    /// Under the 10 s the scripts sleep for, and loose enough for a loaded CI machine.
+    const ELAPSED_MAX: Duration = Duration::from_secs(8);
     const POLL_INTERVAL: Duration = Duration::from_millis(20);
-    const POLL_COUNT_MAX: usize = 200;
+    const POLL_COUNT_MAX: usize = 1000;
 
     #[derive(Clone, Copy, Debug)]
     enum Runner {
@@ -546,6 +546,15 @@ mod command_tests {
 
     fn fill_script(size_bytes: usize) -> String {
         format!("head -c {size_bytes} /dev/zero | tr '\\0' x")
+    }
+
+    /// A job that blocks until `gate` exists, so a test can decide when it writes. `timeout` ends
+    /// the wait if the test fails before opening the gate.
+    fn wait_for_gate(gate: &std::path::Path) -> String {
+        format!(
+            "timeout 30 sh -c 'until [ -e \"$0\" ]; do sleep 0.02; done' '{}'",
+            gate.display()
+        )
     }
 
     async fn path_appears(path: &std::path::Path) -> bool {
@@ -634,9 +643,10 @@ mod command_tests {
         // Method: background a sleep past the timeout and report its pid on stdout.
         for runner in RUNNERS {
             let start = Instant::now();
-            let result = run(runner, "sleep 5 & echo $!", TIMEOUT_SHORT).await;
+            let result = run(runner, "sleep 15 & echo $!", TIMEOUT_GENEROUS).await;
             assert!(start.elapsed() < ELAPSED_MAX, "{runner:?}");
             let (pid, _) = result.unwrap();
+            assert!(pid.parse::<u32>().is_ok(), "{runner:?}: {pid}");
             assert!(PathBuf::from(format!("/proc/{pid}")).exists(), "{runner:?}");
         }
     }
@@ -648,7 +658,7 @@ mod command_tests {
         // Method: the shell waits on a sleep past the timeout. Killing the shell leaves the sleep.
         for runner in RUNNERS {
             let start = Instant::now();
-            let result = run(runner, "sleep 5; true", TIMEOUT_SHORT).await;
+            let result = run(runner, "sleep 10; true", TIMEOUT_SHORT).await;
             assert!(start.elapsed() < ELAPSED_MAX, "{runner:?}");
             assert!(result.is_err(), "{runner:?}");
         }
@@ -661,7 +671,7 @@ mod command_tests {
         // assert fails first.
         for runner in RUNNERS {
             let start = Instant::now();
-            let result = run(runner, "timeout 5 yes & echo $! >&2", TIMEOUT_GENEROUS).await;
+            let result = run(runner, "timeout 10 yes & echo $! >&2", TIMEOUT_GENEROUS).await;
             let elapsed = start.elapsed();
             let (stdout, pid) = result.unwrap();
             let killed = std::process::Command::new("kill")
@@ -678,15 +688,22 @@ mod command_tests {
     async fn a_descendant_can_still_write_after_the_caller_returns() {
         // Goal: nothing the daemon does ends a descendant. Closing the read end would kill it with
         // SIGPIPE at its next write.
-        // Method: background a job that writes after the grace, then touches a marker it never
-        // reaches if the write kills it. One child exits, the other is killed at the timeout.
-        let cases = [("", TIMEOUT_GENEROUS), ("exec sleep 60", TIMEOUT_TINY)];
+        // Method: background a job that writes only once the caller has returned, then touches a
+        // marker it never reaches if the write kills it. One child exits, the other is killed at
+        // the timeout.
+        let cases = [("", TIMEOUT_GENEROUS), ("exec sleep 60", TIMEOUT_SHORT)];
         for runner in RUNNERS {
             for (foreground, timeout) in cases {
                 let dir = tempfile::tempdir().unwrap();
+                let gate = dir.path().join("returned");
                 let marker = dir.path().join("survived");
-                let job = format!("(sleep 0.3; echo out; touch '{}')", marker.display());
+                let job = format!(
+                    "({}; echo out; touch '{}')",
+                    wait_for_gate(&gate),
+                    marker.display()
+                );
                 let _ = run(runner, &format!("{job} & {foreground}"), timeout).await;
+                std::fs::File::create(&gate).unwrap();
                 assert!(path_appears(&marker).await, "{runner:?} {foreground}");
             }
         }
