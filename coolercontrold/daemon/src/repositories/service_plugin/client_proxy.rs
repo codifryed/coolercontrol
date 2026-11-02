@@ -30,7 +30,7 @@ const REQUEST_CHANNEL_CAP: usize = 16;
 
 /// One request to a service plugin's gRPC client. Each carries owned (`Send`) args and a `oneshot`
 /// for the reply, so it crosses the channel to the sidecar dispatcher.
-enum DeviceServiceRequest {
+pub enum DeviceServiceRequest {
     Health {
         respond_to: oneshot::Sender<Result<HealthResponse>>,
     },
@@ -298,6 +298,22 @@ impl DeviceServiceClientHandle {
     }
 }
 
+#[cfg(test)]
+impl DeviceServiceClientHandle {
+    /// A handle plus the receiver end, so a test can play the role of the sidecar dispatcher, or
+    /// hold the receiver and answer nothing. The address and poll rate are only consulted by the
+    /// `list_devices` mapping.
+    pub fn for_test() -> (Self, mpsc::Receiver<DeviceServiceRequest>) {
+        let (request_tx, request_rx) = mpsc::channel(REQUEST_CHANNEL_CAP);
+        let handle = Self {
+            request_tx,
+            client_address: "127.0.0.1:11987".to_owned(),
+            poll_rate: 1.0,
+        };
+        (handle, request_rx)
+    }
+}
+
 /// Runs on the sidecar: owns the tonic client and spawns each request so different devices run
 /// concurrently (the client's per-device `Mutex` serializes same-device calls). Exits when the
 /// handle is dropped and the request channel closes.
@@ -407,21 +423,6 @@ mod tests {
     use crate::grpc_api::device_service::v1::{HealthResponse, ListDevicesResponse};
     use crate::setting::{LcdModeKind, LcdSettings, LightingSettings, TempSource};
 
-    /// A handle plus the receiver end, so a test can play the role of the sidecar dispatcher. The
-    /// address and poll rate are only consulted by the `list_devices` mapping.
-    fn test_handle() -> (
-        DeviceServiceClientHandle,
-        mpsc::Receiver<DeviceServiceRequest>,
-    ) {
-        let (request_tx, request_rx) = mpsc::channel(REQUEST_CHANNEL_CAP);
-        let handle = DeviceServiceClientHandle {
-            request_tx,
-            client_address: "127.0.0.1:11987".to_owned(),
-            poll_rate: 1.0,
-        };
-        (handle, request_rx)
-    }
-
     fn temp_source() -> TempSource {
         TempSource {
             temp_name: "temp1".to_owned(),
@@ -513,7 +514,7 @@ mod tests {
             // Goal: each public method must build its matching request variant and surface the
             // dispatcher's reply. Method: drive every method against a canned-success stub and
             // assert all variants were routed, in call order.
-            let (handle, mut request_rx) = test_handle();
+            let (handle, mut request_rx) = DeviceServiceClientHandle::for_test();
             let mut seen: Vec<&'static str> = Vec::new();
             let uid: DeviceUID = "dev-1".to_owned();
             let calls = async {
@@ -565,7 +566,7 @@ mod tests {
             // Goal: arguments must reach the dispatcher unaltered (no field swap or loss). Method:
             // capture FixedDuty then SpeedProfile on the stub side and assert their fields equal
             // the values passed in.
-            let (handle, mut request_rx) = test_handle();
+            let (handle, mut request_rx) = DeviceServiceClientHandle::for_test();
             let uid: DeviceUID = "dev-9".to_owned();
             let profile = vec![(30.0_f64, 40_u8), (60.0, 80)];
             let call = async {
@@ -618,7 +619,7 @@ mod tests {
             // Goal: if the sidecar dispatcher has exited (receiver dropped), fallible methods must
             // surface the "dispatcher is gone" error instead of hanging; with_device_ids, which is
             // infallible by contract, must still return. Method: drop the receiver, then call each.
-            let (handle, request_rx) = test_handle();
+            let (handle, request_rx) = DeviceServiceClientHandle::for_test();
             drop(request_rx);
             let uid: DeviceUID = "dev-x".to_owned();
             let err = handle.health().await.unwrap_err();
@@ -649,7 +650,7 @@ mod tests {
             // Goal: list_devices runs the !Send response mapping on the main thread; an empty
             // response must yield no devices. Method: answer with an empty ListDevicesResponse and
             // assert the mapped Vec is empty.
-            let (handle, mut request_rx) = test_handle();
+            let (handle, mut request_rx) = DeviceServiceClientHandle::for_test();
             let call = async { handle.list_devices().await.unwrap() };
             let serve = async {
                 match request_rx.recv().await.expect("list_devices request") {
