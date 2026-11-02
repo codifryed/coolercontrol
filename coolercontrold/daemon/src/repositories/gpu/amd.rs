@@ -1013,14 +1013,25 @@ impl GpuAMD {
         }
     }
 
+    /// Whether the daemon has driven this channel. A reset writes to nothing else, so what the
+    /// firmware or another tool set is not overwritten.
+    pub fn is_channel_taken(&self, device_uid: &UID, channel_name: &str) -> bool {
+        self.amd_driver_infos
+            .get(device_uid)
+            .is_some_and(|info| info.hwmon.taken_channels.is_taken(channel_name))
+    }
+
     pub async fn reset_amd_to_default(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         let amd_hwmon_info = self
             .amd_driver_infos
             .get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
+        let taken_channels = &amd_hwmon_info.hwmon.taken_channels;
         if let Some(fan_curve_info) = &amd_hwmon_info.fan_curve_info {
             if fan_curve_info.changeable {
-                Self::reset_fan_curve_and_zero_rpm(fan_curve_info, &amd_hwmon_info.hwmon.io).await
+                Self::reset_fan_curve_and_zero_rpm(fan_curve_info, &amd_hwmon_info.hwmon.io)
+                    .await
+                    .inspect(|()| taken_channels.release_device())
             } else {
                 Err(anyhow!(
                     "PMFW Fan Curve control is present for this device, but not enabled"
@@ -1041,6 +1052,7 @@ impl GpuAMD {
                 &amd_hwmon_info.hwmon.io,
             )
             .await
+            .inspect(|()| taken_channels.release(channel_name))
         }
     }
 
@@ -1103,6 +1115,7 @@ impl GpuAMD {
                     "PMFW Fan Curve control is present for this device, but not enabled. Please see documentation."
                 ));
             }
+            amd_driver_info.hwmon.taken_channels.mark_device();
             Self::set_pmfw_duty(fan_curve_info, fixed_speed, &amd_driver_info.hwmon.io)
                 .await
                 .map_err(|err| {
@@ -1129,6 +1142,7 @@ impl GpuAMD {
                     channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
                 })
                 .with_context(|| "Searching for channel name")?;
+            amd_driver_info.hwmon.taken_channels.mark(channel_name);
             fans::set_pwm_enable_if_not_already(
                 fans::PWM_ENABLE_MANUAL_VALUE,
                 &amd_driver_info.hwmon.path,
@@ -1367,6 +1381,7 @@ impl GpuAMD {
                 but not enabled. Please see the documentation about enabling this in the kernel."
             ));
         }
+        amd_driver_info.hwmon.taken_channels.mark_device();
         Self::set_pmfw_profile(fan_curve_info, speed_profile, &amd_driver_info.hwmon.io)
             .await
             .map_err(|err| {
@@ -1578,6 +1593,31 @@ impl AMDDriverInfo {
             overdrive_enabled: false,
             is_rdna3_or_newer: false,
             fdinfo_load: None,
+        }
+    }
+
+    /// An RDNA3/4 card with a five point firmware curve, for tests outside this module.
+    #[cfg(test)]
+    pub fn for_test_with_fan_curve(
+        hwmon: HwmonDriverInfo,
+        fan_curve_path: PathBuf,
+        changeable: bool,
+    ) -> Self {
+        Self {
+            fan_curve_info: Some(FanCurveInfo {
+                fan_curve: FanCurve {
+                    points: vec![(0, 0); 5],
+                },
+                changeable,
+                temperature_range: RangeInclusive::new(25, 100),
+                speed_range: RangeInclusive::new(15, 100),
+                path: fan_curve_path,
+                zero_rpm: None,
+                zero_rpm_stop_temp: None,
+                zero_rpm_stop_temp_range: RangeInclusive::new(30, 80),
+            }),
+            has_rdna_fan_ctrl: true,
+            ..Self::for_test(hwmon)
         }
     }
 

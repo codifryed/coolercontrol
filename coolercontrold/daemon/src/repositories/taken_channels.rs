@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::ops::Not;
 
@@ -16,6 +16,8 @@ use crate::device::ChannelName;
 pub struct TakenChannels {
     /// Bounded by the device's channels: a name is validated before it is marked.
     channel_names: RefCell<HashSet<ChannelName>>,
+    /// Set by a write that covers every channel at once, such as a firmware fan curve.
+    whole_device: Cell<bool>,
 }
 
 impl TakenChannels {
@@ -29,13 +31,28 @@ impl TakenChannels {
         }
     }
 
+    /// For a write that covers every channel, where the name the caller passed says nothing.
+    /// Marked before the write, as with `mark`.
+    pub fn mark_device(&self) {
+        self.whole_device.set(true);
+    }
+
     pub fn is_taken(&self, channel_name: &str) -> bool {
+        if self.whole_device.get() {
+            return true;
+        }
         self.channel_names.borrow().contains(channel_name)
     }
 
     /// For after a successful reset only: a failed one stays taken, so shutdown tries it again.
     pub fn release(&self, channel_name: &str) {
         self.channel_names.borrow_mut().remove(channel_name);
+    }
+
+    /// As `release`, for a reset that covers every channel.
+    pub fn release_device(&self) {
+        self.channel_names.borrow_mut().clear();
+        self.whole_device.set(false);
     }
 }
 
@@ -68,5 +85,32 @@ mod tests {
         assert!(taken.is_taken("fan2").not());
         taken.release("fan2");
         assert!(taken.is_taken("fan1"));
+    }
+
+    /// Goal: a whole device mark covers every channel, and only a whole device release ends it.
+    /// Method: mark the device, try to release one channel, then release the device.
+    #[test]
+    fn a_device_mark_covers_every_channel_until_released() {
+        let taken = TakenChannels::default();
+
+        taken.mark_device();
+        taken.release("fan1");
+        assert!(taken.is_taken("fan1"));
+        assert!(taken.is_taken("fan2"));
+
+        taken.release_device();
+        assert!(taken.is_taken("fan1").not());
+    }
+
+    /// Goal: a whole device release also ends channel marks, since the reset covered them too.
+    /// Method: mark a channel, then release the device.
+    #[test]
+    fn a_device_release_ends_channel_marks() {
+        let taken = TakenChannels::default();
+        taken.mark("fan1");
+
+        taken.release_device();
+
+        assert!(taken.is_taken("fan1").not());
     }
 }
