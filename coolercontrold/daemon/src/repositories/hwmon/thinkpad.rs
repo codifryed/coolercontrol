@@ -20,7 +20,18 @@ const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 pub const FAN_CONTROL_HINT: &str =
     " If fan control is disabled for this ThinkPad, enable it on the device's page.";
 
+/// The `thinkpad_acpi` `fan_control` option as the running module holds it. Prints Y or N.
+pub const FAN_CONTROL_PARAM_PATH: &str = "/sys/module/thinkpad_acpi/parameters/fan_control";
+
 macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($arg)*) }}; }
+
+/// Whether the module allows fan control. Read from its option rather than tried on `pwm_enable`,
+/// since a write would overwrite the mode another tool set. Unreadable counts as not allowed.
+pub async fn fan_control_is_allowed(param_path: &Path, io: &DeviceIo) -> bool {
+    io.read_text(param_path)
+        .await
+        .is_ok_and(|allowed| allowed.trim() == "Y")
+}
 
 pub async fn apply_speed_fixed(
     config: &Rc<Config>,

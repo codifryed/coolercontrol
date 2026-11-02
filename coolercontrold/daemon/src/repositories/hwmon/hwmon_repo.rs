@@ -598,6 +598,9 @@ pub struct HwmonRepo {
     device_write_permit_timeout: Duration,
     slow_device_init_threshold: Duration,
     drivetemp_ioctl_timeout: Duration,
+
+    /// Where the `ThinkPad` `fan_control` option is read from. A field so tests can fake it.
+    thinkpad_fan_control_param: PathBuf,
 }
 
 impl HwmonRepo {
@@ -640,6 +643,7 @@ impl HwmonRepo {
             slow_device_init_threshold,
             drivetemp_ioctl_timeout,
             device_io_reply_timeout,
+            thinkpad_fan_control_param: PathBuf::from(thinkpad::FAN_CONTROL_PARAM_PATH),
         }
     }
 
@@ -751,10 +755,11 @@ impl HwmonRepo {
                     HwmonChannelType::Fan => {
                         if thinkpad_fan_control.is_some() && channel.number == 1 {
                             thinkpad_fan_control = Some(
-                                // verify if fan control for this ThinkPad is enabled or not:
-                                fans::set_pwm_enable(2, &driver.path, channel, &driver.io)
-                                    .await
-                                    .is_ok(),
+                                thinkpad::fan_control_is_allowed(
+                                    &self.thinkpad_fan_control_param,
+                                    &driver.io,
+                                )
+                                .await,
                             );
                         }
                         let extension = match &channel.auto_curve {
@@ -6728,6 +6733,85 @@ mod prepare_for_sleep_tests {
                 elapsed < PREPARE_FOR_SLEEP_WRITE_TIMEOUT + Duration::from_millis(500),
                 "prepare_for_sleep ran past the write timeout: {elapsed:?}"
             );
+        });
+    }
+}
+
+#[cfg(test)]
+mod thinkpad_init_tests {
+    use super::*;
+    use crate::cc_fs;
+    use serial_test::serial;
+
+    /// A fan another tool holds in manual, in a device directory at `dir`.
+    async fn seed_manual_fan(dir: &Path) -> HwmonChannelInfo {
+        cc_fs::create_dir_all(dir).await.unwrap();
+        for (file, value) in [
+            ("pwm1_enable", "1"),
+            ("pwm1", "128"),
+            ("fan1_input", "1200"),
+        ] {
+            cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                .await
+                .unwrap();
+        }
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            name: "fan1".to_string(),
+            pwm_enable_default: Some(2),
+            caps: HwmonChannelCapabilities::FAN_WRITABLE | HwmonChannelCapabilities::PWM,
+            pwm_path: Some(dir.join("pwm1")),
+            rpm_path: Some(dir.join("fan1_input")),
+            ..Default::default()
+        }
+    }
+
+    /// Goal: init reports whether a `ThinkPad` allows fan control without writing to `pwm_enable`,
+    /// so a fan another tool holds in manual stays there. Method: a fake device through the init
+    /// mapping with the option on, off and unreadable. The timeout only has to outlast a sandbox.
+    #[test]
+    #[serial]
+    fn init_reads_thinkpad_fan_control_without_writing() {
+        cc_fs::test_runtime(async {
+            for (fan_control, allowed) in [(Some("Y\n"), true), (Some("N\n"), false), (None, false)]
+            {
+                let tmp = tempfile::tempdir().unwrap();
+                let dir = tmp.path().join("dev");
+                let fan = seed_manual_fan(&dir).await;
+                let param_path = tmp.path().join("fan_control");
+                if let Some(value) = fan_control {
+                    cc_fs::write(&param_path, value.as_bytes().to_vec())
+                        .await
+                        .unwrap();
+                }
+                let driver = HwmonDriverInfo {
+                    name: devices::DEVICE_NAME_THINK_PAD.to_string(),
+                    path: dir.clone(),
+                    channels: vec![fan],
+                    ..Default::default()
+                };
+                let config = Rc::new(Config::init_default_config().unwrap());
+                let overrides = Rc::new(crate::overrides::OverridesController::empty());
+                let mut repo = HwmonRepo::new(config, vec![], overrides);
+                repo.thinkpad_fan_control_param = param_path;
+
+                repo.map_into_our_device_model(
+                    vec![driver],
+                    &HashMap::new(),
+                    Duration::from_mins(1),
+                    &IdentityReader::inline(),
+                )
+                .await
+                .unwrap();
+
+                assert_eq!(repo.devices.len(), 1);
+                let (device_lock, _) = repo.devices.values().next().unwrap();
+                let reported = device_lock.borrow().info.thinkpad_fan_control;
+                assert_eq!(reported, Some(allowed), "{fan_control:?}");
+                let pwm_enable = cc_fs::read_sysfs(dir.join("pwm1_enable")).await.unwrap();
+                assert_eq!(pwm_enable.trim(), "1", "{fan_control:?}");
+            }
         });
     }
 }
