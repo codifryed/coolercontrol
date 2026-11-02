@@ -1412,7 +1412,7 @@ impl Repository for ServicePluginRepo {
                 debug!("Stopped waiting for device: {device_uid} channel: {channel_name} LCD");
                 return Ok(());
             }
-            // A shutdown image that never went out is worth reporting.
+            // A call that started after the abort is worth reporting.
             return Err(anyhow!("The stop's LCD budget ran out"));
         };
         let result = result.map_err(|status| {
