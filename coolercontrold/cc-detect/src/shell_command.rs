@@ -30,6 +30,7 @@ const PIPE_POLL_INTERVAL: Duration = Duration::from_millis(5);
 /// A child's own output is in the pipe by the time it exits, so this only limits the caller's wait
 /// on a descendant that outlives it and holds the pipe open. The drain itself carries on.
 const PIPE_DRAIN_GRACE: Duration = Duration::from_millis(100);
+const _: () = assert!(PIPE_POLL_INTERVAL.as_millis() < PIPE_DRAIN_GRACE.as_millis());
 
 /// Result of a shell command execution.
 pub enum ShellCommandResult {
@@ -159,7 +160,7 @@ impl PipeReader {
 }
 
 fn captured_to_string(captured: &[u8]) -> String {
-    debug_assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
+    assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
     let mut output = String::from_utf8_lossy(captured).into_owned();
     limit_output_length(&mut output);
     output.trim().to_string()
@@ -188,11 +189,15 @@ fn drain_pipe(mut pipe: impl Read, captured: &Mutex<Vec<u8>>) {
         let mut captured = captured.lock().unwrap_or_else(PoisonError::into_inner);
         let room_bytes = OUTPUT_CAPTURE_BYTES.saturating_sub(captured.len());
         captured.extend_from_slice(&chunk[..read_bytes.min(room_bytes)]);
+        assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
     }
 }
 
 /// `Ok(None)` if `deadline` passes first.
 fn wait_for_exit(child: &mut Child, deadline: Instant) -> io::Result<Option<ExitStatus>> {
+    // A pipe nobody reads stalls the child until the deadline.
+    assert!(child.stdout.is_none());
+    assert!(child.stderr.is_none());
     loop {
         if let Some(status) = child.try_wait()? {
             return Ok(Some(status));
@@ -205,6 +210,7 @@ fn wait_for_exit(child: &mut Child, deadline: Instant) -> io::Result<Option<Exit
 }
 
 fn wait_for_readers(stdout: &PipeReader, stderr: &PipeReader, deadline: Instant) {
+    assert!(deadline <= Instant::now() + PIPE_DRAIN_GRACE);
     while Instant::now() < deadline {
         if stdout.thread.is_finished() && stderr.thread.is_finished() {
             return;

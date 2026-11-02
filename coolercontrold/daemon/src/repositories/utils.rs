@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 use std::io;
+use std::ops::Not;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -146,6 +147,7 @@ struct ChildOutput {
 /// pipe and never exits, so the pipes cannot wait for the exit. The exit status is kept apart from
 /// the reads, because a descendant can hold a pipe open long after the child has gone.
 async fn wait_and_capture(child: &mut Child, timeout: Duration, label: &str) -> ChildOutput {
+    assert!(timeout.is_zero().not());
     let mut stdout = PipeDrain::spawn(child.stdout.take(), label);
     let mut stderr = PipeDrain::spawn(child.stderr.take(), label);
     let mut exit = None;
@@ -220,11 +222,12 @@ async fn drain_pipe(
         let mut captured = captured.lock().unwrap_or_else(PoisonError::into_inner);
         let room_bytes = OUTPUT_CAPTURE_BYTES.saturating_sub(captured.len());
         captured.extend_from_slice(&chunk[..read_bytes.min(room_bytes)]);
+        assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
     }
 }
 
 fn captured_to_string(captured: &[u8]) -> String {
-    debug_assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
+    assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
     let mut output = String::from_utf8_lossy(captured).into_owned();
     limit_output_length(&mut output);
     output.trim().to_string()
