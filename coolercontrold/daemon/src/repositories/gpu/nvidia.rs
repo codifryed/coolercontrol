@@ -43,6 +43,7 @@ use crate::repositories::gpu::nvapi_io::{self, NvApiIo};
 use crate::repositories::gpu::nvml_io::{self, NvmlIo};
 use crate::repositories::hwmon::device_io;
 use crate::repositories::repository::DeviceLock;
+use crate::repositories::taken_channels::TakenChannels;
 use crate::repositories::utils::ShellCommand;
 use crate::repositories::utils::ShellCommandResult::{Error, Success};
 
@@ -256,18 +257,30 @@ impl GpuNVidia {
             let device_uid = device_lock.borrow().uid.clone();
             if let Some(nv_info) = self.nvidia_device_infos.get(&device_uid) {
                 if self.is_nvml_controlled(nv_info).not() {
-                    self.reset_nvidia_settings_to_default(nv_info).await.ok();
+                    if nv_info.taken_channels.is_device_taken() {
+                        self.reset_nvidia_settings_to_default(nv_info).await.ok();
+                    }
                 } else {
                     let channel_names: Vec<String> =
                         device_lock.borrow().info.channels.keys().cloned().collect();
                     for channel_name in channel_names {
-                        self.reset_nvml_device_to_default(nv_info, &channel_name)
-                            .await
-                            .ok();
+                        if nv_info.taken_channels.is_taken(&channel_name) {
+                            self.reset_nvml_device_to_default(nv_info, &channel_name)
+                                .await
+                                .ok();
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// Whether the daemon has driven this fan. A reset writes to nothing else, so what the
+    /// firmware or another tool set is not overwritten.
+    pub fn is_channel_taken(&self, device_uid: &UID, channel_name: &str) -> bool {
+        self.nvidia_device_infos
+            .get(device_uid)
+            .is_some_and(|info| info.taken_channels.is_taken(channel_name))
     }
 
     pub async fn reset_device(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
@@ -276,9 +289,11 @@ impl GpuNVidia {
         };
         if self.is_nvml_controlled(nv_info).not() {
             self.reset_nvidia_settings_to_default(nv_info).await?;
+            nv_info.taken_channels.release_device();
         } else {
             self.reset_nvml_device_to_default(nv_info, channel_name)
                 .await?;
+            nv_info.taken_channels.release(channel_name);
         }
         Ok(())
     }
@@ -294,6 +309,8 @@ impl GpuNVidia {
             .get(device_uid)
             .with_context(|| format!("Device UID not found! {device_uid}"))?;
         if self.is_nvml_controlled(nvidia_gpu_info).not() {
+            // `GPUFanControlState` is per GPU, so this takes every fan on it.
+            nvidia_gpu_info.taken_channels.mark_device();
             self.set_nvidia_settings_fan_duty(nvidia_gpu_info, speed_fixed)
                 .await
         } else {
@@ -654,6 +671,7 @@ impl GpuNVidia {
                     fan_ranges,
                     hotspot_pci_bus,
                     read_plan_parts: std::cell::OnceCell::new(),
+                    taken_channels: TakenChannels::default(),
                 }),
             );
             devices.insert(uid, device);
@@ -1028,6 +1046,7 @@ impl GpuNVidia {
         // the range's log-once guards are not shareable across threads.
         let fan_index = Self::parse_fan_index(channel_name)?;
         Self::verify_fan_index(nv_info, fan_index)?;
+        nv_info.taken_channels.mark(channel_name);
         let fan_range = nv_info.get_fan_range(fan_index)?;
         if fan_range.is_outside(fan_duty) {
             if fan_duty == 0 {
@@ -1276,6 +1295,7 @@ impl GpuNVidia {
                             fan_ranges,
                             hotspot_pci_bus: None,
                             read_plan_parts: std::cell::OnceCell::new(),
+                            taken_channels: TakenChannels::default(),
                         }),
                     );
                     devices.insert(uid, device);
@@ -1625,6 +1645,8 @@ pub struct NvidiaDeviceInfo {
     /// PCI bus for the per-tick nvapi hotspot read. Some only when the GPU has a hotspot channel.
     pub hotspot_pci_bus: Option<u32>,
     read_plan_parts: std::cell::OnceCell<NvmlReadPlanParts>,
+    /// Fans the daemon has driven, so a reset leaves every other fan alone.
+    pub taken_channels: TakenChannels,
 }
 
 impl NvidiaDeviceInfo {
@@ -1658,6 +1680,7 @@ impl NvidiaDeviceInfo {
             power: false,
             hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
+            taken_channels: TakenChannels::default(),
         }
     }
 
@@ -2081,7 +2104,9 @@ fn needs_hotspot_register(architecture: Result<DeviceArchitecture, NvmlError>) -
 mod tests {
     use super::*;
     use crate::repositories::gpu::nvapi_io::HotspotReader;
+    use crate::repositories::gpu::nvml_io::NvmlJob;
     use crate::setting::CCDeviceSettings;
+    use tokio::sync::mpsc;
 
     /// Writes one PCI function's `vendor` and `class` the way sysfs formats them.
     fn add_pci_device(pci_devices_path: &Path, slot: &str, vendor: &str, class: &str) {
@@ -2241,6 +2266,132 @@ mod tests {
         }
     }
 
+    /// A GPU with two fans, registered with NVML when `nvml` is set, and the queue its worker
+    /// would drain.
+    fn repo_with_two_fans(nvml: bool) -> (GpuNVidia, UID, mpsc::Receiver<NvmlJob>) {
+        let mut repo = repo_with_disabled(&[]);
+        let (io, rx) = NvmlIo::for_test("test-gpu");
+        if nvml {
+            repo.nvml_io.insert(0, io);
+        }
+        let mut info = DeviceInfo::default();
+        for channel_name in ["fan1", "fan2"] {
+            info.channels
+                .insert(channel_name.to_string(), ChannelInfo::default());
+        }
+        let device = Device::new(
+            "Test GPU".to_string(),
+            DeviceType::GPU,
+            1,
+            None,
+            info,
+            None,
+            1.0,
+        );
+        let uid = device.uid.clone();
+        repo.insert_device_for_test(1, Rc::new(RefCell::new(device)));
+        let mut nv_info = NvidiaDeviceInfo::for_test(0);
+        nv_info.fan_indices = vec![0, 1];
+        nv_info.fan_ranges.extend([
+            (0, NvidiaFanRange::default()),
+            (1, NvidiaFanRange::default()),
+        ]);
+        repo.nvidia_device_infos
+            .insert(uid.clone(), Rc::new(nv_info));
+        (repo, uid, rx)
+    }
+
+    /// Goal: shutdown sends a GPU it never drove nothing, so its fan curve set by another tool
+    /// stays. Method: an NVML GPU with nothing taken and a queue nobody drains.
+    #[test]
+    fn shutdown_leaves_an_nvml_fan_it_never_took() {
+        crate::rt::test_runtime(async {
+            let (repo, _uid, mut rx) = repo_with_two_fans(true);
+
+            repo.reset_devices().await;
+
+            assert!(rx.try_recv().is_err());
+        });
+    }
+
+    /// Goal: shutdown hands back only the fan the daemon drove. Method: an NVML GPU with one of
+    /// two fans taken and a queue nobody drains, so its one reset job can be counted.
+    #[test]
+    fn shutdown_returns_only_the_nvml_fan_it_took() {
+        crate::rt::test_runtime(async {
+            let (repo, uid, mut rx) = repo_with_two_fans(true);
+            repo.nvidia_device_infos[&uid].taken_channels.mark("fan1");
+
+            repo.reset_devices().await;
+
+            assert!(matches!(rx.try_recv(), Ok(NvmlJob::Call(_))));
+            assert!(rx.try_recv().is_err());
+        });
+    }
+
+    /// Goal: a duty write takes that fan and no other, even when the write fails. Method: write
+    /// to one of two fans on a worker that never answers.
+    #[test]
+    fn an_nvml_duty_takes_only_its_fan_even_when_it_fails() {
+        crate::rt::test_runtime(async {
+            let (repo, uid, _rx) = repo_with_two_fans(true);
+
+            let written = repo.set_fan_duty(&uid, "fan1", 50).await;
+
+            assert!(written.is_err());
+            assert!(repo.is_channel_taken(&uid, "fan1"));
+            assert!(repo.is_channel_taken(&uid, "fan2").not());
+        });
+    }
+
+    /// Goal: a reset that fails leaves the fan taken, so shutdown tries the hand-back again.
+    /// Method: reset a taken fan on a worker that never answers.
+    #[test]
+    fn a_failed_nvml_reset_stays_taken() {
+        crate::rt::test_runtime(async {
+            let (repo, uid, _rx) = repo_with_two_fans(true);
+            repo.nvidia_device_infos[&uid].taken_channels.mark("fan1");
+
+            let reset = repo.reset_device(&uid, "fan1").await;
+
+            assert!(reset.is_err());
+            assert!(repo.is_channel_taken(&uid, "fan1"));
+        });
+    }
+
+    /// Goal: a channel name the device does not have takes nothing, so API input cannot grow the
+    /// record. Method: write to a fan outside the GPU's range.
+    #[test]
+    fn an_unknown_nvml_fan_is_not_taken() {
+        crate::rt::test_runtime(async {
+            let (repo, uid, _rx) = repo_with_two_fans(true);
+
+            let written = repo.set_fan_duty(&uid, "fan9", 50).await;
+
+            assert!(written.is_err());
+            assert!(repo.is_channel_taken(&uid, "fan9").not());
+        });
+    }
+
+    /// Goal: `nvidia-settings` control state is per GPU, so one fan's duty takes the whole GPU
+    /// and one reset releases it. Method: a GPU with no NVML worker and no Xauthority, where
+    /// both calls succeed without running the command.
+    #[test]
+    fn nvidia_settings_takes_and_releases_the_whole_gpu() {
+        crate::rt::test_runtime(async {
+            let (repo, uid, _rx) = repo_with_two_fans(false);
+            assert!(repo.is_channel_taken(&uid, "fan1").not());
+
+            repo.set_fan_duty(&uid, "fan1", 50).await.unwrap();
+            let fan2_taken = repo.is_channel_taken(&uid, "fan2");
+            repo.reset_device(&uid, "fan2").await.unwrap();
+
+            assert!(fan2_taken);
+            assert!(repo.is_channel_taken(&uid, "fan1").not());
+            assert!(repo.is_channel_taken(&uid, "fan2").not());
+        });
+    }
+
     /// Goal: parsing the fan index on every duty write costs nothing. Method: count one parse.
     #[test]
     #[cfg(feature = "gated-tests")]
@@ -2389,6 +2540,7 @@ mod tests {
             power: false,
             hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
+            taken_channels: TakenChannels::default(),
         }
     }
 
@@ -2450,6 +2602,7 @@ mod tests {
             power: false,
             hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
+            taken_channels: TakenChannels::default(),
         });
         let readings = NvmlReadings {
             gpu_temp: Some(61),
@@ -2703,6 +2856,7 @@ mod tests {
             power: false,
             hotspot_pci_bus: None,
             read_plan_parts: std::cell::OnceCell::new(),
+            taken_channels: TakenChannels::default(),
         });
         // Memory temp unsupported on this card, so the worker reports nothing for it.
         let readings = NvmlReadings {

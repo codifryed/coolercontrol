@@ -44,6 +44,10 @@ impl TakenChannels {
         self.channel_names.borrow().contains(channel_name)
     }
 
+    pub fn is_device_taken(&self) -> bool {
+        self.whole_device.get()
+    }
+
     /// For after a successful reset only: a failed one stays taken, so shutdown tries it again.
     pub fn release(&self, channel_name: &str) {
         self.channel_names.borrow_mut().remove(channel_name);
@@ -85,6 +89,7 @@ mod tests {
         assert!(taken.is_taken("fan2").not());
         taken.release("fan2");
         assert!(taken.is_taken("fan1"));
+        assert!(taken.is_device_taken().not());
     }
 
     /// Goal: a whole device mark covers every channel, and only a whole device release ends it.
@@ -100,6 +105,7 @@ mod tests {
 
         taken.release_device();
         assert!(taken.is_taken("fan1").not());
+        assert!(taken.is_device_taken().not());
     }
 
     /// Goal: a whole device release also ends channel marks, since the reset covered them too.

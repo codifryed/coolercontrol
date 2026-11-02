@@ -183,7 +183,7 @@ impl GpuRepo {
         if self.is_amd_device(device_uid) {
             self.gpus_amd.is_channel_taken(device_uid, channel_name)
         } else {
-            true
+            self.gpus_nvidia.is_channel_taken(device_uid, channel_name)
         }
     }
 
