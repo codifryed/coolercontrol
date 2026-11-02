@@ -1071,9 +1071,13 @@ impl GpuNVidia {
 
     /// The 0-based fan index of a `fanN` channel. Parsed by hand: it runs on every duty write,
     /// and a regex compiled here allocated dozens of times per write.
+    ///
+    /// Only the spelling the daemon builds passes. An alias like `fan01` would drive the fan while
+    /// `fan1` stays untaken, so no reset would reach it.
     fn parse_fan_index(channel_name: &str) -> Result<FanIndex> {
         let fan_number = channel_name
             .strip_prefix(NVIDIA_FAN_PREFIX)
+            .filter(|digits| digits.starts_with(|digit| ('1'..='9').contains(&digit)))
             .and_then(|digits| digits.parse::<FanIndex>().ok())
             .with_context(|| format!("Nvidia fan channel name should be fanN: {channel_name}"))?;
         let fan_index = fan_number
@@ -2258,7 +2262,10 @@ mod tests {
     fn a_fan_channel_names_its_zero_based_index() {
         assert_eq!(GpuNVidia::parse_fan_index("fan1").unwrap(), 0);
         assert_eq!(GpuNVidia::parse_fan_index("fan12").unwrap(), 11);
-        for malformed in ["fan0", "fan", "pump", "fan1x", "fan256", "1fan"] {
+        let malformed_names = [
+            "fan0", "fan", "pump", "fan1x", "fan256", "1fan", "fan01", "fan+1", "fan001",
+        ];
+        for malformed in malformed_names {
             assert!(
                 GpuNVidia::parse_fan_index(malformed).is_err(),
                 "{malformed} must not name a fan"
@@ -2360,16 +2367,19 @@ mod tests {
     }
 
     /// Goal: a channel name the device does not have takes nothing, so API input cannot grow the
-    /// record. Method: write to a fan outside the GPU's range.
+    /// record or drive a fan under a name no reset would find. Method: write to a fan outside the
+    /// GPU's range and to aliases of a real fan.
     #[test]
     fn an_unknown_nvml_fan_is_not_taken() {
         crate::rt::test_runtime(async {
             let (repo, uid, _rx) = repo_with_two_fans(true);
 
-            let written = repo.set_fan_duty(&uid, "fan9", 50).await;
+            for channel_name in ["fan9", "fan01", "fan+1", "fan0000001"] {
+                let written = repo.set_fan_duty(&uid, channel_name, 50).await;
 
-            assert!(written.is_err());
-            assert!(repo.is_channel_taken(&uid, "fan9").not());
+                assert!(written.is_err(), "{channel_name} must be refused");
+                assert!(repo.is_channel_taken(&uid, channel_name).not());
+            }
         });
     }
 
