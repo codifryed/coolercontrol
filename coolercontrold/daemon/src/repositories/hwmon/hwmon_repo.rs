@@ -2638,8 +2638,7 @@ impl Repository for HwmonRepo {
         );
         // Auto mode takes over duty control; cached value is stale.
         self.invalidate_duty_cache_entry(type_index, channel_name);
-        let is_apple_fan = hwmon_driver.apple_fans.is_some();
-        if is_apple_fan.not() && fan_is_taken(hwmon_driver, channel_info).not() {
+        if fan_is_taken(hwmon_driver, channel_info).not() {
             debug!(
                 "Leaving HWMON device: {device_uid} channel: {channel_name} as it is: not taken"
             );
@@ -6930,10 +6929,42 @@ mod shutdown_tests {
         });
     }
 
-    /// Goal: resetting a read-only Apple fan succeeds and writes nothing. A fan saved as
-    /// Unmanaged is reset at every start, and with `fan_control` off the driver would refuse
-    /// the write. Method: a fake `macsmc_hwmon` fan with a read-only target holding a value
-    /// the reset must not replace.
+    /// Goal: a reset leaves an Apple fan the daemon never drove as another tool holds it, and
+    /// hands back one it took. Method: two `applesmc` fans held in manual, one of them taken
+    /// through the repository, then a reset of both.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn a_reset_only_returns_the_apple_fans_the_daemon_took() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir_taken = tmp.path().join("taken");
+            let dir_untouched = tmp.path().join("untouched");
+            let mut repo = empty_repo();
+            let uid_taken = insert_applesmc_device(&mut repo, 1, &dir_taken).await;
+            let uid_untouched = insert_applesmc_device(&mut repo, 2, &dir_untouched).await;
+            repo.apply_setting_manual_control(&uid_taken, "fan1")
+                .await
+                .unwrap();
+
+            let taken = repo.apply_setting_reset(&uid_taken, "fan1").await;
+            let untouched = repo.apply_setting_reset(&uid_untouched, "fan1").await;
+
+            let read = async |dir: &Path| {
+                let manual = cc_fs::read_sysfs(dir.join("fan1_manual")).await.unwrap();
+                manual.trim().to_owned()
+            };
+            assert!(taken.is_ok(), "{taken:?}");
+            assert!(untouched.is_ok(), "{untouched:?}");
+            assert_eq!(read(&dir_taken).await, "0");
+            assert_eq!(read(&dir_untouched).await, "1");
+        });
+    }
+
+    /// Goal: resetting a read-only Apple fan succeeds and writes nothing, since with
+    /// `fan_control` off the driver would refuse the write. Method: a fake `macsmc_hwmon` fan
+    /// with a read-only target holding a value the reset must not replace, marked as taken so
+    /// the reset gets as far as the read-only check.
     #[test]
     #[serial]
     fn reset_leaves_a_read_only_apple_fan_alone() {
@@ -6969,6 +7000,9 @@ mod shutdown_tests {
             };
             let mut repo = empty_repo();
             let uid = insert_driver(&mut repo, 1, driver);
+            repo.apply_setting_manual_control(&uid, "fan1")
+                .await
+                .unwrap();
 
             let result = repo.apply_setting_reset(&uid, "fan1").await;
 

@@ -222,8 +222,8 @@ impl AppleFans {
         }
     }
 
-    /// Returns the fan to automatic control, whoever holds it. This is the user's reset, so it
-    /// also recovers a fan an earlier run left in manual.
+    /// Returns the fan to automatic control, whoever holds it. Callers check `is_taken` first,
+    /// or use `release_fan`, so a fan left to the firmware or another tool is not overwritten.
     pub async fn set_to_auto_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
         // The Apple Silicon hand-back writes a speed first, which takes a fan the firmware was
         // running. If the rest then fails the fan is held, so shutdown must try it again.
@@ -825,9 +825,9 @@ mod tests {
         });
     }
 
-    /// Goal: a duty write alone counts as taking the fan, and the user's reset returns a fan
-    /// whether or not the daemon took it. Method: write a duty then release, and reset a fan
-    /// that was never driven.
+    /// Goal: a duty write alone counts as taking the fan, and `set_to_auto_control` itself
+    /// returns a fan whether or not the daemon took it. Method: write a duty then release, and
+    /// call it on a fan that was never driven.
     #[test]
     #[serial]
     fn a_duty_write_takes_the_fan_and_a_reset_always_returns_it() {
