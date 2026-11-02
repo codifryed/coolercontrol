@@ -28,6 +28,7 @@ use crate::repositories::hwmon::hwmon_repo::{
 use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{devices, fans, freqs, power, temps};
 use crate::repositories::repository::DeviceLock;
+use crate::repositories::taken_channels::TakenChannels;
 use anyhow::{anyhow, Context, Result};
 use heck::ToTitleCase;
 use libdrm_amdgpu_sys::LibDrmAmdgpu;
@@ -207,6 +208,7 @@ impl GpuAMD {
                 identity::log_skipped(&device_name, &path);
                 continue;
             };
+            let taken_channels = TakenChannels::with_capacity(channels.len());
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
                     name: device_name,
@@ -215,6 +217,7 @@ impl GpuAMD {
                     u_id,
                     channels,
                     io,
+                    taken_channels,
                     ..Default::default()
                 },
                 device_path,

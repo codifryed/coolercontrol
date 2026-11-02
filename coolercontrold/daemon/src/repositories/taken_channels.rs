@@ -21,6 +21,14 @@ pub struct TakenChannels {
 }
 
 impl TakenChannels {
+    /// Sized at init, so the first writes from the tick path do not grow the set.
+    pub fn with_capacity(channel_count: usize) -> Self {
+        Self {
+            channel_names: RefCell::new(HashSet::with_capacity(channel_count)),
+            whole_device: Cell::new(false),
+        }
+    }
+
     /// Marked before the write, since a write that fails part way has still changed the fan.
     pub fn mark(&self, channel_name: &str) {
         debug_assert!(channel_name.is_empty().not());
@@ -77,6 +85,22 @@ mod tests {
 
         taken.release("fan1");
         assert!(taken.is_taken("fan1").not());
+    }
+
+    /// Goal: a set sized at init holds every channel without growing. Method: fill it to the count
+    /// it was built for and compare the capacity.
+    #[test]
+    fn a_sized_set_holds_its_channels_without_growing() {
+        let taken = TakenChannels::with_capacity(4);
+        let capacity = taken.channel_names.borrow().capacity();
+        assert!(capacity >= 4);
+
+        for channel_name in ["fan1", "fan2", "fan3", "fan4"] {
+            taken.mark(channel_name);
+        }
+
+        assert_eq!(taken.channel_names.borrow().capacity(), capacity);
+        assert!(taken.is_taken("fan4"));
     }
 
     /// Goal: one channel's marks say nothing about another. Method: mark one of two.

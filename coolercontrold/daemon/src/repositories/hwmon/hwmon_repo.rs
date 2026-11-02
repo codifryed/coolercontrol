@@ -2508,6 +2508,7 @@ impl Repository for HwmonRepo {
             // Display only, not in the UID: a stall leaves the device without a model.
             let model = Self::read_model(&path, &identity).await.unwrap_or_default();
             debug!("Detected Device Model: {model:?}");
+            let taken_channels = TakenChannels::with_capacity(channels.len());
             let hwmon_driver_info = HwmonDriverInfo {
                 name: device_name,
                 path,
@@ -2517,7 +2518,7 @@ impl Repository for HwmonRepo {
                 drivetemp,
                 apple_fans,
                 io,
-                taken_channels: TakenChannels::default(),
+                taken_channels,
             };
             hwmon_drivers.push(hwmon_driver_info);
         }

@@ -659,6 +659,7 @@ impl GpuNVidia {
                 .copied()
                 .map(|fan_index| (fan_index, fan_range.clone()))
                 .collect();
+            let taken_channels = TakenChannels::with_capacity(fan_indices.len());
             self.nvidia_device_infos.insert(
                 uid.clone(),
                 Rc::new(NvidiaDeviceInfo {
@@ -671,7 +672,7 @@ impl GpuNVidia {
                     fan_ranges,
                     hotspot_pci_bus,
                     read_plan_parts: std::cell::OnceCell::new(),
-                    taken_channels: TakenChannels::default(),
+                    taken_channels,
                 }),
             );
             devices.insert(uid, device);
@@ -1287,6 +1288,7 @@ impl GpuNVidia {
                         .copied()
                         .map(|fan_index| (fan_index, NvidiaFanRange::default()))
                         .collect();
+                    let taken_channels = TakenChannels::with_capacity(fan_indices.len());
                     self.nvidia_device_infos.insert(
                         uid.clone(),
                         Rc::new(NvidiaDeviceInfo {
@@ -1299,7 +1301,7 @@ impl GpuNVidia {
                             fan_ranges,
                             hotspot_pci_bus: None,
                             read_plan_parts: std::cell::OnceCell::new(),
-                            taken_channels: TakenChannels::default(),
+                            taken_channels,
                         }),
                     );
                     devices.insert(uid, device);
