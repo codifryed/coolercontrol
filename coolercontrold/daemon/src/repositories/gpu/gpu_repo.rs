@@ -1101,6 +1101,52 @@ mod amd_taken_channel_tests {
         });
     }
 
+    /// Goal: a Zero RPM restore that fails keeps the card taken even when the curve restore lands,
+    /// or firmware keeps the stop temperature the daemon set. Method: for each Zero RPM file, make
+    /// it a directory, which no write can land on, reset, then make it a real file for shutdown.
+    #[test]
+    #[serial]
+    fn a_failed_zero_rpm_reset_is_retried_at_shutdown() {
+        cc_fs::test_runtime(async {
+            for failing_file in ["zero_rpm", "zero_rpm_stop_temp"] {
+                let tmp = tempfile::tempdir().unwrap();
+                let curve = tmp.path().join("fan_curve");
+                let zero_rpm = tmp.path().join("zero_rpm");
+                let stop_temp = tmp.path().join("zero_rpm_stop_temp");
+                let failing = tmp.path().join(failing_file);
+                for path in [&curve, &zero_rpm, &stop_temp] {
+                    cc_fs::write(path, Vec::new()).await.unwrap();
+                }
+                cc_fs::remove_file(&failing).await.unwrap();
+                cc_fs::create_dir_all(&failing).await.unwrap();
+                let hwmon = HwmonDriverInfo {
+                    name: "amdgpu".to_string(),
+                    ..Default::default()
+                };
+                let (repo, uid) = repo_with(AMDDriverInfo::for_test_with_zero_rpm(
+                    hwmon,
+                    curve.clone(),
+                    zero_rpm,
+                    stop_temp,
+                ));
+                repo.apply_setting_speed_fixed(&uid, FAN, 50).await.unwrap();
+
+                let reset = repo.apply_setting_reset(&uid, FAN).await;
+
+                assert!(reset.is_err(), "{failing_file}");
+                assert!(repo.is_channel_taken(&uid, FAN), "{failing_file}");
+                let curve_after_reset = cc_fs::read_sysfs(&curve).await.unwrap();
+                assert_eq!(curve_after_reset.trim(), "r", "{failing_file}");
+
+                cc_fs::remove_dir_all(&failing).await.unwrap();
+                cc_fs::write(&failing, Vec::new()).await.unwrap();
+                repo.shutdown().await.unwrap();
+                let handed_back = cc_fs::read_sysfs(&failing).await.unwrap();
+                assert_eq!(handed_back.trim(), "r", "{failing_file}");
+            }
+        });
+    }
+
     /// Goal: a saved Unmanaged setting on a card with its fan control off stops failing at boot,
     /// where the error would clear the active Mode. Method: a card whose curve is not changeable,
     /// with no write allowed to reach the device.

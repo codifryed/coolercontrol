@@ -1061,26 +1061,34 @@ impl GpuAMD {
     /// For the reset-to-default and shutdown paths, where the curve itself must be given back.
     /// Zero RPM goes back to its boot default, which is enabled on most RDNA3/4 cards. Each
     /// restore commits by itself, since the kernel falls through from restore into commit.
+    ///
+    /// Every restore is attempted, so one failure hands back what it can, then the first error
+    /// returns: firmware keeps a stop temperature that was not restored, so the card stays taken.
     async fn reset_fan_curve_and_zero_rpm(
         fan_curve_info: &FanCurveInfo,
         io: &DeviceIo,
     ) -> Result<()> {
+        let mut zero_rpm_reset = Ok(());
         if let Some(zero_rpm_path) = &fan_curve_info.zero_rpm {
-            if let Err(err) = io.write_value(zero_rpm_path, b"r\n".to_vec()).await {
-                warn!("Error resetting Zero RPM Enable: {err}");
-            }
+            zero_rpm_reset = io
+                .write_value(zero_rpm_path, b"r\n".to_vec())
+                .await
+                .with_context(|| "Resetting Zero RPM Enable")
+                .inspect_err(|err| warn!("{err:#}"));
         }
+        let mut stop_temp_reset = Ok(());
         if let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp {
-            if let Err(err) = io
+            stop_temp_reset = io
                 .write_value(zero_rpm_stop_temp_path, b"r\n".to_vec())
                 .await
-            {
-                warn!("Error resetting Zero RPM Stop Temperature: {err}");
-            }
+                .with_context(|| "Resetting Zero RPM Stop Temperature")
+                .inspect_err(|err| warn!("{err:#}"));
         }
-        io.write_value(&fan_curve_info.path, b"r\n".to_vec())
+        let curve_reset = io
+            .write_value(&fan_curve_info.path, b"r\n".to_vec())
             .await
-            .with_context(|| "Resetting Fan Curve file to automatic mode")
+            .with_context(|| "Resetting Fan Curve file to automatic mode");
+        zero_rpm_reset.and(stop_temp_reset).and(curve_reset)
     }
 
     /// PMFW `FAN_CURVE_SPEED` floor for an RDNA3/4 card, `None` for any
@@ -1619,6 +1627,22 @@ impl AMDDriverInfo {
             has_rdna_fan_ctrl: true,
             ..Self::for_test(hwmon)
         }
+    }
+
+    /// As `for_test_with_fan_curve`, with both Zero RPM files.
+    #[cfg(test)]
+    pub fn for_test_with_zero_rpm(
+        hwmon: HwmonDriverInfo,
+        fan_curve_path: PathBuf,
+        zero_rpm_path: PathBuf,
+        zero_rpm_stop_temp_path: PathBuf,
+    ) -> Self {
+        let mut driver = Self::for_test_with_fan_curve(hwmon, fan_curve_path, true);
+        if let Some(fan_curve_info) = &mut driver.fan_curve_info {
+            fan_curve_info.zero_rpm = Some(zero_rpm_path);
+            fan_curve_info.zero_rpm_stop_temp = Some(zero_rpm_stop_temp_path);
+        }
+        driver
     }
 
     /// Whether this card uses the RDNA3/4 PMFW fan-curve interface, for which the
