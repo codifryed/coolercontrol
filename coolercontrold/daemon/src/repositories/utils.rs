@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::io;
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use crate::cc_fs;
@@ -21,6 +22,7 @@ use log::{debug, error, info, warn};
 use nu_glob::{glob, Uninterruptible};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::{Child, Command};
+use tokio::task::JoinHandle;
 
 const THINKPAD_ACPI_CONF_PATH: &str = "/etc/modprobe.d";
 const THINKPAD_ACPI_CONF_FILE: &str = "thinkpad_acpi.conf";
@@ -29,8 +31,9 @@ const RELOAD_THINKPAD_ACPI_MODULE_COMMAND: &str =
 const MAX_OUTPUT_LENGTH_BYTES: usize = 2_000; // This is the maximum length of the output we want to log
 /// One byte past the limit, which is enough to see that the output was cut.
 const OUTPUT_CAPTURE_BYTES: usize = MAX_OUTPUT_LENGTH_BYTES + 1;
-/// A child's own output is in the pipe by the time it exits, so this only limits the wait on a
-/// descendant that outlives it and holds the pipe open.
+const PIPE_READ_CHUNK_BYTES: usize = 8 * 1024;
+/// A child's own output is in the pipe by the time it exits, so this only limits the caller's wait
+/// on a descendant that outlives it and holds the pipe open. The drain itself carries on.
 const PIPE_DRAIN_GRACE: Duration = Duration::from_millis(100);
 
 /// This struct is essentially a wrapper around [`Command`] which adds some
@@ -143,20 +146,12 @@ struct ChildOutput {
 /// pipe and never exits, so the pipes cannot wait for the exit. The exit status is kept apart from
 /// the reads, because a descendant can hold a pipe open long after the child has gone.
 async fn wait_and_capture(child: &mut Child, timeout: Duration, label: &str) -> ChildOutput {
-    let stdout_pipe = child.stdout.take();
-    let stderr_pipe = child.stderr.take();
-    let mut stdout = Vec::with_capacity(OUTPUT_CAPTURE_BYTES);
-    let mut stderr = Vec::with_capacity(OUTPUT_CAPTURE_BYTES);
+    let mut stdout = PipeDrain::spawn(child.stdout.take(), label);
+    let mut stderr = PipeDrain::spawn(child.stderr.take(), label);
     let mut exit = None;
     let capture = async {
         let drains = async {
-            let (stdout_read, stderr_read) = tokio::join!(
-                drain_pipe(stdout_pipe, &mut stdout),
-                drain_pipe(stderr_pipe, &mut stderr),
-            );
-            if let Err(err) = stdout_read.and(stderr_read) {
-                warn!("Error reading output for: {label}, {err}");
-            }
+            let _ = tokio::join!(&mut stdout.task, &mut stderr.task);
         };
         tokio::pin!(drains);
         tokio::select! {
@@ -167,7 +162,7 @@ async fn wait_and_capture(child: &mut Child, timeout: Duration, label: &str) -> 
             }
         }
     };
-    // A timeout drops `capture`, and the reads keep what they had: `read_to_end` appends as it goes.
+    // A timeout only stops the waiting. The drains carry on, and what they kept stays readable.
     let _ = tokio::time::timeout(timeout, capture).await;
     if exit.is_none() {
         child.kill().await.ok();
@@ -175,25 +170,57 @@ async fn wait_and_capture(child: &mut Child, timeout: Duration, label: &str) -> 
     }
     ChildOutput {
         exit,
-        stdout: captured_to_string(&stdout),
-        stderr: captured_to_string(&stderr),
+        stdout: stdout.output(),
+        stderr: stderr.output(),
     }
 }
 
-/// Reads a pipe to its end, keeping the start of it. The rest is read and dropped, as the child
-/// would block on a full pipe. The caller's timeout bounds this.
+/// One pipe, read by its own task while the child runs. Dropping this detaches the task, which
+/// ends when the last writer closes the pipe: closing the read end sooner would kill a descendant
+/// that outlives the child with SIGPIPE at its next write.
+struct PipeDrain {
+    captured: Arc<Mutex<Vec<u8>>>,
+    task: JoinHandle<()>,
+}
+
+impl PipeDrain {
+    fn spawn(pipe: Option<impl AsyncRead + Unpin + Send + 'static>, label: &str) -> Self {
+        let captured = Arc::new(Mutex::new(Vec::with_capacity(OUTPUT_CAPTURE_BYTES)));
+        let shared = Arc::clone(&captured);
+        let label = label.to_owned();
+        let task = tokio::spawn(async move {
+            if let Err(err) = drain_pipe(pipe, &shared).await {
+                warn!("Error reading output for: {label}, {err}");
+            }
+        });
+        Self { captured, task }
+    }
+
+    fn output(&self) -> String {
+        let captured = self.captured.lock().unwrap_or_else(PoisonError::into_inner);
+        captured_to_string(&captured)
+    }
+}
+
+/// Reads a pipe to its end, keeping the start of it. The rest is read and dropped, as a writer
+/// would block on a full pipe. The last writer closing the pipe bounds this.
 async fn drain_pipe(
     pipe: Option<impl AsyncRead + Unpin>,
-    captured: &mut Vec<u8>,
+    captured: &Mutex<Vec<u8>>,
 ) -> io::Result<()> {
-    let Some(pipe) = pipe else {
+    let Some(mut pipe) = pipe else {
         return Ok(());
     };
-    let mut head = pipe.take(OUTPUT_CAPTURE_BYTES as u64);
-    head.read_to_end(captured).await?;
-    debug_assert!(captured.len() <= OUTPUT_CAPTURE_BYTES);
-    tokio::io::copy(&mut head.into_inner(), &mut tokio::io::sink()).await?;
-    Ok(())
+    let mut chunk = [0_u8; PIPE_READ_CHUNK_BYTES];
+    loop {
+        let read_bytes = pipe.read(&mut chunk).await?;
+        if read_bytes == 0 {
+            return Ok(());
+        }
+        let mut captured = captured.lock().unwrap_or_else(PoisonError::into_inner);
+        let room_bytes = OUTPUT_CAPTURE_BYTES.saturating_sub(captured.len());
+        captured.extend_from_slice(&chunk[..read_bytes.min(room_bytes)]);
+    }
 }
 
 fn captured_to_string(captured: &[u8]) -> String {
@@ -383,6 +410,7 @@ mod tests {
         OUTPUT_CAPTURE_BYTES,
     };
     use std::ops::Not;
+    use std::sync::Mutex;
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
@@ -392,9 +420,9 @@ mod tests {
         // afterwards, and check that nothing is left to read from it.
         let written = vec![b'x'; OUTPUT_CAPTURE_BYTES * 8];
         let mut pipe = written.as_slice();
-        let mut captured = Vec::new();
-        drain_pipe(Some(&mut pipe), &mut captured).await.unwrap();
-        assert_eq!(captured.len(), OUTPUT_CAPTURE_BYTES);
+        let captured = Mutex::new(Vec::new());
+        drain_pipe(Some(&mut pipe), &captured).await.unwrap();
+        assert_eq!(captured.lock().unwrap().len(), OUTPUT_CAPTURE_BYTES);
         let mut left = Vec::new();
         pipe.read_to_end(&mut left).await.unwrap();
         assert!(left.is_empty());
@@ -404,9 +432,9 @@ mod tests {
     async fn drain_handles_a_missing_pipe() {
         // Goal: a child without a pipe captures nothing, and is not an error.
         // Method: drain `None`.
-        let mut captured = Vec::new();
-        drain_pipe(None::<&[u8]>, &mut captured).await.unwrap();
-        assert!(captured.is_empty());
+        let captured = Mutex::new(Vec::new());
+        drain_pipe(None::<&[u8]>, &captured).await.unwrap();
+        assert!(captured.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -477,8 +505,11 @@ mod command_tests {
     const PIPE_BUFFER_BYTES: usize = 64 * 1024;
     const TIMEOUT_GENEROUS: Duration = Duration::from_secs(10);
     const TIMEOUT_SHORT: Duration = Duration::from_secs(1);
+    const TIMEOUT_TINY: Duration = Duration::from_millis(100);
     /// Under the 5 s the scripts sleep for, and loose enough for a loaded CI machine.
     const ELAPSED_MAX: Duration = Duration::from_secs(4);
+    const POLL_INTERVAL: Duration = Duration::from_millis(20);
+    const POLL_COUNT_MAX: usize = 200;
 
     #[derive(Clone, Copy, Debug)]
     enum Runner {
@@ -488,31 +519,38 @@ mod command_tests {
 
     const RUNNERS: [Runner; 2] = [Runner::Shell, Runner::Direct];
 
+    /// Goes through the public runners, so the drains run on the sidecar as they do in the daemon.
     async fn run(
         runner: Runner,
         script: &str,
         timeout: Duration,
     ) -> Result<(String, String), String> {
-        match runner {
-            Runner::Shell => {
-                match run_shell_command(script.to_owned(), HashMap::new(), timeout).await {
-                    ShellCommandResult::Success { stdout, stderr } => Ok((stdout, stderr)),
-                    ShellCommandResult::Error(stderr) => Err(stderr),
-                }
-            }
+        crate::sidecar::ensure_test_handle();
+        let result = match runner {
+            Runner::Shell => ShellCommand::new(script, timeout).run().await,
             Runner::Direct => {
-                let args = vec!["-c".to_owned(), script.to_owned()];
-                match run_direct_command(SHELL.to_owned(), args, timeout).await {
-                    Ok((0, stdout, stderr)) => Ok((stdout, stderr)),
-                    Ok((_, _, stderr)) => Err(stderr),
-                    Err(err) => Err(err.to_string()),
-                }
+                let command = DirectCommand::new(SHELL, timeout).arg("-c").arg(script);
+                command.run().await
             }
+        };
+        match result {
+            ShellCommandResult::Success { stdout, stderr } => Ok((stdout, stderr)),
+            ShellCommandResult::Error(stderr) => Err(stderr),
         }
     }
 
     fn fill_script(size_bytes: usize) -> String {
         format!("head -c {size_bytes} /dev/zero | tr '\\0' x")
+    }
+
+    async fn path_appears(path: &std::path::Path) -> bool {
+        for _ in 0..POLL_COUNT_MAX {
+            if path.exists() {
+                return true;
+            }
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
+        false
     }
 
     #[tokio::test]
@@ -613,14 +651,39 @@ mod command_tests {
 
     #[tokio::test]
     async fn a_descendant_that_keeps_writing_cannot_hold_the_caller() {
-        // Goal: the read ends soon after the child exits, even if a pipe never goes quiet.
-        // Method: leave a background writer running, with a timeout it cannot reach.
+        // Goal: the wait ends soon after the child exits, even if a pipe never goes quiet.
+        // Method: leave a writer that outlasts ELAPSED_MAX, then kill it. `timeout` ends it if an
+        // assert fails first.
         for runner in RUNNERS {
             let start = Instant::now();
-            let result = run(runner, "yes &", TIMEOUT_GENEROUS).await;
-            assert!(start.elapsed() < ELAPSED_MAX, "{runner:?}");
-            let (stdout, _) = result.unwrap();
+            let result = run(runner, "timeout 5 yes & echo $! >&2", TIMEOUT_GENEROUS).await;
+            let elapsed = start.elapsed();
+            let (stdout, pid) = result.unwrap();
+            let killed = std::process::Command::new("kill")
+                .arg(&pid)
+                .status()
+                .unwrap();
+            assert!(killed.success(), "{runner:?}: the writer should still run");
+            assert!(elapsed < ELAPSED_MAX, "{runner:?}");
             assert!(stdout.len() <= TRUNCATED_OUTPUT_BYTES_MAX, "{runner:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_descendant_can_still_write_after_the_caller_returns() {
+        // Goal: nothing the daemon does ends a descendant. Closing the read end would kill it with
+        // SIGPIPE at its next write.
+        // Method: background a job that writes after the grace, then touches a marker it never
+        // reaches if the write kills it. One child exits, the other is killed at the timeout.
+        let cases = [("", TIMEOUT_GENEROUS), ("exec sleep 60", TIMEOUT_TINY)];
+        for runner in RUNNERS {
+            for (foreground, timeout) in cases {
+                let dir = tempfile::tempdir().unwrap();
+                let marker = dir.path().join("survived");
+                let job = format!("(sleep 0.3; echo out; touch '{}')", marker.display());
+                let _ = run(runner, &format!("{job} & {foreground}"), timeout).await;
+                assert!(path_appears(&marker).await, "{runner:?} {foreground}");
+            }
         }
     }
 
