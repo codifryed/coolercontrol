@@ -621,6 +621,7 @@ version = "1.0.1"
 dependencies = [
  "log",
  "serde",
+ "tempfile",
  "toml",
 ]
 

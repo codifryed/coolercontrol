@@ -8,7 +8,7 @@
 
 use std::io::{self, ErrorKind, Read};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::{Arc, Mutex, PoisonError, Weak};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -27,8 +27,8 @@ const OUTPUT_CAPTURE_BYTES: usize = MAX_OUTPUT_LENGTH_BYTES + 1;
 const PIPE_READ_CHUNK_BYTES: usize = 8 * 1024;
 const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const PIPE_POLL_INTERVAL: Duration = Duration::from_millis(5);
-/// A child's own output is in the pipe by the time it exits, so this only limits the wait on a
-/// descendant that outlives it and holds the pipe open.
+/// A child's own output is in the pipe by the time it exits, so this only limits the caller's wait
+/// on a descendant that outlives it and holds the pipe open. The drain itself carries on.
 const PIPE_DRAIN_GRACE: Duration = Duration::from_millis(100);
 
 /// Result of a shell command execution.
@@ -131,8 +131,8 @@ impl ShellCommand {
 /// exits, so the pipes cannot wait for the exit.
 ///
 /// A descendant that outlives the child can hold a pipe open, and nothing interrupts a blocking
-/// read, so the thread is left behind rather than joined. Dropping this ends it at its next read,
-/// and that thread then closes the pipe.
+/// read, so the thread is left behind rather than joined. It ends when the last writer closes the
+/// pipe: closing the read end sooner would kill that descendant with SIGPIPE at its next write.
 struct PipeReader {
     captured: Arc<Mutex<Vec<u8>>>,
     thread: JoinHandle<()>,
@@ -141,7 +141,7 @@ struct PipeReader {
 impl PipeReader {
     fn spawn(pipe: Option<impl Read + Send + 'static>) -> io::Result<Self> {
         let captured = Arc::new(Mutex::new(Vec::with_capacity(OUTPUT_CAPTURE_BYTES)));
-        let shared = Arc::downgrade(&captured);
+        let shared = Arc::clone(&captured);
         let thread = std::thread::Builder::new()
             .name("cc-detect-pipe".to_owned())
             .spawn(move || {
@@ -168,8 +168,8 @@ fn spawn_pipe_readers(child: &mut Child) -> io::Result<(PipeReader, PipeReader)>
 }
 
 /// Reads a pipe to its end, keeping the start of it. The rest is read and dropped, as the child
-/// would block on a full pipe. Stops early once the owner of `captured` has gone.
-fn drain_pipe(mut pipe: impl Read, captured: &Weak<Mutex<Vec<u8>>>) {
+/// would block on a full pipe.
+fn drain_pipe(mut pipe: impl Read, captured: &Mutex<Vec<u8>>) {
     let mut chunk = [0_u8; PIPE_READ_CHUNK_BYTES];
     loop {
         let read_bytes = match pipe.read(&mut chunk) {
@@ -180,9 +180,6 @@ fn drain_pipe(mut pipe: impl Read, captured: &Weak<Mutex<Vec<u8>>>) {
                 debug!("Error reading command output: {err}");
                 return;
             }
-        };
-        let Some(captured) = captured.upgrade() else {
-            return;
         };
         let mut captured = captured.lock().unwrap_or_else(PoisonError::into_inner);
         let room_bytes = OUTPUT_CAPTURE_BYTES.saturating_sub(captured.len());
@@ -247,26 +244,13 @@ mod capture_tests {
     fn drain_keeps_the_start_of_a_pipe_and_reads_all_of_it() {
         // Goal: memory stays bounded, and the child is never left blocked on a full pipe.
         // Method: drain far more than the capture holds and check nothing is left to read.
-        let captured = Arc::new(Mutex::new(Vec::new()));
+        let captured = Mutex::new(Vec::new());
         let mut pipe = Cursor::new(vec![b'x'; OUTPUT_CAPTURE_BYTES * 8]);
-        drain_pipe(&mut pipe, &Arc::downgrade(&captured));
+        drain_pipe(&mut pipe, &captured);
         assert_eq!(captured.lock().unwrap().len(), OUTPUT_CAPTURE_BYTES);
         let mut left = Vec::new();
         pipe.read_to_end(&mut left).unwrap();
         assert!(left.is_empty());
-    }
-
-    #[test]
-    fn drain_stops_once_its_owner_has_gone() {
-        // Goal: a reader left behind does not read for as long as a descendant keeps writing.
-        // Method: drain a pipe with more to give after the owner is dropped.
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let shared = Arc::downgrade(&captured);
-        drop(captured);
-        let mut pipe = Cursor::new(vec![b'x'; PIPE_READ_CHUNK_BYTES * 2]);
-        drain_pipe(&mut pipe, &shared);
-        assert_eq!(pipe.position(), PIPE_READ_CHUNK_BYTES as u64);
-        assert!(shared.upgrade().is_none());
     }
 
     #[test]
@@ -288,11 +272,24 @@ mod tests {
     const PIPE_BUFFER_BYTES: usize = 64 * 1024;
     const TIMEOUT_GENEROUS: Duration = Duration::from_secs(10);
     const TIMEOUT_SHORT: Duration = Duration::from_secs(1);
+    const TIMEOUT_TINY: Duration = Duration::from_millis(100);
     /// Under the 5 s the scripts sleep for, and loose enough for a loaded CI machine.
     const ELAPSED_MAX: Duration = Duration::from_secs(4);
+    const POLL_INTERVAL: Duration = Duration::from_millis(20);
+    const POLL_COUNT_MAX: usize = 200;
 
     fn fill_script(size_bytes: usize) -> String {
         format!("head -c {size_bytes} /dev/zero | tr '\\0' x")
+    }
+
+    fn path_appears(path: &std::path::Path) -> bool {
+        for _ in 0..POLL_COUNT_MAX {
+            if path.exists() {
+                return true;
+            }
+            std::thread::sleep(POLL_INTERVAL);
+        }
+        false
     }
 
     #[test]
@@ -389,12 +386,37 @@ mod tests {
 
     #[test]
     fn a_descendant_that_keeps_writing_cannot_hold_the_caller() {
-        // Goal: the read ends soon after the child exits, even if a pipe never goes quiet.
-        // Method: leave a background writer running, with a timeout it cannot reach.
+        // Goal: the wait ends soon after the child exits, even if a pipe never goes quiet.
+        // Method: leave a writer that outlasts ELAPSED_MAX, then kill it. `timeout` ends it if an
+        // assert fails first.
         let start = Instant::now();
-        let result = ShellCommand::new("yes &", TIMEOUT_GENEROUS).run();
-        assert!(start.elapsed() < ELAPSED_MAX);
-        assert!(matches!(result, ShellCommandResult::Success { .. }));
+        let result = ShellCommand::new("timeout 5 yes & echo $! >&2", TIMEOUT_GENEROUS).run();
+        let elapsed = start.elapsed();
+        let ShellCommandResult::Success { stderr: pid, .. } = result else {
+            panic!("expected success");
+        };
+        let killed = Command::new("kill").arg(&pid).status().unwrap();
+        assert!(killed.success(), "the writer should still run");
+        assert!(elapsed < ELAPSED_MAX);
+    }
+
+    #[test]
+    fn a_descendant_can_still_write_after_the_caller_returns() {
+        // Goal: nothing here ends a descendant. Closing the read end would kill it with SIGPIPE at
+        // its next write.
+        // Method: background a job that writes twice after the grace, as a reader that gives up
+        // does so only once the first write wakes it. It then touches a marker it never reaches
+        // if a write kills it. One child exits, the other is killed at the timeout.
+        for (foreground, timeout) in [("", TIMEOUT_GENEROUS), ("exec sleep 60", TIMEOUT_TINY)] {
+            let dir = tempfile::tempdir().unwrap();
+            let marker = dir.path().join("survived");
+            let job = format!(
+                "(sleep 0.3; echo out; sleep 0.2; echo out; touch '{}')",
+                marker.display()
+            );
+            let _ = ShellCommand::new(&format!("{job} & {foreground}"), timeout).run();
+            assert!(path_appears(&marker), "{foreground}");
+        }
     }
 
     #[test]
