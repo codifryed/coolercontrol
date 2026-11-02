@@ -958,9 +958,7 @@ pub async fn set_pwm_enable_to_default_or_auto(
         .await
         .and_then(check_parsing_8)?;
     if current_pwm_enable < PWM_ENABLE_AUTO_VALUE && current_pwm_enable != default_value {
-        if let Err(err) = write_pwm_enable(&path_pwm_enable, default_value, io).await {
-            warn!("Failed to reset pwm_enable to default: {err}");
-        }
+        write_pwm_enable(&path_pwm_enable, default_value, io).await?;
     }
     debug!(
         "Reset Hwmon value at {}/pwm{}_enable to default/auto value",
@@ -1314,6 +1312,38 @@ mod tests {
                 .unwrap();
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, "2");
+        });
+    }
+
+    /// Goal: a reset whose write the driver refuses reports it, since the caller keeps the fan
+    /// taken only on an error. Method: a read-only `pwm1_enable`, which needs a non-root test.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn test_set_pwm_enable_to_default_reports_a_refused_write() {
+        use std::os::unix::fs::PermissionsExt;
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            let test_base_path = &ctx.test_base_path;
+            let path = test_base_path.join("pwm1_enable");
+            cc_fs::write(&path, b"1".to_vec()).await.unwrap();
+            let read_only = std::fs::Permissions::from_mode(0o444);
+            cc_fs::set_permissions(&path, read_only).await.unwrap();
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: Some(2),
+                ..Default::default()
+            };
+
+            let result = set_pwm_enable_to_default_or_auto(
+                test_base_path,
+                &channel_info,
+                &DeviceIo::default(),
+            )
+            .await;
+
+            assert!(result.is_err());
         });
     }
 
@@ -1918,6 +1948,7 @@ mod tests {
             drivetemp: drivetemp::DrivetempState::default(),
             apple_fans: None,
             io: DeviceIo::default(),
+            ..Default::default()
         }
         .with_read_registry()
         .await

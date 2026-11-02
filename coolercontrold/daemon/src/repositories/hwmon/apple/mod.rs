@@ -263,7 +263,7 @@ impl AppleFans {
         }
     }
 
-    fn is_taken(&self, channel_number: u8) -> bool {
+    pub fn is_taken(&self, channel_number: u8) -> bool {
         self.taken_fans.borrow().contains(&channel_number)
     }
 

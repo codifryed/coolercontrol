@@ -1370,6 +1370,7 @@ mod tests {
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_fans: None,
                 io: DeviceIo::default(),
+                ..Default::default()
             });
 
             // when:
@@ -1757,6 +1758,7 @@ mod tests {
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_fans: None,
                 io: DeviceIo::default(),
+                ..Default::default()
             });
 
             // when:
@@ -1805,6 +1807,7 @@ mod tests {
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_fans: None,
                 io: DeviceIo::default(),
+                ..Default::default()
             });
 
             // when:
@@ -1894,6 +1897,7 @@ mod tests {
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_fans: None,
                 io: DeviceIo::default(),
+                ..Default::default()
             });
 
             // when:
@@ -1977,6 +1981,7 @@ mod tests {
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_fans: None,
                 io: DeviceIo::default(),
+                ..Default::default()
             });
 
             // when:
@@ -2010,6 +2015,7 @@ mod tests {
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_fans: None,
                 io: DeviceIo::default(),
+                ..Default::default()
             });
 
             let (statuses, any_failure) = apple_smc.extract_fan_statuses(&driver).await;

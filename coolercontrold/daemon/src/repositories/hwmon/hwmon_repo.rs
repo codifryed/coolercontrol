@@ -78,6 +78,7 @@ use crate::repositories::hwmon::{
     attributes, auto_curve, chip_name, devices, drivetemp, fans, power, temps, thinkpad,
 };
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
+use crate::repositories::taken_channels::TakenChannels;
 use crate::repositories::utils::apply_device_command_delay;
 use crate::rt;
 use crate::rt::reply::{Reply, ReplyPool, ReplySender};
@@ -455,6 +456,10 @@ pub struct HwmonDriverInfo {
     /// it bounds how many there can be.
     #[serde(skip)]
     pub io: DeviceIo,
+    /// Fans the daemon has driven, so a reset leaves every other fan alone. Apple fans keep their
+    /// own record in `apple_fans`.
+    #[serde(skip)]
+    pub taken_channels: TakenChannels,
 }
 
 /// Sized to fit a typical hwmon fan-channel set (1-8) without growth.
@@ -1007,6 +1012,9 @@ impl HwmonRepo {
             if channel_info.hwmon_type != HwmonChannelType::Fan {
                 continue;
             }
+            if fan_is_taken(hwmon_driver, channel_info).not() {
+                continue;
+            }
             debug!(
                 "Applying HWMON device: {device_uid} channel: {}; \
                 Resetting to Original fan control mode",
@@ -1032,14 +1040,13 @@ impl HwmonRepo {
                         .release_fan(channel_info.number, &hwmon_driver.io)
                         .await
                 }
-                None => {
-                    fans::set_pwm_enable_to_default_or_auto(
-                        &hwmon_driver.path,
-                        channel_info,
-                        &hwmon_driver.io,
-                    )
-                    .await
-                }
+                None => fans::set_pwm_enable_to_default_or_auto(
+                    &hwmon_driver.path,
+                    channel_info,
+                    &hwmon_driver.io,
+                )
+                .await
+                .inspect(|()| hwmon_driver.taken_channels.release(&channel_info.name)),
             };
             if let Err(err) = reset {
                 error!(
@@ -2257,12 +2264,14 @@ async fn apply_pwm_duty_write(
             driver.name
         ));
     }
+    if let Some(apple_fans) = &driver.apple_fans {
+        return apple_fans
+            .set_fan_duty(channel_info.number, target_duty, &driver.io)
+            .await;
+    }
+    driver.taken_channels.mark(channel_name);
     if driver.name == devices::DEVICE_NAME_THINK_PAD {
         thinkpad::apply_speed_fixed(config, driver, channel_info, target_duty).await
-    } else if let Some(apple_fans) = &driver.apple_fans {
-        apple_fans
-            .set_fan_duty(channel_info.number, target_duty, &driver.io)
-            .await
     } else {
         fans::set_pwm_duty(&driver.path, channel_info, target_duty, &driver.io)
             .await
@@ -2272,6 +2281,15 @@ async fn apply_pwm_duty_write(
                     driver.name
                 )
             })
+    }
+}
+
+/// Whether the daemon has driven this fan. Only a fan it has driven gets a reset, so one left to
+/// the firmware or to another tool is not overwritten.
+fn fan_is_taken(driver: &HwmonDriverInfo, channel_info: &HwmonChannelInfo) -> bool {
+    match &driver.apple_fans {
+        Some(apple_fans) => apple_fans.is_taken(channel_info.number),
+        None => driver.taken_channels.is_taken(&channel_info.name),
     }
 }
 
@@ -2494,6 +2512,7 @@ impl Repository for HwmonRepo {
                 drivetemp,
                 apple_fans,
                 io,
+                taken_channels: TakenChannels::default(),
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
@@ -2619,6 +2638,13 @@ impl Repository for HwmonRepo {
         );
         // Auto mode takes over duty control; cached value is stale.
         self.invalidate_duty_cache_entry(type_index, channel_name);
+        let is_apple_fan = hwmon_driver.apple_fans.is_some();
+        if is_apple_fan.not() && fan_is_taken(hwmon_driver, channel_info).not() {
+            debug!(
+                "Leaving HWMON device: {device_uid} channel: {channel_name} as it is: not taken"
+            );
+            return Ok(());
+        }
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
@@ -2631,14 +2657,13 @@ impl Repository for HwmonRepo {
                     .set_to_auto_control(channel_info.number, &hwmon_driver.io)
                     .await
             }
-            None => {
-                fans::set_pwm_enable_to_default_or_auto(
-                    &hwmon_driver.path,
-                    channel_info,
-                    &hwmon_driver.io,
-                )
-                .await
-            }
+            None => fans::set_pwm_enable_to_default_or_auto(
+                &hwmon_driver.path,
+                channel_info,
+                &hwmon_driver.io,
+            )
+            .await
+            .inspect(|()| hwmon_driver.taken_channels.release(channel_name)),
         };
         apply_device_command_delay(self.device_delay(device_uid)).await;
         result
@@ -2668,6 +2693,7 @@ impl Repository for HwmonRepo {
                 .set_to_manual_control(channel_info.number, &hwmon_driver.io)
                 .await
         } else {
+            hwmon_driver.taken_channels.mark(channel_name);
             fans::set_pwm_enable(
                 fans::PWM_ENABLE_MANUAL_VALUE,
                 &hwmon_driver.path,
@@ -2800,6 +2826,7 @@ impl Repository for HwmonRepo {
             "Applying HWMON device: {device_uid} channel: {channel_name}; \
              Speed Profile (device duty): {speed_profile:?}"
         );
+        hwmon_driver.taken_channels.mark(channel_name);
         let result = auto_curve::apply_curve(
             &hwmon_driver.path,
             fan_channel_info,
@@ -2872,6 +2899,14 @@ impl Repository for HwmonRepo {
                     continue;
                 }
                 if channel_info.caps.is_fan_controllable().not() {
+                    continue;
+                }
+                // Stays taken: the daemon drives this fan again on wake.
+                if hwmon_driver
+                    .taken_channels
+                    .is_taken(&channel_info.name)
+                    .not()
+                {
                     continue;
                 }
                 info!(
@@ -3114,6 +3149,7 @@ mod preload_tests {
                 drivetemp: DrivetempState::default(),
                 apple_fans: None,
                 io,
+                ..Default::default()
             }
             .with_read_registry()
             .await,
@@ -5862,6 +5898,57 @@ mod slow_device_tests {
         });
     }
 
+    /// Goal: a written duty takes a fan on its own, as on a device with no `pwm_enable`, while
+    /// a write skipped because the fan is already there changes nothing and takes nothing.
+    /// Method: preload a duty, send that duty, then send a different one.
+    #[test]
+    #[serial]
+    fn a_written_duty_takes_a_fan_and_a_skipped_one_does_not() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("dev");
+            seed_fan_files(&dir, &[1], 128).await;
+            let mut repo = empty_repo();
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                false,
+                vec![],
+            )
+            .await;
+            repo.preloaded_statuses.borrow_mut().insert(
+                TEST_TYPE_INDEX,
+                (
+                    vec![ChannelStatus {
+                        name: "fan1".to_string(),
+                        duty: Some(50.0),
+                        ..Default::default()
+                    }],
+                    vec![],
+                ),
+            );
+            let repo = Rc::new(repo);
+            let is_taken = || repo.devices[&uid].1.taken_channels.is_taken("fan1");
+
+            enqueue_write(&repo, &uid, "fan1", 50)
+                .await
+                .unwrap()
+                .unwrap();
+            let taken_after_skip = is_taken();
+            enqueue_write(&repo, &uid, "fan1", 60)
+                .await
+                .unwrap()
+                .unwrap();
+
+            assert!(taken_after_skip.not());
+            assert!(is_taken());
+            repo.shutdown_token.cancel();
+        });
+    }
+
     #[test]
     #[serial]
     fn write_skips_when_preloaded_status_matches_target() {
@@ -6528,6 +6615,9 @@ mod prepare_for_sleep_tests {
                 dir.clone(),
                 vec![thinkpad_fan(1, "fan1", &dir, Some(2))],
             );
+            for (_, driver) in repo.devices.values() {
+                driver.taken_channels.mark("fan1");
+            }
 
             repo.prepare_for_sleep().await;
 
@@ -6537,6 +6627,32 @@ mod prepare_for_sleep_tests {
                 "2",
                 "fan should be set to auto mode for sleep"
             );
+            for (_, driver) in repo.devices.values() {
+                assert!(
+                    driver.taken_channels.is_taken("fan1"),
+                    "the fan is taken back on wake, so sleep does not release it"
+                );
+            }
+        });
+    }
+
+    /// Goal: going to sleep leaves a ThinkPad fan the daemon never drove as another tool set
+    /// it. Method: a fan held in manual with nothing taken.
+    #[test]
+    #[serial]
+    fn prepare_for_sleep_leaves_a_fan_it_never_took() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("dev");
+            seed_pwm_dir(&dir, b"1").await;
+            let mut repo = empty_repo();
+            let fan = thinkpad_fan(1, "fan1", &dir, Some(2));
+            insert_thinkpad_device(&mut repo, 1, dir.clone(), vec![fan]);
+
+            repo.prepare_for_sleep().await;
+
+            let after = cc_fs::read_sysfs(&dir.join("pwm1_enable")).await.unwrap();
+            assert_eq!(after.trim(), "1");
         });
     }
 
@@ -6576,6 +6692,9 @@ mod prepare_for_sleep_tests {
                 vec![thinkpad_fan(1, "fan1", &dir, Some(2))],
             );
 
+            for (_, driver) in repo.devices.values() {
+                driver.taken_channels.mark("fan1");
+            }
             let start = Instant::now();
             repo.prepare_for_sleep().await;
             let elapsed = start.elapsed();
@@ -6908,6 +7027,7 @@ mod shutdown_tests {
             let sem_a = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_a = sem_a.try_acquire().expect("permit A starts free");
 
+            take_every_fan1(&repo);
             let result = repo.shutdown().await;
 
             assert!(result.is_err(), "shutdown should report failures");
@@ -6969,6 +7089,7 @@ mod shutdown_tests {
                 vec![fan_channel(1, "fan1", &dir_healthy, Some(2))],
             );
 
+            take_every_fan1(&repo);
             let started = Instant::now();
             let result = repo.shutdown().await;
             let elapsed = started.elapsed();
@@ -7073,6 +7194,7 @@ mod shutdown_tests {
                 vec![fan_channel(1, "fan1", &dir, Some(2))],
             );
 
+            take_every_fan1(&repo);
             let result = repo.shutdown().await;
 
             assert!(
@@ -7081,6 +7203,196 @@ mod shutdown_tests {
             );
             let after = cc_fs::read_sysfs(&dir.join("pwm1_enable")).await.unwrap();
             assert_eq!(after.trim(), "2", "channel should be reset to default");
+        });
+    }
+
+    /// Stands in for a run that drove every device's fan.
+    #[cfg(feature = "gated-tests")]
+    fn take_every_fan1(repo: &HwmonRepo) {
+        for (_, driver) in repo.devices.values() {
+            driver.taken_channels.mark("fan1");
+        }
+    }
+
+    fn single_device_uid(repo: &HwmonRepo) -> UID {
+        assert_eq!(repo.devices.len(), 1);
+        repo.devices.keys().next().unwrap().clone()
+    }
+
+    async fn pwm_enable_at(dir: &Path) -> String {
+        cc_fs::read_sysfs(&dir.join("pwm1_enable"))
+            .await
+            .unwrap()
+            .trim()
+            .to_owned()
+    }
+
+    /// Goal: shutdown leaves a fan the daemon never drove as another tool set it, even though
+    /// it differs from the startup value. Method: a fan held in manual with an automatic
+    /// startup default and nothing taken.
+    #[test]
+    #[serial]
+    fn shutdown_leaves_a_fan_it_never_took() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("dev");
+            seed_pwm_dir(&dir, b"1").await;
+            let mut repo = empty_repo();
+            let fan = fan_channel(1, "fan1", &dir, Some(2));
+            insert_device(&mut repo, 1, "dev", dir.clone(), vec![fan]);
+
+            let result = repo.shutdown().await;
+
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(pwm_enable_at(&dir).await, "1");
+        });
+    }
+
+    /// Goal: taking manual control is what makes shutdown hand a fan back. Method: take the
+    /// fan through the repository, as a profile does, then shut down.
+    #[test]
+    #[serial]
+    fn shutdown_returns_a_fan_taken_by_manual_control() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("dev");
+            seed_pwm_dir(&dir, b"2").await;
+            let mut repo = empty_repo();
+            let fan = fan_channel(1, "fan1", &dir, Some(2));
+            insert_device(&mut repo, 1, "dev", dir.clone(), vec![fan]);
+            let uid = single_device_uid(&repo);
+            repo.apply_setting_manual_control(&uid, "fan1")
+                .await
+                .unwrap();
+            let while_taken = pwm_enable_at(&dir).await;
+
+            let result = repo.shutdown().await;
+
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(while_taken, "1");
+            assert_eq!(pwm_enable_at(&dir).await, "2");
+        });
+    }
+
+    /// Goal: a saved Unmanaged setting re-applied at boot or on resume writes nothing to a fan
+    /// the daemon has not driven. Method: reset a fan held in manual with nothing taken.
+    #[test]
+    #[serial]
+    fn a_reset_leaves_a_fan_it_never_took() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("dev");
+            seed_pwm_dir(&dir, b"1").await;
+            let mut repo = empty_repo();
+            let fan = fan_channel(1, "fan1", &dir, Some(2));
+            insert_device(&mut repo, 1, "dev", dir.clone(), vec![fan]);
+            let uid = single_device_uid(&repo);
+
+            let result = repo.apply_setting_reset(&uid, "fan1").await;
+
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(pwm_enable_at(&dir).await, "1");
+        });
+    }
+
+    /// Goal: a Mode moving a driven fan to Unmanaged hands it back once, and reapplying
+    /// Unmanaged overrides nothing another tool has since set. Method: take the fan and reset
+    /// it, play the other tool, then reset again and shut down.
+    #[test]
+    #[serial]
+    fn a_fan_is_reset_once_and_then_left_alone() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("dev");
+            seed_pwm_dir(&dir, b"2").await;
+            let mut repo = empty_repo();
+            let fan = fan_channel(1, "fan1", &dir, Some(2));
+            insert_device(&mut repo, 1, "dev", dir.clone(), vec![fan]);
+            let uid = single_device_uid(&repo);
+            repo.apply_setting_manual_control(&uid, "fan1")
+                .await
+                .unwrap();
+
+            repo.apply_setting_reset(&uid, "fan1").await.unwrap();
+            let after_first_reset = pwm_enable_at(&dir).await;
+            cc_fs::write(dir.join("pwm1_enable"), b"1".to_vec())
+                .await
+                .unwrap();
+            repo.apply_setting_reset(&uid, "fan1").await.unwrap();
+            let shutdown = repo.shutdown().await;
+
+            assert_eq!(after_first_reset, "2");
+            assert!(shutdown.is_ok(), "{shutdown:?}");
+            assert_eq!(pwm_enable_at(&dir).await, "1");
+        });
+    }
+
+    /// Goal: a reset that fails leaves the fan taken, so shutdown tries the hand-back again.
+    /// Method: take the fan, hide `pwm1_enable` so the reset cannot read it, then put it back.
+    #[test]
+    #[serial]
+    fn a_failed_reset_is_retried_at_shutdown() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("dev");
+            seed_pwm_dir(&dir, b"2").await;
+            let mut repo = empty_repo();
+            let fan = fan_channel(1, "fan1", &dir, Some(2));
+            insert_device(&mut repo, 1, "dev", dir.clone(), vec![fan]);
+            let uid = single_device_uid(&repo);
+            repo.apply_setting_manual_control(&uid, "fan1")
+                .await
+                .unwrap();
+            cc_fs::remove_file(dir.join("pwm1_enable")).await.unwrap();
+
+            let failed_reset = repo.apply_setting_reset(&uid, "fan1").await;
+
+            cc_fs::write(dir.join("pwm1_enable"), b"1".to_vec())
+                .await
+                .unwrap();
+            let shutdown = repo.shutdown().await;
+
+            assert!(failed_reset.is_err());
+            assert!(shutdown.is_ok(), "{shutdown:?}");
+            assert_eq!(pwm_enable_at(&dir).await, "2");
+        });
+    }
+
+    /// Goal: a hardware curve counts as taking the fan, even one that fails part way, since it
+    /// may already have changed the fan. Method: a curve point file that is a directory, which
+    /// no write can land on.
+    #[test]
+    #[serial]
+    fn a_failed_hardware_curve_still_takes_the_fan() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("dev");
+            seed_pwm_dir(&dir, b"2").await;
+            let mut repo = empty_repo();
+            let mut fan = fan_channel(1, "fan1", &dir, Some(2));
+            fan.auto_curve = AutoCurveInfo::PWM { point_length: 2 };
+            let temp = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Temp,
+                number: 1,
+                name: "temp1".to_string(),
+                ..Default::default()
+            };
+            insert_device(&mut repo, 1, "dev", dir.clone(), vec![fan, temp]);
+            cc_fs::create_dir_all(dir.join("pwm1_auto_point1_pwm"))
+                .await
+                .unwrap();
+            let uid = single_device_uid(&repo);
+            let temp_source = TempSource {
+                device_uid: uid.clone(),
+                temp_name: "temp1".to_string(),
+            };
+
+            let applied = repo
+                .apply_setting_speed_profile(&uid, "fan1", &temp_source, &[(30.0, 40), (60.0, 80)])
+                .await;
+
+            assert!(applied.is_err());
+            assert!(repo.devices[&uid].1.taken_channels.is_taken("fan1"));
         });
     }
 }
