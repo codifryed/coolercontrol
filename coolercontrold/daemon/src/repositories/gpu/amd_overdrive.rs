@@ -59,6 +59,8 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Enough to keep failure lines that follow pages of build warnings.
 const OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 const ERROR_EXCERPT_LINES: usize = 5;
+/// Keeps the debug log line short; the full output stays in the file.
+const OUTPUT_LOG_LINES: usize = 50;
 const _: () = assert!(ERROR_EXCERPT_LINES > 0);
 /// rpm-ostree's exit code for "No changes", with `--unchanged-exit-77`.
 const RPM_OSTREE_UNCHANGED_EXIT_CODE: i32 = 77;
@@ -702,7 +704,10 @@ async fn rebuild_boot_image(tool: RebuildTool, paths: &OverdrivePaths) -> Result
     let argv = rebuild_argv(tool.command(), &output, systemd, inhibit);
     let result = run_argv(&argv, REBUILD_WAIT_LIMIT).await;
     let output_text = read_output(&output).await;
-    debug!("Boot image rebuild output: {output_text}");
+    debug!(
+        "Boot image rebuild output tail: {}",
+        tail_lines(&output_text, OUTPUT_LOG_LINES)
+    );
     launch_outcome(tool, result, &output_text)
 }
 
@@ -780,11 +785,25 @@ async fn run_argv(argv: &[String], timeout: Duration) -> Result<(i32, String, St
 
 /// The output's tail, where tools put the failure. A missing file reads as empty.
 async fn read_output(output: &Path) -> String {
-    let Ok(bytes) = cc_fs::read_bytes(output).await else {
-        return String::new();
-    };
-    let start = bytes.len().saturating_sub(OUTPUT_LIMIT_BYTES);
-    String::from_utf8_lossy(&bytes[start..]).into_owned()
+    let output = output.to_path_buf();
+    match rt::spawn_blocking(move || read_tail_blocking(&output, OUTPUT_LIMIT_BYTES)).await {
+        Ok(Ok(tail)) => String::from_utf8_lossy(&tail).into_owned(),
+        _ => String::new(),
+    }
+}
+
+/// Reads at most the last `limit_bytes` of `path`. A still running rebuild may grow the file
+/// meanwhile, so the read is capped, not sized from the length alone.
+fn read_tail_blocking(path: &Path, limit_bytes: usize) -> Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let limit = u64::try_from(limit_bytes)?;
+    let len = file.metadata()?.len();
+    file.seek(SeekFrom::Start(len.saturating_sub(limit)))?;
+    let mut tail = Vec::with_capacity(usize::try_from(len.min(limit))?);
+    file.take(limit).read_to_end(&mut tail)?;
+    debug_assert!(tail.len() <= limit_bytes);
+    Ok(tail)
 }
 
 /// A failure line wins over the exit code, since some tools exit 0 on failure. A launcher that
@@ -1166,6 +1185,26 @@ mod tests {
             assert_eq!(exit_code, 3);
             assert_eq!(stdout, "");
             assert_eq!(read_output(&output).await, "building\n");
+        });
+    }
+
+    // Verify a log past the limit reads as its last bytes only, and a short one in full.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn the_output_read_keeps_only_the_tail() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let output = dir.path().join(OUTPUT_FILE);
+            let mut log = "x".repeat(OUTPUT_LIMIT_BYTES);
+            log.push_str("==> ERROR: failed\n");
+            std::fs::write(&output, &log).unwrap();
+            let tail = read_output(&output).await;
+            assert_eq!(tail.len(), OUTPUT_LIMIT_BYTES);
+            assert!(tail.ends_with("==> ERROR: failed\n"));
+            assert!(tail.starts_with('x'));
+            std::fs::write(&output, "short\n").unwrap();
+            assert_eq!(read_output(&output).await, "short\n");
+            assert_eq!(read_output(&dir.path().join("missing")).await, "");
         });
     }
 
