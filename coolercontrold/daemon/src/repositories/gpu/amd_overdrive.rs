@@ -692,7 +692,7 @@ fn overdrive_conf(mask: u64) -> String {
 async fn write_overdrive_conf(paths: &OverdrivePaths, new_mask: u64, dracut: bool) -> Result<()> {
     assert!(new_mask & PP_OVERDRIVE_MASK > 0);
     let conf = overdrive_conf(new_mask);
-    debug_assert_eq!(
+    assert_eq!(
         conf.trim()
             .strip_prefix("options amdgpu ppfeaturemask=")
             .and_then(|mask| parse_pp_feature_mask(mask).ok()),
@@ -805,7 +805,7 @@ fn rebuild_argv(command: &str, output: &Path, systemd: bool, inhibit: bool) -> V
         ]
         .map(str::to_owned),
     );
-    debug_assert!(argv.len() <= REBUILD_ARGV_MAX);
+    assert!(argv.len() <= REBUILD_ARGV_MAX);
     argv
 }
 
@@ -837,7 +837,7 @@ fn read_tail_blocking(path: &Path, limit_bytes: usize) -> Result<Vec<u8>> {
     file.seek(SeekFrom::Start(len.saturating_sub(limit)))?;
     let mut tail = Vec::with_capacity(usize::try_from(len.min(limit))?);
     file.take(limit).read_to_end(&mut tail)?;
-    debug_assert!(tail.len() <= limit_bytes);
+    assert!(tail.len() <= limit_bytes);
     Ok(tail)
 }
 
@@ -856,7 +856,7 @@ fn rebuild_outcome(tool: RebuildTool, exit_code: i32, output: &str, stderr: &str
     } else {
         tail_lines(output, ERROR_EXCERPT_LINES)
     };
-    debug_assert!(excerpt.lines().count() <= ERROR_EXCERPT_LINES);
+    assert!(excerpt.lines().count() <= ERROR_EXCERPT_LINES);
     Err(anyhow!(
         "Boot image rebuild failed with exit code {exit_code}: {excerpt}"
     ))
