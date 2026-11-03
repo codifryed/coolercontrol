@@ -10,3 +10,4 @@ mod nvapi;
 mod nvapi_io;
 mod nvidia;
 pub mod nvml_io;
+mod rebuild_preflight;

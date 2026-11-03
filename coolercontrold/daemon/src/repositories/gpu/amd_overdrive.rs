@@ -21,6 +21,7 @@ use crate::events::amd_gpu_overdrive::{
 };
 use crate::events::notifier::{notify_all_sessions, NotificationHandle, NotificationIcon};
 use crate::repositories::gpu::boot_image::{self, BootFacts, BootSetup, RebuildTool, Refusal};
+use crate::repositories::gpu::rebuild_preflight;
 use crate::repositories::utils::{DirectCommand, ShellCommandResult};
 use crate::rt;
 use anyhow::{anyhow, Context, Result};
@@ -241,6 +242,7 @@ impl OverdriveSetup {
                 );
             }
             BootSetup::Rebuild(tool) => {
+                refuse_on_preflight(&self.paths).await?;
                 write_overdrive_conf(&self.paths, new_mask, facts.dracut).await?;
                 self.start(OverdriveAction::Enable, tool.id(), Work::Rebuild(tool));
             }
@@ -365,6 +367,22 @@ fn derive_state(job: &Job, active: bool, conf_present: bool) -> OverdriveState {
         JobPhase::Idle if job.done || conf_present => OverdriveState::RebootRequired,
         JobPhase::Idle => OverdriveState::NotConfigured,
     }
+}
+
+/// Why a rebuild should not start now, from checks made before anything is written.
+async fn preflight_problem(paths: &OverdrivePaths) -> Result<Option<String>> {
+    let root = paths.root.clone();
+    let problem = rt::spawn_blocking(move || rebuild_preflight::check_blocking(&root)).await?;
+    Ok(problem.map(|problem| problem.message()))
+}
+
+/// Runs before anything is written, so a refusal leaves the system as it was.
+async fn refuse_on_preflight(paths: &OverdrivePaths) -> Result<()> {
+    let Some(msg) = preflight_problem(paths).await? else {
+        return Ok(());
+    };
+    info!("Not rebuilding the boot image: {msg}");
+    Err(CCError::UserError { msg }.into())
 }
 
 /// Reads the boot image facts of this system off the runtime thread.
