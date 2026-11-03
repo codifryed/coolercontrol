@@ -731,12 +731,16 @@ async fn create_app_state<'s>(
         HardwareReportHandle::new(hardware_support, cancel_token.clone(), main_scope);
     let auth_handle = AuthHandle::new(cancel_token.clone());
     let token_handle = TokenHandle::new(cancel_token.clone()).await;
+    let amd_gpu_overdrive_handle =
+        crate::events::amd_gpu_overdrive::AmdGpuOverdriveHandle::new(cancel_token.clone());
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
         engine.clone(),
         modes_controller.clone(),
         config.clone(),
         overrides_controller.clone(),
+        amd_gpu_overdrive_handle.clone(),
+        notification_handle.clone(),
         cancel_token.clone(),
         main_scope,
     );
@@ -805,6 +809,7 @@ async fn create_app_state<'s>(
         log_buf_handle,
         notification_handle,
         system_event_handle,
+        amd_gpu_overdrive_handle,
         power_profiles,
         frame_policy,
     }
@@ -1462,6 +1467,7 @@ pub struct AppState {
     pub log_buf_handle: LogBufHandle,
     pub notification_handle: crate::events::notifier::NotificationHandle,
     pub system_event_handle: crate::events::system_event::SystemEventHandle,
+    pub amd_gpu_overdrive_handle: crate::events::amd_gpu_overdrive::AmdGpuOverdriveHandle,
     pub power_profiles: crate::listeners::power_profile::PowerProfiles,
     /// Fixed at startup, for the routes that serve HTML.
     pub frame_policy: FramePolicy,

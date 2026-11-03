@@ -7,16 +7,17 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{ChannelAttribute, ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
+use crate::events::amd_gpu_overdrive::{AmdGpuOverdriveHandle, AmdGpuOverdriveStatus};
 use crate::events::notifier::NotificationHandle;
 use crate::modes::ModeController;
 use crate::overrides::OverridesController;
-use crate::repositories::gpu::amd_overdrive;
+use crate::repositories::gpu::amd_overdrive::OverdriveSetup;
 use crate::setting::{
     LcdModeKind, LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting, SettingKind,
 };
 use crate::AllDevices;
 use anyhow::Result;
-use log::{error, info};
+use log::{debug, error, info};
 use mime::Mime;
 use moro_local::Scope;
 use std::ops::{Deref, Not};
@@ -31,6 +32,7 @@ struct DeviceActor {
     modes_controller: Rc<ModeController>,
     config: Rc<Config>,
     overrides: Rc<OverridesController>,
+    overdrive: OverdriveSetup,
 }
 
 enum DeviceMessage {
@@ -39,8 +41,10 @@ enum DeviceMessage {
         respond_to: oneshot::Sender<Result<()>>,
     },
     AmdGpuOverdriveEnable {
-        notification_handle: NotificationHandle,
-        respond_to: oneshot::Sender<Result<String>>,
+        respond_to: oneshot::Sender<Result<AmdGpuOverdriveStatus>>,
+    },
+    AmdGpuOverdriveGet {
+        respond_to: oneshot::Sender<AmdGpuOverdriveStatus>,
     },
     DevicesGet {
         respond_to: oneshot::Sender<Result<Vec<DeviceDto>>>,
@@ -140,6 +144,7 @@ impl DeviceActor {
         modes_controller: Rc<ModeController>,
         config: Rc<Config>,
         overrides: Rc<OverridesController>,
+        overdrive: OverdriveSetup,
     ) -> Self {
         Self {
             receiver,
@@ -148,6 +153,7 @@ impl DeviceActor {
             modes_controller,
             config,
             overrides,
+            overdrive,
         }
     }
 
@@ -185,6 +191,22 @@ impl DeviceActor {
     }
 }
 
+/// A refusal is an expected answer, which the UI shows and `CCError` logs at debug.
+fn is_expected_refusal(err: &anyhow::Error) -> bool {
+    matches!(
+        err.downcast_ref::<CCError>(),
+        Some(CCError::Conflict { .. } | CCError::UserError { .. })
+    )
+}
+
+fn log_overdrive_failure(doing: &str, err: &anyhow::Error) {
+    if is_expected_refusal(err) {
+        debug!("Refused {doing} AMD GPU overdrive: {err}");
+    } else {
+        error!("Error {doing} AMD GPU overdrive: {err}");
+    }
+}
+
 impl ApiActor<DeviceMessage> for DeviceActor {
     fn name(&self) -> &'static str {
         "DeviceActor"
@@ -201,15 +223,17 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 let response = self.engine.thinkpad_fan_control(&enable).await;
                 let _ = respond_to.send(response);
             }
-            DeviceMessage::AmdGpuOverdriveEnable {
-                notification_handle,
-                respond_to,
-            } => {
-                let response = amd_overdrive::amd_gpu_overdrive_enable(notification_handle)
+            DeviceMessage::AmdGpuOverdriveEnable { respond_to } => {
+                let response = self
+                    .overdrive
+                    .enable()
                     .await
-                    .inspect(|msg| info!("AMD GPU overdrive enable: {msg}"))
-                    .inspect_err(|err| error!("Error enabling AMD GPU overdrive: {err}"));
+                    .inspect(|status| info!("AMD GPU overdrive enable: {:?}", status.state))
+                    .inspect_err(|err| log_overdrive_failure("enabling", err));
                 let _ = respond_to.send(response);
+            }
+            DeviceMessage::AmdGpuOverdriveGet { respond_to } => {
+                let _ = respond_to.send(self.overdrive.status().await);
             }
             DeviceMessage::DevicesGet { respond_to } => {
                 let mut all_devices = Vec::new();
@@ -529,10 +553,13 @@ impl DeviceHandle {
         modes_controller: Rc<ModeController>,
         config: Rc<Config>,
         overrides: Rc<OverridesController>,
+        overdrive_handle: AmdGpuOverdriveHandle,
+        notification_handle: NotificationHandle,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
+        let overdrive = OverdriveSetup::new(overdrive_handle, notification_handle);
         let actor = DeviceActor::new(
             receiver,
             all_devices,
@@ -540,6 +567,7 @@ impl DeviceHandle {
             modes_controller,
             config,
             overrides,
+            overdrive,
         );
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
@@ -555,17 +583,18 @@ impl DeviceHandle {
         rx.await?
     }
 
-    pub async fn amd_gpu_overdrive_enable(
-        &self,
-        notification_handle: NotificationHandle,
-    ) -> Result<String> {
+    pub async fn amd_gpu_overdrive_enable(&self) -> Result<AmdGpuOverdriveStatus> {
         let (tx, rx) = oneshot::channel();
-        let msg = DeviceMessage::AmdGpuOverdriveEnable {
-            notification_handle,
-            respond_to: tx,
-        };
+        let msg = DeviceMessage::AmdGpuOverdriveEnable { respond_to: tx };
         let _ = self.sender.send(msg).await;
         rx.await?
+    }
+
+    pub async fn amd_gpu_overdrive_get(&self) -> Result<AmdGpuOverdriveStatus> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::AmdGpuOverdriveGet { respond_to: tx };
+        let _ = self.sender.send(msg).await;
+        Ok(rx.await?)
     }
 
     pub async fn devices_get(&self) -> Result<Vec<DeviceDto>> {
@@ -846,6 +875,20 @@ mod tests {
 
     const DEVICE_UID: &str = "dev-lcd";
 
+    // Verify a conflict and a user error count as expected refusals, and anything else, such
+    // as an IO failure, as a real failure that keeps its ERROR line.
+    #[test]
+    fn only_refusals_stay_off_error() {
+        let msg = "refused".to_owned();
+        let conflict = anyhow::Error::from(CCError::Conflict { msg: msg.clone() });
+        assert!(is_expected_refusal(&conflict));
+        let user = anyhow::Error::from(CCError::UserError { msg: msg.clone() });
+        assert!(is_expected_refusal(&user));
+        let internal = anyhow::Error::from(CCError::InternalError { msg });
+        assert!(is_expected_refusal(&internal).not());
+        assert!(is_expected_refusal(&anyhow::anyhow!("no space left")).not());
+    }
+
     /// A device actor with no devices and a freshly created, active Mode. Nothing reaches
     /// hardware, so only the save path is exercised.
     async fn actor_with_active_mode() -> (DeviceActor, Rc<Config>, Rc<ModeController>) {
@@ -882,6 +925,11 @@ mod tests {
             Rc::clone(&modes_controller),
             Rc::clone(&config),
             Rc::new(OverridesController::empty()),
+            OverdriveSetup::with_root(
+                AmdGpuOverdriveHandle::new(CancellationToken::new()),
+                NotificationHandle::new(CancellationToken::new()),
+                std::path::Path::new("/nonexistent/coolercontrold-test-root"),
+            ),
         );
         (actor, config, modes_controller)
     }

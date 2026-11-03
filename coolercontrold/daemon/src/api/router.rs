@@ -316,14 +316,33 @@ fn device_routes() -> ApiRouter<AppState> {
             post_with(devices::amd_gpu_overdrive_enable, |o| {
                 o.summary("AMD GPU Overdrive Enable")
                     .description(
-                        "Enables AMD GPU overdrive by configuring the ppfeaturemask \
-                        kernel parameter. Requires a reboot to take effect.",
+                        "Starts AMD GPU overdrive setup by configuring the ppfeaturemask \
+                        kernel parameter, and returns at once with the new state. The boot \
+                        image rebuild or kernel argument change runs in the background, and \
+                        each state change is sent as the `amd-gpu-overdrive` SSE event. \
+                        Returns the current state without a new run while a setup is running, \
+                        or once the setting is staged or active. Requires a reboot to take \
+                        effect.",
                     )
                     .tag("device")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
             .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+        .api_route(
+            "/amd-gpu-overdrive",
+            get_with(devices::amd_gpu_overdrive_get, |o| {
+                o.summary("AMD GPU Overdrive State")
+                    .description(
+                        "Returns the AMD GPU overdrive setup state. Changes are also sent as \
+                        the `amd-gpu-overdrive` SSE event.",
+                    )
+                    .tag("device")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
         .api_route(
             "/devices",

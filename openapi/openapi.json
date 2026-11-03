@@ -539,19 +539,67 @@
       }
     },
     "/amd-gpu-overdrive": {
-      "post": {
+      "get": {
         "tags": [
           "device"
         ],
-        "summary": "AMD GPU Overdrive Enable",
-        "description": "Enables AMD GPU overdrive by configuring the ppfeaturemask kernel parameter. Requires a reboot to take effect.",
+        "summary": "AMD GPU Overdrive State",
+        "description": "Returns the AMD GPU overdrive setup state. Changes are also sent as the `amd-gpu-overdrive` SSE event.",
         "responses": {
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/AmdGpuOverdriveStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The request is invalid"
+          },
+          "401": {
+            "description": "Unauthorized. Invalid credentials were provided."
+          },
+          "403": {
+            "description": "Forbidden. Insufficient permissions."
+          },
+          "404": {
+            "description": "Whatever you're looking for, it's not here."
+          },
+          "500": {
+            "description": "An internal error has occurred."
+          },
+          "429": {
+            "description": "Too Many Requests. Login attempts have been rate limited."
+          },
+          "502": {
+            "description": "Bad Gateway. An error has occurred with an external library."
+          }
+        },
+        "security": [
+          {
+            "CookieAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "device"
+        ],
+        "summary": "AMD GPU Overdrive Enable",
+        "description": "Starts AMD GPU overdrive setup by configuring the ppfeaturemask kernel parameter, and returns at once with the new state. The boot image rebuild or kernel argument change runs in the background, and each state change is sent as the `amd-gpu-overdrive` SSE event. Returns the current state without a new run while a setup is running, or once the setting is staged or active. Requires a reboot to take effect.",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmdGpuOverdriveStatus"
                 }
               }
             }
@@ -6461,6 +6509,10 @@
                     "summary": "System state changed outside CoolerControl",
                     "value": "event: system\ndata: {\"kind\":\"power_profile\",\"value\":\"performance\",\"previous\":\"balanced\"}\n\n"
                   },
+                  "amd-gpu-overdrive": {
+                    "summary": "The AMD GPU overdrive setup state changed",
+                    "value": "event: amd-gpu-overdrive\ndata: {\"state\":\"reboot_required\",\"tool\":\"mkinitcpio\",\"manual_command\":null,\"error\":null,\"action\":\"enable\"}\n\n"
+                  },
                   "keep-alive": {
                     "summary": "Sent only when the subscription has been idle; ignore it",
                     "value": ":\n\n"
@@ -6889,6 +6941,49 @@
         "required": [
           "alerts",
           "logs"
+        ]
+      },
+      "AmdGpuOverdriveStatus": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "description": "What the current or last run since the daemon started does, absent before any.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverdriveAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "description": "The failure line, or the last lines of output, when `failed`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "manual_command": {
+            "description": "What to run as root when the rebuild failed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/OverdriveState"
+          },
+          "tool": {
+            "description": "The tool that applies the setting, such as `limine-mkinitcpio` or `rpm-ostree`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "state"
         ]
       },
       "AseTek690Request": {
@@ -10289,6 +10384,37 @@
           "shutdown"
         ]
       },
+      "OverdriveAction": {
+        "description": "What a setup run does.",
+        "type": "string",
+        "enum": [
+          "enable",
+          "disable"
+        ]
+      },
+      "OverdriveState": {
+        "description": "One state for the whole system: `ppfeaturemask` is a module-wide parameter.",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "not_configured",
+              "failed",
+              "active"
+            ]
+          },
+          {
+            "description": "The boot image is rebuilding, or the kernel argument is being set.",
+            "type": "string",
+            "const": "applying"
+          },
+          {
+            "description": "Configured but not yet booted with. A reboot applies it.",
+            "type": "string",
+            "const": "reboot_required"
+          }
+        ]
+      },
       "OverridesDocument": {
         "type": "object",
         "properties": {
@@ -11216,6 +11342,23 @@
               "event": {
                 "type": "string",
                 "const": "system"
+              }
+            },
+            "required": [
+              "event",
+              "data"
+            ]
+          },
+          {
+            "description": "The AMD GPU overdrive setup state changed.",
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/AmdGpuOverdriveStatus"
+              },
+              "event": {
+                "type": "string",
+                "const": "amd-gpu-overdrive"
               }
             },
             "required": [

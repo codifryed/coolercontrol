@@ -8,6 +8,7 @@ use crate::device::{
     ChannelAttribute, ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID,
 };
 use crate::engine::processors::image;
+use crate::events::amd_gpu_overdrive::AmdGpuOverdriveStatus;
 use crate::setting::{LcdModeName, LcdSettings, LightingSettings, Setting};
 use crate::Device;
 use aide::axum::IntoApiResponse;
@@ -328,14 +329,20 @@ pub async fn thinkpad_fan_control_modify(
 }
 
 pub async fn amd_gpu_overdrive_enable(
-    State(AppState {
-        device_handle,
-        notification_handle,
-        ..
-    }): State<AppState>,
-) -> Result<Json<String>, CCError> {
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<Json<AmdGpuOverdriveStatus>, CCError> {
     device_handle
-        .amd_gpu_overdrive_enable(notification_handle)
+        .amd_gpu_overdrive_enable()
+        .await
+        .map(Json)
+        .map_err(handle_error)
+}
+
+pub async fn amd_gpu_overdrive_get(
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<Json<AmdGpuOverdriveStatus>, CCError> {
+    device_handle
+        .amd_gpu_overdrive_get()
         .await
         .map(Json)
         .map_err(handle_error)
