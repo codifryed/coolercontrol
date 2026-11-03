@@ -23,7 +23,7 @@ use crate::events::amd_gpu_overdrive::{
 use crate::events::notifier::{notify_all_sessions, NotificationHandle, NotificationIcon};
 use crate::repositories::gpu::boot_image::{self, BootFacts, BootSetup, RebuildTool, Refusal};
 use crate::repositories::gpu::rebuild_preflight;
-use crate::repositories::utils::{DirectCommand, ShellCommandResult};
+use crate::repositories::utils::{CommandTimedOut, DirectCommand, ShellCommandResult};
 use crate::rt;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, info, warn};
@@ -188,6 +188,23 @@ struct Job {
     done: bool,
     rebuild_skipped: bool,
 }
+
+/// The daemon stopped waiting, but the detached rebuild goes on. The job stays `Applying` for
+/// this daemon's lifetime, so no retry or disable can overlap it.
+#[derive(Debug)]
+struct RebuildStillRunning;
+
+impl std::fmt::Display for RebuildStillRunning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "The boot image rebuild is still running after an hour. Reboot only once it has \
+            finished. With systemd, systemctl status {REBUILD_UNIT} shows it."
+        )
+    }
+}
+
+impl std::error::Error for RebuildStillRunning {}
 
 #[derive(Debug, Clone, Copy)]
 enum Work {
@@ -473,20 +490,24 @@ fn run_needed(state: OverdriveState) -> bool {
     )
 }
 
-/// Records how a run ended. A failure keeps the command that finishes it by hand.
+/// Records how a run ended. A failure keeps the command that finishes it by hand. A rebuild
+/// still running keeps the job `Applying`, with no command: running it now would overlap.
 fn finish_run(job: &mut Job, result: &Result<()>, manual_command: Option<String>) {
     assert_eq!(job.phase, JobPhase::Applying);
+    let still_running = matches!(result, Err(err) if err.is::<RebuildStillRunning>());
     match result {
         Ok(()) => {
             job.phase = JobPhase::Idle;
             job.done = true;
         }
+        Err(err) if still_running => job.error = Some(err.to_string()),
         Err(err) => {
             job.phase = JobPhase::Failed;
             job.error = Some(err.to_string());
             job.manual_command = manual_command;
         }
     }
+    assert_eq!(job.phase == JobPhase::Applying, still_running);
 }
 
 fn notify_completion(
@@ -518,8 +539,13 @@ fn notify_completion(
         }
         Err(err) => {
             warn!("AMD GPU overdrive setup failed: {err}");
+            let title = if err.is::<RebuildStillRunning>() {
+                "AMD GPU Overdrive Rebuild Still Running"
+            } else {
+                "AMD GPU Overdrive Setup Failed"
+            };
             notify_all_sessions(
-                "AMD GPU Overdrive Setup Failed",
+                title,
                 &err.to_string(),
                 NotificationIcon::Error,
                 true,
@@ -675,15 +701,23 @@ async fn rebuild_boot_image(tool: RebuildTool, paths: &OverdrivePaths) -> Result
     let result = run_argv(&argv, REBUILD_WAIT_LIMIT).await;
     let output_text = read_output(&output).await;
     debug!("Boot image rebuild output: {output_text}");
+    launch_outcome(tool, result, &output_text)
+}
+
+/// Maps the launcher's result. Only a timeout leaves the rebuild running; any other launcher
+/// error means the tool never started.
+fn launch_outcome(
+    tool: RebuildTool,
+    result: Result<(i32, String, String)>,
+    output: &str,
+) -> Result<()> {
     match result {
-        Ok((exit_code, _, stderr)) => rebuild_outcome(tool, exit_code, &output_text, &stderr),
-        Err(err) => {
+        Ok((exit_code, _, stderr)) => rebuild_outcome(tool, exit_code, output, &stderr),
+        Err(err) if err.is::<CommandTimedOut>() => {
             warn!("Stopped waiting for the boot image rebuild: {err}");
-            Err(anyhow!(
-                "The boot image rebuild is still running after an hour. Reboot only once it has \
-                finished. With systemd, systemctl status {REBUILD_UNIT} shows it."
-            ))
+            Err(RebuildStillRunning.into())
         }
+        Err(err) => Err(anyhow!("Could not start the rebuild: {err}")),
     }
 }
 
@@ -1005,6 +1039,48 @@ mod tests {
         assert_eq!(failed.error.as_deref(), Some("no space"));
         assert_eq!(
             failed.manual_command.as_deref(),
+            Some("/usr/bin/mkinitcpio -P")
+        );
+    }
+
+    // Verify a rebuild the daemon stopped waiting for keeps the job running, with no command
+    // to run by hand, so neither a retry nor a disable can start a second rebuild over it.
+    #[test]
+    fn a_rebuild_still_running_blocks_a_second_run() {
+        let mut job = Job {
+            phase: JobPhase::Applying,
+            action: Some(OverdriveAction::Enable),
+            ..Job::default()
+        };
+        let timeout = CommandTimedOut {
+            binary: SYSTEMD_RUN_PATH.to_owned(),
+            timeout: REBUILD_WAIT_LIMIT,
+        };
+        let result = launch_outcome(RebuildTool::Mkinitcpio, Err(timeout.into()), "");
+        finish_run(&mut job, &result, Some("/usr/bin/mkinitcpio -P".to_owned()));
+        assert_eq!(job.phase, JobPhase::Applying);
+        assert_eq!(job.manual_command, None);
+        assert!(job.error.as_deref().unwrap().contains("still running"));
+        assert!(run_needed(derive_state(&job, false, true)).not());
+    }
+
+    // Verify a launcher that failed to start reports that nothing ran, as a plain failure
+    // with the command to run by hand.
+    #[test]
+    fn a_launcher_error_is_a_plain_failure() {
+        let mut job = Job {
+            phase: JobPhase::Applying,
+            action: Some(OverdriveAction::Enable),
+            ..Job::default()
+        };
+        let spawn = anyhow!("Failed to spawn /usr/bin/setsid: No such file or directory");
+        let result = launch_outcome(RebuildTool::Mkinitcpio, Err(spawn), "");
+        let message = result.as_ref().unwrap_err().to_string();
+        assert!(message.starts_with("Could not start the rebuild: Failed to spawn"));
+        finish_run(&mut job, &result, Some("/usr/bin/mkinitcpio -P".to_owned()));
+        assert_eq!(job.phase, JobPhase::Failed);
+        assert_eq!(
+            job.manual_command.as_deref(),
             Some("/usr/bin/mkinitcpio -P")
         );
     }

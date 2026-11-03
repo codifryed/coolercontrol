@@ -185,6 +185,15 @@ impl DirectCommand {
     }
 }
 
+/// A [`DirectCommand`] killed on overrun. Callers that must tell a timeout from a spawn failure
+/// downcast to it.
+#[derive(Debug, thiserror::Error)]
+#[error("Command {binary} timed out after {timeout:?}")]
+pub struct CommandTimedOut {
+    pub binary: String,
+    pub timeout: Duration,
+}
+
 /// Runs a binary directly on the sidecar Tokio runtime, bounded by `timeout` (killed on overrun),
 /// with `kill_on_drop`. Returns `(exit_code, stdout, stderr)`; `Err` on spawn failure or timeout.
 async fn run_direct_command(
@@ -211,7 +220,7 @@ async fn run_direct_command(
             debug!("DirectCommand did not complete within timeout: {timeout:?} Killing: {binary}");
             child.kill().await.ok();
             let _ = child.wait().await;
-            return Err(anyhow!("Command {binary} timed out after {timeout:?}"));
+            return Err(CommandTimedOut { binary, timeout }.into());
         }
     };
 
