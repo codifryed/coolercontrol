@@ -53,6 +53,8 @@ const REBUILD_UNIT: &str = "coolercontrold-amd-overdrive-rebuild";
 const REBUILD_WAIT_LIMIT: Duration = Duration::from_hours(1);
 /// rpm-ostree writes a new deployment, which can take minutes.
 const RPM_OSTREE_TIMEOUT: Duration = Duration::from_secs(600);
+/// systemd-run with its 6 options, systemd-inhibit with its 4, then the shell and its 2.
+const REBUILD_ARGV_MAX: usize = 15;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Enough to keep failure lines that follow pages of build warnings.
 const OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
@@ -726,7 +728,7 @@ fn launch_outcome(
 fn rebuild_argv(command: &str, output: &Path, systemd: bool, inhibit: bool) -> Vec<String> {
     let output = output.display().to_string();
     assert!(output.contains('\'').not(), "the path is single-quoted");
-    let mut argv: Vec<String> = Vec::with_capacity(14);
+    let mut argv: Vec<String> = Vec::with_capacity(REBUILD_ARGV_MAX);
     if systemd {
         argv.extend(
             [
@@ -763,6 +765,7 @@ fn rebuild_argv(command: &str, output: &Path, systemd: bool, inhibit: bool) -> V
         ]
         .map(str::to_owned),
     );
+    debug_assert!(argv.len() <= REBUILD_ARGV_MAX);
     argv
 }
 
@@ -1091,6 +1094,7 @@ mod tests {
     fn the_rebuild_runs_detached() {
         let output = Path::new("/run/coolercontrold-amd-overdrive/rebuild.log");
         let unit = rebuild_argv("/usr/bin/mkinitcpio -P", output, true, true);
+        assert_eq!(unit.len(), REBUILD_ARGV_MAX);
         assert_eq!(unit[0], SYSTEMD_RUN_PATH);
         assert!(unit.contains(&"--wait".to_owned()));
         assert!(unit.contains(&format!("--unit={REBUILD_UNIT}")));
