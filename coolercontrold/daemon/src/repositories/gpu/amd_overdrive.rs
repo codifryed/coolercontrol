@@ -39,6 +39,8 @@ const DRACUT_OVERDRIVE_CONF_FILE: &str = "99-coolercontrol-amdgpu.conf";
 const RUN_DIR_PATH: &str = "/run/coolercontrold-amd-overdrive";
 const OUTPUT_FILE: &str = "rebuild.log";
 const RPM_OSTREE_PATH: &str = "/usr/bin/rpm-ostree";
+/// The tool id clients see for the kernel argument route.
+const RPM_OSTREE_TOOL_ID: &str = "rpm-ostree";
 /// systemd creates this when it is the init system.
 const SYSTEMD_BOOTED_PATH: &str = "/run/systemd/system";
 const SYSTEMD_RUN_PATH: &str = "/usr/bin/systemd-run";
@@ -220,24 +222,27 @@ enum Work {
 /// owned by the device actor, so runs never overlap.
 pub struct OverdriveSetup {
     job: Rc<RefCell<Job>>,
-    handle: AmdGpuOverdriveHandle,
+    overdrive_handle: AmdGpuOverdriveHandle,
     notification_handle: NotificationHandle,
     paths: OverdrivePaths,
 }
 
 impl OverdriveSetup {
-    pub fn new(handle: AmdGpuOverdriveHandle, notification_handle: NotificationHandle) -> Self {
-        Self::with_root(handle, notification_handle, Path::new("/"))
+    pub fn new(
+        overdrive_handle: AmdGpuOverdriveHandle,
+        notification_handle: NotificationHandle,
+    ) -> Self {
+        Self::with_root(overdrive_handle, notification_handle, Path::new("/"))
     }
 
     pub fn with_root(
-        handle: AmdGpuOverdriveHandle,
+        overdrive_handle: AmdGpuOverdriveHandle,
         notification_handle: NotificationHandle,
         root: &Path,
     ) -> Self {
         Self {
             job: Rc::new(RefCell::new(Job::default())),
-            handle,
+            overdrive_handle,
             notification_handle,
             paths: OverdrivePaths::under(root),
         }
@@ -289,7 +294,7 @@ impl OverdriveSetup {
             });
         }
         let status = self.status().await;
-        self.handle.broadcast(status.clone());
+        self.overdrive_handle.broadcast(status.clone());
         Ok(status)
     }
 
@@ -322,7 +327,7 @@ impl OverdriveSetup {
             BootSetup::RpmOstree => {
                 self.start(
                     OverdriveAction::Enable,
-                    "rpm-ostree",
+                    RPM_OSTREE_TOOL_ID,
                     Work::RpmOstree(new_mask),
                 );
             }
@@ -348,7 +353,7 @@ impl OverdriveSetup {
             }
         }
         let status = self.status().await;
-        self.handle.broadcast(status.clone());
+        self.overdrive_handle.broadcast(status.clone());
         Ok(status)
     }
 
@@ -364,7 +369,7 @@ impl OverdriveSetup {
         // The device actor runs as a task on main_scope, where a scope spawn would panic, so
         // this uses rt::spawn, whose 'static future needs the Rc cloned.
         let job = Rc::clone(&self.job);
-        let handle = self.handle.clone();
+        let overdrive_handle = self.overdrive_handle.clone();
         let notification_handle = self.notification_handle.clone();
         let paths = self.paths.clone();
         rt::spawn(async move {
@@ -379,7 +384,7 @@ impl OverdriveSetup {
             finish_run(&mut job.borrow_mut(), &result, manual_command);
             notify_completion(action, &result, &notification_handle);
             let job = job.borrow().clone();
-            handle.broadcast(status_of(&job, &paths).await);
+            overdrive_handle.broadcast(status_of(&job, &paths).await);
         });
     }
 }
@@ -415,7 +420,7 @@ async fn enable_plan(paths: &OverdrivePaths) -> Result<AmdGpuOverdrivePlan> {
             let edit = rpm_ostree_karg_edit_now(&overdrive_karg(new_mask)).await?;
             AmdGpuOverdrivePlan {
                 route: Some(OverdriveRoute::KernelArgument),
-                tool: Some("rpm-ostree".to_owned()),
+                tool: Some(RPM_OSTREE_TOOL_ID.to_owned()),
                 command: Some(format!("{RPM_OSTREE_PATH} kargs {edit}")),
                 files: Vec::new(),
                 problem: None,
