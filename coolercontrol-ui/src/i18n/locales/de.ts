@@ -282,6 +282,8 @@ export default {
                     modeNotActive: '{mode} ist dem aktuellen Profil zugeordnet, aber nicht aktiv.',
                     modeNotActiveRestart:
                         'Er wird beim nächsten Start des Daemons wieder aktiviert.',
+                    cooldownTooltip:
+                        'Beim Verlassen des Leistungsprofils wird der zugeordnete Modus erst nach einer Abklingzeit von 10 Sekunden aktiv, damit das System Wärme abgeben kann, bevor die Lüfter herunterregeln.',
                     profileNames: {
                         'power-saver': 'Energiesparmodus',
                         balanced: 'Ausgeglichen',

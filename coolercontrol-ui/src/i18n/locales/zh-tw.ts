@@ -264,6 +264,8 @@ export default {
                     saveFailed: '無法儲存電源設定檔對應。',
                     modeNotActive: '{mode} 已指定給目前設定檔，但目前未啟用。',
                     modeNotActiveRestart: '守護程式下次啟動時會再次啟用它。',
+                    cooldownTooltip:
+                        '系統離開效能設定檔後，所映射的模式會在 10 秒冷卻後才啟用，讓系統先散去熱量再降低風扇轉速。',
                     profileNames: {
                         'power-saver': '節能',
                         balanced: '平衡',
