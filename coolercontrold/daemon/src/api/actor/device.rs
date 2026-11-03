@@ -8,7 +8,7 @@ use crate::config::Config;
 use crate::device::{ChannelAttribute, ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
 use crate::events::amd_gpu_overdrive::{
-    AmdGpuOverdriveHandle, AmdGpuOverdrivePlan, AmdGpuOverdriveStatus,
+    AmdGpuOverdriveHandle, AmdGpuOverdrivePlan, AmdGpuOverdriveStatus, OverdriveAction,
 };
 use crate::events::notifier::NotificationHandle;
 use crate::modes::ModeController;
@@ -46,7 +46,11 @@ enum DeviceMessage {
         rebuild: bool,
         respond_to: oneshot::Sender<Result<AmdGpuOverdriveStatus>>,
     },
+    AmdGpuOverdriveDisable {
+        respond_to: oneshot::Sender<Result<AmdGpuOverdriveStatus>>,
+    },
     AmdGpuOverdrivePlan {
+        action: OverdriveAction,
         respond_to: oneshot::Sender<Result<AmdGpuOverdrivePlan>>,
     },
     AmdGpuOverdriveGet {
@@ -241,8 +245,17 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                     .inspect_err(|err| log_overdrive_failure("enabling", err));
                 let _ = respond_to.send(response);
             }
-            DeviceMessage::AmdGpuOverdrivePlan { respond_to } => {
-                let _ = respond_to.send(self.overdrive.plan().await);
+            DeviceMessage::AmdGpuOverdriveDisable { respond_to } => {
+                let response = self
+                    .overdrive
+                    .disable()
+                    .await
+                    .inspect(|status| info!("AMD GPU overdrive disable: {:?}", status.state))
+                    .inspect_err(|err| log_overdrive_failure("disabling", err));
+                let _ = respond_to.send(response);
+            }
+            DeviceMessage::AmdGpuOverdrivePlan { action, respond_to } => {
+                let _ = respond_to.send(self.overdrive.plan(action).await);
             }
             DeviceMessage::AmdGpuOverdriveGet { respond_to } => {
                 let _ = respond_to.send(self.overdrive.status().await);
@@ -605,9 +618,22 @@ impl DeviceHandle {
         rx.await?
     }
 
-    pub async fn amd_gpu_overdrive_plan(&self) -> Result<AmdGpuOverdrivePlan> {
+    pub async fn amd_gpu_overdrive_disable(&self) -> Result<AmdGpuOverdriveStatus> {
         let (tx, rx) = oneshot::channel();
-        let msg = DeviceMessage::AmdGpuOverdrivePlan { respond_to: tx };
+        let msg = DeviceMessage::AmdGpuOverdriveDisable { respond_to: tx };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn amd_gpu_overdrive_plan(
+        &self,
+        action: OverdriveAction,
+    ) -> Result<AmdGpuOverdrivePlan> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::AmdGpuOverdrivePlan {
+            action,
+            respond_to: tx,
+        };
         let _ = self.sender.send(msg).await;
         rx.await?
     }
@@ -1129,6 +1155,7 @@ mod tests {
                 error: None,
                 rebuild_skipped: rebuild.not(),
                 action: None,
+                removable: false,
             };
             let _ = respond_to.send(Ok(status));
             Some(rebuild)

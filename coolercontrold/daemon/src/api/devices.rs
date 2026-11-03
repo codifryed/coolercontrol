@@ -8,7 +8,9 @@ use crate::device::{
     ChannelAttribute, ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID,
 };
 use crate::engine::processors::image;
-use crate::events::amd_gpu_overdrive::{AmdGpuOverdrivePlan, AmdGpuOverdriveStatus};
+use crate::events::amd_gpu_overdrive::{
+    AmdGpuOverdrivePlan, AmdGpuOverdriveStatus, OverdriveAction,
+};
 use crate::setting::{LcdModeName, LcdSettings, LightingSettings, Setting};
 use crate::Device;
 use aide::axum::IntoApiResponse;
@@ -339,11 +341,22 @@ pub async fn amd_gpu_overdrive_enable(
         .map_err(handle_error)
 }
 
+pub async fn amd_gpu_overdrive_disable(
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<Json<AmdGpuOverdriveStatus>, CCError> {
+    device_handle
+        .amd_gpu_overdrive_disable()
+        .await
+        .map(Json)
+        .map_err(handle_error)
+}
+
 pub async fn amd_gpu_overdrive_plan(
     State(AppState { device_handle, .. }): State<AppState>,
+    Query(plan_query): Query<AmdGpuOverdrivePlanQuery>,
 ) -> Result<Json<AmdGpuOverdrivePlan>, CCError> {
     device_handle
-        .amd_gpu_overdrive_plan()
+        .amd_gpu_overdrive_plan(plan_query.action.unwrap_or(OverdriveAction::Enable))
         .await
         .map(Json)
         .map_err(handle_error)
@@ -558,6 +571,13 @@ pub struct AmdGpuOverdriveEnableRequest {
     /// Set to false to only write the module option and leave the boot image rebuild to the
     /// user. Applies where the boot image is rebuilt, not to kernel arguments.
     rebuild: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AmdGpuOverdrivePlanQuery {
+    /// What to plan: `enable` (the default) or `disable`.
+    #[serde(default)]
+    action: Option<OverdriveAction>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

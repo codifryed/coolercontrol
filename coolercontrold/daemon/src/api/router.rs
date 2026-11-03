@@ -337,9 +337,26 @@ fn device_routes() -> ApiRouter<AppState> {
             get_with(devices::amd_gpu_overdrive_plan, |o| {
                 o.summary("AMD GPU Overdrive Plan")
                     .description(
-                        "Returns what enabling AMD GPU overdrive would do on this system: the \
-                        route, the exact command run as root, the files written, or why it \
-                        cannot run now. Clients show it for the user to confirm.",
+                        "Returns what enabling, or with `action=disable` disabling, AMD GPU \
+                        overdrive would do on this system: the route, the exact command run \
+                        as root, the files written or removed, or why it cannot run now. \
+                        Clients show it for the user to confirm.",
+                    )
+                    .tag("device")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+        .api_route(
+            "/amd-gpu-overdrive",
+            delete_with(devices::amd_gpu_overdrive_disable, |o| {
+                o.summary("AMD GPU Overdrive Disable")
+                    .description(
+                        "Removes the modprobe conf CoolerControl writes and rebuilds the boot \
+                        image. Returns at once, like the enable, with progress sent as the \
+                        `amd-gpu-overdrive` SSE event. Does nothing when `removable` is false. \
+                        A kernel argument is left to the user. A reboot turns overdrive off.",
                     )
                     .tag("device")
                     .security_requirement("CookieAuth")

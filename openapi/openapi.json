@@ -644,6 +644,54 @@
             "BearerAuth": []
           }
         ]
+      },
+      "delete": {
+        "tags": [
+          "device"
+        ],
+        "summary": "AMD GPU Overdrive Disable",
+        "description": "Removes the modprobe conf CoolerControl writes and rebuilds the boot image. Returns at once, like the enable, with progress sent as the `amd-gpu-overdrive` SSE event. Does nothing when `removable` is false. A kernel argument is left to the user. A reboot turns overdrive off.",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmdGpuOverdriveStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The request is invalid"
+          },
+          "401": {
+            "description": "Unauthorized. Invalid credentials were provided."
+          },
+          "403": {
+            "description": "Forbidden. Insufficient permissions."
+          },
+          "404": {
+            "description": "Whatever you're looking for, it's not here."
+          },
+          "500": {
+            "description": "An internal error has occurred."
+          },
+          "429": {
+            "description": "Too Many Requests. Login attempts have been rate limited."
+          },
+          "502": {
+            "description": "Bad Gateway. An error has occurred with an external library."
+          }
+        },
+        "security": [
+          {
+            "CookieAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/amd-gpu-overdrive/plan": {
@@ -652,10 +700,30 @@
           "device"
         ],
         "summary": "AMD GPU Overdrive Plan",
-        "description": "Returns what enabling AMD GPU overdrive would do on this system: the route, the exact command run as root, the files written, or why it cannot run now. Clients show it for the user to confirm.",
+        "description": "Returns what enabling, or with `action=disable` disabling, AMD GPU overdrive would do on this system: the route, the exact command run as root, the files written or removed, or why it cannot run now. Clients show it for the user to confirm.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "action",
+            "description": "What to plan: `enable` (the default) or `disable`.",
+            "schema": {
+              "description": "What to plan: `enable` (the default) or `disable`.",
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OverdriveAction"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "What enabling would do on this system, for the user to confirm first. Served by\n `GET /amd-gpu-overdrive/plan`.",
+            "description": "What enabling or disabling would do on this system, for the user to confirm first. Served by\n `GET /amd-gpu-overdrive/plan`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6571,7 +6639,7 @@
                   },
                   "amd-gpu-overdrive": {
                     "summary": "The AMD GPU overdrive setup state changed",
-                    "value": "event: amd-gpu-overdrive\ndata: {\"state\":\"reboot_required\",\"tool\":\"mkinitcpio\",\"manual_command\":null,\"error\":null,\"rebuild_skipped\":false,\"action\":\"enable\"}\n\n"
+                    "value": "event: amd-gpu-overdrive\ndata: {\"state\":\"reboot_required\",\"tool\":\"mkinitcpio\",\"manual_command\":null,\"error\":null,\"rebuild_skipped\":false,\"action\":\"enable\",\"removable\":true}\n\n"
                   },
                   "keep-alive": {
                     "summary": "Sent only when the subscription has been idle; ignore it",
@@ -7016,7 +7084,7 @@
         ]
       },
       "AmdGpuOverdrivePlan": {
-        "description": "What enabling would do on this system, for the user to confirm first. Served by\n `GET /amd-gpu-overdrive/plan`.",
+        "description": "What enabling or disabling would do on this system, for the user to confirm first. Served by\n `GET /amd-gpu-overdrive/plan`.",
         "type": "object",
         "properties": {
           "command": {
@@ -7027,7 +7095,7 @@
             ]
           },
           "files": {
-            "description": "The files the daemon writes.",
+            "description": "The files the daemon writes, or removes when disabling.",
             "type": "array",
             "items": {
               "type": "string"
@@ -7062,11 +7130,28 @@
           "files"
         ]
       },
+      "AmdGpuOverdrivePlanQuery": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "description": "What to plan: `enable` (the default) or `disable`.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverdriveAction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        }
+      },
       "AmdGpuOverdriveStatus": {
         "type": "object",
         "properties": {
           "action": {
-            "description": "What the current or last run since the daemon started does, absent before any.",
+            "description": "What the current or last run since the daemon started does, absent before any. After a\n disable, `reboot_required` means a reboot turns overdrive off.",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/OverdriveAction"
@@ -7094,6 +7179,10 @@
             "description": "No rebuild ran, so the boot image does not reflect the change: the tooling was not\n recognized, or the user chose to only write the config.",
             "type": "boolean"
           },
+          "removable": {
+            "description": "The modprobe conf the daemon writes is in place, so a disable can remove it.",
+            "type": "boolean"
+          },
           "state": {
             "$ref": "#/components/schemas/OverdriveState"
           },
@@ -7107,7 +7196,8 @@
         },
         "required": [
           "state",
-          "rebuild_skipped"
+          "rebuild_skipped",
+          "removable"
         ]
       },
       "AseTek690Request": {
@@ -10519,7 +10609,7 @@
       "OverdriveRoute": {
         "oneOf": [
           {
-            "description": "Writes the module option, then rebuilds the boot image with `command`.",
+            "description": "Writes or removes the module option, then rebuilds the boot image with `command`.",
             "type": "string",
             "const": "rebuild"
           },
@@ -10529,7 +10619,7 @@
             "const": "kernel_argument"
           },
           {
-            "description": "Writes the module option only: no known tool rebuilds the boot image here.",
+            "description": "Writes or removes the module option only: no known tool rebuilds the boot image here.",
             "type": "string",
             "const": "config_only"
           }

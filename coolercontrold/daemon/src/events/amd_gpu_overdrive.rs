@@ -45,22 +45,25 @@ pub struct AmdGpuOverdriveStatus {
     /// No rebuild ran, so the boot image does not reflect the change: the tooling was not
     /// recognized, or the user chose to only write the config.
     pub rebuild_skipped: bool,
-    /// What the current or last run since the daemon started does, absent before any.
+    /// What the current or last run since the daemon started does, absent before any. After a
+    /// disable, `reboot_required` means a reboot turns overdrive off.
     pub action: Option<OverdriveAction>,
+    /// The modprobe conf the daemon writes is in place, so a disable can remove it.
+    pub removable: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OverdriveRoute {
-    /// Writes the module option, then rebuilds the boot image with `command`.
+    /// Writes or removes the module option, then rebuilds the boot image with `command`.
     Rebuild,
     /// Sets a kernel argument with `command`.
     KernelArgument,
-    /// Writes the module option only: no known tool rebuilds the boot image here.
+    /// Writes or removes the module option only: no known tool rebuilds the boot image here.
     ConfigOnly,
 }
 
-/// What enabling would do on this system, for the user to confirm first. Served by
+/// What enabling or disabling would do on this system, for the user to confirm first. Served by
 /// `GET /amd-gpu-overdrive/plan`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AmdGpuOverdrivePlan {
@@ -69,7 +72,7 @@ pub struct AmdGpuOverdrivePlan {
     pub tool: Option<String>,
     /// The command the daemon runs as root.
     pub command: Option<String>,
-    /// The files the daemon writes.
+    /// The files the daemon writes, or removes when disabling.
     pub files: Vec<String>,
     /// Why setup cannot run now, and what to do instead.
     pub problem: Option<String>,
@@ -148,6 +151,7 @@ mod tests {
             error: None,
             rebuild_skipped: false,
             action: Some(OverdriveAction::Enable),
+            removable: false,
         };
         handle.broadcast(status.clone());
         let mut receiver = handle.broadcaster().subscribe();

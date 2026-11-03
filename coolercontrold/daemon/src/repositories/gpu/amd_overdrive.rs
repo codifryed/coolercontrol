@@ -152,6 +152,19 @@ impl OverdrivePaths {
             .await
             .unwrap_or_default()
     }
+
+    /// The conf and the dracut drop-in, those that exist.
+    async fn existing_files(&self) -> Vec<PathBuf> {
+        let files = [self.conf(), self.drop_in()];
+        rt::spawn_blocking(move || {
+            files
+                .into_iter()
+                .filter(|path| cc_fs::exists(path))
+                .collect()
+        })
+        .await
+        .unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -214,9 +227,41 @@ impl OverdriveSetup {
         status_of(&job, &self.paths).await
     }
 
-    /// What `enable` would do, for the user to confirm first.
-    pub async fn plan(&self) -> Result<AmdGpuOverdrivePlan> {
-        enable_plan(&self.paths).await
+    /// What `enable` or `disable` would do, for the user to confirm first.
+    pub async fn plan(&self, action: OverdriveAction) -> Result<AmdGpuOverdrivePlan> {
+        match action {
+            OverdriveAction::Enable => enable_plan(&self.paths).await,
+            OverdriveAction::Disable => disable_plan(&self.paths).await,
+        }
+    }
+
+    /// Removes the conf, then rebuilds the boot image where a known tool does, and returns at
+    /// once. Completion arrives as an `amd-gpu-overdrive` event. A kernel argument is left to
+    /// the user: nothing records which one the daemon set.
+    pub async fn disable(&self) -> Result<AmdGpuOverdriveStatus> {
+        let status = self.status().await;
+        if disable_needed(&status).not() {
+            return Ok(status);
+        }
+        let facts = detect_boot_facts(&self.paths).await?;
+        let setup = boot_image::classify(&facts);
+        info!("Removing AMD GPU overdrive. Detected boot setup: {setup:?}");
+        if let BootSetup::Rebuild(tool) = setup {
+            refuse_on_preflight(&self.paths).await?;
+            remove_overdrive_conf(&self.paths).await?;
+            self.start(OverdriveAction::Disable, tool.id(), Work::Rebuild(tool));
+        } else {
+            remove_overdrive_conf(&self.paths).await?;
+            self.job.replace(Job {
+                action: Some(OverdriveAction::Disable),
+                done: true,
+                rebuild_skipped: true,
+                ..Job::default()
+            });
+        }
+        let status = self.status().await;
+        self.handle.broadcast(status.clone());
+        Ok(status)
     }
 
     /// Starts setup by whichever route the system's boot image tooling supports, and returns
@@ -298,7 +343,7 @@ impl OverdriveSetup {
                 Work::RpmOstree(_) => None,
             };
             finish_run(&mut job.borrow_mut(), &result, manual_command);
-            notify_completion(&result, &notification_handle);
+            notify_completion(action, &result, &notification_handle);
             let job = job.borrow().clone();
             handle.broadcast(status_of(&job, &paths).await);
         });
@@ -370,6 +415,56 @@ fn overdrive_files(paths: &OverdrivePaths, dracut: bool) -> Vec<String> {
     files
 }
 
+/// What disabling would do. Only files that exist are listed.
+async fn disable_plan(paths: &OverdrivePaths) -> Result<AmdGpuOverdrivePlan> {
+    let files = paths
+        .existing_files()
+        .await
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect();
+    let facts = detect_boot_facts(paths).await?;
+    let plan = match boot_image::classify(&facts) {
+        BootSetup::Rebuild(tool) => AmdGpuOverdrivePlan {
+            route: Some(OverdriveRoute::Rebuild),
+            tool: Some(tool.id().to_owned()),
+            command: Some(tool.command().to_owned()),
+            files,
+            problem: preflight_problem(paths).await?,
+        },
+        BootSetup::Refused(_) | BootSetup::RpmOstree | BootSetup::Unrecognized => {
+            AmdGpuOverdrivePlan {
+                route: Some(OverdriveRoute::ConfigOnly),
+                tool: None,
+                command: None,
+                files,
+                problem: None,
+            }
+        }
+    };
+    Ok(plan)
+}
+
+/// A disable runs while the conf is there, and again after a disable failed, when the conf is
+/// gone but the image may still hold it.
+fn disable_needed(status: &AmdGpuOverdriveStatus) -> bool {
+    let failed_disable =
+        status.state == OverdriveState::Failed && status.action == Some(OverdriveAction::Disable);
+    if status.state == OverdriveState::Applying {
+        return false;
+    }
+    status.removable || failed_disable
+}
+
+/// Removes the conf and the dracut drop-in. One already gone is fine.
+async fn remove_overdrive_conf(paths: &OverdrivePaths) -> Result<()> {
+    for path in paths.existing_files().await {
+        cc_fs::remove_file(&path).await?;
+        info!("Removed {}", path.display());
+    }
+    Ok(())
+}
+
 /// A finished or running setup starts no new run. A failure can be retried.
 fn run_needed(state: OverdriveState) -> bool {
     matches!(
@@ -394,13 +489,27 @@ fn finish_run(job: &mut Job, result: &Result<()>, manual_command: Option<String>
     }
 }
 
-fn notify_completion(result: &Result<()>, notification_handle: &NotificationHandle) {
+fn notify_completion(
+    action: OverdriveAction,
+    result: &Result<()>,
+    notification_handle: &NotificationHandle,
+) {
+    let (done_title, done_body) = match action {
+        OverdriveAction::Enable => (
+            "AMD GPU Overdrive Configured",
+            "Please reboot to apply AMD GPU overdrive.",
+        ),
+        OverdriveAction::Disable => (
+            "AMD GPU Overdrive Removed",
+            "Please reboot to turn AMD GPU overdrive off.",
+        ),
+    };
     match result {
         Ok(()) => {
-            info!("AMD GPU overdrive configured. Please reboot to apply it.");
+            info!("{done_title}. {done_body}");
             notify_all_sessions(
-                "AMD GPU Overdrive Configured",
-                "Please reboot to apply AMD GPU overdrive.",
+                done_title,
+                done_body,
                 NotificationIcon::Info,
                 true,
                 None,
@@ -424,6 +533,7 @@ fn notify_completion(result: &Result<()>, notification_handle: &NotificationHand
 async fn status_of(job: &Job, paths: &OverdrivePaths) -> AmdGpuOverdriveStatus {
     let active = paths.overdrive_enabled().await;
     let conf_present = paths.conf_present().await;
+    let removable = conf_present;
     AmdGpuOverdriveStatus {
         state: derive_state(job, active, conf_present),
         tool: job.tool.map(str::to_owned),
@@ -431,16 +541,21 @@ async fn status_of(job: &Job, paths: &OverdrivePaths) -> AmdGpuOverdriveStatus {
         error: job.error.clone(),
         rebuild_skipped: job.rebuild_skipped,
         action: job.action,
+        removable,
     }
 }
 
 /// A run in progress or a failure outranks the disk, which may hold a conf whose image never
-/// finished. Without a run since the daemon started, a conf the module does not reflect yet
-/// means a reboot is pending.
+/// finished. A finished disable outranks the loaded module, which keeps overdrive until the
+/// reboot. Without a run since the daemon started, a conf the module does not reflect yet means
+/// a reboot is pending.
 fn derive_state(job: &Job, active: bool, conf_present: bool) -> OverdriveState {
+    let disabled = job.done && job.action == Some(OverdriveAction::Disable);
     match job.phase {
         JobPhase::Applying => OverdriveState::Applying,
         JobPhase::Failed => OverdriveState::Failed,
+        JobPhase::Idle if disabled && active => OverdriveState::RebootRequired,
+        JobPhase::Idle if disabled => OverdriveState::NotConfigured,
         JobPhase::Idle if active => OverdriveState::Active,
         JobPhase::Idle if job.done || conf_present => OverdriveState::RebootRequired,
         JobPhase::Idle => OverdriveState::NotConfigured,
@@ -815,6 +930,45 @@ mod tests {
             derive_state(&idle, false, false),
             OverdriveState::NotConfigured
         );
+        let disabled = Job {
+            action: Some(OverdriveAction::Disable),
+            done: true,
+            ..Job::default()
+        };
+        assert_eq!(
+            derive_state(&disabled, true, false),
+            OverdriveState::RebootRequired
+        );
+        assert_eq!(
+            derive_state(&disabled, false, false),
+            OverdriveState::NotConfigured
+        );
+    }
+
+    // Verify a disable runs while the conf is there or after a failed disable, never over a
+    // running setup, and not after a failed enable whose conf is gone.
+    #[test]
+    fn a_disable_needs_the_conf_or_a_failed_disable() {
+        let status = |state, action, removable| AmdGpuOverdriveStatus {
+            state,
+            tool: None,
+            manual_command: None,
+            error: None,
+            rebuild_skipped: false,
+            action,
+            removable,
+        };
+        let disable = Some(OverdriveAction::Disable);
+        let enable = Some(OverdriveAction::Enable);
+        assert!(disable_needed(&status(OverdriveState::Active, None, true)));
+        assert!(disable_needed(&status(
+            OverdriveState::Failed,
+            disable,
+            false
+        )));
+        assert!(disable_needed(&status(OverdriveState::Applying, enable, true)).not());
+        assert!(disable_needed(&status(OverdriveState::Failed, enable, false)).not());
+        assert!(disable_needed(&status(OverdriveState::NotConfigured, None, false)).not());
     }
 
     // Verify only a state with nothing applied, or a failure, starts a run.
@@ -936,6 +1090,8 @@ mod tests {
     }
 
     /// A scratch Arch tree with mkinitcpio in effect and overdrive off, and a setup over it.
+    /// Never start a rebuild over it: the tool commands are absolute, so it would run the
+    /// host's own.
     #[cfg(feature = "gated-tests")]
     fn arch_tree() -> (tempfile::TempDir, OverdriveSetup) {
         let root = tempfile::tempdir().unwrap();
@@ -962,7 +1118,7 @@ mod tests {
     fn a_plan_names_the_command_and_files() {
         crate::rt::test_runtime(async {
             let (root, setup) = arch_tree();
-            let plan = setup.plan().await.unwrap();
+            let plan = setup.plan(OverdriveAction::Enable).await.unwrap();
             assert_eq!(plan.route, Some(OverdriveRoute::Rebuild));
             assert_eq!(plan.command.as_deref(), Some("/usr/bin/mkinitcpio -P"));
             let conf = root.path().join("etc/modprobe.d/99-amdgpu-overdrive.conf");
@@ -993,6 +1149,53 @@ mod tests {
             let again = setup.enable(true).await.unwrap();
             assert_eq!(again.state, OverdriveState::RebootRequired);
             assert!(again.rebuild_skipped);
+        });
+    }
+
+    // Verify a disable plan lists only the files that exist, with the rebuild that follows.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_disable_plan_lists_the_files_it_removes() {
+        crate::rt::test_runtime(async {
+            let (root, setup) = arch_tree();
+            let empty = setup.plan(OverdriveAction::Disable).await.unwrap();
+            assert!(empty.files.is_empty());
+            setup.enable(false).await.unwrap();
+            let plan = setup.plan(OverdriveAction::Disable).await.unwrap();
+            assert_eq!(plan.route, Some(OverdriveRoute::Rebuild));
+            assert_eq!(plan.command.as_deref(), Some("/usr/bin/mkinitcpio -P"));
+            let conf = root.path().join("etc/modprobe.d/99-amdgpu-overdrive.conf");
+            assert_eq!(plan.files, [conf.display().to_string()]);
+        });
+    }
+
+    // Verify a disable where no known tool rebuilds the image removes the conf and drop-in,
+    // and that with nothing left a second disable does nothing.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_disable_without_a_tool_removes_the_conf() {
+        crate::rt::test_runtime(async {
+            let root = tempfile::tempdir().unwrap();
+            let mask_dir = root.path().join("sys/module/amdgpu/parameters");
+            std::fs::create_dir_all(&mask_dir).unwrap();
+            std::fs::write(mask_dir.join("ppfeaturemask"), "0xfff7bfff\n").unwrap();
+            let paths = OverdrivePaths::under(root.path());
+            write_overdrive_conf(&paths, 0xfff7_ffff, true)
+                .await
+                .unwrap();
+            let setup = OverdriveSetup::with_root(
+                AmdGpuOverdriveHandle::new(CancellationToken::new()),
+                NotificationHandle::new(CancellationToken::new()),
+                root.path(),
+            );
+            assert!(setup.status().await.removable);
+            let status = setup.disable().await.unwrap();
+            assert_eq!(status.state, OverdriveState::NotConfigured);
+            assert_eq!(status.action, Some(OverdriveAction::Disable));
+            assert!(status.rebuild_skipped);
+            assert!(status.removable.not());
+            assert!(paths.existing_files().await.is_empty());
+            assert_eq!(setup.disable().await.unwrap(), status);
         });
     }
 
