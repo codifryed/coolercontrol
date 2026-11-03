@@ -411,11 +411,7 @@ const enableDevice = openManageSensors
                                     />
                                     {{ t(overdriveStateLabelKey(overdriveState, overdriveAction)) }}
                                     <HelpIcon
-                                        v-if="
-                                            overdriveHintText &&
-                                            (overdriveState === 'reboot_required' ||
-                                                overdriveState === 'failed')
-                                        "
+                                        v-if="overdriveHintText"
                                         :text="overdriveHintText"
                                         :size="1.125"
                                     />

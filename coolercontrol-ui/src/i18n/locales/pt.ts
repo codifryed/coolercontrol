@@ -1509,6 +1509,9 @@ export default {
             overdriveFailedDetail:
                 '{error}. A configuração foi gravada. Execute {command} como root e depois reinicie.',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning:
+                'A reconstrução da imagem de inicialização ainda está em andamento em segundo plano. Reinicie somente depois que ela terminar.',
+            overdriveRebuildStillRunningSummary: 'Reconstrução ainda em andamento',
             overdriveRebuildSkipped:
                 'O CoolerControl não reconheceu como este sistema cria sua imagem de inicialização, então não a reconstruiu. Se o amdgpu carrega a partir do initramfs, reconstrua-o antes de reiniciar. Caso contrário, basta reiniciar.',
             overdriveRebuildYourself:

@@ -1427,6 +1427,8 @@ export default {
             overdriveFailedDetail:
                 '{error}。設定已寫入。請以 root 身分執行 {command}，然後重新開機。',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning: '開機映像重建仍在背景執行。請在完成後再重新開機。',
+            overdriveRebuildStillRunningSummary: '重建仍在進行',
             overdriveRebuildSkipped:
                 'CoolerControl 無法辨識此系統建立開機映像的方式，因此沒有重建它。如果 amdgpu 從 initramfs 載入，請在重新開機前重建它。否則直接重新開機即可。',
             overdriveRebuildYourself: '設定已寫入。請以 root 身分執行 {command}，然後重新開機。',

@@ -83,6 +83,8 @@ export const OVERDRIVE_I18N_KEYS: readonly string[] = [
     'overdriveRebootRequired',
     'overdriveRebootToTurnOff',
     'overdriveRebuildSkipped',
+    'overdriveRebuildStillRunning',
+    'overdriveRebuildStillRunningSummary',
     'overdriveRebuildYourself',
     'overdriveRemoveFailedDetail',
     'overdriveRemoveFailedSummary',
@@ -143,6 +145,10 @@ export function overdriveHint(status: AmdGpuOverdriveStatus): OverdriveMessage |
             }
             if (status.rebuild_skipped) return { key: `${KEYS}overdriveRebuildSkipped`, params: {} }
             return { key: `${KEYS}overdriveSuccessDetail`, params: {} }
+        case 'applying':
+            // An error while applying means the rebuild outlasted the wait and goes on alone.
+            if (status.error == null) return undefined
+            return { key: `${KEYS}overdriveRebuildStillRunning`, params: {} }
         case 'not_configured':
             return disabling ? { key: `${KEYS}overdriveRemovedNowDetail`, params: {} } : undefined
         default:
@@ -231,9 +237,16 @@ export function overdrivePlanRecovery(
 
 /** The toast for a status a run ended in. Undefined for a state that is no outcome. */
 export function overdriveOutcomeToast(status: AmdGpuOverdriveStatus): OverdriveToast | undefined {
-    if (status.state === 'applying' || status.state === 'active') return undefined
+    if (status.state === 'active') return undefined
     const detail = overdriveHint(status)
     if (detail == null) return undefined
+    if (status.state === 'applying') {
+        return {
+            severity: 'warn',
+            summaryKey: `${KEYS}overdriveRebuildStillRunningSummary`,
+            detail,
+        }
+    }
     const disabling = status.action === 'disable'
     if (status.state === 'failed') {
         const summary = disabling ? 'overdriveRemoveFailedSummary' : 'overdriveFailedSummary'
@@ -244,6 +257,19 @@ export function overdriveOutcomeToast(status: AmdGpuOverdriveStatus): OverdriveT
         summaryKey: `${KEYS}${disabling ? 'overdriveRemovedSummary' : 'overdriveSuccess'}`,
         detail,
     }
+}
+
+/**
+ * Whether a pushed status ends a background run. A rebuild that outlasts the wait stays
+ * applying with an error, and counts once, when the error first shows.
+ */
+export function overdriveEventIsOutcome(
+    previous: AmdGpuOverdriveStatus | undefined,
+    status: AmdGpuOverdriveStatus,
+): boolean {
+    if (previous?.state !== 'applying') return false
+    if (status.state !== 'applying') return true
+    return previous.error == null && status.error != null
 }
 
 /**

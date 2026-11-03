@@ -1487,6 +1487,9 @@ export default {
             overdriveFailedDetail:
                 '{error}. सेटिंग लिख दी गई है। {command} को root के रूप में चलाएँ, फिर रीबूट करें।',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning:
+                'बूट इमेज का रीबिल्ड अभी भी बैकग्राउंड में चल रहा है। इसके पूरा होने के बाद ही रीबूट करें।',
+            overdriveRebuildStillRunningSummary: 'रीबिल्ड अभी चल रहा है',
             overdriveRebuildSkipped:
                 'CoolerControl यह नहीं पहचान सका कि यह सिस्टम अपनी बूट इमेज कैसे बनाता है, इसलिए उसने उसे फिर से नहीं बनाया। अगर amdgpu initramfs से लोड होता है, तो रीबूट से पहले उसे फिर से बनाएँ। अन्यथा बस रीबूट करें।',
             overdriveRebuildYourself:

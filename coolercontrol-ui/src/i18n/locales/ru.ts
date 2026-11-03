@@ -1514,6 +1514,9 @@ export default {
             overdriveFailedDetail:
                 '{error}. Настройка записана. Выполните {command} от имени root, затем перезагрузите компьютер.',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning:
+                'Пересборка загрузочного образа ещё выполняется в фоне. Перезагружайтесь только после её завершения.',
+            overdriveRebuildStillRunningSummary: 'Пересборка ещё выполняется',
             overdriveRebuildSkipped:
                 'CoolerControl не распознал, как эта система собирает загрузочный образ, поэтому не пересобрал его. Если amdgpu загружается из initramfs, пересоберите его перед перезагрузкой. Иначе просто перезагрузите компьютер.',
             overdriveRebuildYourself:

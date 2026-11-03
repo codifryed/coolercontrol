@@ -1496,6 +1496,9 @@ export default {
             overdriveFailedDetail:
                 '{error}。設定は書き込まれています。root で {command} を実行してから再起動してください。',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning:
+                'ブートイメージの再構築はまだバックグラウンドで実行中です。完了してから再起動してください。',
+            overdriveRebuildStillRunningSummary: '再構築がまだ実行中です',
             overdriveRebuildSkipped:
                 'CoolerControl はこのシステムのブートイメージの作成方法を認識できなかったため、再構築しませんでした。amdgpu が initramfs から読み込まれる場合は、再起動の前に再構築してください。そうでなければ、再起動するだけで構いません。',
             overdriveRebuildYourself:

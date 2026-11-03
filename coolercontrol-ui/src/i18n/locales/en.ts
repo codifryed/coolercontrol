@@ -1482,6 +1482,9 @@ export default {
             overdriveFailedDetail:
                 '{error}. The setting is written. Run {command} as root, then reboot.',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning:
+                'The boot image rebuild is still running in the background. Reboot only once it has finished.',
+            overdriveRebuildStillRunningSummary: 'Rebuild Still Running',
             overdriveRebuildSkipped:
                 'CoolerControl did not recognize how this system builds its boot image, so it did not rebuild it. If amdgpu loads from the initramfs, rebuild it before rebooting. Otherwise, just reboot.',
             overdriveRebuildYourself: 'The setting is written. Run {command} as root, then reboot.',

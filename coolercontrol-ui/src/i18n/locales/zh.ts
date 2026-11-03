@@ -1425,6 +1425,8 @@ export default {
             overdriveFailedSummary: '超频设置失败',
             overdriveFailedDetail: '{error}。设置已写入。请以 root 身份运行 {command}，然后重启。',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning: '启动镜像重建仍在后台运行。请在其完成后再重启。',
+            overdriveRebuildStillRunningSummary: '重建仍在进行',
             overdriveRebuildSkipped:
                 'CoolerControl 无法识别此系统构建启动镜像的方式，因此没有重建它。如果 amdgpu 从 initramfs 加载，请在重启前重建它。否则直接重启即可。',
             overdriveRebuildYourself: '设置已写入。请以 root 身份运行 {command}，然后重启。',

@@ -9,6 +9,7 @@ import {
     OVERDRIVE_I18N_KEYS,
     overdriveButtonAction,
     overdriveCanDisable,
+    overdriveEventIsOutcome,
     overdriveHint,
     overdriveOutcomeToast,
     overdrivePlanIntro,
@@ -55,6 +56,15 @@ describe('overdriveHint', () => {
         })
         const removal = status({ ...failed, action: 'disable' })
         expect(overdriveHint(removal)?.key).toBe(`${KEYS}overdriveRemoveFailedDetail`)
+    })
+
+    it('tells the user a rebuild that outlasted the wait is still running', () => {
+        expect(overdriveHint(status({ state: 'applying' }))).toBeUndefined()
+        const stillRunning = status({ state: 'applying', error: 'still running' })
+        expect(overdriveHint(stillRunning)).toEqual({
+            key: `${KEYS}overdriveRebuildStillRunning`,
+            params: {},
+        })
     })
 
     it('shows the bare error when there is no command', () => {
@@ -173,6 +183,28 @@ describe('toasts', () => {
         })
         const off = overdriveOutcomeToast(status({ state: 'not_configured', action: 'disable' }))
         expect(off?.summaryKey).toBe(`${KEYS}overdriveRemovedSummary`)
+    })
+
+    it('warns that a rebuild that outlasted the wait is still running', () => {
+        const stillRunning = overdriveOutcomeToast(
+            status({ state: 'applying', action: 'enable', error: 'still running' }),
+        )
+        expect(stillRunning).toMatchObject({
+            severity: 'warn',
+            summaryKey: `${KEYS}overdriveRebuildStillRunningSummary`,
+            detail: { key: `${KEYS}overdriveRebuildStillRunning` },
+        })
+    })
+
+    it('toasts an event only when it ends a run or first reports it still running', () => {
+        const running = status({ state: 'applying' })
+        const stillRunning = status({ state: 'applying', error: 'still running' })
+        expect(overdriveEventIsOutcome(running, status({ state: 'reboot_required' }))).toBe(true)
+        expect(overdriveEventIsOutcome(running, stillRunning)).toBe(true)
+        expect(overdriveEventIsOutcome(stillRunning, stillRunning)).toBe(false)
+        expect(overdriveEventIsOutcome(running, running)).toBe(false)
+        expect(overdriveEventIsOutcome(undefined, stillRunning)).toBe(false)
+        expect(overdriveEventIsOutcome(status({ state: 'failed' }), running)).toBe(false)
     })
 
     it('has no toast for a state that is no outcome', () => {

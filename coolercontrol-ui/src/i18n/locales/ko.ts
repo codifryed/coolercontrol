@@ -1475,6 +1475,9 @@ export default {
             overdriveFailedDetail:
                 '{error}. 설정이 기록되었습니다. root 권한으로 {command}을(를) 실행한 다음 재부팅하세요.',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning:
+                '부트 이미지 재빌드가 아직 백그라운드에서 실행 중입니다. 완료된 후에만 재부팅하세요.',
+            overdriveRebuildStillRunningSummary: '재빌드가 아직 실행 중',
             overdriveRebuildSkipped:
                 'CoolerControl이 이 시스템의 부팅 이미지 생성 방식을 인식하지 못해 다시 빌드하지 않았습니다. amdgpu가 initramfs에서 로드된다면 재부팅하기 전에 다시 빌드하세요. 그렇지 않으면 재부팅만 하면 됩니다.',
             overdriveRebuildYourself:

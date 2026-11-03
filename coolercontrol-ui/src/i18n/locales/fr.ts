@@ -1525,6 +1525,9 @@ export default {
             overdriveFailedDetail:
                 '{error}. Le réglage est écrit. Exécutez {command} en tant que root, puis redémarrez.',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning:
+                "La reconstruction de l'image de démarrage est toujours en cours en arrière-plan. Ne redémarrez qu'une fois qu'elle est terminée.",
+            overdriveRebuildStillRunningSummary: 'Reconstruction toujours en cours',
             overdriveRebuildSkipped:
                 "CoolerControl n'a pas reconnu comment ce système construit son image de démarrage, il ne l'a donc pas reconstruite. Si amdgpu se charge depuis l'initramfs, reconstruisez-le avant de redémarrer. Sinon, redémarrez simplement.",
             overdriveRebuildYourself:

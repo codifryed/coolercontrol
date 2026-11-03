@@ -30,6 +30,7 @@ import { SystemEventDTO } from '@/models/PowerProfile.ts'
 import {
     AmdGpuOverdriveStatus,
     type OverdriveToast,
+    overdriveEventIsOutcome,
     overdriveOutcomeToast,
 } from '@/models/AmdGpuOverdrive.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
@@ -892,7 +893,7 @@ export const useDeviceStore = defineStore('device', () => {
     function applyAmdGpuOverdrive(status: AmdGpuOverdriveStatus): void {
         const previous = amdGpuOverdrive.value
         amdGpuOverdrive.value = status
-        if (previous?.state !== 'applying' || status.state === 'applying') return
+        if (!overdriveEventIsOutcome(previous, status)) return
         const decision = overdriveOutcomeToast(status)
         if (decision != null) showAmdGpuOverdriveToast(decision)
     }

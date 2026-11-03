@@ -1523,6 +1523,9 @@ export default {
             overdriveFailedDetail:
                 '{error}. Die Einstellung ist geschrieben. Führe {command} als root aus und starte dann neu.',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning:
+                'Der Neuaufbau des Boot-Images läuft noch im Hintergrund. Starte erst neu, wenn er abgeschlossen ist.',
+            overdriveRebuildStillRunningSummary: 'Neuaufbau läuft noch',
             overdriveRebuildSkipped:
                 'CoolerControl hat nicht erkannt, wie dieses System sein Boot-Image erstellt, und hat es daher nicht neu erstellt. Wenn amdgpu aus dem initramfs geladen wird, erstelle es vor dem Neustart neu. Andernfalls genügt ein Neustart.',
             overdriveRebuildYourself:

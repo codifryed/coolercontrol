@@ -1472,6 +1472,9 @@ export default {
             overdriveFailedDetail:
                 '{error}. تمت كتابة الإعداد. شغّل {command} بصلاحيات root، ثم أعد التشغيل.',
             overdriveFailedError: '{error}',
+            overdriveRebuildStillRunning:
+                'لا تزال إعادة بناء صورة الإقلاع جارية في الخلفية. أعد التشغيل فقط بعد اكتمالها.',
+            overdriveRebuildStillRunningSummary: 'لا تزال إعادة البناء جارية',
             overdriveRebuildSkipped:
                 'لم يتعرف CoolerControl على طريقة بناء هذا النظام لصورة الإقلاع، لذا لم يُعد بناءها. إذا كان amdgpu يُحمَّل من initramfs، فأعد بناءه قبل إعادة التشغيل. وإلا فأعد التشغيل فقط.',
             overdriveRebuildYourself:
