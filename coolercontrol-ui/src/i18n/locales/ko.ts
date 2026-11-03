@@ -1465,6 +1465,57 @@ export default {
             overdriveEnable: '활성화',
             overdriveActive: '활성',
             overdriveSuccess: '오버드라이브 구성됨',
+            overdriveSuccessDetail: 'AMD GPU 오버드라이브를 적용하려면 재부팅하세요.',
+            overdriveConfirmHeader: 'GPU 오버드라이브를 활성화할까요?',
+            overdriveApplying: '적용 중입니다. 전원을 끄지 마세요.',
+            overdriveRebootRequired: '재부팅 필요',
+            overdriveFailed: '실패',
+            overdriveRetry: '다시 시도',
+            overdriveFailedSummary: '오버드라이브 설정 실패',
+            overdriveFailedDetail:
+                '{error}. 설정이 기록되었습니다. root 권한으로 {command}을(를) 실행한 다음 재부팅하세요.',
+            overdriveFailedError: '{error}',
+            overdriveRebuildSkipped:
+                'CoolerControl이 이 시스템의 부팅 이미지 생성 방식을 인식하지 못해 다시 빌드하지 않았습니다. amdgpu가 initramfs에서 로드된다면 재부팅하기 전에 다시 빌드하세요. 그렇지 않으면 재부팅만 하면 됩니다.',
+            overdriveRebuildYourself:
+                '설정이 저장되었습니다. root 권한으로 {command}을(를) 실행한 다음 재부팅하세요.',
+            overdriveEnableAndRebuild: '활성화 및 다시 빌드',
+            overdriveConfigOnly: '설정만 쓰기',
+            overdrivePlanRebuild:
+                'CoolerControl이 {files}을(를) 쓴 다음 root 권한으로 다음 명령을 실행해 부팅 이미지를 다시 빌드합니다:',
+            overdrivePlanKernelArgument:
+                'CoolerControl이 root 권한으로 다음 명령을 실행해 커널 인수를 추가합니다:',
+            overdrivePlanConfigOnly:
+                'CoolerControl이 {files}을(를) 씁니다. 이 시스템의 부팅 이미지 생성 방식을 인식하지 못하므로 다시 빌드하지 않습니다. amdgpu가 initramfs에서 로드된다면 재부팅하기 전에 직접 다시 빌드하세요.',
+            overdrivePlanDuration:
+                '몇 분 정도 걸릴 수 있습니다. 끝날 때까지 전원을 끄지 마세요. 변경 사항은 재부팅하면 적용됩니다.',
+            overdrivePlanRecovery:
+                '이후 시스템이 부팅되지 않으면, 스냅샷을 보관하는 시스템이라면 부팅 메뉴에서 스냅샷을 선택하거나, 라이브 시스템으로 부팅해 {conf}을(를) 삭제하고 부팅 이미지를 다시 빌드하세요.',
+            overdrivePlanRecoveryDeployment:
+                '이후 시스템이 부팅되지 않으면 부팅 메뉴에서 이전 배포를 선택하세요.',
+            overdrivePlanBugReports:
+                '오버드라이브가 켜져 있는 동안 amdgpu는 부팅 시 오버드라이브와 관련 없는 버그를 보고하기 전에 이를 끄라는 경고를 기록합니다.',
+            overdriveDisable: '비활성화',
+            overdriveDisableHeader: 'GPU 오버드라이브를 비활성화할까요?',
+            overdriveDisableAndRebuild: '비활성화 및 다시 빌드',
+            overdriveRemoving: '제거 중입니다. 전원을 끄지 마세요.',
+            overdriveRebootToTurnOff: '재부팅하면 꺼집니다',
+            overdriveRemovedSummary: '오버드라이브 제거됨',
+            overdriveRemovedDetail: 'AMD GPU 오버드라이브를 끄려면 재부팅하세요.',
+            overdriveRemovedNowDetail: 'AMD GPU 오버드라이브가 꺼져 있습니다.',
+            overdriveRemovedRebuildSkipped:
+                '설정은 제거되었지만 CoolerControl이 이 시스템의 부팅 이미지 생성 방식을 인식하지 못해 다시 빌드하지 않았습니다. amdgpu가 initramfs에서 로드된다면 재부팅하기 전에 다시 빌드하세요.',
+            overdriveRemoveFailedSummary: '오버드라이브 제거 실패',
+            overdriveRemoveFailedDetail:
+                '{error}. 설정은 제거되었습니다. root 권한으로 {command}을(를) 실행한 다음 재부팅하세요.',
+            overdrivePlanRemoveRebuild:
+                'CoolerControl이 {files}을(를) 삭제한 다음 root 권한으로 다음 명령을 실행해 부팅 이미지를 다시 빌드합니다:',
+            overdrivePlanRemoveConfigOnly:
+                'CoolerControl이 {files}을(를) 삭제합니다. 이 시스템의 부팅 이미지 생성 방식을 인식하지 못하므로 다시 빌드하지 않습니다. amdgpu가 initramfs에서 로드된다면 재부팅하기 전에 직접 다시 빌드하세요.',
+            overdrivePlanRemoveRecovery:
+                '이후 시스템이 부팅되지 않으면, 스냅샷을 보관하는 시스템이라면 부팅 메뉴에서 스냅샷을 선택하거나, 라이브 시스템으로 부팅해 부팅 이미지를 다시 빌드하세요.',
+            overdrivePlanRebuildOnly:
+                'CoolerControl이 root 권한으로 다음 명령을 실행해 부팅 이미지를 다시 빌드합니다:',
             thinkPadFanControl: '팬 제어',
             thinkPadFanControlDesc:
                 'ThinkPad ACPI 팬 제어를 활성화합니다.\n안전상의 이유로 팬 제어는 기본적으로 비활성화되어 있습니다.\n본인의 책임 하에 진행하십시오.',

@@ -1503,6 +1503,58 @@ export default {
             overdriveEnable: 'Включить',
             overdriveActive: 'Активно',
             overdriveSuccess: 'Overdrive настроен',
+            overdriveSuccessDetail:
+                'Перезагрузите компьютер, чтобы применить overdrive для GPU AMD.',
+            overdriveConfirmHeader: 'Включить overdrive для GPU?',
+            overdriveApplying: 'Применяется. Не выключайте компьютер.',
+            overdriveRebootRequired: 'Требуется перезагрузка',
+            overdriveFailed: 'Ошибка',
+            overdriveRetry: 'Повторить',
+            overdriveFailedSummary: 'Не удалось настроить overdrive',
+            overdriveFailedDetail:
+                '{error}. Настройка записана. Выполните {command} от имени root, затем перезагрузите компьютер.',
+            overdriveFailedError: '{error}',
+            overdriveRebuildSkipped:
+                'CoolerControl не распознал, как эта система собирает загрузочный образ, поэтому не пересобрал его. Если amdgpu загружается из initramfs, пересоберите его перед перезагрузкой. Иначе просто перезагрузите компьютер.',
+            overdriveRebuildYourself:
+                'Настройка записана. Выполните {command} от имени root, затем перезагрузите компьютер.',
+            overdriveEnableAndRebuild: 'Включить и пересобрать',
+            overdriveConfigOnly: 'Только записать конфигурацию',
+            overdrivePlanRebuild:
+                'CoolerControl запишет {files}, а затем пересоберёт загрузочные образы, выполнив от имени root:',
+            overdrivePlanKernelArgument:
+                'CoolerControl добавит параметр ядра, выполнив от имени root:',
+            overdrivePlanConfigOnly:
+                'CoolerControl запишет {files}. Он не распознаёт, как эта система собирает загрузочный образ, поэтому не будет его пересобирать. Если amdgpu загружается из initramfs, пересоберите его сами перед перезагрузкой.',
+            overdrivePlanDuration:
+                'Это может занять несколько минут. Не выключайте компьютер, пока процесс не завершится. Изменение вступит в силу после перезагрузки.',
+            overdrivePlanRecovery:
+                'Если после этого система не загрузится, выберите снимок в загрузочном меню, если ваша система их хранит, или загрузитесь с live-системы, удалите {conf} и пересоберите загрузочный образ.',
+            overdrivePlanRecoveryDeployment:
+                'Если после этого система не загрузится, выберите предыдущее развёртывание в загрузочном меню.',
+            overdrivePlanBugReports:
+                'Пока overdrive включён, amdgpu при загрузке пишет в журнал предупреждение с просьбой отключить его, прежде чем сообщать об ошибках, не связанных с overdrive.',
+            overdriveDisable: 'Отключить',
+            overdriveDisableHeader: 'Отключить GPU Overdrive?',
+            overdriveDisableAndRebuild: 'Отключить и пересобрать',
+            overdriveRemoving: 'Удаление. Не выключайте компьютер.',
+            overdriveRebootToTurnOff: 'Перезагрузите, чтобы отключить',
+            overdriveRemovedSummary: 'Overdrive удалён',
+            overdriveRemovedDetail: 'Перезагрузите компьютер, чтобы отключить AMD GPU overdrive.',
+            overdriveRemovedNowDetail: 'AMD GPU overdrive отключён.',
+            overdriveRemovedRebuildSkipped:
+                'Настройка удалена, но CoolerControl не распознал, как эта система собирает загрузочный образ, поэтому не пересобрал его. Если amdgpu загружается из initramfs, пересоберите его перед перезагрузкой.',
+            overdriveRemoveFailedSummary: 'Не удалось удалить overdrive',
+            overdriveRemoveFailedDetail:
+                '{error}. Настройка удалена. Выполните {command} от имени root, затем перезагрузите компьютер.',
+            overdrivePlanRemoveRebuild:
+                'CoolerControl удалит {files}, а затем пересоберёт загрузочные образы, выполнив от имени root:',
+            overdrivePlanRemoveConfigOnly:
+                'CoolerControl удалит {files}. Он не распознаёт, как эта система собирает загрузочный образ, поэтому не будет его пересобирать. Если amdgpu загружается из initramfs, пересоберите его сами перед перезагрузкой.',
+            overdrivePlanRemoveRecovery:
+                'Если после этого система не загрузится, выберите снимок в загрузочном меню, если ваша система их хранит, или загрузитесь с live-системы и пересоберите загрузочный образ.',
+            overdrivePlanRebuildOnly:
+                'CoolerControl пересоберёт загрузочные образы, выполнив от имени root:',
             thinkPadFanControl: 'Управление вентилятором',
             thinkPadFanControlDesc:
                 'Включает управление вентилятором ThinkPad ACPI.\nУправление вентилятором отключено по умолчанию из соображений безопасности.\nПродолжайте на свой страх и риск.',

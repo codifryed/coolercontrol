@@ -1513,6 +1513,57 @@ export default {
             overdriveEnable: 'Aktivieren',
             overdriveActive: 'Aktiv',
             overdriveSuccess: 'Overdrive konfiguriert',
+            overdriveSuccessDetail: 'Neustart, um AMD GPU Overdrive anzuwenden.',
+            overdriveConfirmHeader: 'GPU Overdrive aktivieren?',
+            overdriveApplying: 'Wird angewendet. Nicht ausschalten.',
+            overdriveRebootRequired: 'Neustart erforderlich',
+            overdriveFailed: 'Fehlgeschlagen',
+            overdriveRetry: 'Erneut versuchen',
+            overdriveFailedSummary: 'Overdrive-Einrichtung fehlgeschlagen',
+            overdriveFailedDetail:
+                '{error}. Die Einstellung ist geschrieben. Führe {command} als root aus und starte dann neu.',
+            overdriveFailedError: '{error}',
+            overdriveRebuildSkipped:
+                'CoolerControl hat nicht erkannt, wie dieses System sein Boot-Image erstellt, und hat es daher nicht neu erstellt. Wenn amdgpu aus dem initramfs geladen wird, erstelle es vor dem Neustart neu. Andernfalls genügt ein Neustart.',
+            overdriveRebuildYourself:
+                'Die Einstellung ist geschrieben. Führe {command} als root aus und starte dann neu.',
+            overdriveEnableAndRebuild: 'Aktivieren und neu erstellen',
+            overdriveConfigOnly: 'Nur die Konfiguration schreiben',
+            overdrivePlanRebuild:
+                'CoolerControl schreibt {files} und erstellt dann die Boot-Images neu, indem es Folgendes als root ausführt:',
+            overdrivePlanKernelArgument:
+                'CoolerControl fügt das Kernel-Argument hinzu, indem es Folgendes als root ausführt:',
+            overdrivePlanConfigOnly:
+                'CoolerControl schreibt {files}. Es erkennt nicht, wie dieses System sein Boot-Image erstellt, und erstellt es daher nicht neu. Wenn amdgpu aus dem initramfs geladen wird, erstelle es vor dem Neustart selbst neu.',
+            overdrivePlanDuration:
+                'Das kann einige Minuten dauern. Schalte den Rechner nicht aus, bevor es fertig ist. Ein Neustart übernimmt die Änderung.',
+            overdrivePlanRecovery:
+                'Falls das System danach nicht startet, wähle im Bootmenü einen Snapshot, sofern dein System welche anlegt, oder starte ein Live-System, lösche {conf} und erstelle das Boot-Image neu.',
+            overdrivePlanRecoveryDeployment:
+                'Falls das System danach nicht startet, wähle im Bootmenü das vorherige Deployment.',
+            overdrivePlanBugReports:
+                'Solange Overdrive aktiv ist, protokolliert amdgpu beim Start eine Warnung mit der Bitte, es vor dem Melden von Fehlern abzuschalten, die nichts mit Overdrive zu tun haben.',
+            overdriveDisable: 'Deaktivieren',
+            overdriveDisableHeader: 'GPU Overdrive deaktivieren?',
+            overdriveDisableAndRebuild: 'Deaktivieren und neu erstellen',
+            overdriveRemoving: 'Wird entfernt. Nicht ausschalten.',
+            overdriveRebootToTurnOff: 'Neustart zum Abschalten',
+            overdriveRemovedSummary: 'Overdrive entfernt',
+            overdriveRemovedDetail: 'Starte neu, um AMD GPU Overdrive abzuschalten.',
+            overdriveRemovedNowDetail: 'AMD GPU Overdrive ist aus.',
+            overdriveRemovedRebuildSkipped:
+                'Die Einstellung ist entfernt, aber CoolerControl hat nicht erkannt, wie dieses System sein Boot-Image erstellt, und hat es daher nicht neu erstellt. Wenn amdgpu aus dem initramfs geladen wird, erstelle es vor dem Neustart neu.',
+            overdriveRemoveFailedSummary: 'Entfernen von Overdrive fehlgeschlagen',
+            overdriveRemoveFailedDetail:
+                '{error}. Die Einstellung ist entfernt. Führe {command} als root aus und starte dann neu.',
+            overdrivePlanRemoveRebuild:
+                'CoolerControl löscht {files} und erstellt dann die Boot-Images neu, indem es Folgendes als root ausführt:',
+            overdrivePlanRemoveConfigOnly:
+                'CoolerControl löscht {files}. Es erkennt nicht, wie dieses System sein Boot-Image erstellt, und erstellt es daher nicht neu. Wenn amdgpu aus dem initramfs geladen wird, erstelle es vor dem Neustart selbst neu.',
+            overdrivePlanRemoveRecovery:
+                'Falls das System danach nicht startet, wähle im Bootmenü einen Snapshot, sofern dein System welche anlegt, oder starte ein Live-System und erstelle das Boot-Image neu.',
+            overdrivePlanRebuildOnly:
+                'CoolerControl erstellt die Boot-Images neu, indem es Folgendes als root ausführt:',
             thinkPadFanControl: 'Lüftersteuerung',
             thinkPadFanControlDesc:
                 'Aktiviert die ThinkPad ACPI Lüftersteuerung.\nDie Lüftersteuerung ist aus Sicherheitsgründen standardmäßig deaktiviert.\nFortfahren auf eigene Gefahr.',

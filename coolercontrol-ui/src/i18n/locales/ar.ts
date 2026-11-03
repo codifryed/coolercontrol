@@ -1462,6 +1462,57 @@ export default {
             overdriveEnable: 'تفعيل',
             overdriveActive: 'نشط',
             overdriveSuccess: 'تم تكوين Overdrive',
+            overdriveSuccessDetail: 'أعد التشغيل لتطبيق Overdrive لمعالج الرسومات AMD.',
+            overdriveConfirmHeader: 'تفعيل Overdrive لمعالج الرسومات؟',
+            overdriveApplying: 'جارٍ التطبيق. لا تطفئ الجهاز.',
+            overdriveRebootRequired: 'إعادة التشغيل مطلوبة',
+            overdriveFailed: 'فشل',
+            overdriveRetry: 'إعادة المحاولة',
+            overdriveFailedSummary: 'فشل إعداد Overdrive',
+            overdriveFailedDetail:
+                '{error}. تمت كتابة الإعداد. شغّل {command} بصلاحيات root، ثم أعد التشغيل.',
+            overdriveFailedError: '{error}',
+            overdriveRebuildSkipped:
+                'لم يتعرف CoolerControl على طريقة بناء هذا النظام لصورة الإقلاع، لذا لم يُعد بناءها. إذا كان amdgpu يُحمَّل من initramfs، فأعد بناءه قبل إعادة التشغيل. وإلا فأعد التشغيل فقط.',
+            overdriveRebuildYourself:
+                'تمت كتابة الإعداد. شغّل {command} بصلاحيات root، ثم أعد التشغيل.',
+            overdriveEnableAndRebuild: 'تفعيل وإعادة البناء',
+            overdriveConfigOnly: 'كتابة الإعداد فقط',
+            overdrivePlanRebuild:
+                'سيكتب CoolerControl الملفات {files}، ثم يعيد بناء صور الإقلاع بتشغيل ما يلي بصلاحيات root:',
+            overdrivePlanKernelArgument:
+                'سيضيف CoolerControl معامل النواة بتشغيل ما يلي بصلاحيات root:',
+            overdrivePlanConfigOnly:
+                'سيكتب CoolerControl الملفات {files}. لا يتعرف على طريقة بناء هذا النظام لصورة الإقلاع، لذا لن يعيد بناءها. إذا كان amdgpu يُحمَّل من initramfs، فأعد بناءه بنفسك قبل إعادة التشغيل.',
+            overdrivePlanDuration:
+                'قد يستغرق ذلك بضع دقائق. لا تُطفئ الجهاز حتى ينتهي. تُطبَّق التغييرات بعد إعادة التشغيل.',
+            overdrivePlanRecovery:
+                'إذا لم يُقلع النظام بعد ذلك، فاختر لقطة من قائمة الإقلاع إن كان نظامك يحتفظ بها، أو شغّل نظامًا حيًا واحذف {conf} ثم أعد بناء صورة الإقلاع.',
+            overdrivePlanRecoveryDeployment:
+                'إذا لم يُقلع النظام بعد ذلك، فاختر النشر السابق من قائمة الإقلاع.',
+            overdrivePlanBugReports:
+                'ما دام overdrive مفعّلًا، يسجل amdgpu تحذيرًا عند الإقلاع يطلب إيقافه قبل الإبلاغ عن أخطاء لا علاقة لها بـ overdrive.',
+            overdriveDisable: 'تعطيل',
+            overdriveDisableHeader: 'تعطيل GPU Overdrive؟',
+            overdriveDisableAndRebuild: 'تعطيل وإعادة البناء',
+            overdriveRemoving: 'جارٍ الإزالة. لا تُطفئ الجهاز.',
+            overdriveRebootToTurnOff: 'أعد التشغيل للإيقاف',
+            overdriveRemovedSummary: 'تمت إزالة Overdrive',
+            overdriveRemovedDetail: 'أعد التشغيل لإيقاف AMD GPU overdrive.',
+            overdriveRemovedNowDetail: 'AMD GPU overdrive متوقف.',
+            overdriveRemovedRebuildSkipped:
+                'تمت إزالة الإعداد، لكن CoolerControl لم يتعرف على طريقة بناء هذا النظام لصورة الإقلاع، لذا لم يُعد بناءها. إذا كان amdgpu يُحمَّل من initramfs، فأعد بناءه قبل إعادة التشغيل.',
+            overdriveRemoveFailedSummary: 'فشلت إزالة Overdrive',
+            overdriveRemoveFailedDetail:
+                '{error}. تمت إزالة الإعداد. شغّل {command} بصلاحيات root، ثم أعد التشغيل.',
+            overdrivePlanRemoveRebuild:
+                'سيحذف CoolerControl الملفات {files}، ثم يعيد بناء صور الإقلاع بتشغيل ما يلي بصلاحيات root:',
+            overdrivePlanRemoveConfigOnly:
+                'سيحذف CoolerControl الملفات {files}. لا يتعرف على طريقة بناء هذا النظام لصورة الإقلاع، لذا لن يعيد بناءها. إذا كان amdgpu يُحمَّل من initramfs، فأعد بناءه بنفسك قبل إعادة التشغيل.',
+            overdrivePlanRemoveRecovery:
+                'إذا لم يُقلع النظام بعد ذلك، فاختر لقطة من قائمة الإقلاع إن كان نظامك يحتفظ بها، أو شغّل نظامًا حيًا وأعد بناء صورة الإقلاع.',
+            overdrivePlanRebuildOnly:
+                'سيعيد CoolerControl بناء صور الإقلاع بتشغيل ما يلي بصلاحيات root:',
             thinkPadFanControl: 'التحكم في المروحة',
             thinkPadFanControlDesc:
                 'تمكين التحكم في مروحة ThinkPad ACPI.\nالتحكم في المروحة معطل افتراضيًا لأسباب تتعلق بالسلامة.\nتابع على مسؤوليتك الخاصة.',

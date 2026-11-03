@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import {
+    AmdGpuOverdrivePlan,
+    AmdGpuOverdriveStatus,
+    type OverdriveAction,
+} from '@/models/AmdGpuOverdrive.ts'
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import axiosRetry, { isNetworkError } from 'axios-retry'
 import { instanceToPlain, plainToInstance } from 'class-transformer'
@@ -1458,15 +1463,45 @@ export default class DaemonClient {
         }
     }
 
-    /**
-     * Enables AMD GPU overdrive by configuring the ppfeaturemask kernel parameter.
-     * Returns the success message string or an ErrorResponse.
-     */
-    async amdGpuOverdriveEnable(): Promise<string | ErrorResponse> {
+    /** The AMD GPU overdrive setup state. Undefined when it could not be read. */
+    async getAmdGpuOverdrive(): Promise<AmdGpuOverdriveStatus | undefined> {
         try {
-            const response = await this.getClient().post('/amd-gpu-overdrive')
+            const response = await this.getClient().get('/amd-gpu-overdrive')
+            this.logDaemonResponse(response, 'Get AMD GPU Overdrive')
+            return plainToInstance(AmdGpuOverdriveStatus, response.data as object)
+        } catch (err) {
+            this.logError(err)
+            return undefined
+        }
+    }
+
+    /** What enabling or disabling AMD GPU overdrive would do, for the user to confirm. */
+    async getAmdGpuOverdrivePlan(
+        action: OverdriveAction,
+    ): Promise<AmdGpuOverdrivePlan | ErrorResponse> {
+        try {
+            const response = await this.getClient().get('/amd-gpu-overdrive/plan', {
+                params: { action },
+            })
+            this.logDaemonResponse(response, 'Get AMD GPU Overdrive Plan')
+            return plainToInstance(AmdGpuOverdrivePlan, response.data as object)
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) return plainToInstance(ErrorResponse, err.response.data as object)
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Starts AMD GPU overdrive setup, which then runs in the background. Without `rebuild`,
+     * only the module option is written and the boot image rebuild is left to the user.
+     * Returns the new state or an ErrorResponse.
+     */
+    async amdGpuOverdriveEnable(rebuild: boolean): Promise<AmdGpuOverdriveStatus | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/amd-gpu-overdrive', { rebuild })
             this.logDaemonResponse(response, 'AMD GPU Overdrive Enable')
-            return response.data as string
+            return plainToInstance(AmdGpuOverdriveStatus, response.data as object)
         } catch (err: any) {
             this.logError(err)
             if (err.response) {
@@ -1474,6 +1509,22 @@ export default class DaemonClient {
             } else {
                 return new ErrorResponse('Unknown Cause')
             }
+        }
+    }
+
+    /**
+     * Starts removing the AMD GPU overdrive setting, which then runs in the background.
+     * Returns the new state or an ErrorResponse.
+     */
+    async amdGpuOverdriveDisable(): Promise<AmdGpuOverdriveStatus | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete('/amd-gpu-overdrive')
+            this.logDaemonResponse(response, 'AMD GPU Overdrive Disable')
+            return plainToInstance(AmdGpuOverdriveStatus, response.data as object)
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) return plainToInstance(ErrorResponse, err.response.data as object)
+            return new ErrorResponse('Unknown Cause')
         }
     }
 

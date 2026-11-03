@@ -1417,6 +1417,52 @@ export default {
             overdriveEnable: '啟用',
             overdriveActive: '已啟用',
             overdriveSuccess: '超頻已設定',
+            overdriveSuccessDetail: '重新開機以套用 AMD GPU 超頻。',
+            overdriveConfirmHeader: '啟用 GPU 超頻？',
+            overdriveApplying: '正在套用。請勿關機。',
+            overdriveRebootRequired: '需要重新開機',
+            overdriveFailed: '失敗',
+            overdriveRetry: '重試',
+            overdriveFailedSummary: '超頻設定失敗',
+            overdriveFailedDetail:
+                '{error}。設定已寫入。請以 root 身分執行 {command}，然後重新開機。',
+            overdriveFailedError: '{error}',
+            overdriveRebuildSkipped:
+                'CoolerControl 無法辨識此系統建立開機映像的方式，因此沒有重建它。如果 amdgpu 從 initramfs 載入，請在重新開機前重建它。否則直接重新開機即可。',
+            overdriveRebuildYourself: '設定已寫入。請以 root 身分執行 {command}，然後重新開機。',
+            overdriveEnableAndRebuild: '啟用並重建',
+            overdriveConfigOnly: '僅寫入設定',
+            overdrivePlanRebuild:
+                'CoolerControl 將寫入 {files}，然後以 root 身分執行以下指令重建開機映像：',
+            overdrivePlanKernelArgument: 'CoolerControl 將以 root 身分執行以下指令新增核心參數：',
+            overdrivePlanConfigOnly:
+                'CoolerControl 將寫入 {files}。它無法辨識此系統建立開機映像的方式，因此不會重建。如果 amdgpu 從 initramfs 載入，請在重新開機前自行重建。',
+            overdrivePlanDuration: '這可能需要幾分鐘。完成前請勿關機。重新開機後變更生效。',
+            overdrivePlanRecovery:
+                '如果之後系統無法開機，若系統保留快照，可在開機選單中選擇一個快照；或者啟動 live 系統，刪除 {conf} 並重建開機映像。',
+            overdrivePlanRecoveryDeployment: '如果之後系統無法開機，請在開機選單中選擇上一個部署。',
+            overdrivePlanBugReports:
+                '啟用 overdrive 期間，amdgpu 會在開機時記錄一則警告，要求在回報與 overdrive 無關的錯誤前先將其關閉。',
+            overdriveDisable: '停用',
+            overdriveDisableHeader: '停用 GPU Overdrive？',
+            overdriveDisableAndRebuild: '停用並重建',
+            overdriveRemoving: '正在移除。請勿關機。',
+            overdriveRebootToTurnOff: '重新開機後關閉',
+            overdriveRemovedSummary: 'Overdrive 已移除',
+            overdriveRemovedDetail: '重新開機以關閉 AMD GPU overdrive。',
+            overdriveRemovedNowDetail: 'AMD GPU overdrive 已關閉。',
+            overdriveRemovedRebuildSkipped:
+                '設定已移除，但 CoolerControl 無法辨識此系統建立開機映像的方式，因此沒有重建它。如果 amdgpu 從 initramfs 載入，請在重新開機前重建它。',
+            overdriveRemoveFailedSummary: '移除 Overdrive 失敗',
+            overdriveRemoveFailedDetail:
+                '{error}。設定已移除。請以 root 身分執行 {command}，然後重新開機。',
+            overdrivePlanRemoveRebuild:
+                'CoolerControl 將刪除 {files}，然後以 root 身分執行以下指令重建開機映像：',
+            overdrivePlanRemoveConfigOnly:
+                'CoolerControl 將刪除 {files}。它無法辨識此系統建立開機映像的方式，因此不會重建。如果 amdgpu 從 initramfs 載入，請在重新開機前自行重建。',
+            overdrivePlanRemoveRecovery:
+                '如果之後系統無法開機，若系統保留快照，可在開機選單中選擇一個快照；或者啟動 live 系統並重建開機映像。',
+            overdrivePlanRebuildOnly: 'CoolerControl 將以 root 身分執行以下指令重建開機映像：',
             thinkPadFanControl: '風扇控制',
             thinkPadFanControlDesc:
                 '啟用 ThinkPad ACPI 風扇控制。\n出於安全原因，風扇控制預設為停用狀態。\n繼續操作需自行承擔風險。',
