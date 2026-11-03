@@ -328,9 +328,8 @@ fn device_routes() -> ApiRouter<AppState> {
                     )
                     .tag("device")
                     .security_requirement("CookieAuth")
-                    .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
             "/amd-gpu-overdrive/plan",
@@ -344,9 +343,8 @@ fn device_routes() -> ApiRouter<AppState> {
                     )
                     .tag("device")
                     .security_requirement("CookieAuth")
-                    .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
             "/amd-gpu-overdrive",
@@ -360,9 +358,8 @@ fn device_routes() -> ApiRouter<AppState> {
                     )
                     .tag("device")
                     .security_requirement("CookieAuth")
-                    .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
             "/amd-gpu-overdrive",

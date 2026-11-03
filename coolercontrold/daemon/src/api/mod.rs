@@ -2288,6 +2288,70 @@ mod tests {
         (raw_token, stored)
     }
 
+    /// Goal: the overdrive routes that run root commands or detection take only the UI's
+    /// session, so no access token, a plugin's included, reaches them. Method: the real stack
+    /// with a write and a read-only token. Each request fails before its handler if the gate
+    /// regresses to `auth_write_middleware`, so the test never runs a host command: the POST
+    /// has no body, the plan an unknown action, and the DELETE a read-only token. `/health`
+    /// shows both tokens are valid.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
+    fn overdrive_changes_refuse_access_tokens() {
+        let (read_token, read_stored) = read_only_token();
+        let (write_token, write_stored) = read_only_token();
+        let write_stored = crate::auth::token::StoredToken {
+            id: "test-write-token".to_string(),
+            write_access: true,
+            ..write_stored
+        };
+        let request = |method: &str, path: &str, token: &str| {
+            let mut request = axum::http::Request::builder()
+                .method(method)
+                .uri(path)
+                .header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(axum::body::Body::empty())
+                .unwrap();
+            request
+                .extensions_mut()
+                .insert(axum::extract::ConnectInfo(SocketAddr::from((
+                    [127, 0, 0, 1],
+                    40000,
+                ))));
+            request
+        };
+        let requests = vec![
+            request("GET", "/health", &read_token),
+            request("GET", "/health", &write_token),
+            request("POST", "/amd-gpu-overdrive", &write_token),
+            request("GET", "/amd-gpu-overdrive/plan?action=none", &write_token),
+            request("DELETE", "/amd-gpu-overdrive", &read_token),
+        ];
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = AppState {
+                    token_handle: TokenHandle::with_tokens(vec![read_stored, write_stored]),
+                    ..empty_app_state(&cancel_token, main_scope).await
+                };
+                let heads = served_heads(state, None, requests).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+
+                assert_eq!(heads.len(), 5);
+                for health in &heads[..2] {
+                    assert_eq!(health.status, StatusCode::OK);
+                }
+                for overdrive in &heads[2..] {
+                    assert_eq!(overdrive.status, StatusCode::UNAUTHORIZED);
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
     /// Goal: the production compression arm of `with_base_layers` compresses API responses
     /// and leaves the embedded web app alone. Method: the real stack with the API
     /// compression layer, a deflate offer to an authenticated `/health` and to the `/`

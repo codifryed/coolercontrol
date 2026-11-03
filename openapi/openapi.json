@@ -639,9 +639,6 @@
         "security": [
           {
             "CookieAuth": []
-          },
-          {
-            "BearerAuth": []
           }
         ]
       },
@@ -687,9 +684,6 @@
         "security": [
           {
             "CookieAuth": []
-          },
-          {
-            "BearerAuth": []
           }
         ]
       }
@@ -757,9 +751,6 @@
         "security": [
           {
             "CookieAuth": []
-          },
-          {
-            "BearerAuth": []
           }
         ]
       }
