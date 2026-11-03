@@ -6,22 +6,33 @@ use std::time::Duration;
 
 use crate::cc_fs;
 use crate::events::notifier::{notify_all_sessions, NotificationHandle, NotificationIcon};
-use crate::repositories::utils::{ShellCommand, ShellCommandResult};
+use crate::repositories::gpu::boot_image::{self, BootFacts, BootSetup, RebuildTool, Refusal};
+use crate::repositories::utils::{DirectCommand, ShellCommand, ShellCommandResult};
 use crate::rt;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, info, warn};
 
 pub const PP_OVERDRIVE_MASK: u64 = 0x4000;
 pub const PP_FEATURE_MASK_PATH: &str = "/sys/module/amdgpu/parameters/ppfeaturemask";
+const PP_FEATURE_MASK_KARG_KEY: &str = "amdgpu.ppfeaturemask";
 const MODPROBE_CONF_PATH: &str = "/etc/modprobe.d";
 const AMDGPU_OVERDRIVE_CONF_FILE: &str = "99-amdgpu-overdrive.conf";
-const OS_RELEASE_PATH: &str = "/etc/os-release";
-const OSTREE_BOOTED_PATH: &str = "/run/ostree-booted";
-const INITRAMFS_TIMEOUT: Duration = Duration::from_secs(120);
+const DRACUT_CONF_PATH: &str = "/etc/dracut.conf.d";
+const DRACUT_OVERDRIVE_CONF_FILE: &str = "99-coolercontrol-amdgpu.conf";
+const RPM_OSTREE_PATH: &str = "/usr/bin/rpm-ostree";
+/// Rebuilding every kernel's image, with fallbacks or UKIs, can take minutes. A kill mid-build
+/// leaves a half-written image, so the bound is generous.
+const BOOT_IMAGE_TIMEOUT: Duration = Duration::from_secs(600);
+const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+const ERROR_EXCERPT_LINES: usize = 5;
+/// rpm-ostree's exit code for "No changes", with `--unchanged-exit-77`.
+const RPM_OSTREE_UNCHANGED_EXIT_CODE: i32 = 77;
 
 /// Computes the new ppfeaturemask with the overdrive bit enabled.
 pub fn compute_overdrive_mask(current_mask: u64) -> u64 {
-    current_mask | PP_OVERDRIVE_MASK
+    let new_mask = current_mask | PP_OVERDRIVE_MASK;
+    assert_eq!(new_mask & current_mask, current_mask);
+    new_mask
 }
 
 /// Checks whether the overdrive bit is set in the current ppfeaturemask.
@@ -32,11 +43,14 @@ pub async fn is_overdrive_enabled() -> bool {
 /// Returns the kernel boot parameter string to enable overdrive.
 pub async fn get_fan_control_boot_option() -> String {
     if let Ok(current_mask) = get_pp_feature_mask().await {
-        let new_mask = compute_overdrive_mask(current_mask);
-        format!("amdgpu.ppfeaturemask=0x{new_mask:X}")
+        overdrive_karg(compute_overdrive_mask(current_mask))
     } else {
-        "amdgpu.ppfeaturemask=0xffffffff".to_owned()
+        format!("{PP_FEATURE_MASK_KARG_KEY}=0xffffffff")
     }
+}
+
+fn overdrive_karg(mask: u64) -> String {
+    format!("{PP_FEATURE_MASK_KARG_KEY}=0x{mask:X}")
 }
 
 /// Reads and parses the current ppfeaturemask from sysfs, on the blocking pool so no sysfs read
@@ -56,229 +70,226 @@ fn parse_pp_feature_mask(ppfeaturemask: &str) -> Result<u64> {
     u64::from_str_radix(ppfeaturemask, 16).context("Invalid ppfeaturemask")
 }
 
-/// The method used to apply the amdgpu ppfeaturemask configuration.
-#[derive(Debug, PartialEq, Eq)]
-enum AmdgpuConfigurator {
-    /// Write modprobe.d config and regenerate initramfs
-    Modprobe(Option<InitramfsType>),
-    /// Set kernel argument via rpm-ostree (atomic Fedora distros)
-    RpmOstreeKarg,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum InitramfsType {
-    Debian,
-    Mkinitcpio,
-    Dracut,
-}
-
-/// Parses os-release content and determines the appropriate configurator.
-fn parse_amdgpu_configurator(
-    os_release_content: &str,
-    ostree_booted: bool,
-) -> Result<AmdgpuConfigurator> {
-    let mut id = String::new();
-    let mut id_like = String::new();
-    for line in os_release_content.lines() {
-        if let Some(value) = line.strip_prefix("ID=") {
-            id = value.trim_matches('"').to_lowercase();
-        } else if let Some(value) = line.strip_prefix("ID_LIKE=") {
-            id_like = value.trim_matches('"').to_lowercase();
-        }
+/// Reads the boot image facts of this system off the runtime thread.
+async fn detect_boot_facts() -> Result<BootFacts> {
+    let mut facts =
+        rt::spawn_blocking(|| boot_image::gather_boot_facts_blocking(Path::new("/"))).await?;
+    if facts.sdbootutil {
+        let result = DirectCommand::new("/usr/bin/sdbootutil", PROBE_TIMEOUT)
+            .arg("is-installed")
+            .run()
+            .await;
+        facts.sdbootutil_installed = matches!(result, ShellCommandResult::Success { .. });
     }
-    let ids: Vec<&str> = std::iter::once(id.as_str())
-        // often used for base distros:
-        .chain(id_like.split_ascii_whitespace())
-        .collect();
-    for distro_id in &ids {
-        match *distro_id {
-            // Debian family: uses update-initramfs
-            "debian" | "ubuntu" | "pop" | "linuxmint" | "elementary" | "zorin" | "kali"
-            | "raspbian" | "neon" => {
-                return Ok(AmdgpuConfigurator::Modprobe(Some(InitramfsType::Debian)));
-            }
-            // Arch family: uses mkinitcpio
-            "arch" | "cachyos" | "manjaro" | "endeavouros" | "garuda" | "steamos" | "artix" => {
-                return Ok(AmdgpuConfigurator::Modprobe(Some(
-                    InitramfsType::Mkinitcpio,
-                )));
-            }
-            // Fedora with ostree: uses rpm-ostree kernel arguments
-            "fedora" if ostree_booted => {
-                return Ok(AmdgpuConfigurator::RpmOstreeKarg);
-            }
-            // Dracut family: Fedora, RHEL, SUSE, Gentoo, Void
-            "fedora"
-            | "nobara"
-            | "ultramarine"
-            | "rhel"
-            | "centos"
-            | "rocky"
-            | "almalinux"
-            | "opensuse-tumbleweed"
-            | "opensuse-leap"
-            | "opensuse"
-            | "suse"
-            | "sles"
-            | "gentoo"
-            | "void" => {
-                return Ok(AmdgpuConfigurator::Modprobe(Some(InitramfsType::Dracut)));
-            }
-            // Declarative distros: must configure through system config
-            "nixos" => {
-                return Err(anyhow!(
-                    "Overdrive should be configured through \
-                    NixOS system configuration"
-                ));
-            }
-            "guix" => {
-                return Err(anyhow!(
-                    "Overdrive should be configured through \
-                    Guix system configuration"
-                ));
-            }
-            _ => (),
-        }
-    }
-    // Unknown distro: write modprobe.d but skip initramfs regen.
-    warn!(
-        "Unrecognized distro (ID={id}, ID_LIKE={id_like}). \
-        Skipping initramfs regeneration. Please report your \
-        distribution so we can add support."
-    );
-    Ok(AmdgpuConfigurator::Modprobe(None))
+    Ok(facts)
 }
 
-/// Detects the appropriate configurator for the current distro.
-async fn detect_amdgpu_configurator() -> Result<AmdgpuConfigurator> {
-    let os_release = cc_fs::read_txt(OS_RELEASE_PATH).await.unwrap_or_default();
-    let ostree_booted = PathBuf::from(OSTREE_BOOTED_PATH).exists();
-    parse_amdgpu_configurator(&os_release, ostree_booted)
-}
-
-/// Enables AMD GPU overdrive by configuring the ppfeaturemask kernel parameter.
-/// Detects the distro and uses the appropriate method (modprobe.d or rpm-ostree kargs).
+/// Enables AMD GPU overdrive by configuring the ppfeaturemask kernel parameter, by whichever
+/// route the system's boot image tooling supports.
 pub async fn amd_gpu_overdrive_enable(notification_handle: NotificationHandle) -> Result<String> {
     let current_mask = get_pp_feature_mask().await?;
     let new_mask = compute_overdrive_mask(current_mask);
     if new_mask == current_mask {
         return Ok("Overdrive is already enabled".to_owned());
     }
+    assert!(new_mask & PP_OVERDRIVE_MASK > 0);
 
-    let configurator = detect_amdgpu_configurator().await?;
-    info!("Detected AMD GPU configurator: {configurator:?}");
-
-    match configurator {
-        AmdgpuConfigurator::Modprobe(initramfs_type) => {
-            let conf = format!("options amdgpu ppfeaturemask=0x{new_mask:X}\n");
-            let conf_path = PathBuf::from(MODPROBE_CONF_PATH).join(AMDGPU_OVERDRIVE_CONF_FILE);
-            cc_fs::create_dir_all(MODPROBE_CONF_PATH).await?;
-            cc_fs::write_string(&conf_path, conf).await?;
-            info!("Wrote AMD GPU overdrive config to {}", conf_path.display());
-
-            if let Some(initramfs) = initramfs_type {
-                // Spawn in background so the API responds immediately.
-                // The config file is already written, and a reboot is
-                // required regardless.
-                rt::spawn(async move {
-                    let result = regenerate_initramfs(initramfs).await;
-                    if result.is_ok() {
-                        warn!(
-                            "Initramfs regeneration complete. \
-                            Please reboot to apply AMD GPU overdrive."
-                        );
-                        notify_all_sessions(
-                            "Initramfs Regeneration Complete",
-                            "Please reboot to apply AMD GPU overdrive.",
-                            NotificationIcon::Info,
-                            true,
-                            None,
-                            Some(&notification_handle),
-                        );
-                    } else if let Err(err) = result {
-                        warn!(
-                            "Initramfs regeneration failed: {err}. \
-                            You may need to regenerate initramfs manually."
-                        );
-                        notify_all_sessions(
-                            "Initramfs Regeneration Failed",
-                            &format!(
-                                "{err}. You may need to regenerate \
-                                initramfs manually."
-                            ),
-                            NotificationIcon::Error,
-                            true,
-                            Some(2),
-                            Some(&notification_handle),
-                        );
-                    }
-                });
-                Ok("AMD GPU overdrive configuration written. \
-                    Initramfs is regenerating in the background \
-                    - you will be notified when you can reboot."
-                    .to_owned())
-            } else {
-                warn!(
-                    "Unknown distro, skipping initramfs regeneration. \
-                    You may need to regenerate initramfs manually \
-                    if amdgpu is loaded from initramfs."
-                );
-                Ok("AMD GPU overdrive configuration written. \
-                    Please reboot to apply."
-                    .to_owned())
-            }
+    let facts = detect_boot_facts().await?;
+    let setup = boot_image::classify(&facts);
+    info!("Detected AMD GPU overdrive boot setup: {setup:?}");
+    match setup {
+        BootSetup::Refused(refusal) => Err(anyhow!(refusal_message(refusal, new_mask))),
+        BootSetup::RpmOstree => {
+            set_rpm_ostree_karg(&overdrive_karg(new_mask)).await?;
+            Ok("AMD GPU overdrive kernel argument set. Please reboot to apply.".to_owned())
         }
-        AmdgpuConfigurator::RpmOstreeKarg => {
-            let karg = format!("amdgpu.ppfeaturemask=0x{new_mask:X}");
-            let command = format!("rpm-ostree kargs --append-if-missing={karg}");
-            let result = ShellCommand::new(&command, Duration::from_secs(30))
-                .run()
-                .await;
-            match result {
-                ShellCommandResult::Error(stderr) => {
-                    Err(anyhow!("Error running rpm-ostree kargs: {stderr}"))
-                }
-                ShellCommandResult::Success { stdout, stderr } => {
-                    debug!("rpm-ostree kargs output: {stdout} - {stderr}");
-                    Ok("AMD GPU overdrive kernel argument added via rpm-ostree. \
-                        Please reboot to apply."
-                        .to_owned())
-                }
-            }
+        BootSetup::Rebuild(tool) => {
+            write_overdrive_conf(new_mask, facts.dracut).await?;
+            spawn_boot_image_rebuild(tool, notification_handle);
+            Ok(format!(
+                "AMD GPU overdrive configuration written. The boot image is rebuilding in the \
+                background with {}. You will be notified when you can reboot.",
+                tool.command()
+            ))
+        }
+        BootSetup::Unrecognized => {
+            write_overdrive_conf(new_mask, facts.dracut).await?;
+            warn!("Unrecognized boot image tooling, skipping the boot image rebuild.");
+            Ok(
+                "AMD GPU overdrive configuration written. CoolerControl did not recognize how \
+                this system builds its boot image. If amdgpu loads from the initramfs, rebuild \
+                it before rebooting. Otherwise, just reboot."
+                    .to_owned(),
+            )
         }
     }
 }
 
-async fn regenerate_initramfs(initramfs_type: InitramfsType) -> Result<()> {
-    info!("Regenerating initramfs ({initramfs_type:?})");
-    let command = match initramfs_type {
-        InitramfsType::Debian => "update-initramfs -u -q",
-        InitramfsType::Mkinitcpio => "mkinitcpio -P",
-        InitramfsType::Dracut => "dracut --regenerate-all --force --quiet",
-    };
-    let result = ShellCommand::new(command, INITRAMFS_TIMEOUT).run().await;
-    match result {
-        ShellCommandResult::Error(stderr) => Err(anyhow!("Error regenerating initramfs: {stderr}")),
-        ShellCommandResult::Success { stdout, stderr } => {
-            debug!("Initramfs regen output: {stdout} - {stderr}");
-            if stderr.is_empty() {
-                info!("Initramfs regenerated successfully");
-                Ok(())
-            } else {
-                warn!("Initramfs regeneration produced output on stderr: {stderr}");
-                // Some tools write warnings to stderr but succeed.
-                Ok(())
+fn refusal_message(refusal: Refusal, new_mask: u64) -> String {
+    let karg = overdrive_karg(new_mask);
+    match refusal {
+        Refusal::NixOs => "NixOS manages kernel parameters declaratively. Set \
+            hardware.amdgpu.overdrive.enable = true; in configuration.nix, run \
+            nixos-rebuild boot, then reboot."
+            .to_owned(),
+        Refusal::Guix => format!(
+            "Guix System manages kernel parameters declaratively. Add {karg} to the \
+            kernel-arguments of your operating-system declaration, run guix system \
+            reconfigure, then reboot."
+        ),
+        Refusal::SteamOs => format!(
+            "SteamOS discards changes to /etc on OS updates, so CoolerControl cannot keep this \
+            setting. Add {karg} to the kernel command line instead."
+        ),
+        Refusal::Ostree => format!(
+            "Set the kernel argument yourself, then reboot: ostree admin kargs edit-in-place \
+            --append-if-missing={karg}. If the command line already sets \
+            {PP_FEATURE_MASK_KARG_KEY}, change that value instead."
+        ),
+        Refusal::CompetingTools(first, second) => format!(
+            "Both {} and {} rebuild the boot image on this system, so CoolerControl cannot tell \
+            which one your bootloader loads. Add {} to {MODPROBE_CONF_PATH}/\
+            {AMDGPU_OVERDRIVE_CONF_FILE}, then rebuild the boot image with the tool you use.",
+            first.id(),
+            second.id(),
+            overdrive_conf(new_mask).trim(),
+        ),
+    }
+}
+
+fn overdrive_conf(mask: u64) -> String {
+    format!("options amdgpu ppfeaturemask=0x{mask:X}\n")
+}
+
+/// Writes the modprobe option, and for dracut a drop-in that copies it into the image: dracut
+/// only copies `/etc/modprobe.d` in host-only mode, which Debian 13 and generic images lack.
+async fn write_overdrive_conf(new_mask: u64, dracut: bool) -> Result<()> {
+    let conf_path = PathBuf::from(MODPROBE_CONF_PATH).join(AMDGPU_OVERDRIVE_CONF_FILE);
+    cc_fs::create_dir_all(MODPROBE_CONF_PATH).await?;
+    cc_fs::write_string(&conf_path, overdrive_conf(new_mask)).await?;
+    info!("Wrote AMD GPU overdrive config to {}", conf_path.display());
+    if dracut {
+        let drop_in = format!("install_items+=\" {} \"\n", conf_path.display());
+        let drop_in_path = PathBuf::from(DRACUT_CONF_PATH).join(DRACUT_OVERDRIVE_CONF_FILE);
+        cc_fs::create_dir_all(DRACUT_CONF_PATH).await?;
+        cc_fs::write_string(&drop_in_path, drop_in).await?;
+        info!("Wrote dracut drop-in to {}", drop_in_path.display());
+    }
+    Ok(())
+}
+
+/// Runs the rebuild in the background so the API responds immediately. The config file is
+/// already written, and a reboot is required regardless.
+fn spawn_boot_image_rebuild(tool: RebuildTool, notification_handle: NotificationHandle) {
+    rt::spawn(async move {
+        match rebuild_boot_image(tool).await {
+            Ok(()) => {
+                warn!("Boot image rebuild complete. Please reboot to apply AMD GPU overdrive.");
+                notify_all_sessions(
+                    "Boot Image Rebuild Complete",
+                    "Please reboot to apply AMD GPU overdrive.",
+                    NotificationIcon::Info,
+                    true,
+                    None,
+                    Some(&notification_handle),
+                );
+            }
+            Err(err) => {
+                let body = format!(
+                    "{err}. The configuration is written. Run {} manually, then reboot.",
+                    tool.command()
+                );
+                warn!("Boot image rebuild failed: {body}");
+                notify_all_sessions(
+                    "Boot Image Rebuild Failed",
+                    &body,
+                    NotificationIcon::Error,
+                    true,
+                    Some(2),
+                    Some(&notification_handle),
+                );
             }
         }
+    });
+}
+
+async fn rebuild_boot_image(tool: RebuildTool) -> Result<()> {
+    info!("Rebuilding the boot image with: {}", tool.command());
+    let result = ShellCommand::new(tool.command(), BOOT_IMAGE_TIMEOUT)
+        .run()
+        .await;
+    match result {
+        ShellCommandResult::Error(stderr) => Err(anyhow!(
+            "Boot image rebuild failed: {}",
+            tail_lines(&stderr, ERROR_EXCERPT_LINES)
+        )),
+        ShellCommandResult::Success { stdout, stderr } => {
+            debug!("Boot image rebuild output: {stdout} - {stderr}");
+            let failure_line = tool
+                .failure_line(&stderr)
+                .or_else(|| tool.failure_line(&stdout));
+            if let Some(line) = failure_line {
+                return Err(anyhow!("Boot image rebuild failed: {line}"));
+            }
+            info!("Boot image rebuilt successfully");
+            Ok(())
+        }
     }
+}
+
+/// `--append-if-missing` compares the whole `key=value`, so an existing mask, as Bazzite sets,
+/// would be duplicated. Replace the key when present instead.
+async fn set_rpm_ostree_karg(karg: &str) -> Result<()> {
+    let current_kargs = match DirectCommand::new(RPM_OSTREE_PATH, PROBE_TIMEOUT)
+        .arg("kargs")
+        .run()
+        .await
+    {
+        ShellCommandResult::Success { stdout, .. } => stdout,
+        ShellCommandResult::Error(stderr) => {
+            return Err(anyhow!("Error reading rpm-ostree kargs: {stderr}"));
+        }
+    };
+    let edit = rpm_ostree_karg_edit(&current_kargs, karg);
+    let (exit_code, stdout, stderr) = DirectCommand::new(RPM_OSTREE_PATH, BOOT_IMAGE_TIMEOUT)
+        .arg("kargs")
+        .arg("--unchanged-exit-77")
+        .arg(edit)
+        .run_with_code()
+        .await?;
+    debug!("rpm-ostree kargs output: {stdout} - {stderr}");
+    if exit_code == 0 || exit_code == RPM_OSTREE_UNCHANGED_EXIT_CODE {
+        Ok(())
+    } else {
+        Err(anyhow!("Error running rpm-ostree kargs: {stderr}"))
+    }
+}
+
+fn karg_key(karg: &str) -> &str {
+    karg.split_once('=').map_or(karg, |(key, _)| key)
+}
+
+fn rpm_ostree_karg_edit(current_kargs: &str, karg: &str) -> String {
+    let key = karg_key(karg);
+    let key_present = current_kargs
+        .split_ascii_whitespace()
+        .any(|arg| karg_key(arg) == key);
+    if key_present {
+        format!("--replace={karg}")
+    } else {
+        format!("--append={karg}")
+    }
+}
+
+fn tail_lines(text: &str, line_count: usize) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines.len().saturating_sub(line_count);
+    lines[start..].join("\n")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        compute_overdrive_mask, parse_amdgpu_configurator, parse_pp_feature_mask,
-        AmdgpuConfigurator, InitramfsType,
-    };
+    use super::*;
 
     // Verify the module parameter parses as the kernel prints it, and only with its hex prefix.
     #[test]
@@ -307,190 +318,44 @@ mod tests {
         assert_eq!(compute_overdrive_mask(0x4000), 0x4000);
     }
 
-    // Verify Debian is detected from ID field and uses update-initramfs.
+    // Verify an existing mask key is replaced, as on Bazzite, and a missing one appended. A
+    // similar but different key must not count as present.
     #[test]
-    fn detect_debian() {
-        let os_release = "ID=debian\nVERSION_ID=\"12\"\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
+    fn rpm_ostree_replaces_an_existing_mask() {
+        let karg = "amdgpu.ppfeaturemask=0xFFFFFFFF";
+        let bazzite = "rhgb quiet amdgpu.ppfeaturemask=0xfffd7fff";
         assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Debian))
+            rpm_ostree_karg_edit(bazzite, karg),
+            "--replace=amdgpu.ppfeaturemask=0xFFFFFFFF"
+        );
+        let silverblue = "rhgb quiet amdgpu.ppfeaturemask_extra=1";
+        assert_eq!(
+            rpm_ostree_karg_edit(silverblue, karg),
+            "--append=amdgpu.ppfeaturemask=0xFFFFFFFF"
         );
     }
 
-    // Verify Ubuntu is detected via ID_LIKE=debian fallback.
+    // Verify each refusal names the route the user should take instead.
     #[test]
-    fn detect_ubuntu_via_id_like() {
-        let os_release = "ID=ubuntu\nID_LIKE=debian\nVERSION_ID=\"24.04\"\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Debian))
+    fn refusals_name_the_route_to_take() {
+        assert!(refusal_message(Refusal::NixOs, 0x4000).contains("configuration.nix"));
+        assert!(refusal_message(Refusal::Guix, 0x4000).contains("amdgpu.ppfeaturemask=0x4000"));
+        assert!(refusal_message(Refusal::SteamOs, 0x4000).contains("kernel command line"));
+        assert!(refusal_message(Refusal::Ostree, 0x4000)
+            .contains("edit-in-place --append-if-missing=amdgpu.ppfeaturemask=0x4000"));
+        let competing = refusal_message(
+            Refusal::CompetingTools(RebuildTool::Mkinitcpio, RebuildTool::ArchDracutHook),
+            0x4000,
         );
+        assert!(competing.contains("mkinitcpio and arch-dracut-hook"));
+        assert!(competing.contains("options amdgpu ppfeaturemask=0x4000 to /etc/modprobe.d/"));
     }
 
-    // Verify Arch Linux is detected and uses mkinitcpio.
+    // Verify the error excerpt keeps the last lines, where build tools put the failure.
     #[test]
-    fn detect_arch() {
-        let os_release = "ID=arch\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Mkinitcpio))
-        );
-    }
-
-    // Verify CachyOS is detected via ID match (before ID_LIKE=arch).
-    #[test]
-    fn detect_cachyos() {
-        let os_release = "ID=cachyos\nID_LIKE=\"arch\"\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Mkinitcpio))
-        );
-    }
-
-    // Verify non-atomic Fedora is detected and uses dracut.
-    #[test]
-    fn detect_fedora() {
-        let os_release = "ID=fedora\nVERSION_ID=41\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Dracut))
-        );
-    }
-
-    // Verify atomic Fedora (ostree-booted) uses rpm-ostree kargs.
-    #[test]
-    fn detect_fedora_atomic() {
-        let os_release = "ID=fedora\nVARIANT_ID=silverblue\n";
-        let result = parse_amdgpu_configurator(os_release, true).unwrap();
-        assert_eq!(result, AmdgpuConfigurator::RpmOstreeKarg);
-    }
-
-    // Verify Bazzite (ID_LIKE=fedora) with ostree uses rpm-ostree kargs.
-    #[test]
-    fn detect_bazzite_atomic() {
-        let os_release = "ID=bazzite\nID_LIKE=\"fedora\"\n";
-        let result = parse_amdgpu_configurator(os_release, true).unwrap();
-        assert_eq!(result, AmdgpuConfigurator::RpmOstreeKarg);
-    }
-
-    // Verify Pop!_OS is detected via ID=pop and uses update-initramfs.
-    #[test]
-    fn detect_popos() {
-        let os_release = "ID=pop\nID_LIKE=\"ubuntu debian\"\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Debian))
-        );
-    }
-
-    // Verify Manjaro is detected via ID=manjaro and uses mkinitcpio.
-    #[test]
-    fn detect_manjaro() {
-        let os_release = "ID=manjaro\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Mkinitcpio))
-        );
-    }
-
-    // Verify SteamOS is detected via ID=steamos and uses mkinitcpio.
-    #[test]
-    fn detect_steamos() {
-        let os_release = "ID=steamos\nID_LIKE=arch\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Mkinitcpio))
-        );
-    }
-
-    // Verify Nobara is detected via ID=nobara and uses dracut.
-    #[test]
-    fn detect_nobara() {
-        let os_release = "ID=nobara\nID_LIKE=fedora\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Dracut))
-        );
-    }
-
-    // Verify openSUSE Tumbleweed is detected and uses dracut.
-    #[test]
-    fn detect_opensuse_tumbleweed() {
-        let os_release = "ID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Dracut))
-        );
-    }
-
-    // Verify Gentoo is detected via ID=gentoo and uses dracut.
-    #[test]
-    fn detect_gentoo() {
-        let os_release = "ID=gentoo\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Dracut))
-        );
-    }
-
-    // Verify Void Linux is detected via ID=void and uses dracut.
-    #[test]
-    fn detect_void() {
-        let os_release = "ID=void\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(
-            result,
-            AmdgpuConfigurator::Modprobe(Some(InitramfsType::Dracut))
-        );
-    }
-
-    // Verify NixOS returns an error directing to system configuration.
-    #[test]
-    fn detect_nixos_returns_error() {
-        let os_release = "ID=nixos\n";
-        let result = parse_amdgpu_configurator(os_release, false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("NixOS system configuration"));
-    }
-
-    // Verify Guix returns an error directing to system configuration.
-    #[test]
-    fn detect_guix_returns_error() {
-        let os_release = "ID=guix\n";
-        let result = parse_amdgpu_configurator(os_release, false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Guix system configuration"));
-    }
-
-    // Verify unknown distros get modprobe.d config without initramfs regen.
-    #[test]
-    fn detect_unknown_distro() {
-        let os_release = "ID=slackware\n";
-        let result = parse_amdgpu_configurator(os_release, false).unwrap();
-        assert_eq!(result, AmdgpuConfigurator::Modprobe(None));
-    }
-
-    // Verify empty os-release falls back to modprobe.d without initramfs regen.
-    #[test]
-    fn detect_empty_os_release() {
-        let result = parse_amdgpu_configurator("", false).unwrap();
-        assert_eq!(result, AmdgpuConfigurator::Modprobe(None));
+    fn error_excerpt_keeps_the_last_lines() {
+        assert_eq!(tail_lines("a\nb\nc\nd", 2), "c\nd");
+        assert_eq!(tail_lines("a", 5), "a");
+        assert_eq!(tail_lines("", 5), "");
     }
 }
