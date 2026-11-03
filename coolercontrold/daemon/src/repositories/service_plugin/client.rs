@@ -24,19 +24,25 @@ use crate::repositories::service_plugin::transport::PluginChannel;
 use crate::repositories::service_plugin::{transport, trust};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Result};
-use log::error;
+use log::{debug, error};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::default::Default;
+use std::future::Future;
 use std::ops::Not;
 use std::rc::Rc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tokio::time::sleep;
+use tokio::time::timeout;
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::{Code, Request, Status};
 
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
+
+/// How long a plugin gets to acknowledge the shutdown, lock wait included. Telling it we are
+/// leaving is best effort, and the whole stop has to fit in systemd's `TimeoutStopSec` of 10 s.
+/// Plugins shut down concurrently, so this does not add up per plugin.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Derives the service-plugin wait timeout from `poll_rate`. Pure
 /// helper so the formula is testable without a live gRPC client.
@@ -98,6 +104,9 @@ pub struct DeviceServiceClient {
     /// client's lifetime and is computed once in `new` to avoid per-
     /// retry f64 math on the hot path.
     service_wait_timeout: Duration,
+
+    /// `SHUTDOWN_TIMEOUT`, held here so tests can shorten it.
+    shutdown_timeout: Duration,
 
     /// Using a `tokio::Mutex` has the advantage of being able to hold a lock over an await point,
     /// and for the small amount of requests we make, performance is shown to be on par with std.
@@ -245,6 +254,7 @@ impl DeviceServiceClient {
             service_id,
             credentials,
             service_wait_timeout,
+            shutdown_timeout: SHUTDOWN_TIMEOUT,
             service_client,
             device_clients: RefCell::new(HashMap::new()),
             device_ids: RefCell::new(HashMap::new()),
@@ -293,81 +303,96 @@ impl DeviceServiceClient {
             .ok_or_else(|| anyhow!("Service Device {device_uid} ID not found"))
     }
 
+    /// Runs `call` within the wait timeout. `call` takes the lock and makes the RPC, and the
+    /// deadline has to span both: a silent peer never fails an RPC on its own, it only leaves
+    /// the request in the TCP retransmit queue for minutes. `action` finishes the sentence
+    /// "waiting to ...", and is only built on a timeout.
+    async fn timed<T>(
+        &self,
+        action: impl FnOnce() -> String,
+        call: impl Future<Output = Result<T>>,
+    ) -> Result<T> {
+        timeout(self.service_wait_timeout, call)
+            .await
+            .unwrap_or_else(|_| {
+                Err(anyhow!(
+                    "TIMEOUT Device Service Plugin {}; waiting to {}. There may be significant \
+                     issues handling this device service plugin due to lag.",
+                    self.service_id,
+                    action()
+                ))
+            })
+    }
+
     /// Health is the gate the connection loop retries, so this one carries the `Status`
     /// instead of stringifying it: see [`credential_refusal`].
     pub async fn health(&self) -> Result<HealthResponse> {
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to get health status. \
-                There may be significant issues handling this device service plugin due to extreme lag.",
-                self.service_id
-            )),
+        self.timed(|| "get health status".to_owned(), async {
             // Health endpoint need not wait for all clients:
-            mut service_client = self.service_client.lock() => {
-                let request = self.request(HealthRequest{});
-                service_client.health(request).await
+            let mut service_client = self.service_client.lock().await;
+            let request = self.request(HealthRequest {});
+            service_client
+                .health(request)
+                .await
                 .map(tonic::Response::into_inner)
                 .map_err(|status| anyhow::Error::new(status).context("Failed to get health status"))
-            }
-        }
+        })
+        .await
     }
 
     /// Performs the gRPC list-devices call and returns the raw (`Send`) response. Mapping to
     /// `Device` (which is `!Send`) is done by the caller on the main thread via `map_devices`.
     pub async fn list_devices_raw(&self) -> Result<ListDevicesResponse> {
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to list devices. \
-                There may be significant issues handling this device service plugin due to extreme lag.",
-                self.service_id
-            )),
-            () = self.wait_till_all_clients_are_free() => {
-                let request = self.request(ListDevicesRequest{});
-                let mut service_client = self.service_client.lock().await;
-                service_client.list_devices(request).await
+        self.timed(|| "list devices".to_owned(), async {
+            self.wait_till_all_clients_are_free().await;
+            let request = self.request(ListDevicesRequest {});
+            let mut service_client = self.service_client.lock().await;
+            service_client
+                .list_devices(request)
+                .await
                 .map(tonic::Response::into_inner)
                 .map_err(|status| anyhow!("Failed to list devices: {status}"))
-            }
-        }
+        })
+        .await
     }
 
     pub async fn initialize_device(&self, device_uid: &DeviceUID) -> Result<()> {
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to initialize devices. \
-                There may be significant issues handling this device service plugin due to extreme lag.",
-                self.service_id
-            )),
-            () = self.wait_till_all_clients_are_free() => {
-                let request = self.request(InitializeDeviceRequest{
-                    device_id: self.get_service_device_id(device_uid)?
-                });
-                let mut service_client = self.service_client.lock().await;
-                service_client.initialize_device(request).await
+        self.timed(|| "initialize devices".to_owned(), async {
+            self.wait_till_all_clients_are_free().await;
+            let request = self.request(InitializeDeviceRequest {
+                device_id: self.get_service_device_id(device_uid)?,
+            });
+            let mut service_client = self.service_client.lock().await;
+            service_client
+                .initialize_device(request)
+                .await
                 .map(|_| ())
                 .map_err(|s| anyhow!("Failed to initialize devices: {s}"))
-            }
-        }
+        })
+        .await
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to shutdown service. \
-                There may be significant issues handling this device service plugin due to extreme lag.",
-                self.service_id
-            )),
-            () = self.wait_till_all_clients_are_free() => {
-                let request = self.request(ShutdownRequest{});
-                let mut service_client = self.service_client.lock().await;
-                match service_client.shutdown(request).await {
-                    Ok(_) => Ok(()),
-                    // Service already down (e.g. systemd shut it down before us).
-                    Err(s) if s.code() == tonic::Code::Unavailable => Ok(()),
-                    Err(s) => Err(anyhow!("Failed to shutdown service: {s}")),
-                }
+        let call = async {
+            self.wait_till_all_clients_are_free().await;
+            let request = self.request(ShutdownRequest {});
+            let mut service_client = self.service_client.lock().await;
+            match service_client.shutdown(request).await {
+                Ok(_) => Ok(()),
+                // Service already down (e.g. systemd shut it down before us).
+                Err(s) if s.code() == tonic::Code::Unavailable => Ok(()),
+                Err(s) => Err(anyhow!("Failed to shutdown service: {s}")),
             }
-        }
+        };
+        // No answer reads like `Unavailable`: an unreachable remote is nothing to act on at stop.
+        let Ok(result) = timeout(self.shutdown_timeout, call).await else {
+            debug!(
+                "Device Service Plugin {} did not acknowledge the shutdown",
+                self.service_id
+            );
+            return Ok(());
+        };
+        result
     }
 
     /// Maps a raw list-devices response into `Device`s. Static (takes `client_address`/`poll_rate`)
@@ -393,6 +418,7 @@ impl DeviceServiceClient {
                     model: info_res.model,
                     thinkpad_fan_control: None,
                     amd_gpu_overdrive: None,
+                    per_thread_freq: None,
                     driver_info: info_res.driver_info.map_or_else(
                         || DriverInfo {
                             drv_type: DriverType::External,
@@ -524,21 +550,18 @@ impl DeviceServiceClient {
         device_uid: &DeviceUID,
     ) -> Result<(Vec<ChannelStatus>, Vec<TempStatus>)> {
         let device_client = self.get_device_client(device_uid)?;
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to get device: {device_uid} status. \
-                There may be significant issues handling this device due to lag.",
-                self.service_id,
-            )),
-            mut device_client = device_client.lock() => {
-                let request = self.request(StatusRequest{
-                    device_id: self.get_service_device_id(device_uid)?
-                });
-                device_client.status(request).await
+        self.timed(|| format!("get device: {device_uid} status"), async {
+            let mut device_client = device_client.lock().await;
+            let request = self.request(StatusRequest {
+                device_id: self.get_service_device_id(device_uid)?,
+            });
+            device_client
+                .status(request)
+                .await
                 .map(Self::map_status)
                 .map_err(|s| anyhow!("Failed to get device: {device_uid} status: {s}"))
-            }
-        }
+        })
+        .await
     }
 
     fn map_status(
@@ -594,22 +617,24 @@ impl DeviceServiceClient {
 
     pub async fn reset_channel(&self, device_uid: &DeviceUID, channel_name: &str) -> Result<()> {
         let device_client = self.get_device_client(device_uid)?;
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to reset device: {device_uid} channel: {channel_name}. \
-                There may be significant issues handling this device due to lag.",
-                self.service_id,
-            )),
-            mut device_client = device_client.lock() => {
-                let request = self.request(ResetChannelRequest{
+        self.timed(
+            || format!("reset device: {device_uid} channel: {channel_name}"),
+            async {
+                let mut device_client = device_client.lock().await;
+                let request = self.request(ResetChannelRequest {
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                 });
-                device_client.reset_channel(request).await
-                .map(|_| ())
-                .map_err(|s| anyhow!("Failed to reset device: {device_uid} channel: {channel_name}: {s}"))
-            }
-        }
+                device_client
+                    .reset_channel(request)
+                    .await
+                    .map(|_| ())
+                    .map_err(|s| {
+                        anyhow!("Failed to reset device: {device_uid} channel: {channel_name}: {s}")
+                    })
+            },
+        )
+        .await
     }
     pub async fn enable_manual_fan_control(
         &self,
@@ -617,22 +642,31 @@ impl DeviceServiceClient {
         channel_name: &str,
     ) -> Result<()> {
         let device_client = self.get_device_client(device_uid)?;
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to enable manual fan control for device: {device_uid} channel: {channel_name}. \
-                There may be significant issues handling this device due to lag.",
-                self.service_id,
-            )),
-            mut device_client = device_client.lock() => {
-                let request = self.request(EnableManualFanControlRequest{
+        self.timed(
+            || {
+                format!(
+                    "enable manual fan control for device: {device_uid} channel: {channel_name}"
+                )
+            },
+            async {
+                let mut device_client = device_client.lock().await;
+                let request = self.request(EnableManualFanControlRequest {
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                 });
-                device_client.enable_manual_fan_control(request).await
-                .map(|_| ())
-                .map_err(|s| anyhow!("Failed to enable manual fan control for device: {device_uid} channel: {channel_name}: {s}"))
-            }
-        }
+                device_client
+                    .enable_manual_fan_control(request)
+                    .await
+                    .map(|_| ())
+                    .map_err(|s| {
+                        anyhow!(
+                            "Failed to enable manual fan control for device: {device_uid} \
+                             channel: {channel_name}: {s}"
+                        )
+                    })
+            },
+        )
+        .await
     }
     pub async fn fixed_duty(
         &self,
@@ -641,23 +675,28 @@ impl DeviceServiceClient {
         duty: Duty,
     ) -> Result<()> {
         let device_client = self.get_device_client(device_uid)?;
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to set fixed duty for device: {device_uid} channel: {channel_name}. \
-                There may be significant issues handling this device due to lag.",
-                self.service_id,
-            )),
-            mut device_client = device_client.lock() => {
-                let request = self.request(FixedDutyRequest{
+        self.timed(
+            || format!("set fixed duty for device: {device_uid} channel: {channel_name}"),
+            async {
+                let mut device_client = device_client.lock().await;
+                let request = self.request(FixedDutyRequest {
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     duty: i32::from(duty),
                 });
-                device_client.fixed_duty(request).await
-                .map(|_| ())
-                .map_err(|s| anyhow!("Failed to set fixed duty for device: {device_uid} channel: {channel_name}: {s}"))
-            }
-        }
+                device_client
+                    .fixed_duty(request)
+                    .await
+                    .map(|_| ())
+                    .map_err(|s| {
+                        anyhow!(
+                            "Failed to set fixed duty for device: {device_uid} channel: \
+                             {channel_name}: {s}"
+                        )
+                    })
+            },
+        )
+        .await
     }
     pub async fn speed_profile(
         &self,
@@ -667,13 +706,10 @@ impl DeviceServiceClient {
         speed_profile: &[(Temp, Duty)],
     ) -> Result<()> {
         let device_client = self.get_device_client(device_uid)?;
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to set speed profile for device: {device_uid} channel: {channel_name}. \
-                There may be significant issues handling this device due to lag.",
-                self.service_id,
-            )),
-            mut device_client = device_client.lock() => {
+        self.timed(
+            || format!("set speed profile for device: {device_uid} channel: {channel_name}"),
+            async {
+                let mut device_client = device_client.lock().await;
                 let mut req_speed_profile = Vec::new();
                 for (temp, duty) in speed_profile {
                     req_speed_profile.push(SpeedProfilePoint {
@@ -681,17 +717,25 @@ impl DeviceServiceClient {
                         duty: u32::from(*duty),
                     });
                 }
-                let request = self.request(SpeedProfileRequest{
+                let request = self.request(SpeedProfileRequest {
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     temp_source_id: Some(temp_source.temp_name.clone()),
                     speed_profile: req_speed_profile,
                 });
-                device_client.speed_profile(request).await
-                .map(|_| ())
-                .map_err(|s| anyhow!("Failed to set speed profile for device: {device_uid} channel: {channel_name}: {s}"))
-            }
-        }
+                device_client
+                    .speed_profile(request)
+                    .await
+                    .map(|_| ())
+                    .map_err(|s| {
+                        anyhow!(
+                            "Failed to set speed profile for device: {device_uid} channel: \
+                             {channel_name}: {s}"
+                        )
+                    })
+            },
+        )
+        .await
     }
 
     pub async fn lighting(
@@ -701,13 +745,10 @@ impl DeviceServiceClient {
         lighting: &LightingSettings,
     ) -> Result<()> {
         let device_client = self.get_device_client(device_uid)?;
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to set lighting for device: {device_uid} channel: {channel_name}. \
-                There may be significant issues handling this device due to lag.",
-                self.service_id,
-            )),
-            mut device_client = device_client.lock() => {
+        self.timed(
+            || format!("set lighting for device: {device_uid} channel: {channel_name}"),
+            async {
+                let mut device_client = device_client.lock().await;
                 let mut colors = vec![];
                 for (r, g, b) in &lighting.colors {
                     colors.push(Rgb {
@@ -727,11 +768,19 @@ impl DeviceServiceClient {
                     channel_id: channel_name.to_owned(),
                     setting: Some(lighting_setting),
                 });
-                device_client.lighting(request).await
-                .map(|_| ())
-                .map_err(|s| anyhow!("Failed to set lighting for device: {device_uid} channel: {channel_name}: {s}"))
-            }
-        }
+                device_client
+                    .lighting(request)
+                    .await
+                    .map(|_| ())
+                    .map_err(|s| {
+                        anyhow!(
+                            "Failed to set lighting for device: {device_uid} channel: \
+                             {channel_name}: {s}"
+                        )
+                    })
+            },
+        )
+        .await
     }
     pub async fn lcd(
         &self,
@@ -740,13 +789,10 @@ impl DeviceServiceClient {
         lcd: &LcdSettings,
     ) -> Result<()> {
         let device_client = self.get_device_client(device_uid)?;
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to set LCD for device: {device_uid} channel: {channel_name}. \
-                There may be significant issues handling this device due to lag.",
-                self.service_id,
-            )),
-            mut device_client = device_client.lock() => {
+        self.timed(
+            || format!("set LCD for device: {device_uid} channel: {channel_name}"),
+            async {
+                let mut device_client = device_client.lock().await;
                 let lcd_setting = LcdSetting {
                     mode: lcd.mode.to_string(),
                     brightness: lcd.brightness.map(u32::from),
@@ -758,28 +804,29 @@ impl DeviceServiceClient {
                     channel_id: channel_name.to_owned(),
                     setting: Some(lcd_setting),
                 });
-                device_client.lcd(request).await
-                .map(|_| ())
-                .map_err(|s| anyhow!("Failed to set LCD for device: {device_uid} channel: {channel_name}: {s}"))
-            }
-        }
+                device_client.lcd(request).await.map(|_| ()).map_err(|s| {
+                    anyhow!(
+                        "Failed to set LCD for device: {device_uid} channel: \
+                             {channel_name}: {s}"
+                    )
+                })
+            },
+        )
+        .await
     }
 
     #[allow(dead_code)]
     pub async fn custom_function_one(&self) -> Result<()> {
-        tokio::select! {
-            () = sleep(self.service_wait_timeout) => Err(anyhow!(
-                "TIMEOUT Device Service Plugin {}; waiting to apply custom function. \
-                There may be significant issues handling this device due to lag.",
-                self.service_id,
-            )),
-            mut service_client = self.service_client.lock() => {
-                let request = self.request(CustomFunctionOneRequest{});
-                service_client.custom_function_one(request).await
+        self.timed(|| "apply custom function".to_owned(), async {
+            let mut service_client = self.service_client.lock().await;
+            let request = self.request(CustomFunctionOneRequest {});
+            service_client
+                .custom_function_one(request)
+                .await
                 .map(|_| ())
                 .map_err(|s| anyhow!("Failed to apply custom function: {s}"))
-            }
-        }
+        })
+        .await
     }
 }
 
@@ -1124,11 +1171,11 @@ mod credential_tests {
     }
 }
 
-/// A `Status` call against a stub plugin served from another thread, so the counter on this
-/// thread sees only the client's allocations.
+/// Calls against a stub plugin served from another thread, so the counter on this thread sees
+/// only the client's allocations.
 #[cfg(test)]
 #[cfg(feature = "gated-tests")]
-mod status_call_tests {
+mod stub_plugin_tests {
     use super::*;
     use crate::grpc_api::device_service::v1::device_service_server::{
         DeviceService, DeviceServiceServer,
@@ -1139,13 +1186,35 @@ mod status_call_tests {
         ShutdownResponse, SpeedProfileResponse,
     };
     use crate::grpc_api::models::v1::status::FanSpeed;
+    use crate::setting::LcdModeKind;
+    use std::fmt::Debug;
+    use std::future::Future;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Instant;
+    use tokio::time::timeout;
     use tonic::Response;
 
     type Reply<T> = std::result::Result<Response<T>, Status>;
 
-    struct StubPlugin;
+    /// Far past every deadline here, so a call that fails on it was never bounded.
+    const GUARD: Duration = Duration::from_secs(10);
+    const DEADLINE: Duration = Duration::from_millis(100);
+    const DEVICE_UID: &str = "device-uid";
+    const CHANNEL: &str = "fan1";
+
+    struct StubPlugin {
+        /// While set, every call is accepted and never answered: a peer gone silent.
+        silent: Arc<AtomicBool>,
+    }
 
     impl StubPlugin {
+        async fn stall_while_silent(&self) {
+            if self.silent.load(Ordering::Relaxed) {
+                std::future::pending::<()>().await;
+            }
+        }
+
         /// A status of `count` temps followed by `count` fans.
         fn reply(count: usize) -> Response<StatusResponse> {
             let temps = (1..=count).map(|number| models::v1::Status {
@@ -1172,10 +1241,12 @@ mod status_call_tests {
     #[tonic::async_trait]
     impl DeviceService for StubPlugin {
         async fn health(&self, _: Request<HealthRequest>) -> Reply<HealthResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
         async fn list_devices(&self, _: Request<ListDevicesRequest>) -> Reply<ListDevicesResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
@@ -1183,14 +1254,17 @@ mod status_call_tests {
             &self,
             _: Request<InitializeDeviceRequest>,
         ) -> Reply<InitializeDeviceResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
         async fn shutdown(&self, _: Request<ShutdownRequest>) -> Reply<ShutdownResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
         async fn status(&self, _: Request<StatusRequest>) -> Reply<StatusResponse> {
+            self.stall_while_silent().await;
             Ok(Self::reply(2))
         }
 
@@ -1198,6 +1272,7 @@ mod status_call_tests {
             &self,
             _: Request<ResetChannelRequest>,
         ) -> Reply<ResetChannelResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
@@ -1205,10 +1280,12 @@ mod status_call_tests {
             &self,
             _: Request<EnableManualFanControlRequest>,
         ) -> Reply<EnableManualFanControlResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
         async fn fixed_duty(&self, _: Request<FixedDutyRequest>) -> Reply<FixedDutyResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
@@ -1216,14 +1293,17 @@ mod status_call_tests {
             &self,
             _: Request<SpeedProfileRequest>,
         ) -> Reply<SpeedProfileResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
         async fn lighting(&self, _: Request<LightingRequest>) -> Reply<LightingResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
         async fn lcd(&self, _: Request<LcdRequest>) -> Reply<LcdResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
 
@@ -1231,12 +1311,18 @@ mod status_call_tests {
             &self,
             _: Request<CustomFunctionOneRequest>,
         ) -> Reply<CustomFunctionOneResponse> {
+            self.stall_while_silent().await;
             unsupported()
         }
     }
 
-    /// Serves `StubPlugin` on a Unix socket at `path` from its own thread and runtime.
-    fn serve_stub(path: &std::path::Path) {
+    /// Serves `StubPlugin` on a Unix socket at `path` from its own thread and runtime. The
+    /// returned switch silences it.
+    fn serve_stub(path: &std::path::Path) -> Arc<AtomicBool> {
+        let silent = Arc::new(AtomicBool::new(false));
+        let plugin = StubPlugin {
+            silent: Arc::clone(&silent),
+        };
         let listener = std::os::unix::net::UnixListener::bind(path).expect("the socket binds");
         listener
             .set_nonblocking(true)
@@ -1254,7 +1340,7 @@ mod status_call_tests {
                     Some((accepted, listener))
                 });
                 let _ = tonic::transport::Server::builder()
-                    .add_service(DeviceServiceServer::new(StubPlugin))
+                    .add_service(DeviceServiceServer::new(plugin))
                     .serve_with_incoming(incoming)
                     .await;
             });
@@ -1263,6 +1349,7 @@ mod status_call_tests {
             .name("stub-plugin".to_string())
             .spawn(serve)
             .expect("the stub thread starts");
+        silent
     }
 
     async fn connected_client(path: &std::path::Path, device_uid: &str) -> DeviceServiceClient {
@@ -1279,6 +1366,179 @@ mod status_call_tests {
             .with_device_ids(vec![(device_uid.to_string(), "stub-device".to_string())])
             .await;
         client
+    }
+
+    /// The client of a plugin that has gone silent, with a deadline short enough to wait out.
+    async fn silent_client(path: &std::path::Path) -> DeviceServiceClient {
+        let silent = serve_stub(path);
+        let mut client = connected_client(path, DEVICE_UID).await;
+        client.service_wait_timeout = DEADLINE;
+        silent.store(true, Ordering::Relaxed);
+        client
+    }
+
+    /// Asserts that `call` ends on the client's own deadline, not on `GUARD`.
+    async fn assert_times_out<T: Debug>(call: impl Future<Output = Result<T>>) {
+        let started = Instant::now();
+        let result = timeout(GUARD, call).await;
+        let error = result
+            .expect("the deadline must end the call")
+            .expect_err("a silent plugin answers nothing");
+        assert!(error.to_string().starts_with("TIMEOUT"), "{error}");
+        assert!(started.elapsed() >= DEADLINE);
+    }
+
+    #[test]
+    fn a_silent_plugin_fails_every_device_call_at_the_deadline() {
+        // Goal: a peer that accepts a request and never answers cannot hold any call open. A
+        // silent TCP peer leaves the RPC in the retransmit queue for minutes, so the deadline
+        // has to span the RPC as well as the wait for the lock. Method: silence the stub after
+        // connecting, so the locks are free, and run every call but the shutdown against it.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        crate::rt::test_runtime(async {
+            let client = silent_client(&path).await;
+            let device_uid = DEVICE_UID.to_string();
+            let temp_source = TempSource {
+                temp_name: "temp1".to_string(),
+                device_uid: device_uid.clone(),
+            };
+            let lighting = LightingSettings {
+                mode: "static".to_string(),
+                speed: None,
+                backward: None,
+                colors: Vec::new(),
+            };
+            let lcd = LcdSettings {
+                brightness: None,
+                orientation: None,
+                colors: Vec::new(),
+                mode: LcdModeKind::None,
+            };
+            assert_times_out(client.health()).await;
+            assert_times_out(client.list_devices_raw()).await;
+            assert_times_out(client.initialize_device(&device_uid)).await;
+            assert_times_out(client.status(&device_uid)).await;
+            assert_times_out(client.reset_channel(&device_uid, CHANNEL)).await;
+            assert_times_out(client.enable_manual_fan_control(&device_uid, CHANNEL)).await;
+            assert_times_out(client.fixed_duty(&device_uid, CHANNEL, 50)).await;
+            let speed_profile = [(30.0, 50)];
+            let call = client.speed_profile(&device_uid, CHANNEL, &temp_source, &speed_profile);
+            assert_times_out(call).await;
+            assert_times_out(client.lighting(&device_uid, CHANNEL, &lighting)).await;
+            assert_times_out(client.lcd(&device_uid, CHANNEL, &lcd)).await;
+            assert_times_out(client.custom_function_one()).await;
+        });
+    }
+
+    #[test]
+    fn a_call_queued_behind_a_silent_one_keeps_its_own_deadline() {
+        // Goal: a duty write for a device whose status is stuck fails on its own deadline
+        // rather than waiting out the stuck call. Method: start the two together on one device
+        // client and require both to end.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        crate::rt::test_runtime(async {
+            let client = silent_client(&path).await;
+            let device_uid = DEVICE_UID.to_string();
+            let started = Instant::now();
+            let calls = futures_util::future::join(
+                client.status(&device_uid),
+                client.fixed_duty(&device_uid, CHANNEL, 50),
+            );
+            let (status, write) = timeout(GUARD, calls).await.expect("both calls must end");
+            assert!(status.is_err());
+            assert!(write.is_err());
+            assert!(started.elapsed() >= DEADLINE);
+        });
+    }
+
+    #[test]
+    fn a_plugin_that_comes_back_answers_again() {
+        // Goal: a timeout abandons one RPC, not the client. The device lock is released and the
+        // channel stays usable, so a remote returning from a network drop is picked up by the
+        // next poll. Method: time out against the silent stub, wake it, and call again.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        crate::rt::test_runtime(async {
+            let silent = serve_stub(&path);
+            let mut client = connected_client(&path, DEVICE_UID).await;
+            client.service_wait_timeout = DEADLINE;
+            let device_uid = DEVICE_UID.to_string();
+            silent.store(true, Ordering::Relaxed);
+            assert_times_out(client.status(&device_uid)).await;
+            silent.store(false, Ordering::Relaxed);
+
+            client.service_wait_timeout = GUARD;
+            let (channels, temps) = client.status(&device_uid).await.expect("it answers again");
+
+            assert_eq!(channels.len(), 2);
+            assert_eq!(temps.len(), 2);
+        });
+    }
+
+    /// Asserts that a shutdown of `client` succeeds once its budget runs out.
+    async fn assert_shutdown_gives_up(client: &DeviceServiceClient) {
+        let started = Instant::now();
+        let result = timeout(GUARD, client.shutdown()).await;
+        result
+            .expect("the budget must end the shutdown")
+            .expect("a peer that cannot be told is not a failure");
+        assert!(started.elapsed() >= client.shutdown_timeout);
+    }
+
+    #[test]
+    fn a_silent_plugin_cannot_hold_up_the_shutdown() {
+        // Goal: the stop that hit SIGKILL: the network drops with the locks free, so the shutdown
+        // RPC itself goes unanswered. Telling a remote we are leaving is best effort, so this
+        // ends on the short budget and is not an error. Method: a wait timeout past the guard
+        // leaves the budget as the only thing that can end the call.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        crate::rt::test_runtime(async {
+            let mut client = silent_client(&path).await;
+            client.service_wait_timeout = GUARD * 2;
+            client.shutdown_timeout = DEADLINE;
+            assert_shutdown_gives_up(&client).await;
+        });
+    }
+
+    #[test]
+    fn a_stuck_status_cannot_hold_up_the_shutdown() {
+        // Goal: the awake shape of the same stop: a status holds the device lock when the stop
+        // arrives, so the shutdown waits on the lock and never reaches its RPC. The budget has to
+        // cover that wait too. Method: leave a status in flight, then shut down beside it.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        crate::rt::test_runtime(async {
+            let mut client = silent_client(&path).await;
+            client.service_wait_timeout = GUARD * 2;
+            client.shutdown_timeout = DEADLINE;
+            let device_uid = DEVICE_UID.to_string();
+            let mut status = std::pin::pin!(client.status(&device_uid));
+            let status_ran = futures_util::future::poll_immediate(status.as_mut()).await;
+            assert!(status_ran.is_none(), "the status takes the lock and stalls");
+            let shutdown = assert_shutdown_gives_up(&client);
+            futures_util::future::select(status, std::pin::pin!(shutdown)).await;
+        });
+    }
+
+    #[test]
+    fn a_plugin_that_refuses_the_shutdown_is_still_reported() {
+        // Goal: the budget changes nothing for a plugin that answers: its refusal still surfaces
+        // as an error rather than reading like a peer that never replied. Method: the stub
+        // refuses every call by default, so a timeout would be `Ok` and this `Err`.
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let path = dir.path().join("stub.sock");
+        crate::rt::test_runtime(async {
+            serve_stub(&path);
+            let client = connected_client(&path, DEVICE_UID).await;
+            let error = client.shutdown().await.expect_err("the stub refuses it");
+            assert!(
+                error.to_string().starts_with("Failed to shutdown"),
+                "{error}"
+            );
+        });
     }
 
     #[test]

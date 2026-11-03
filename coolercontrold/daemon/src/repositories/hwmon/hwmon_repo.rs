@@ -315,6 +315,22 @@ pub async fn install_read_registry(
     channels: &mut [HwmonChannelInfo],
     io: &DeviceIo,
 ) -> Result<()> {
+    install_read_registry_where(base_path, load_path, channels, io, |_| true).await
+}
+
+/// `install_read_registry` for only the channels `reads_sysfs` accepts. The others get no slot,
+/// for a device whose values for them come from somewhere else, such as cpuinfo.
+///
+/// # Errors
+///
+/// When the device's worker is gone or does not answer.
+pub async fn install_read_registry_where(
+    base_path: &Path,
+    load_path: Option<&Path>,
+    channels: &mut [HwmonChannelInfo],
+    io: &DeviceIo,
+    reads_sysfs: impl Fn(&HwmonChannelInfo) -> bool,
+) -> Result<()> {
     let mut paths: Vec<PathBuf> = Vec::with_capacity(channels.len() * 2);
     let slot = |paths: &mut Vec<PathBuf>, path: PathBuf| -> Option<ReadIndex> {
         let index = ReadIndex::try_from(paths.len()).ok()?;
@@ -323,6 +339,9 @@ pub async fn install_read_registry(
     };
     for channel in channels.iter_mut() {
         channel.read_slot = ChannelReadSlots::default();
+        if reads_sysfs(channel).not() {
+            continue;
+        }
         match channel.hwmon_type {
             HwmonChannelType::Fan => {
                 if channel.caps.has_pwm() {
@@ -3197,6 +3216,41 @@ mod preload_tests {
             );
             // Outside the hwmon directory, which is why it is registered separately.
             assert_eq!(slot_path(channels[4].read_slot.value), load_path);
+        });
+    }
+
+    /// Goal: a channel the filter rejects gets no slot and no table entry, and the rest are
+    /// registered as usual. Method: a temp around a frequency channel, the CPU repo's case, with
+    /// a filter that rejects frequencies; then the table is read past its last expected slot.
+    #[test]
+    #[serial]
+    fn a_filtered_channel_gets_no_slot() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from("/sys/class/hwmon/hwmon9");
+            let channel = |hwmon_type, number, name: &str| HwmonChannelInfo {
+                hwmon_type,
+                number,
+                name: name.to_string(),
+                ..Default::default()
+            };
+            let mut channels = vec![
+                channel(HwmonChannelType::Temp, 1, "temp1"),
+                channel(HwmonChannelType::Freq, 0, "CPU Freq Avg"),
+                channel(HwmonChannelType::Temp, 2, "temp2"),
+            ];
+
+            let io = DeviceIo::default();
+            install_read_registry_where(&base, None, &mut channels, &io, |channel| {
+                channel.hwmon_type != HwmonChannelType::Freq
+            })
+            .await
+            .unwrap();
+
+            assert_eq!(channels[0].read_slot.value, Some(0));
+            assert_eq!(channels[1].read_slot, ChannelReadSlots::default());
+            assert_eq!(channels[2].read_slot.value, Some(1));
+            assert_eq!(io.registered_path(1), Some(base.join("temp2_input")));
+            assert_eq!(io.registered_path(2), None);
         });
     }
 

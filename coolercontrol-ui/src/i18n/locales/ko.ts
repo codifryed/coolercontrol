@@ -1458,6 +1458,9 @@ export default {
             commandDelay: '명령 지연',
             commandDelayDesc:
                 '이 장치로 전송되는 명령 사이의 지연 시간(밀리초).\n여러 명령이 빠르게 연속으로 전송될 때\n통신 문제가 있는 장치에 도움이 될 수 있습니다.',
+            perThreadFreq: '스레드별 주파수',
+            perThreadFreqDesc:
+                'CPU 스레드마다 주파수 채널을 추가합니다.\n각 채널은 1시간 분량의 기록을 보관하므로 UI가 불러오는 데이터와 데몬의 메모리 사용량이 늘어납니다.',
             overdrive: 'GPU 오버드라이브',
             overdriveDesc:
                 'AMD RDNA3/4 GPU는 팬 제어를 위해 오버드라이브를 활성화해야 합니다.\namdgpu.ppfeaturemask 커널 매개변수를 구성하며\n시스템 재부팅이 필요합니다.',

@@ -1493,6 +1493,9 @@ export default {
             commandDelay: 'Retardo de comando',
             commandDelayDesc:
                 'Retardo en milisegundos entre comandos enviados a este dispositivo.\nEsto puede ayudar con dispositivos que tienen problemas de comunicación\ncuando se envían múltiples comandos en rápida sucesión.',
+            perThreadFreq: 'Frecuencia por hilo',
+            perThreadFreqDesc:
+                'Añade un canal de frecuencia por cada hilo de la CPU.\nCada uno guarda una hora de historial, lo que aumenta los datos que carga la interfaz y el uso de memoria del daemon.',
             overdrive: 'GPU Overdrive',
             overdriveDesc:
                 'Las GPU AMD RDNA3/4 requieren que overdrive esté habilitado para el control de ventiladores.\nEsto configura el parámetro del kernel amdgpu.ppfeaturemask\ny requiere un reinicio del sistema.',

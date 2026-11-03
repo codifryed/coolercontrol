@@ -1465,6 +1465,9 @@ export default {
             commandDelay: 'Command Delay',
             commandDelayDesc:
                 'Delay in milliseconds between commands sent to this device.\nThis can help with devices that have communication issues\nwhen multiple commands are sent in quick succession.',
+            perThreadFreq: 'Per-Thread Frequency',
+            perThreadFreqDesc:
+                "Adds a frequency channel for each CPU thread.\nEach keeps an hour of history, which adds to the data the UI loads and to the daemon's memory use.",
             overdrive: 'GPU Overdrive',
             overdriveDesc:
                 'AMD RDNA3/4 GPUs require overdrive to be enabled for fan control.\nThis configures the amdgpu.ppfeaturemask kernel parameter\nand requires a system reboot to take effect.',

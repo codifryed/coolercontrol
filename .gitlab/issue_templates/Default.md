@@ -1,7 +1,10 @@
 # Bug
 
-> :warning: **Reporting a feature request or documentation issue?** Pick the matching template from
-> the **"Choose a template"** dropdown above. Otherwise, fill out this bug report.
+> [!important]
+>
+> **Reporting a feature request or documentation issue?** Pick the matching template from the
+> **Description** dropdown, which starts on "Default". Otherwise, fill out this bug report. For
+> general questions, use the [Discord](https://discord.gg/MbcgUFAfhV).
 
 ## Environment
 
@@ -14,6 +17,11 @@
 ## Description
 
 Describe the issue you are experiencing and the steps needed to reproduce it, in your own words.
+
+## Hardware Report
+
+If this involves a device, open **Home**, select **Hardware Report** under **Hardware Support**,
+then select **Copy** and paste it here. Available in CoolerControl 5.0 and newer.
 
 ## Logs and/or Screenshots
 
@@ -55,8 +63,8 @@ The description above must be your own words. The tool's analysis goes here:
 - [ ] I have attached log output and/or screenshots
 - [ ] I wrote the description myself, and any AI assistance follows the
       [AI Policy](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/AI_POLICY.md).
-- [ ] I have read the [Hardware Support](https://docs.coolercontrol.org/hardware-support.html)
-      section of the readme and applied all available steps.
+- [ ] I have read the [Hardware Support](https://docs.coolercontrol.org/hardware-support.html) page
+      and applied all available steps.
 - [x] I have not read any of the above
 
 **Note:** CoolerControl depends on open source drivers to communicate with your hardware. If there

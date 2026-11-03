@@ -1409,6 +1409,9 @@ export default {
             commandDelay: '命令延迟',
             commandDelayDesc:
                 '发送到此设备的命令之间的延迟（毫秒）。\n当多个命令快速连续发送时，\n这可以帮助解决设备通信问题。',
+            perThreadFreq: '每线程频率',
+            perThreadFreqDesc:
+                '为每个 CPU 线程添加一个频率通道。\n每个通道保留一小时的历史记录，会增加界面加载的数据量和后台服务的内存占用。',
             overdrive: 'GPU 超频',
             overdriveDesc:
                 'AMD RDNA3/4 GPU 需要启用超频才能控制风扇。\n这将配置 amdgpu.ppfeaturemask 内核参数，\n需要重启系统才能生效。',

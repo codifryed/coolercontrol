@@ -1479,6 +1479,9 @@ export default {
             commandDelay: 'コマンド遅延',
             commandDelayDesc:
                 'このデバイスに送信されるコマンド間の遅延（ミリ秒）。\n複数のコマンドが連続して送信される際に\n通信の問題があるデバイスに役立ちます。',
+            perThreadFreq: 'スレッドごとの周波数',
+            perThreadFreqDesc:
+                'CPU スレッドごとに周波数チャンネルを追加します。\n各チャンネルは 1 時間分の履歴を保持するため、UI が読み込むデータ量とデーモンのメモリ使用量が増えます。',
             overdrive: 'GPU オーバードライブ',
             overdriveDesc:
                 'AMD RDNA3/4 GPUではファン制御にオーバードライブの有効化が必要です。\namdgpu.ppfeaturemaskカーネルパラメータを設定し、\nシステムの再起動が必要です。',

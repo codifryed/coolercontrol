@@ -379,6 +379,59 @@ pub struct DeviceExtensions {
     /// This is to help with communication issues with some devices that may not handle
     /// multiple settings applied in quick succession. (The driver does not always handle this)
     pub delay_millis: u16,
+
+    /// Whether a CPU device gets a frequency channel for each of its threads. Off by default:
+    /// every channel keeps an hour of history.
+    #[serde(default)]
+    pub per_thread_freq: bool,
+}
+
+/// A save of `CoolerControl` settings for a specific Device. Extensions it leaves out keep their
+/// saved values, so a client that predates one does not reset it.
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct CCDeviceSettingsUpdate {
+    /// Ignored: the daemon stamps the last-detected device name.
+    pub name: DeviceName,
+
+    /// All communication with this device will be avoided if disabled
+    pub disable: bool,
+
+    /// Specialized settings (extensions) that apply to a specific device.
+    #[serde(default)]
+    pub extensions: DeviceExtensionsUpdate,
+
+    /// A list of channels specific settings, including disable and extension settings.
+    pub channel_settings: HashMap<ChannelName, CCChannelSettings>,
+}
+
+/// Device extensions in a save. Each one left out keeps its saved value.
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct DeviceExtensionsUpdate {
+    /// See `DeviceExtensions.direct_access`.
+    pub direct_access: Option<bool>,
+
+    /// See `DeviceExtensions.delay_millis`.
+    pub delay_millis: Option<u16>,
+
+    /// See `DeviceExtensions.per_thread_freq`.
+    pub per_thread_freq: Option<bool>,
+}
+
+impl CCDeviceSettingsUpdate {
+    /// The settings to save: this update, with `saved` filling the extensions it leaves out.
+    pub fn merged_onto(self, saved: &DeviceExtensions) -> CCDeviceSettings {
+        let extensions = self.extensions;
+        CCDeviceSettings {
+            name: self.name,
+            disable: self.disable,
+            extensions: DeviceExtensions {
+                direct_access: extensions.direct_access.unwrap_or(saved.direct_access),
+                delay_millis: extensions.delay_millis.unwrap_or(saved.delay_millis),
+                per_thread_freq: extensions.per_thread_freq.unwrap_or(saved.per_thread_freq),
+            },
+            channel_settings: self.channel_settings,
+        }
+    }
 }
 
 /// Device Channel specific settings
@@ -1170,6 +1223,80 @@ pub enum ChannelMetric {
 mod tests {
     use super::*;
     use serde_json::{json, Value};
+
+    /// Goal: a client that predates `per_thread_freq` can still read saved device settings.
+    /// Method: device settings JSON with extensions that lack the field, then with it set.
+    #[test]
+    fn device_extensions_without_per_thread_freq_deserialize() {
+        let mut settings = json!({
+            "name": "CPU",
+            "disable": false,
+            "extensions": { "direct_access": false, "delay_millis": 0 },
+            "channel_settings": {},
+        });
+        let parsed: CCDeviceSettings = serde_json::from_value(settings.clone()).unwrap();
+        assert!(parsed.extensions.per_thread_freq.not());
+
+        settings["extensions"]["per_thread_freq"] = json!(true);
+        let parsed: CCDeviceSettings = serde_json::from_value(settings).unwrap();
+        assert!(parsed.extensions.per_thread_freq);
+    }
+
+    fn saved_extensions() -> DeviceExtensions {
+        DeviceExtensions {
+            direct_access: true,
+            delay_millis: 50,
+            per_thread_freq: true,
+        }
+    }
+
+    fn update_from(value: Value) -> CCDeviceSettingsUpdate {
+        serde_json::from_value(value).unwrap()
+    }
+
+    /// Goal: a save that leaves extensions out keeps the saved ones. Method: merge saves that
+    /// omit each extension, all of them, and the whole object onto non-default saved values.
+    #[test]
+    fn a_save_keeps_the_extensions_it_omits() {
+        let base = json!({ "name": "Device", "disable": false, "channel_settings": {} });
+
+        let mut no_extensions = base.clone();
+        no_extensions["extensions"] = json!({});
+        for update in [base.clone(), no_extensions] {
+            let merged = update_from(update).merged_onto(&saved_extensions());
+            assert!(merged.extensions.direct_access);
+            assert_eq!(merged.extensions.delay_millis, 50);
+            assert!(merged.extensions.per_thread_freq);
+        }
+
+        let mut partial = base;
+        partial["extensions"] = json!({ "delay_millis": 20 });
+        let merged = update_from(partial).merged_onto(&saved_extensions());
+        assert!(merged.extensions.direct_access);
+        assert_eq!(merged.extensions.delay_millis, 20);
+        assert!(merged.extensions.per_thread_freq);
+    }
+
+    /// Goal: a save that sends extensions sets them, defaults included, and keeps the rest of the
+    /// update. Method: merge a full save of default values onto non-default saved values.
+    #[test]
+    fn a_save_sets_the_extensions_it_sends() {
+        let update = update_from(json!({
+            "name": "Device",
+            "disable": true,
+            "extensions": { "direct_access": false, "delay_millis": 0, "per_thread_freq": false },
+            "channel_settings": { "fan1": { "disabled": true } },
+        }));
+
+        let merged = update.merged_onto(&saved_extensions());
+
+        assert!(merged.extensions.direct_access.not());
+        assert_eq!(merged.extensions.delay_millis, 0);
+        assert!(merged.extensions.per_thread_freq.not());
+        assert!(merged.disable);
+        assert_eq!(merged.name, "Device");
+        assert!(merged.channel_settings["fan1"].disabled);
+    }
 
     fn fan_channel() -> String {
         "fan1".to_string()

@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [Unreleased]
+
+### Changed
+
+- On RDNA3/4 AMD GPUs, a Profile that never reaches 0% duty now turns Zero RPM off
+
+### Fixed
+
+- RDNA3/4 AMD GPU fans on newer firmwares could stay stopped after Zero RPM was disabled, until the
+  fan speed changed. Changed our commit method so that everything is applied in one firmware upload,
+  which works for newer and older firmwares despite the same kernel driver
+
 ## [5.1.1] - 2026-10-19
 
 ### Changed

@@ -48,7 +48,7 @@ use crate::api::actor::StatusHandle;
 use crate::config::Config;
 use crate::device::health::DeviceHealthController;
 use crate::engine::main::Engine;
-use crate::listeners::sleep::SleepListener;
+use crate::listeners::sleep::{SleepListener, SleepPhase};
 use crate::modes::ModeController;
 use crate::rt;
 use crate::watchdog::Watchdog;
@@ -91,19 +91,21 @@ pub async fn run(
     run_token: CancellationToken,
 ) -> Result<()> {
     let poll_rate = config.get_settings()?.poll_rate;
-    watchdog.warn_if_poll_rate_too_slow(Duration::from_secs_f64(poll_rate));
+    let poll_period = Duration::from_secs_f64(poll_rate);
+    watchdog.warn_if_poll_rate_too_slow(poll_period);
     let snapshot_timeout_duration = Duration::from_millis(SNAPSHOT_TIMEOUT_MS);
     let mut lcd_update_trigger = LCDUpdateTrigger::new(poll_rate);
     moro_local::async_scope!(|scope| -> Result<()> {
         let sleep_listener = SleepListener::new(run_token.clone());
         align_loop_timing_with_clock().await;
         // The sub-second position is set on interval creation:
-        let mut loop_interval = rt::interval(Duration::from_secs_f64(poll_rate));
+        let mut loop_interval = rt::interval(poll_period);
         let mut sleep_prepared = false;
         while run_token.is_cancelled().not() {
-            loop_interval.tick().await;
+            next_tick(&mut loop_interval, &sleep_listener).await;
             lcd_update_trigger.tick();
-            if sleep_listener.is_not_preparing_to_sleep() {
+            let sleep_phase = sleep_listener.phase();
+            if sleep_phase == SleepPhase::Awake {
                 let snapshot_timeout_token = CancellationToken::new();
                 fire_preloads(&repos, snapshot_timeout_token.clone(), scope);
                 tokio::select! {
@@ -123,13 +125,13 @@ pub async fn run(
                 alert_controller.process_alerts();
                 device_health_controller.process().await;
                 // At the foot of the working arm: a heartbeat asserts the tick
-                // did its work. The sleep-preparation arm below deliberately
-                // does nothing, so it must not claim liveness. The resume arm
-                // heartbeats from inside `wake_from_sleep`.
+                // did its work. The sleep-preparation arm below does no work,
+                // so it holds a widened deadline instead (`sleep_tick`). The
+                // resume arm heartbeats from inside `wake_from_sleep`.
                 watchdog.ping();
-            } else if sleep_listener.is_resuming() {
+            } else if let SleepPhase::Woken { wake_count } = sleep_phase {
                 sleep_prepared = false;
-                wake_from_sleep(
+                let woke = wake_from_sleep(
                     &config,
                     &engine,
                     &mode_controller,
@@ -137,14 +139,32 @@ pub async fn run(
                     &watchdog,
                 )
                 .await?;
-            } else {
-                if sleep_prepared.not() {
-                    for repo in repos.iter() {
-                        repo.prepare_for_sleep().await;
+                // Wakes that arrived meanwhile stay pending for the next tick.
+                sleep_listener.wake_handled(wake_count);
+                if woke.not() {
+                    // Asleep again: logind is waiting on the lock, so do not wait for a tick.
+                    if let SleepPhase::Sleeping { wake_count } = sleep_listener.phase() {
+                        sleep_arm_tick(
+                            &repos,
+                            &watchdog,
+                            &sleep_listener,
+                            &mut sleep_prepared,
+                            poll_period,
+                            wake_count,
+                        )
+                        .await;
                     }
-                    sleep_prepared = true;
                 }
-                debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
+            } else if let SleepPhase::Sleeping { wake_count } = sleep_phase {
+                sleep_arm_tick(
+                    &repos,
+                    &watchdog,
+                    &sleep_listener,
+                    &mut sleep_prepared,
+                    poll_period,
+                    wake_count,
+                )
+                .await;
             }
         }
         // run_token has been cancelled. Signal each repo to abort
@@ -162,6 +182,15 @@ pub async fn run(
         Ok(())
     })
     .await
+}
+
+/// Waits for the next tick. A sleep signal starts one at once: logind waits on the delay lock
+/// for only a few seconds, and the next tick can be a whole poll away.
+async fn next_tick(loop_interval: &mut rt::Interval, sleep_listener: &SleepListener) {
+    tokio::select! {
+        _ = loop_interval.tick() => {}
+        () = sleep_listener.changed() => {}
+    }
 }
 
 /// Aligns the main loop's timing with the system clock.
@@ -255,21 +284,54 @@ fn fire_lcd_update<'s>(
     });
 }
 
+/// One tick while the system goes to sleep: hold the widened watchdog deadline, prepare every
+/// repo once per sleep, then let logind go ahead. The deadline comes first, so a slow repo is
+/// covered too. The lock goes only once both are done, so logind waits for both. A deadline the
+/// service manager has no room for is retried next tick; a failed one is retried once a ping
+/// interval, so with logind's default `InhibitDelayMaxSec` it holds the lock until that runs out.
+async fn sleep_arm_tick(
+    repos: &Repos,
+    watchdog: &Watchdog,
+    sleep_listener: &SleepListener,
+    sleep_prepared: &mut bool,
+    poll_period: Duration,
+    wake_count: u64,
+) {
+    debug_assert!(poll_period.is_zero().not());
+    let sleep_budget_in_force = watchdog.sleep_tick(poll_period);
+    if sleep_prepared.not() {
+        for repo in repos.iter() {
+            repo.prepare_for_sleep().await;
+        }
+        *sleep_prepared = true;
+    }
+    if sleep_budget_in_force {
+        // Not a lock taken since `wake_count`: that is for a later sleep, not yet prepared for.
+        sleep_listener.release_inhibitor(wake_count);
+    }
+    debug_assert!(*sleep_prepared);
+    debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
+}
+
 /// Handles the actions needed to properly wake the system from sleep mode.
 ///
 /// This function ensures that the necessary delays are observed to allow hardware components
 /// to fully power up before re-initializing and re-applying device settings. It checks if
 /// settings should be applied on boot and takes appropriate actions, such as reinitializing
 /// devices and applying saved device settings. Additionally, it reinitializes all status
-/// histories to maintain sequential data integrity and resets the sleep listener's state
-/// flags to indicate that the system is no longer preparing to sleep or resuming.
+/// histories to maintain sequential data integrity.
+///
+/// False when a new sleep began during the pause: re-init and re-apply would only run against
+/// devices that are suspending, so they wait for the next wake.
 async fn wake_from_sleep(
     config: &Rc<Config>,
     engine: &Rc<Engine>,
     mode_controller: &Rc<ModeController>,
     sleep_listener: &SleepListener,
     watchdog: &Watchdog,
-) -> Result<()> {
+) -> Result<bool> {
+    // Restores the unit's deadline, which the sleep arm widened.
+    watchdog.ping();
     let startup_delay = config
         .get_settings()?
         .startup_delay
@@ -280,7 +342,13 @@ async fn wake_from_sleep(
     );
     // `startup_delay` reaches 120s and blocks the loop. The daemon is idle here
     // on purpose, which must not read to systemd as a wedged loop.
-    watchdog.sleep_with_heartbeat(startup_delay).await;
+    if wake_pause(watchdog, sleep_listener, startup_delay)
+        .await
+        .not()
+    {
+        info!("The system is going to sleep again; re-initializing after the next wake instead.");
+        return Ok(false);
+    }
     if config.get_settings()?.apply_on_boot {
         info!("Re-initializing and re-applying settings after waking from sleep");
         engine.reinitialize_devices().await;
@@ -295,9 +363,29 @@ async fn wake_from_sleep(
         watchdog.ping();
     }
     engine.reinitialize_all_status_histories()?;
-    sleep_listener.resuming(false);
-    sleep_listener.preparing_to_sleep(false);
-    Ok(())
+    Ok(true)
+}
+
+/// The wake pause, with heartbeats. Cut short, returning false, when a new sleep begins; a
+/// further wake does not cut it short. Each pass of the loop takes a signal, and the pause
+/// ends it, so it is bounded by `total`.
+async fn wake_pause(watchdog: &Watchdog, sleep_listener: &SleepListener, total: Duration) -> bool {
+    // `WAKE_PAUSE_MINIMUM_S` floors it: devices need time to power up.
+    debug_assert!(total.is_zero().not());
+    let mut pause = std::pin::pin!(watchdog.sleep_with_heartbeat(total));
+    loop {
+        tokio::select! {
+            () = pause.as_mut() => return true,
+            () = sleep_listener.changed() => {
+                let phase = sleep_listener.phase();
+                if let SleepPhase::Sleeping { .. } = phase {
+                    return false;
+                }
+                // A further wake leaves the one being handled pending, never handled.
+                debug_assert_ne!(phase, SleepPhase::Awake);
+            }
+        }
+    }
 }
 
 /// A helper struct used to limit LCD updates to a maximum frequency.
@@ -389,6 +477,191 @@ mod tests {
         assert!(outcome.is_ok());
         assert_eq!(finished.get(), 2);
         assert!(token.is_cancelled());
+    }
+
+    /// A repo with a slow sleep preparation must already be covered by the widened deadline,
+    /// and a sleep is prepared once however many ticks it lasts. Record the budget state from
+    /// inside the preparation, then tick the sleep arm twice.
+    #[test]
+    fn the_sleep_arm_widens_before_preparing_once() {
+        let watchdog = Rc::new(Watchdog::supervised(Duration::from_secs(30)));
+        let widened_at_prepare = Rc::new(Cell::new(false));
+        let on_prepare: Rc<dyn Fn()> = {
+            let watchdog = Rc::clone(&watchdog);
+            let widened_at_prepare = Rc::clone(&widened_at_prepare);
+            Rc::new(move || widened_at_prepare.set(watchdog.sleep_budget_in_force()))
+        };
+        let stub = StubRepo {
+            on_prepare: Some(on_prepare),
+            ..StubRepo::new(DeviceType::Hwmon)
+        };
+        let prepared = Rc::clone(&stub.prepared);
+        let repos: Repos = Rc::new(Repositories {
+            hwmon: Some(Rc::new(stub)),
+            ..Default::default()
+        });
+        let sleep_listener = SleepListener::deaf();
+        let mut sleep_prepared = false;
+        let poll_period = Duration::from_secs(1);
+
+        rt::test_runtime(async {
+            sleep_arm_tick(
+                &repos,
+                &watchdog,
+                &sleep_listener,
+                &mut sleep_prepared,
+                poll_period,
+                0,
+            )
+            .await;
+            sleep_arm_tick(
+                &repos,
+                &watchdog,
+                &sleep_listener,
+                &mut sleep_prepared,
+                poll_period,
+                0,
+            )
+            .await;
+        });
+
+        assert!(widened_at_prepare.get());
+        assert_eq!(prepared.get(), 1);
+        assert!(sleep_prepared);
+    }
+
+    /// logind sleeps once the delay lock is gone, so it must outlast the preparation and then
+    /// be released. Hold a pipe as the lock, record whether it is held from inside the
+    /// preparation, then check it is gone after the tick.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn the_sleep_arm_releases_the_lock_after_preparing() {
+        let sleep_listener = Rc::new(SleepListener::deaf());
+        let (reader, _writer) = std::io::pipe().unwrap();
+        sleep_listener.hold_inhibitor(reader.into());
+        let held_at_prepare = Rc::new(Cell::new(false));
+        let on_prepare: Rc<dyn Fn()> = {
+            let sleep_listener = Rc::clone(&sleep_listener);
+            let held_at_prepare = Rc::clone(&held_at_prepare);
+            Rc::new(move || held_at_prepare.set(sleep_listener.holds_inhibitor()))
+        };
+        let repos: Repos = Rc::new(Repositories {
+            hwmon: Some(Rc::new(StubRepo {
+                on_prepare: Some(on_prepare),
+                ..StubRepo::new(DeviceType::Hwmon)
+            })),
+            ..Default::default()
+        });
+        let watchdog = Watchdog::disabled();
+        let mut sleep_prepared = false;
+
+        rt::test_runtime(async {
+            sleep_arm_tick(
+                &repos,
+                &watchdog,
+                &sleep_listener,
+                &mut sleep_prepared,
+                Duration::from_secs(1),
+                0,
+            )
+            .await;
+        });
+
+        assert!(held_at_prepare.get());
+        assert!(sleep_listener.holds_inhibitor().not());
+    }
+
+    /// Released on the unit's own deadline, logind would sleep on it and the freeze would read
+    /// as a wedge. Hold a pipe as the lock, point the watchdog at a missing service manager so
+    /// the widening fails, tick, and check the lock is still held.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn the_sleep_arm_keeps_the_lock_until_the_deadline_is_widened() {
+        let dir = tempfile::tempdir().unwrap();
+        let notify_socket = dir.path().join("absent").into_os_string();
+        let watchdog = Watchdog::supervised_at(Duration::from_secs(30), notify_socket);
+        let sleep_listener = SleepListener::deaf();
+        let (reader, _writer) = std::io::pipe().unwrap();
+        sleep_listener.hold_inhibitor(reader.into());
+        let repos: Repos = Rc::new(Repositories::default());
+        let mut sleep_prepared = false;
+
+        rt::test_runtime(async {
+            sleep_arm_tick(
+                &repos,
+                &watchdog,
+                &sleep_listener,
+                &mut sleep_prepared,
+                Duration::from_secs(1),
+                0,
+            )
+            .await;
+        });
+
+        assert!(watchdog.sleep_budget_in_force().not());
+        assert!(sleep_prepared);
+        assert!(sleep_listener.holds_inhibitor());
+    }
+
+    /// logind waits on the delay lock for only a few seconds, so a sleep signal must start a
+    /// tick rather than wait out the poll. Take the interval's first tick, signal a sleep, then
+    /// poll the next tick once with the interval far from due.
+    #[test]
+    fn a_sleep_signal_starts_a_tick_at_once() {
+        use futures_util::FutureExt;
+        let sleep_listener = SleepListener::deaf();
+
+        rt::test_runtime(async {
+            let mut loop_interval = rt::interval(Duration::from_secs(3_600));
+            next_tick(&mut loop_interval, &sleep_listener).await;
+            sleep_listener.record(true);
+
+            let tick = next_tick(&mut loop_interval, &sleep_listener);
+            assert_eq!(tick.now_or_never(), Some(()));
+        });
+    }
+
+    /// A sleep that begins during the wake pause must end it at once, since logind is waiting
+    /// on the delay lock. Signal a sleep, then poll a long pause once.
+    #[test]
+    fn a_new_sleep_cuts_the_wake_pause_short() {
+        use futures_util::FutureExt;
+        let watchdog = Watchdog::disabled();
+        let sleep_listener = SleepListener::deaf();
+        sleep_listener.record(true);
+
+        rt::test_runtime(async {
+            let pause = wake_pause(&watchdog, &sleep_listener, Duration::from_secs(120));
+            assert_eq!(pause.now_or_never(), Some(false));
+        });
+    }
+
+    /// A further wake is handled after this one, so it must not cut the pause short. Signal a
+    /// wake, then poll a long pause once: it is still waiting.
+    #[test]
+    fn a_further_wake_leaves_the_wake_pause_running() {
+        use futures_util::FutureExt;
+        let watchdog = Watchdog::disabled();
+        let sleep_listener = SleepListener::deaf();
+        sleep_listener.record(false);
+
+        rt::test_runtime(async {
+            let pause = wake_pause(&watchdog, &sleep_listener, Duration::from_secs(120));
+            assert_eq!(pause.now_or_never(), None);
+        });
+    }
+
+    /// With no signal the pause runs to the end and reports it. Pause briefly and check.
+    #[test]
+    fn an_undisturbed_wake_pause_runs_to_the_end() {
+        let watchdog = Watchdog::disabled();
+        let sleep_listener = SleepListener::deaf();
+
+        rt::test_runtime(async {
+            let start = std::time::Instant::now();
+            assert!(wake_pause(&watchdog, &sleep_listener, Duration::from_millis(10)).await);
+            assert!(start.elapsed() >= Duration::from_millis(10));
+        });
     }
 
     /// Regression: the snapshot timeout must stay at the historical

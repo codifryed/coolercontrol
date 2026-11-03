@@ -437,6 +437,25 @@ impl DeviceIo {
         (Self::Threaded(Rc::new(worker)), rx, running)
     }
 
+    /// A `DeviceIo` whose writes a `WriteRecorder` answers with `Ok` and records, for tests
+    /// that check which writes reach a device and in what order.
+    ///
+    /// A file only keeps its last write, so a file-backed test cannot tell one commit from two.
+    /// The recorder plays the worker on the test thread, so no OS thread or real-time window is
+    /// involved.
+    #[cfg(test)]
+    #[must_use]
+    pub fn recording_for_test() -> (Self, WriteRecorder) {
+        // Never elapses: the recorder replies within the same poll the request is sent in,
+        // and the timeout polls the reply before its timer.
+        let (io, rx) = Self::wedged_for_test(Duration::from_secs(5));
+        let recorder = WriteRecorder {
+            rx,
+            writes: Vec::new(),
+        };
+        (io, recorder)
+    }
+
     /// Whether this device's worker thread still runs, observable after every handle is
     /// dropped. `None` when not isolated.
     #[must_use]
@@ -860,6 +879,48 @@ pub enum Request {
         reply: oneshot::Sender<Result<usize>>,
     },
     ClearDescriptors,
+}
+
+/// Plays the worker of a `DeviceIo::recording_for_test` device on the test thread, and keeps
+/// the writes it answered in the order it received them.
+#[cfg(test)]
+#[derive(Debug)]
+pub struct WriteRecorder {
+    rx: mpsc::Receiver<Request>,
+    writes: Vec<(PathBuf, String)>,
+}
+
+#[cfg(test)]
+impl WriteRecorder {
+    /// Runs `future` to completion while answering every write it makes with `Ok`.
+    ///
+    /// Any other request is dropped unanswered, which its caller sees as a gone worker.
+    pub async fn serve<F: Future>(&mut self, future: F) -> F::Output {
+        let rx = &mut self.rx;
+        let writes = &mut self.writes;
+        let serving = async move {
+            while let Some(request) = rx.recv().await {
+                if let Request::Write { path, data, reply } = request {
+                    writes.push((path, String::from_utf8_lossy(&data).into_owned()));
+                    let _ = reply.send(Ok(()));
+                }
+            }
+            // The device holds the sender, and it outlives this call.
+            std::future::pending::<std::convert::Infallible>().await
+        };
+        let future = std::pin::pin!(future);
+        let serving = std::pin::pin!(serving);
+        match futures_util::future::select(future, serving).await {
+            futures_util::future::Either::Left((output, _)) => output,
+            futures_util::future::Either::Right((never, _)) => match never {},
+        }
+    }
+
+    /// Every write answered so far, as `(path, data)`.
+    #[must_use]
+    pub fn writes(&self) -> &[(PathBuf, String)] {
+        &self.writes
+    }
 }
 
 /// One batch's slots and results, sent to the worker and back so a warm batch allocates neither.
@@ -2114,6 +2175,38 @@ mod tests {
             let (wedged, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             wedged.clear_descriptors();
             assert_eq!(wedged.health(), DeviceHealth::Healthy);
+        });
+    }
+
+    /// Goal: the recorder must answer writes and keep every one in order, repeats included,
+    /// since that is what a file-backed test cannot see. Method: write the same path twice and
+    /// another once through the recorder, then compare the record, and check a read is refused.
+    #[test]
+    fn a_recording_device_keeps_every_write_in_order() {
+        crate::rt::test_runtime(async {
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+            let first = Path::new("/sys/fake/fan_curve");
+            let second = Path::new("/sys/fake/fan_zero_rpm_enable");
+
+            let written = recorder
+                .serve(async {
+                    io.write_value(first, b"0 25 20\n".to_vec()).await?;
+                    io.write_value(second, b"0\n".to_vec()).await?;
+                    io.write_value(first, b"c\n".to_vec()).await
+                })
+                .await;
+            let read = recorder.serve(io.read_value(first)).await;
+
+            assert!(written.is_ok(), "{written:?}");
+            assert_eq!(
+                recorder.writes(),
+                [
+                    (first.to_path_buf(), "0 25 20\n".to_owned()),
+                    (second.to_path_buf(), "0\n".to_owned()),
+                    (first.to_path_buf(), "c\n".to_owned()),
+                ]
+            );
+            assert!(read.is_err(), "reads are not answered");
         });
     }
 

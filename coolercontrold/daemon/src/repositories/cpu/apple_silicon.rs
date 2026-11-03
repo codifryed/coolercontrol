@@ -10,6 +10,7 @@ use log::debug;
 
 use crate::cc_fs::{self, ReadIndex};
 use crate::device::{ChannelStatus, Mhz};
+use crate::repositories::cpu::cpu_repo::PACKAGE_FREQ_CHANNEL_COUNT;
 use crate::repositories::cpu::topology::{CpuFreqs, PhysicalID};
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
@@ -22,7 +23,7 @@ const POLICY_MAX_FREQ_FILE: &str = "cpuinfo_max_freq";
 const POLICY_CORES_FILE: &str = "related_cpus";
 const SCALING_DRIVER_FILE: &str = "cpufreq/policy0/scaling_driver";
 const CLUSTER_FREQ_PREFIX: &str = "CPU Freq";
-const FIRST_CLUSTER_CHANNEL_NUMBER: u8 = 3;
+const FIRST_CLUSTER_CHANNEL_NUMBER: u8 = PACKAGE_FREQ_CHANNEL_COUNT;
 /// More clusters than any Apple chip has. Bounds the scan and the channel numbers.
 const CLUSTER_COUNT_MAX: usize = 16;
 pub const CPU_SYSFS_PATH: &str = "/sys/devices/system/cpu";
@@ -30,9 +31,9 @@ pub const CPUFREQ_POLICY_PATH: &str = "/sys/devices/system/cpu/cpufreq";
 pub const DRIVER_NAME: &str = "cpufreq";
 pub const PACKAGE: PhysicalID = 0;
 
-// Frequency channels are numbered in blocks of 64 per package, so the clusters must stay
-// inside the block of the one package.
-const _: () = assert!(FIRST_CLUSTER_CHANNEL_NUMBER as usize + CLUSTER_COUNT_MAX <= 64);
+// Frequency channels are numbered within the device, so every cluster needs a `u8` number.
+const _: () =
+    assert!(FIRST_CLUSTER_CHANNEL_NUMBER as usize + CLUSTER_COUNT_MAX <= u8::MAX as usize);
 // Each cluster's clock takes one read slot.
 const _: () = assert!(CLUSTER_COUNT_MAX <= ReadIndex::MAX as usize);
 
