@@ -158,6 +158,20 @@ impl RebuildTool {
 
 /// Picks the setup. First match wins, most specific first.
 pub fn classify(facts: &BootFacts) -> BootSetup {
+    let setup = classify_unchecked(facts);
+    match setup {
+        BootSetup::Rebuild(_) => assert!(facts.ostree_booted.not(), "ostree images are upstream"),
+        BootSetup::RpmOstree => {
+            assert!(facts.ostree_booted);
+            assert!(facts.rpm_ostree);
+        }
+        BootSetup::Refused(Refusal::CompetingTools(first, second)) => assert_ne!(first, second),
+        BootSetup::Refused(_) | BootSetup::Unrecognized => {}
+    }
+    setup
+}
+
+fn classify_unchecked(facts: &BootFacts) -> BootSetup {
     if let Some(refusal) = refusal(facts) {
         return BootSetup::Refused(refusal);
     }

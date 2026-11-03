@@ -264,11 +264,19 @@ impl OverdriveSetup {
         if disable_needed(&status).not() {
             return Ok(status);
         }
+        let phase = self.job.borrow().phase;
+        assert_ne!(
+            phase,
+            JobPhase::Applying,
+            "a running setup is never disabled"
+        );
         let facts = detect_boot_facts(&self.paths).await?;
         let setup = boot_image::classify(&facts);
         info!("Removing AMD GPU overdrive. Detected boot setup: {setup:?}");
         if let BootSetup::Rebuild(tool) = setup {
-            refuse_on_preflight(&self.paths).await?;
+            refuse_on_preflight(&self.paths)
+                .await
+                .inspect_err(|_| assert_eq!(self.job.borrow().phase, phase))?;
             remove_overdrive_conf(&self.paths).await?;
             self.start(OverdriveAction::Disable, tool.id(), Work::Rebuild(tool));
         } else {
@@ -298,11 +306,14 @@ impl OverdriveSetup {
         if run_needed(status.state).not() {
             return Ok(status);
         }
+        let phase = self.job.borrow().phase;
+        assert_ne!(phase, JobPhase::Applying, "runs never overlap");
         let facts = detect_boot_facts(&self.paths).await?;
         let setup = boot_image::classify(&facts);
         info!("Detected AMD GPU overdrive boot setup: {setup:?}");
         match setup {
             BootSetup::Refused(refusal) => {
+                assert_eq!(self.job.borrow().phase, phase, "a refusal starts nothing");
                 return Err(CCError::UserError {
                     msg: refusal_message(refusal, new_mask),
                 }
@@ -316,7 +327,9 @@ impl OverdriveSetup {
                 );
             }
             BootSetup::Rebuild(tool) if rebuild => {
-                refuse_on_preflight(&self.paths).await?;
+                refuse_on_preflight(&self.paths)
+                    .await
+                    .inspect_err(|_| assert_eq!(self.job.borrow().phase, phase))?;
                 write_overdrive_conf(&self.paths, new_mask, facts.dracut).await?;
                 self.start(OverdriveAction::Enable, tool.id(), Work::Rebuild(tool));
             }
@@ -580,6 +593,15 @@ async fn status_of(job: &Job, paths: &OverdrivePaths) -> AmdGpuOverdriveStatus {
 /// reboot. Without a run since the daemon started, a conf the module does not reflect yet means
 /// a reboot is pending.
 fn derive_state(job: &Job, active: bool, conf_present: bool) -> OverdriveState {
+    if job.phase != JobPhase::Idle {
+        assert!(job.action.is_some(), "only a started run leaves Idle");
+    }
+    if job.done {
+        assert_eq!(job.phase, JobPhase::Idle, "a finished run is Idle");
+    }
+    if job.rebuild_skipped {
+        assert!(job.done, "a skipped rebuild finishes at once");
+    }
     let disabled = job.done && job.action == Some(OverdriveAction::Disable);
     match job.phase {
         JobPhase::Applying => OverdriveState::Applying,
@@ -664,9 +686,17 @@ fn overdrive_conf(mask: u64) -> String {
 /// only copies `/etc/modprobe.d` in host-only mode, which Debian 13 and generic images lack.
 async fn write_overdrive_conf(paths: &OverdrivePaths, new_mask: u64, dracut: bool) -> Result<()> {
     assert!(new_mask & PP_OVERDRIVE_MASK > 0);
+    let conf = overdrive_conf(new_mask);
+    debug_assert_eq!(
+        conf.trim()
+            .strip_prefix("options amdgpu ppfeaturemask=")
+            .and_then(|mask| parse_pp_feature_mask(mask).ok()),
+        Some(new_mask)
+    );
     let conf_path = paths.conf();
+    assert!(conf_path.starts_with(&paths.root));
     cc_fs::create_dir_all(paths.at(MODPROBE_CONF_PATH)).await?;
-    cc_fs::write_string(&conf_path, overdrive_conf(new_mask)).await?;
+    cc_fs::write_string(&conf_path, conf).await?;
     info!("Wrote AMD GPU overdrive config to {}", conf_path.display());
     if dracut {
         // The image reads the conf at its real path, not the test root's.
@@ -821,6 +851,7 @@ fn rebuild_outcome(tool: RebuildTool, exit_code: i32, output: &str, stderr: &str
     } else {
         tail_lines(output, ERROR_EXCERPT_LINES)
     };
+    debug_assert!(excerpt.lines().count() <= ERROR_EXCERPT_LINES);
     Err(anyhow!(
         "Boot image rebuild failed with exit code {exit_code}: {excerpt}"
     ))
@@ -961,10 +992,12 @@ mod tests {
         let idle = Job::default();
         let running = Job {
             phase: JobPhase::Applying,
+            action: Some(OverdriveAction::Enable),
             ..Job::default()
         };
         let failed = Job {
             phase: JobPhase::Failed,
+            action: Some(OverdriveAction::Enable),
             ..Job::default()
         };
         let done = Job {
