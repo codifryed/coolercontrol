@@ -194,17 +194,23 @@ export function overdrivePlanIntro(
     action: OverdriveAction,
 ): OverdriveMessage | undefined {
     const files = plan.files.join(', ')
-    const verb = action === 'disable' ? 'Remove' : ''
+    const disable = action === 'disable'
     switch (plan.route) {
         case 'rebuild':
             // A retried disable finds its files already gone, so only the rebuild is left.
             if (plan.files.length === 0)
                 return { key: `${KEYS}overdrivePlanRebuildOnly`, params: {} }
-            return { key: `${KEYS}overdrivePlan${verb}Rebuild`, params: { files } }
+            return {
+                key: `${KEYS}${disable ? 'overdrivePlanRemoveRebuild' : 'overdrivePlanRebuild'}`,
+                params: { files },
+            }
         case 'kernel_argument':
             return { key: `${KEYS}overdrivePlanKernelArgument`, params: {} }
         case 'config_only':
-            return { key: `${KEYS}overdrivePlan${verb}ConfigOnly`, params: { files } }
+            return {
+                key: `${KEYS}${disable ? 'overdrivePlanRemoveConfigOnly' : 'overdrivePlanConfigOnly'}`,
+                params: { files },
+            }
         default:
             return undefined
     }
