@@ -1221,8 +1221,9 @@ mod tests {
             );
             let conf = root.path().join("etc/modprobe.d/99-amdgpu-overdrive.conf");
             assert!(conf.exists());
-            // A second enable finds the setting staged and starts nothing.
-            let again = setup.enable(true).await.unwrap();
+            // A second enable finds the setting staged and starts nothing. Config-only, so a
+            // regression cannot run the host's tool.
+            let again = setup.enable(false).await.unwrap();
             assert_eq!(again.state, OverdriveState::RebootRequired);
             assert!(again.rebuild_skipped);
         });
