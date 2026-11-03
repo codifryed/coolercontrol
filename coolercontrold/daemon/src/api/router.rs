@@ -317,12 +317,29 @@ fn device_routes() -> ApiRouter<AppState> {
                 o.summary("AMD GPU Overdrive Enable")
                     .description(
                         "Starts AMD GPU overdrive setup by configuring the ppfeaturemask \
-                        kernel parameter, and returns at once with the new state. The boot \
-                        image rebuild or kernel argument change runs in the background, and \
-                        each state change is sent as the `amd-gpu-overdrive` SSE event. \
+                        kernel parameter, and returns at once with the new state. Requires \
+                        a JSON body with `rebuild`: a request without one is refused and \
+                        starts nothing. The boot image rebuild or kernel argument change runs \
+                        in the background, and each state change is sent as the \
+                        `amd-gpu-overdrive` SSE event. \
                         Returns the current state without a new run while a setup is running, \
                         or once the setting is staged or active. Requires a reboot to take \
                         effect.",
+                    )
+                    .tag("device")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+        .api_route(
+            "/amd-gpu-overdrive/plan",
+            get_with(devices::amd_gpu_overdrive_plan, |o| {
+                o.summary("AMD GPU Overdrive Plan")
+                    .description(
+                        "Returns what enabling AMD GPU overdrive would do on this system: the \
+                        route, the exact command run as root, the files written, or why it \
+                        cannot run now. Clients show it for the user to confirm.",
                     )
                     .tag("device")
                     .security_requirement("CookieAuth")

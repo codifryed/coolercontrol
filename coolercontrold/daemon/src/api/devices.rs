@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2023 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::api::actor::CalibrationHandle;
+use crate::api::actor::{CalibrationHandle, DeviceHandle};
 use crate::api::{handle_error, AppState, CCError};
 use crate::calibration::{effective_speed_options, Calibration, ChannelKey};
 use crate::device::{
     ChannelAttribute, ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID,
 };
 use crate::engine::processors::image;
-use crate::events::amd_gpu_overdrive::AmdGpuOverdriveStatus;
+use crate::events::amd_gpu_overdrive::{AmdGpuOverdrivePlan, AmdGpuOverdriveStatus};
 use crate::setting::{LcdModeName, LcdSettings, LightingSettings, Setting};
 use crate::Device;
 use aide::axum::IntoApiResponse;
@@ -329,10 +329,21 @@ pub async fn thinkpad_fan_control_modify(
 }
 
 pub async fn amd_gpu_overdrive_enable(
-    State(AppState { device_handle, .. }): State<AppState>,
+    State(device_handle): State<DeviceHandle>,
+    Json(enable_request): Json<AmdGpuOverdriveEnableRequest>,
 ) -> Result<Json<AmdGpuOverdriveStatus>, CCError> {
     device_handle
-        .amd_gpu_overdrive_enable()
+        .amd_gpu_overdrive_enable(enable_request.rebuild)
+        .await
+        .map(Json)
+        .map_err(handle_error)
+}
+
+pub async fn amd_gpu_overdrive_plan(
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<Json<AmdGpuOverdrivePlan>, CCError> {
+    device_handle
+        .amd_gpu_overdrive_plan()
         .await
         .map(Json)
         .map_err(handle_error)
@@ -539,6 +550,14 @@ pub struct DevicePath {
 pub struct DeviceChannelPath {
     pub device_uid: DeviceUID,
     pub channel_name: ChannelName,
+}
+
+// A required body, so that starting a setup always needs a CORS preflight.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AmdGpuOverdriveEnableRequest {
+    /// Set to false to only write the module option and leave the boot image rebuild to the
+    /// user. Applies where the boot image is rebuilt, not to kernel arguments.
+    rebuild: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

@@ -7,7 +7,9 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{ChannelAttribute, ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
-use crate::events::amd_gpu_overdrive::{AmdGpuOverdriveHandle, AmdGpuOverdriveStatus};
+use crate::events::amd_gpu_overdrive::{
+    AmdGpuOverdriveHandle, AmdGpuOverdrivePlan, AmdGpuOverdriveStatus,
+};
 use crate::events::notifier::NotificationHandle;
 use crate::modes::ModeController;
 use crate::overrides::OverridesController;
@@ -41,7 +43,11 @@ enum DeviceMessage {
         respond_to: oneshot::Sender<Result<()>>,
     },
     AmdGpuOverdriveEnable {
+        rebuild: bool,
         respond_to: oneshot::Sender<Result<AmdGpuOverdriveStatus>>,
+    },
+    AmdGpuOverdrivePlan {
+        respond_to: oneshot::Sender<Result<AmdGpuOverdrivePlan>>,
     },
     AmdGpuOverdriveGet {
         respond_to: oneshot::Sender<AmdGpuOverdriveStatus>,
@@ -223,14 +229,20 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 let response = self.engine.thinkpad_fan_control(&enable).await;
                 let _ = respond_to.send(response);
             }
-            DeviceMessage::AmdGpuOverdriveEnable { respond_to } => {
+            DeviceMessage::AmdGpuOverdriveEnable {
+                rebuild,
+                respond_to,
+            } => {
                 let response = self
                     .overdrive
-                    .enable()
+                    .enable(rebuild)
                     .await
                     .inspect(|status| info!("AMD GPU overdrive enable: {:?}", status.state))
                     .inspect_err(|err| log_overdrive_failure("enabling", err));
                 let _ = respond_to.send(response);
+            }
+            DeviceMessage::AmdGpuOverdrivePlan { respond_to } => {
+                let _ = respond_to.send(self.overdrive.plan().await);
             }
             DeviceMessage::AmdGpuOverdriveGet { respond_to } => {
                 let _ = respond_to.send(self.overdrive.status().await);
@@ -583,9 +595,19 @@ impl DeviceHandle {
         rx.await?
     }
 
-    pub async fn amd_gpu_overdrive_enable(&self) -> Result<AmdGpuOverdriveStatus> {
+    pub async fn amd_gpu_overdrive_enable(&self, rebuild: bool) -> Result<AmdGpuOverdriveStatus> {
         let (tx, rx) = oneshot::channel();
-        let msg = DeviceMessage::AmdGpuOverdriveEnable { respond_to: tx };
+        let msg = DeviceMessage::AmdGpuOverdriveEnable {
+            rebuild,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn amd_gpu_overdrive_plan(&self) -> Result<AmdGpuOverdrivePlan> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::AmdGpuOverdrivePlan { respond_to: tx };
         let _ = self.sender.send(msg).await;
         rx.await?
     }
@@ -866,12 +888,19 @@ fn apply_name_overrides(overrides: &OverridesController, devices: &mut [DeviceDt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::devices;
     use crate::calibration::{CalibrationStore, FanStateMap};
     use crate::device::{ChannelInfo, ChannelKind, DeviceInfo, DeviceType, TempInfo};
+    use crate::events::amd_gpu_overdrive::OverdriveState;
     use crate::listeners::power_profile::PowerProfiles;
     use crate::repositories::repository::Repositories;
+    use axum::body::Body;
+    use axum::http::{header, Request, StatusCode};
+    use axum::routing::post;
+    use axum::Router;
     use serial_test::serial;
     use std::collections::HashMap;
+    use tower::ServiceExt;
 
     const DEVICE_UID: &str = "dev-lcd";
 
@@ -1073,5 +1102,100 @@ mod tests {
                 Some("Raw Fan".to_string())
             );
         });
+    }
+
+    /// POSTs through the real handler, with a stand-in actor that accepts any enable. Returns
+    /// the answer and the `rebuild` of the run it started, if any.
+    async fn post_overdrive(request: Request<Body>) -> (StatusCode, Option<bool>) {
+        let (sender, mut receiver) = mpsc::channel(1);
+        let app = Router::new()
+            .route(
+                "/amd-gpu-overdrive",
+                post(devices::amd_gpu_overdrive_enable),
+            )
+            .with_state(DeviceHandle { sender });
+        let actor = async {
+            let Some(DeviceMessage::AmdGpuOverdriveEnable {
+                rebuild,
+                respond_to,
+            }) = receiver.recv().await
+            else {
+                return None;
+            };
+            let status = AmdGpuOverdriveStatus {
+                state: OverdriveState::Applying,
+                tool: None,
+                manual_command: None,
+                error: None,
+                rebuild_skipped: rebuild.not(),
+                action: None,
+            };
+            let _ = respond_to.send(Ok(status));
+            Some(rebuild)
+        };
+        let (response, started) = tokio::join!(app.oneshot(request), actor);
+        (response.unwrap().status(), started)
+    }
+
+    fn overdrive_request(
+        uri: &str,
+        content_type: Option<&str>,
+        body: &'static str,
+    ) -> Request<Body> {
+        let mut request = Request::builder().method("POST").uri(uri);
+        if let Some(content_type) = content_type {
+            request = request.header(header::CONTENT_TYPE, content_type);
+        }
+        request.body(Body::from(body)).unwrap()
+    }
+
+    // A CSRF page can only send what needs no preflight: no body, or a CORS-simple content type.
+    #[tokio::test]
+    async fn overdrive_enable_refuses_preflight_free_requests() {
+        const URI: &str = "/amd-gpu-overdrive";
+        let body = r#"{"rebuild":true}"#;
+        let requests = [
+            overdrive_request(URI, None, ""),
+            overdrive_request("/amd-gpu-overdrive?rebuild=true", None, ""),
+            overdrive_request(URI, None, body),
+            overdrive_request(URI, Some("text/plain"), body),
+            overdrive_request(URI, Some("application/x-www-form-urlencoded"), body),
+        ];
+        for request in requests {
+            let (status, started) = post_overdrive(request).await;
+            assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+            assert_eq!(started, None);
+        }
+    }
+
+    // `rebuild` has no default: a JSON body without a bool in it starts nothing.
+    #[tokio::test]
+    async fn overdrive_enable_requires_a_rebuild_bool() {
+        let json = Some("application/json");
+        let (status, started) =
+            post_overdrive(overdrive_request("/amd-gpu-overdrive", json, "")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(started, None);
+        for body in ["{}", r#"{"rebuild":null}"#, r#"{"rebuild":"true"}"#] {
+            let (status, started) =
+                post_overdrive(overdrive_request("/amd-gpu-overdrive", json, body)).await;
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+            assert_eq!(started, None);
+        }
+    }
+
+    // Verify the body's bool reaches the actor unchanged, through the real handler.
+    #[tokio::test]
+    async fn overdrive_enable_passes_rebuild_through() {
+        let json = Some("application/json");
+        for (body, rebuild) in [
+            (r#"{"rebuild":true}"#, true),
+            (r#"{"rebuild":false}"#, false),
+        ] {
+            let (status, started) =
+                post_overdrive(overdrive_request("/amd-gpu-overdrive", json, body)).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(started, Some(rebuild));
+        }
     }
 }

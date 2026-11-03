@@ -17,7 +17,8 @@ use std::time::Duration;
 use crate::api::CCError;
 use crate::cc_fs;
 use crate::events::amd_gpu_overdrive::{
-    AmdGpuOverdriveHandle, AmdGpuOverdriveStatus, OverdriveAction, OverdriveState,
+    AmdGpuOverdriveHandle, AmdGpuOverdrivePlan, AmdGpuOverdriveStatus, OverdriveAction,
+    OverdriveRoute, OverdriveState,
 };
 use crate::events::notifier::{notify_all_sessions, NotificationHandle, NotificationIcon};
 use crate::repositories::gpu::boot_image::{self, BootFacts, BootSetup, RebuildTool, Refusal};
@@ -172,6 +173,7 @@ struct Job {
     error: Option<String>,
     /// The run finished, so its change waits for a reboot.
     done: bool,
+    rebuild_skipped: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -212,9 +214,15 @@ impl OverdriveSetup {
         status_of(&job, &self.paths).await
     }
 
+    /// What `enable` would do, for the user to confirm first.
+    pub async fn plan(&self) -> Result<AmdGpuOverdrivePlan> {
+        enable_plan(&self.paths).await
+    }
+
     /// Starts setup by whichever route the system's boot image tooling supports, and returns
-    /// at once. Completion arrives as an `amd-gpu-overdrive` event.
-    pub async fn enable(&self) -> Result<AmdGpuOverdriveStatus> {
+    /// at once. Completion arrives as an `amd-gpu-overdrive` event. Without `rebuild`, the
+    /// rebuild route only writes the module option and leaves the rebuild to the user.
+    pub async fn enable(&self, rebuild: bool) -> Result<AmdGpuOverdriveStatus> {
         let current_mask = read_pp_feature_mask(self.paths.at(PP_FEATURE_MASK_PATH)).await?;
         let new_mask = compute_overdrive_mask(current_mask);
         if new_mask == current_mask {
@@ -241,19 +249,23 @@ impl OverdriveSetup {
                     Work::RpmOstree(new_mask),
                 );
             }
-            BootSetup::Rebuild(tool) => {
+            BootSetup::Rebuild(tool) if rebuild => {
                 refuse_on_preflight(&self.paths).await?;
                 write_overdrive_conf(&self.paths, new_mask, facts.dracut).await?;
                 self.start(OverdriveAction::Enable, tool.id(), Work::Rebuild(tool));
             }
+            BootSetup::Rebuild(tool) => {
+                write_overdrive_conf(&self.paths, new_mask, facts.dracut).await?;
+                info!("Wrote the AMD GPU overdrive config. The user rebuilds the boot image.");
+                self.job.replace(config_only_job(
+                    Some(tool.id()),
+                    Some(tool.command().to_owned()),
+                ));
+            }
             BootSetup::Unrecognized => {
                 write_overdrive_conf(&self.paths, new_mask, facts.dracut).await?;
                 warn!("Unrecognized boot image tooling, skipping the boot image rebuild.");
-                self.job.replace(Job {
-                    action: Some(OverdriveAction::Enable),
-                    done: true,
-                    ..Job::default()
-                });
+                self.job.replace(config_only_job(None, None));
             }
         }
         let status = self.status().await;
@@ -291,6 +303,71 @@ impl OverdriveSetup {
             handle.broadcast(status_of(&job, &paths).await);
         });
     }
+}
+
+/// An enable that wrote the conf and left the rebuild to the user, with `command` when the
+/// tool is known.
+fn config_only_job(tool: Option<&'static str>, command: Option<String>) -> Job {
+    Job {
+        action: Some(OverdriveAction::Enable),
+        tool,
+        manual_command: command,
+        done: true,
+        rebuild_skipped: true,
+        ..Job::default()
+    }
+}
+
+/// What enabling would do: the route, its exact command, the files written, and any refusal or
+/// failed check that would stop it.
+async fn enable_plan(paths: &OverdrivePaths) -> Result<AmdGpuOverdrivePlan> {
+    let mask = read_pp_feature_mask(paths.at(PP_FEATURE_MASK_PATH)).await?;
+    let new_mask = compute_overdrive_mask(mask);
+    let facts = detect_boot_facts(paths).await?;
+    let plan = match boot_image::classify(&facts) {
+        BootSetup::Refused(refusal) => AmdGpuOverdrivePlan {
+            route: None,
+            tool: None,
+            command: None,
+            files: Vec::new(),
+            problem: Some(refusal_message(refusal, new_mask)),
+        },
+        BootSetup::RpmOstree => {
+            let edit = rpm_ostree_karg_edit_now(&overdrive_karg(new_mask)).await?;
+            AmdGpuOverdrivePlan {
+                route: Some(OverdriveRoute::KernelArgument),
+                tool: Some("rpm-ostree".to_owned()),
+                command: Some(format!("{RPM_OSTREE_PATH} kargs {edit}")),
+                files: Vec::new(),
+                problem: None,
+            }
+        }
+        BootSetup::Rebuild(tool) => AmdGpuOverdrivePlan {
+            route: Some(OverdriveRoute::Rebuild),
+            tool: Some(tool.id().to_owned()),
+            command: Some(tool.command().to_owned()),
+            files: overdrive_files(paths, facts.dracut),
+            problem: preflight_problem(paths).await?,
+        },
+        BootSetup::Unrecognized => AmdGpuOverdrivePlan {
+            route: Some(OverdriveRoute::ConfigOnly),
+            tool: None,
+            command: None,
+            files: overdrive_files(paths, facts.dracut),
+            problem: None,
+        },
+    };
+    Ok(plan)
+}
+
+/// The files the rebuild and config-only routes write.
+fn overdrive_files(paths: &OverdrivePaths, dracut: bool) -> Vec<String> {
+    let mut files = Vec::with_capacity(2);
+    files.push(paths.conf().display().to_string());
+    if dracut {
+        files.push(paths.drop_in().display().to_string());
+    }
+    files
 }
 
 /// A finished or running setup starts no new run. A failure can be retried.
@@ -352,6 +429,7 @@ async fn status_of(job: &Job, paths: &OverdrivePaths) -> AmdGpuOverdriveStatus {
         tool: job.tool.map(str::to_owned),
         manual_command: job.manual_command.clone(),
         error: job.error.clone(),
+        rebuild_skipped: job.rebuild_skipped,
         action: job.action,
     }
 }
@@ -577,20 +655,22 @@ fn rebuild_outcome(tool: RebuildTool, exit_code: i32, output: &str, stderr: &str
     ))
 }
 
-/// `--append-if-missing` compares the whole `key=value`, so an existing mask, as Bazzite sets,
-/// would be duplicated. Replace the key when present instead.
-async fn set_rpm_ostree_karg(karg: &str) -> Result<()> {
-    let current_kargs = match DirectCommand::new(RPM_OSTREE_PATH, PROBE_TIMEOUT)
+/// The edit that sets `karg`, from the kernel arguments as they are now.
+async fn rpm_ostree_karg_edit_now(karg: &str) -> Result<String> {
+    match DirectCommand::new(RPM_OSTREE_PATH, PROBE_TIMEOUT)
         .arg("kargs")
         .run()
         .await
     {
-        ShellCommandResult::Success { stdout, .. } => stdout,
+        ShellCommandResult::Success { stdout, .. } => Ok(rpm_ostree_karg_edit(&stdout, karg)),
         ShellCommandResult::Error(stderr) => {
-            return Err(anyhow!("Error reading rpm-ostree kargs: {stderr}"));
+            Err(anyhow!("Error reading rpm-ostree kargs: {stderr}"))
         }
-    };
-    let edit = rpm_ostree_karg_edit(&current_kargs, karg);
+    }
+}
+
+async fn set_rpm_ostree_karg(karg: &str) -> Result<()> {
+    let edit = rpm_ostree_karg_edit_now(karg).await?;
     let (exit_code, stdout, stderr) = DirectCommand::new(RPM_OSTREE_PATH, RPM_OSTREE_TIMEOUT)
         .arg("kargs")
         .arg("--unchanged-exit-77")
@@ -609,6 +689,8 @@ fn karg_key(karg: &str) -> &str {
     karg.split_once('=').map_or(karg, |(key, _)| key)
 }
 
+/// `--append-if-missing` compares the whole `key=value`, so an existing mask, as Bazzite sets,
+/// would be duplicated. Replace the key when present instead.
 fn rpm_ostree_karg_edit(current_kargs: &str, karg: &str) -> String {
     let key = karg_key(karg);
     let key_present = current_kargs
@@ -853,6 +935,67 @@ mod tests {
         });
     }
 
+    /// A scratch Arch tree with mkinitcpio in effect and overdrive off, and a setup over it.
+    #[cfg(feature = "gated-tests")]
+    fn arch_tree() -> (tempfile::TempDir, OverdriveSetup) {
+        let root = tempfile::tempdir().unwrap();
+        let file = |path: &str, content: &str| {
+            let path = root.path().join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, content).unwrap();
+        };
+        file("sys/module/amdgpu/parameters/ppfeaturemask", "0xfff7bfff\n");
+        file("usr/bin/pacman", "");
+        file("etc/mkinitcpio.d/linux.preset", "");
+        file("usr/share/libalpm/hooks/90-mkinitcpio-install.hook", "");
+        let setup = OverdriveSetup::with_root(
+            AmdGpuOverdriveHandle::new(CancellationToken::new()),
+            NotificationHandle::new(CancellationToken::new()),
+            root.path(),
+        );
+        (root, setup)
+    }
+
+    // Verify the plan names the tool's exact command and the conf it writes, and runs nothing.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_plan_names_the_command_and_files() {
+        crate::rt::test_runtime(async {
+            let (root, setup) = arch_tree();
+            let plan = setup.plan().await.unwrap();
+            assert_eq!(plan.route, Some(OverdriveRoute::Rebuild));
+            assert_eq!(plan.command.as_deref(), Some("/usr/bin/mkinitcpio -P"));
+            let conf = root.path().join("etc/modprobe.d/99-amdgpu-overdrive.conf");
+            assert_eq!(plan.files, [conf.display().to_string()]);
+            assert_eq!(plan.problem, None);
+            assert!(conf.exists().not());
+        });
+    }
+
+    // Verify a config-only enable writes the conf, starts no rebuild, and hands the user the
+    // command, so the state waits for the rebuild and a reboot.
+    #[test]
+    #[cfg(feature = "gated-tests")]
+    fn a_config_only_enable_leaves_the_rebuild_to_the_user() {
+        crate::rt::test_runtime(async {
+            let (root, setup) = arch_tree();
+            let status = setup.enable(false).await.unwrap();
+            assert_eq!(status.state, OverdriveState::RebootRequired);
+            assert!(status.rebuild_skipped);
+            assert_eq!(status.tool.as_deref(), Some("mkinitcpio"));
+            assert_eq!(
+                status.manual_command.as_deref(),
+                Some("/usr/bin/mkinitcpio -P")
+            );
+            let conf = root.path().join("etc/modprobe.d/99-amdgpu-overdrive.conf");
+            assert!(conf.exists());
+            // A second enable finds the setting staged and starts nothing.
+            let again = setup.enable(true).await.unwrap();
+            assert_eq!(again.state, OverdriveState::RebootRequired);
+            assert!(again.rebuild_skipped);
+        });
+    }
+
     // Verify enabling with the module already in overdrive changes nothing on disk.
     #[test]
     #[cfg(feature = "gated-tests")]
@@ -867,7 +1010,7 @@ mod tests {
                 NotificationHandle::new(CancellationToken::new()),
                 root.path(),
             );
-            let status = setup.enable().await.unwrap();
+            let status = setup.enable(true).await.unwrap();
             assert_eq!(status.state, OverdriveState::Active);
             assert_eq!(status.action, None);
             assert!(OverdrivePaths::under(root.path())

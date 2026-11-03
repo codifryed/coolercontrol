@@ -68,7 +68,7 @@ use aide::OperationOutput;
 use anyhow::{anyhow, Result};
 use axum::extract::multipart::MultipartError;
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{DefaultBodyLimit, Request};
+use axum::extract::{DefaultBodyLimit, FromRef, Request};
 use axum::http::header::{HeaderName, HeaderValue};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
@@ -1471,6 +1471,13 @@ pub struct AppState {
     pub power_profiles: crate::listeners::power_profile::PowerProfiles,
     /// Fixed at startup, for the routes that serve HTML.
     pub frame_policy: FramePolicy,
+}
+
+/// Lets a handler take just this handle, so a test can drive it without a whole `AppState`.
+impl FromRef<AppState> for DeviceHandle {
+    fn from_ref(state: &AppState) -> Self {
+        state.device_handle.clone()
+    }
 }
 
 #[cfg(test)]

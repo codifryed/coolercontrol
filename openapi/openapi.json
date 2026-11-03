@@ -592,7 +592,17 @@
           "device"
         ],
         "summary": "AMD GPU Overdrive Enable",
-        "description": "Starts AMD GPU overdrive setup by configuring the ppfeaturemask kernel parameter, and returns at once with the new state. The boot image rebuild or kernel argument change runs in the background, and each state change is sent as the `amd-gpu-overdrive` SSE event. Returns the current state without a new run while a setup is running, or once the setting is staged or active. Requires a reboot to take effect.",
+        "description": "Starts AMD GPU overdrive setup by configuring the ppfeaturemask kernel parameter, and returns at once with the new state. Requires a JSON body with `rebuild`: a request without one is refused and starts nothing. The boot image rebuild or kernel argument change runs in the background, and each state change is sent as the `amd-gpu-overdrive` SSE event. Returns the current state without a new run while a setup is running, or once the setting is staged or active. Requires a reboot to take effect.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmdGpuOverdriveEnableRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "",
@@ -600,6 +610,56 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AmdGpuOverdriveStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The request is invalid"
+          },
+          "401": {
+            "description": "Unauthorized. Invalid credentials were provided."
+          },
+          "403": {
+            "description": "Forbidden. Insufficient permissions."
+          },
+          "404": {
+            "description": "Whatever you're looking for, it's not here."
+          },
+          "500": {
+            "description": "An internal error has occurred."
+          },
+          "429": {
+            "description": "Too Many Requests. Login attempts have been rate limited."
+          },
+          "502": {
+            "description": "Bad Gateway. An error has occurred with an external library."
+          }
+        },
+        "security": [
+          {
+            "CookieAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/amd-gpu-overdrive/plan": {
+      "get": {
+        "tags": [
+          "device"
+        ],
+        "summary": "AMD GPU Overdrive Plan",
+        "description": "Returns what enabling AMD GPU overdrive would do on this system: the route, the exact command run as root, the files written, or why it cannot run now. Clients show it for the user to confirm.",
+        "responses": {
+          "200": {
+            "description": "What enabling would do on this system, for the user to confirm first. Served by\n `GET /amd-gpu-overdrive/plan`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmdGpuOverdrivePlan"
                 }
               }
             }
@@ -6511,7 +6571,7 @@
                   },
                   "amd-gpu-overdrive": {
                     "summary": "The AMD GPU overdrive setup state changed",
-                    "value": "event: amd-gpu-overdrive\ndata: {\"state\":\"reboot_required\",\"tool\":\"mkinitcpio\",\"manual_command\":null,\"error\":null,\"action\":\"enable\"}\n\n"
+                    "value": "event: amd-gpu-overdrive\ndata: {\"state\":\"reboot_required\",\"tool\":\"mkinitcpio\",\"manual_command\":null,\"error\":null,\"rebuild_skipped\":false,\"action\":\"enable\"}\n\n"
                   },
                   "keep-alive": {
                     "summary": "Sent only when the subscription has been idle; ignore it",
@@ -6943,6 +7003,65 @@
           "logs"
         ]
       },
+      "AmdGpuOverdriveEnableRequest": {
+        "type": "object",
+        "properties": {
+          "rebuild": {
+            "description": "Set to false to only write the module option and leave the boot image rebuild to the\n user. Applies where the boot image is rebuilt, not to kernel arguments.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rebuild"
+        ]
+      },
+      "AmdGpuOverdrivePlan": {
+        "description": "What enabling would do on this system, for the user to confirm first. Served by\n `GET /amd-gpu-overdrive/plan`.",
+        "type": "object",
+        "properties": {
+          "command": {
+            "description": "The command the daemon runs as root.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "files": {
+            "description": "The files the daemon writes.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "problem": {
+            "description": "Why setup cannot run now, and what to do instead.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "route": {
+            "description": "Absent when `problem` says setup cannot run.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverdriveRoute"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tool": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "files"
+        ]
+      },
       "AmdGpuOverdriveStatus": {
         "type": "object",
         "properties": {
@@ -6965,11 +7084,15 @@
             ]
           },
           "manual_command": {
-            "description": "What to run as root when the rebuild failed.",
+            "description": "What to run as root when the rebuild failed or was skipped.",
             "type": [
               "string",
               "null"
             ]
+          },
+          "rebuild_skipped": {
+            "description": "No rebuild ran, so the boot image does not reflect the change: the tooling was not\n recognized, or the user chose to only write the config.",
+            "type": "boolean"
           },
           "state": {
             "$ref": "#/components/schemas/OverdriveState"
@@ -6983,7 +7106,8 @@
           }
         },
         "required": [
-          "state"
+          "state",
+          "rebuild_skipped"
         ]
       },
       "AseTek690Request": {
@@ -10390,6 +10514,25 @@
         "enum": [
           "enable",
           "disable"
+        ]
+      },
+      "OverdriveRoute": {
+        "oneOf": [
+          {
+            "description": "Writes the module option, then rebuilds the boot image with `command`.",
+            "type": "string",
+            "const": "rebuild"
+          },
+          {
+            "description": "Sets a kernel argument with `command`.",
+            "type": "string",
+            "const": "kernel_argument"
+          },
+          {
+            "description": "Writes the module option only: no known tool rebuilds the boot image here.",
+            "type": "string",
+            "const": "config_only"
+          }
         ]
       },
       "OverdriveState": {

@@ -229,7 +229,7 @@ fn wire_examples() -> IndexMap<String, ReferenceOr<Example>> {
                 "The AMD GPU overdrive setup state changed",
                 "event: amd-gpu-overdrive\ndata: {\"state\":\"reboot_required\",\
                  \"tool\":\"mkinitcpio\",\"manual_command\":null,\
-                 \"error\":null,\"action\":\"enable\"}\n\n",
+                 \"error\":null,\"rebuild_skipped\":false,\"action\":\"enable\"}\n\n",
             ),
         ),
         (
@@ -547,6 +547,7 @@ mod tests {
                 tool: None,
                 manual_command: None,
                 error: None,
+                rebuild_skipped: false,
                 action: None,
             }),
         ];

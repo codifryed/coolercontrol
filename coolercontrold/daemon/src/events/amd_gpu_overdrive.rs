@@ -38,12 +38,41 @@ pub struct AmdGpuOverdriveStatus {
     pub state: OverdriveState,
     /// The tool that applies the setting, such as `limine-mkinitcpio` or `rpm-ostree`.
     pub tool: Option<String>,
-    /// What to run as root when the rebuild failed.
+    /// What to run as root when the rebuild failed or was skipped.
     pub manual_command: Option<String>,
     /// The failure line, or the last lines of output, when `failed`.
     pub error: Option<String>,
+    /// No rebuild ran, so the boot image does not reflect the change: the tooling was not
+    /// recognized, or the user chose to only write the config.
+    pub rebuild_skipped: bool,
     /// What the current or last run since the daemon started does, absent before any.
     pub action: Option<OverdriveAction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OverdriveRoute {
+    /// Writes the module option, then rebuilds the boot image with `command`.
+    Rebuild,
+    /// Sets a kernel argument with `command`.
+    KernelArgument,
+    /// Writes the module option only: no known tool rebuilds the boot image here.
+    ConfigOnly,
+}
+
+/// What enabling would do on this system, for the user to confirm first. Served by
+/// `GET /amd-gpu-overdrive/plan`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AmdGpuOverdrivePlan {
+    /// Absent when `problem` says setup cannot run.
+    pub route: Option<OverdriveRoute>,
+    pub tool: Option<String>,
+    /// The command the daemon runs as root.
+    pub command: Option<String>,
+    /// The files the daemon writes.
+    pub files: Vec<String>,
+    /// Why setup cannot run now, and what to do instead.
+    pub problem: Option<String>,
 }
 
 /// Broadcast-only handle for publishing the setup state to SSE subscribers, like
@@ -117,6 +146,7 @@ mod tests {
             tool: Some("mkinitcpio".to_owned()),
             manual_command: None,
             error: None,
+            rebuild_skipped: false,
             action: Some(OverdriveAction::Enable),
         };
         handle.broadcast(status.clone());
