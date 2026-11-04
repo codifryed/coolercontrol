@@ -9,6 +9,7 @@ use crate::api::{AppState, CCError};
 use crate::device::health::{
     DeviceHealthDto, FailsafeDelta, HealthEvent, SourceDelta, UnreachableDelta,
 };
+use crate::events::amd_gpu_overdrive::{AmdGpuOverdriveHandle, AmdGpuOverdriveStatus};
 use crate::events::notifier::{DesktopNotification, NotificationHandle};
 use crate::events::system_event::{SystemEvent, SystemEventHandle};
 use crate::logger::LogBufHandle;
@@ -79,6 +80,8 @@ pub enum SseEvent {
     Notification(DesktopNotification),
     /// A change in observed system state, discriminated by its `kind`.
     System(SystemEvent),
+    /// The AMD GPU overdrive setup state changed.
+    AmdGpuOverdrive(AmdGpuOverdriveStatus),
 }
 
 impl From<SseEvent> for Event {
@@ -104,6 +107,7 @@ impl SseEvent {
             SseEvent::Alert(payload) => json_event("alert", &payload, buffer),
             SseEvent::Notification(payload) => json_event("notification", &payload, buffer),
             SseEvent::System(payload) => json_event("system", &payload, buffer),
+            SseEvent::AmdGpuOverdrive(payload) => json_event("amd-gpu-overdrive", &payload, buffer),
         }
     }
 }
@@ -220,6 +224,16 @@ fn wire_examples() -> IndexMap<String, ReferenceOr<Example>> {
             ),
         ),
         (
+            "amd-gpu-overdrive".to_string(),
+            sample(
+                "The AMD GPU overdrive setup state changed",
+                "event: amd-gpu-overdrive\ndata: {\"state\":\"reboot_required\",\
+                 \"tool\":\"mkinitcpio\",\"manual_command\":null,\
+                 \"error\":null,\"rebuild_skipped\":false,\"action\":\"enable\",\
+                 \"removable\":true}\n\n",
+            ),
+        ),
+        (
             "keep-alive".to_string(),
             sample(
                 "Sent only when the subscription has been idle; ignore it",
@@ -240,11 +254,12 @@ pub enum Substream {
     Alerts,
     Notifications,
     System,
+    AmdGpuOverdrive,
 }
 
 impl Substream {
     /// Every substream, the default when `?events=` is absent.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Status,
         Self::Health,
         Self::Logs,
@@ -252,6 +267,7 @@ impl Substream {
         Self::Alerts,
         Self::Notifications,
         Self::System,
+        Self::AmdGpuOverdrive,
     ];
 
     fn parse(token: &str) -> Option<Self> {
@@ -263,6 +279,7 @@ impl Substream {
             "alerts" => Some(Self::Alerts),
             "notifications" => Some(Self::Notifications),
             "system" => Some(Self::System),
+            "amd-gpu-overdrive" => Some(Self::AmdGpuOverdrive),
             _ => None,
         }
     }
@@ -301,7 +318,8 @@ fn parse_substreams(events: Option<&str>) -> Result<Vec<Substream>, CCError> {
         let substream = Substream::parse(token).ok_or_else(|| CCError::UserError {
             msg: format!(
                 "Unknown SSE event stream: '{token}'. \
-                 Valid values: status, health, logs, modes, alerts, notifications, system"
+                 Valid values: status, health, logs, modes, alerts, notifications, system, \
+                 amd-gpu-overdrive"
             ),
         })?;
         if selected.contains(&substream).not() {
@@ -328,6 +346,9 @@ fn sse_response(app_state: &AppState, selected: &[Substream]) -> SseResponse {
             Substream::Alerts => alert_stream(&app_state.alert_handle),
             Substream::Notifications => notification_stream(&app_state.notification_handle),
             Substream::System => system_stream(&app_state.system_event_handle),
+            Substream::AmdGpuOverdrive => {
+                amd_gpu_overdrive_stream(&app_state.amd_gpu_overdrive_handle)
+            }
         });
     }
     NoApi(Sse::new(select_all(streams)).keep_alive(
@@ -459,6 +480,15 @@ fn notification_stream(notification_handle: &NotificationHandle) -> EventStream 
     Box::pin(stream)
 }
 
+fn amd_gpu_overdrive_stream(handle: &AmdGpuOverdriveHandle) -> EventStream {
+    let cancel_token = handle.cancel_token();
+    let stream = BroadcastStream::new(handle.broadcaster().subscribe())
+        .take_until(async move { cancel_token.cancelled().await })
+        .filter_map(|result| async { result.ok() })
+        .map(|status| Ok(SseEvent::AmdGpuOverdrive(status).into()));
+    Box::pin(stream)
+}
+
 fn system_stream(system_event_handle: &SystemEventHandle) -> EventStream {
     let cancel_token = system_event_handle.cancel_token();
     let stream = BroadcastStream::new(system_event_handle.broadcaster().subscribe())
@@ -471,6 +501,7 @@ fn system_stream(system_event_handle: &SystemEventHandle) -> EventStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::amd_gpu_overdrive::OverdriveState;
     use crate::events::notifier::NotificationIcon;
     use crate::events::system_event::SystemEventKind;
 
@@ -512,6 +543,15 @@ mod tests {
                 value: "balanced".to_string(),
                 previous: None,
             }),
+            SseEvent::AmdGpuOverdrive(AmdGpuOverdriveStatus {
+                state: OverdriveState::Applying,
+                tool: None,
+                manual_command: None,
+                error: None,
+                rebuild_skipped: false,
+                action: None,
+                removable: false,
+            }),
         ];
         for event in &all {
             // Exhaustiveness check only; the compiler rejects a missing variant here.
@@ -526,7 +566,8 @@ mod tests {
                 | SseEvent::Mode(_)
                 | SseEvent::Alert(_)
                 | SseEvent::Notification(_)
-                | SseEvent::System(_) => {}
+                | SseEvent::System(_)
+                | SseEvent::AmdGpuOverdrive(_) => {}
             }
         }
         all
@@ -582,6 +623,7 @@ mod tests {
                 "alert",
                 "notification",
                 "system",
+                "amd-gpu-overdrive",
             ]
         );
     }
@@ -618,6 +660,7 @@ mod tests {
             ("alerts", Substream::Alerts),
             ("notifications", Substream::Notifications),
             ("system", Substream::System),
+            ("amd-gpu-overdrive", Substream::AmdGpuOverdrive),
         ];
         assert_eq!(
             cases.len(),

@@ -68,7 +68,7 @@ use aide::OperationOutput;
 use anyhow::{anyhow, Result};
 use axum::extract::multipart::MultipartError;
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{DefaultBodyLimit, Request};
+use axum::extract::{DefaultBodyLimit, FromRef, Request};
 use axum::http::header::{HeaderName, HeaderValue};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
@@ -731,12 +731,16 @@ async fn create_app_state<'s>(
         HardwareReportHandle::new(hardware_support, cancel_token.clone(), main_scope);
     let auth_handle = AuthHandle::new(cancel_token.clone());
     let token_handle = TokenHandle::new(cancel_token.clone()).await;
+    let amd_gpu_overdrive_handle =
+        crate::events::amd_gpu_overdrive::AmdGpuOverdriveHandle::new(cancel_token.clone());
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
         engine.clone(),
         modes_controller.clone(),
         config.clone(),
         overrides_controller.clone(),
+        amd_gpu_overdrive_handle.clone(),
+        notification_handle.clone(),
         cancel_token.clone(),
         main_scope,
     );
@@ -805,6 +809,7 @@ async fn create_app_state<'s>(
         log_buf_handle,
         notification_handle,
         system_event_handle,
+        amd_gpu_overdrive_handle,
         power_profiles,
         frame_policy,
     }
@@ -1462,9 +1467,17 @@ pub struct AppState {
     pub log_buf_handle: LogBufHandle,
     pub notification_handle: crate::events::notifier::NotificationHandle,
     pub system_event_handle: crate::events::system_event::SystemEventHandle,
+    pub amd_gpu_overdrive_handle: crate::events::amd_gpu_overdrive::AmdGpuOverdriveHandle,
     pub power_profiles: crate::listeners::power_profile::PowerProfiles,
     /// Fixed at startup, for the routes that serve HTML.
     pub frame_policy: FramePolicy,
+}
+
+/// Lets a handler take just this handle, so a test can drive it without a whole `AppState`.
+impl FromRef<AppState> for DeviceHandle {
+    fn from_ref(state: &AppState) -> Self {
+        state.device_handle.clone()
+    }
 }
 
 #[cfg(test)]
@@ -2273,6 +2286,70 @@ mod tests {
             write_access: false,
         };
         (raw_token, stored)
+    }
+
+    /// Goal: the overdrive routes that run root commands or detection take only the UI's
+    /// session, so no access token, a plugin's included, reaches them. Method: the real stack
+    /// with a write and a read-only token. Each request fails before its handler if the gate
+    /// regresses to `auth_write_middleware`, so the test never runs a host command: the POST
+    /// has no body, the plan an unknown action, and the DELETE a read-only token. `/health`
+    /// shows both tokens are valid.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
+    fn overdrive_changes_refuse_access_tokens() {
+        let (read_token, read_stored) = read_only_token();
+        let (write_token, write_stored) = read_only_token();
+        let write_stored = crate::auth::token::StoredToken {
+            id: "test-write-token".to_string(),
+            write_access: true,
+            ..write_stored
+        };
+        let request = |method: &str, path: &str, token: &str| {
+            let mut request = axum::http::Request::builder()
+                .method(method)
+                .uri(path)
+                .header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(axum::body::Body::empty())
+                .unwrap();
+            request
+                .extensions_mut()
+                .insert(axum::extract::ConnectInfo(SocketAddr::from((
+                    [127, 0, 0, 1],
+                    40000,
+                ))));
+            request
+        };
+        let requests = vec![
+            request("GET", "/health", &read_token),
+            request("GET", "/health", &write_token),
+            request("POST", "/amd-gpu-overdrive", &write_token),
+            request("GET", "/amd-gpu-overdrive/plan?action=none", &write_token),
+            request("DELETE", "/amd-gpu-overdrive", &read_token),
+        ];
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = AppState {
+                    token_handle: TokenHandle::with_tokens(vec![read_stored, write_stored]),
+                    ..empty_app_state(&cancel_token, main_scope).await
+                };
+                let heads = served_heads(state, None, requests).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+
+                assert_eq!(heads.len(), 5);
+                for health in &heads[..2] {
+                    assert_eq!(health.status, StatusCode::OK);
+                }
+                for overdrive in &heads[2..] {
+                    assert_eq!(overdrive.status, StatusCode::UNAUTHORIZED);
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
     }
 
     /// Goal: the production compression arm of `with_base_layers` compresses API responses

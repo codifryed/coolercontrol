@@ -27,6 +27,13 @@ import {
     UnreachableDelta,
 } from '@/models/DeviceHealth.ts'
 import { SystemEventDTO } from '@/models/PowerProfile.ts'
+import {
+    AmdGpuOverdriveStatus,
+    type OverdriveToast,
+    overdriveEventIsOutcome,
+    overdriveMessageText,
+    overdriveOutcomeToast,
+} from '@/models/AmdGpuOverdrive.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
 import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
@@ -91,6 +98,8 @@ export const useDeviceStore = defineStore('device', () => {
     const accessDenied: Ref<boolean> = ref(false)
     // Capped, pre-highlighted log lines (see logLines.ts).
     const logLines: Ref<LogLine[]> = ref([])
+    // One for the whole system. Undefined until loaded.
+    const amdGpuOverdrive: Ref<AmdGpuOverdriveStatus | undefined> = ref()
     const plugins: Ref<PluginDto[]> = ref([])
     const pluginUiInfo: Ref<Map<string, HasUiDto>> = ref(new Map())
 
@@ -875,6 +884,30 @@ export const useDeviceStore = defineStore('device', () => {
         }
     }
 
+    async function loadAmdGpuOverdrive(): Promise<void> {
+        const status = await daemonClient.getAmdGpuOverdrive()
+        if (status != null) applyAmdGpuOverdrive(status)
+    }
+
+    // A run that ends gets a toast that stays until dismissed: the user may have walked away
+    // during a rebuild that took minutes.
+    function applyAmdGpuOverdrive(status: AmdGpuOverdriveStatus): void {
+        const previous = amdGpuOverdrive.value
+        amdGpuOverdrive.value = status
+        if (!overdriveEventIsOutcome(previous, status)) return
+        const decision = overdriveOutcomeToast(status)
+        if (decision != null) showAmdGpuOverdriveToast(decision)
+    }
+
+    function showAmdGpuOverdriveToast(decision: OverdriveToast): void {
+        toast.add({
+            severity: decision.severity,
+            summary: t(decision.summaryKey),
+            detail: decision.detail != null ? overdriveMessageText(decision.detail, t) : undefined,
+            life: 0,
+        })
+    }
+
     /**
      * One connection carrying every daemon event kind. The daemon multiplexes them onto
      * /sse and tags each with its own event name. Browsers cap concurrent connections per
@@ -995,6 +1028,11 @@ export const useDeviceStore = defineStore('device', () => {
                 case 'system':
                     settingsStore.applySystemEvent(
                         plainToInstance(SystemEventDTO, JSON.parse(data) as object),
+                    )
+                    return
+                case 'amd-gpu-overdrive':
+                    applyAmdGpuOverdrive(
+                        plainToInstance(AmdGpuOverdriveStatus, JSON.parse(data) as object),
                     )
                     return
                 case 'notification':
@@ -1198,6 +1236,10 @@ export const useDeviceStore = defineStore('device', () => {
         handleSessionExpired,
         health,
         logLines,
+        amdGpuOverdrive,
+        loadAmdGpuOverdrive,
+        applyAmdGpuOverdrive,
+        showAmdGpuOverdriveToast,
         acknowledgeIssues,
         loadLogs,
         setPasswd,

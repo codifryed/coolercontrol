@@ -1501,6 +1501,34 @@ export default {
             overdriveEnable: 'Habilitar',
             overdriveActive: 'Ativo',
             overdriveSuccess: 'Overdrive configurado',
+            overdriveSuccessDetail: 'Reinicie para aplicar a alteração.',
+            overdriveConfirmHeader: 'Ativar o overdrive da GPU?',
+            overdriveApplying: 'Aplicando. Não desligue.',
+            overdriveRebootRequired: 'Reinicialização necessária',
+            overdriveFailed: 'Falhou',
+            overdriveRetry: 'Tentar novamente',
+            overdriveFailedSummary: 'Falha na configuração do overdrive',
+            overdriveFailedDetail: '{error}. Execute {command} como root e depois reinicie.',
+            overdriveRebuildStillRunning:
+                'A reconstrução da imagem de inicialização ainda está em andamento em segundo plano. Reinicie somente depois que ela terminar.',
+            overdriveRebuildStillRunningSummary: 'Reconstrução ainda em andamento',
+            overdriveRebuildSkipped:
+                'O CoolerControl não reconhece como este sistema cria sua imagem de inicialização, então não a reconstrói. Se o amdgpu carrega a partir do initramfs, reconstrua-o antes de reiniciar.',
+            overdriveRebuildYourself:
+                'A configuração foi gravada. Execute {command} como root e depois reinicie.',
+            overdriveConfigOnly: 'Apenas gravar a configuração',
+            overdrivePlanDuration:
+                'Isso pode levar alguns minutos. Não desligue até terminar. Uma reinicialização aplica a alteração.',
+            overdrivePlanWrites: 'Arquivos a gravar: {files}',
+            overdrivePlanDeletes: 'Arquivos a apagar: {files}',
+            overdrivePlanRunsAsRoot: 'Executado como root:',
+            overdrivePlanRecovery:
+                'Se o sistema não inicializar depois, escolha um snapshot no menu de inicialização, se o seu sistema os mantiver, ou inicie um sistema live, desfaça a alteração e reconstrua a imagem de inicialização.',
+            overdrivePlanRecoveryDeployment:
+                'Se o sistema não inicializar depois, escolha a implantação anterior no menu de inicialização.',
+            overdriveDisable: 'Desativar',
+            overdriveDisableHeader: 'Desativar o GPU Overdrive?',
+            overdriveRemovedSummary: 'Overdrive removido',
             thinkPadFanControl: 'Controle do Ventilador',
             thinkPadFanControlDesc:
                 'Habilita o Controle do Ventilador ACPI do ThinkPad.\nO controle do ventilador está desabilitado por padrão por razões de segurança.\nProceda por sua conta e risco.',

@@ -1479,6 +1479,34 @@ export default {
             overdriveEnable: 'सक्षम करें',
             overdriveActive: 'सक्रिय',
             overdriveSuccess: 'ओवरड्राइव कॉन्फ़िगर किया गया',
+            overdriveSuccessDetail: 'बदलाव लागू करने के लिए रीबूट करें।',
+            overdriveConfirmHeader: 'GPU ओवरड्राइव सक्षम करें?',
+            overdriveApplying: 'लागू किया जा रहा है। कंप्यूटर बंद न करें।',
+            overdriveRebootRequired: 'रीबूट आवश्यक है',
+            overdriveFailed: 'विफल',
+            overdriveRetry: 'फिर से कोशिश करें',
+            overdriveFailedSummary: 'ओवरड्राइव सेटअप विफल',
+            overdriveFailedDetail: '{error}. {command} को root के रूप में चलाएँ, फिर रीबूट करें।',
+            overdriveRebuildStillRunning:
+                'बूट इमेज का रीबिल्ड अभी भी बैकग्राउंड में चल रहा है। इसके पूरा होने के बाद ही रीबूट करें।',
+            overdriveRebuildStillRunningSummary: 'रीबिल्ड अभी चल रहा है',
+            overdriveRebuildSkipped:
+                'CoolerControl यह नहीं पहचानता कि यह सिस्टम अपनी बूट इमेज कैसे बनाता है, इसलिए वह उसे फिर से नहीं बनाता। अगर amdgpu initramfs से लोड होता है, तो रीबूट से पहले उसे फिर से बनाएँ।',
+            overdriveRebuildYourself:
+                'सेटिंग लिख दी गई है। root के रूप में {command} चलाएँ, फिर रीबूट करें।',
+            overdriveConfigOnly: 'केवल कॉन्फ़िग लिखें',
+            overdrivePlanDuration:
+                'इसमें कुछ मिनट लग सकते हैं। पूरा होने तक बिजली बंद न करें। रीबूट के बाद बदलाव लागू होगा।',
+            overdrivePlanWrites: 'लिखी जाने वाली फ़ाइलें: {files}',
+            overdrivePlanDeletes: 'हटाई जाने वाली फ़ाइलें: {files}',
+            overdrivePlanRunsAsRoot: 'root के रूप में चलता है:',
+            overdrivePlanRecovery:
+                'अगर इसके बाद सिस्टम बूट नहीं होता, तो आपका सिस्टम स्नैपशॉट रखता हो तो बूट मेनू में कोई स्नैपशॉट चुनें, या लाइव सिस्टम शुरू करके बदलाव वापस लें और बूट इमेज फिर से बनाएँ।',
+            overdrivePlanRecoveryDeployment:
+                'अगर इसके बाद सिस्टम बूट नहीं होता, तो बूट मेनू में पिछला डिप्लॉयमेंट चुनें।',
+            overdriveDisable: 'अक्षम करें',
+            overdriveDisableHeader: 'GPU ओवरड्राइव अक्षम करें?',
+            overdriveRemovedSummary: 'ओवरड्राइव हटाया गया',
             thinkPadFanControl: 'पंखा नियंत्रण',
             thinkPadFanControlDesc:
                 'ThinkPad ACPI पंखा नियंत्रण सक्षम करें।\nसुरक्षा कारणों से पंखा नियंत्रण डिफ़ॉल्ट रूप से अक्षम है।\nअपने जोखिम पर आगे बढ़ें।',

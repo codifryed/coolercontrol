@@ -12,6 +12,7 @@ import { TOUR_KEY_PREFIX, TOUR_STEPS } from '@/shell/tour.ts'
 import { SENSOR_LINK_KINDS } from '@/shell/devices/devices.ts'
 import { CHAIN_PILL_KINDS } from '@/shell/cooling/channels.ts'
 import { POWER_PROFILE_NAMES } from '@/shell/cooling/powerProfiles.ts'
+import { OVERDRIVE_I18N_KEYS } from '@/models/AmdGpuOverdrive.ts'
 
 const shellFiles = import.meta.glob('../**/*.{ts,vue}', {
     query: '?raw',
@@ -146,6 +147,22 @@ describe('shell i18n keys', () => {
         const missing: string[] = []
         for (const [path, module] of locales) {
             for (const key of keys) {
+                if (!resolves(module.default, key)) missing.push(`${path}: ${key}`)
+            }
+        }
+        expect(missing).toEqual([])
+    })
+
+    // The overdrive model builds its keys at runtime, so the static sweep cannot see them. The
+    // list is held to what the helpers build by the model's own spec.
+    it('resolves every overdrive key in every locale', () => {
+        const locales = Object.entries(localeFiles).filter(([path]) => !path.endsWith('.d.ts'))
+        expect(locales).toHaveLength(LOCALE_COUNT)
+        expect(OVERDRIVE_I18N_KEYS.length).toBeGreaterThan(0)
+
+        const missing: string[] = []
+        for (const [path, module] of locales) {
+            for (const key of OVERDRIVE_I18N_KEYS) {
                 if (!resolves(module.default, key)) missing.push(`${path}: ${key}`)
             }
         }

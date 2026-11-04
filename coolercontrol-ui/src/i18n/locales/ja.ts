@@ -1488,6 +1488,34 @@ export default {
             overdriveEnable: '有効化',
             overdriveActive: '有効',
             overdriveSuccess: 'オーバードライブ設定完了',
+            overdriveSuccessDetail: '変更を適用するには再起動してください。',
+            overdriveConfirmHeader: 'GPU オーバードライブを有効にしますか？',
+            overdriveApplying: '適用中です。電源を切らないでください。',
+            overdriveRebootRequired: '再起動が必要',
+            overdriveFailed: '失敗',
+            overdriveRetry: '再試行',
+            overdriveFailedSummary: 'オーバードライブの設定に失敗しました',
+            overdriveFailedDetail: '{error}。root で {command} を実行してから再起動してください。',
+            overdriveRebuildStillRunning:
+                'ブートイメージの再構築はまだバックグラウンドで実行中です。完了してから再起動してください。',
+            overdriveRebuildStillRunningSummary: '再構築がまだ実行中です',
+            overdriveRebuildSkipped:
+                'CoolerControl はこのシステムのブートイメージの作成方法を認識できないため、再構築しません。amdgpu が initramfs から読み込まれる場合は、再起動の前に再構築してください。',
+            overdriveRebuildYourself:
+                '設定は書き込まれました。{command} を root として実行してから再起動してください。',
+            overdriveConfigOnly: '設定の書き込みのみ',
+            overdrivePlanDuration:
+                '数分かかることがあります。完了するまで電源を切らないでください。変更は再起動後に反映されます。',
+            overdrivePlanWrites: '書き込むファイル: {files}',
+            overdrivePlanDeletes: '削除するファイル: {files}',
+            overdrivePlanRunsAsRoot: 'root として実行:',
+            overdrivePlanRecovery:
+                'その後システムが起動しない場合は、スナップショットを保持するシステムであればブートメニューでスナップショットを選択するか、ライブシステムを起動して変更を元に戻し、ブートイメージを再構築してください。',
+            overdrivePlanRecoveryDeployment:
+                'その後システムが起動しない場合は、ブートメニューで以前のデプロイメントを選択してください。',
+            overdriveDisable: '無効にする',
+            overdriveDisableHeader: 'GPU オーバードライブを無効にしますか?',
+            overdriveRemovedSummary: 'オーバードライブを削除しました',
             thinkPadFanControl: 'ファン制御',
             thinkPadFanControlDesc:
                 'ThinkPad ACPIファン制御を有効にします。\nファン制御は安全上の理由からデフォルトで無効になっています。\n自己責任で続行してください。',

@@ -6,13 +6,21 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiPlus, mdiToggleSwitchOffOutline } from '@mdi/js'
+import { mdiLoading, mdiPlus, mdiToggleSwitchOffOutline } from '@mdi/js'
 import HelpIcon from '@/components/info/HelpIcon.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { type Color, DeviceType, getDeviceTypeDisplayName, type UID } from '@/models/Device.ts'
 import { getDriverTypeDisplayName } from '@/models/DeviceInfo.ts'
+import {
+    overdriveButtonAction,
+    overdriveCanDisable,
+    overdriveHint,
+    overdriveMessageText,
+    overdriveRowState,
+    overdriveStateLabelKey,
+} from '@/models/AmdGpuOverdrive.ts'
 import CCColorPicker from '@/components/CCColorPicker.vue'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -104,8 +112,37 @@ const hasHwmonDriver = computed(
     () => device.value?.info?.driver_info.locations.find((loc) => loc.includes('hwmon')) != null,
 )
 const isAmdGpuWithOverdrive = computed(() => device.value?.info?.amd_gpu_overdrive != null)
-const amdOverdriveEnabled = computed(() => device.value?.info?.amd_gpu_overdrive === true)
-const amdOverdriveEnabling = ref(false)
+const overdriveState = computed(() =>
+    overdriveRowState(deviceStore.amdGpuOverdrive, device.value?.info?.amd_gpu_overdrive === true),
+)
+const overdriveHintText = computed((): string | undefined => {
+    const status = deviceStore.amdGpuOverdrive
+    const hint = status != null ? overdriveHint(status) : undefined
+    return hint != null ? overdriveMessageText(hint, t) : undefined
+})
+const overdriveAction = computed(() => deviceStore.amdGpuOverdrive?.action)
+const overdriveLabelClass = computed((): string => {
+    switch (overdriveState.value) {
+        case 'active':
+            return 'text-success'
+        case 'applying':
+            return 'text-warning'
+        case 'failed':
+            return 'text-error'
+        default:
+            return 'text-info'
+    }
+})
+const overdriveCanDisableNow = computed(() => overdriveCanDisable(deviceStore.amdGpuOverdrive))
+const amdOverdriveBusy = ref(false)
+// The page is reused across devices, so this follows the device rather than the mount.
+watch(
+    isAmdGpuWithOverdrive,
+    async (hasOverdrive) => {
+        if (hasOverdrive) await deviceStore.loadAmdGpuOverdrive()
+    },
+    { immediate: true },
+)
 const isThinkPad = computed(() => device.value?.info?.thinkpad_fan_control != null)
 const hasPerThreadFreq = computed(() => device.value?.info?.per_thread_freq != null)
 
@@ -160,11 +197,18 @@ watch(delayMillis, () => {
 })
 onBeforeUnmount(() => clearTimeout(delayCommitTimer))
 
-const onEnableOverdrive = async (): Promise<void> => {
-    amdOverdriveEnabling.value = true
-    await deviceActions.enableAmdOverdrive()
-    amdOverdriveEnabling.value = false
+const runOverdrive = async (change: () => Promise<void>): Promise<void> => {
+    amdOverdriveBusy.value = true
+    await change()
+    amdOverdriveBusy.value = false
 }
+const onEnableOverdrive = () =>
+    runOverdrive(
+        overdriveButtonAction(overdriveState.value, overdriveAction.value) === 'disable'
+            ? deviceActions.disableAmdOverdrive
+            : deviceActions.enableAmdOverdrive,
+    )
+const onDisableOverdrive = () => runOverdrive(deviceActions.disableAmdOverdrive)
 
 const thinkPadFanControl = computed({
     get: () => settingsStore.thinkPadFanControlEnabled,
@@ -353,18 +397,54 @@ const enableDevice = openManageSensors
                                 />
                                 {{ t('components.deviceExtensionSettings.overdrive') }}
                             </span>
-                            <span v-if="amdOverdriveEnabled" class="text-base text-success">
-                                {{ t('components.deviceExtensionSettings.overdriveActive') }}
+                            <span class="flex items-center gap-3">
+                                <span
+                                    v-if="overdriveState !== 'not_configured'"
+                                    class="flex items-center gap-2 text-base"
+                                    :class="overdriveLabelClass"
+                                >
+                                    <svg-icon
+                                        v-if="overdriveState === 'applying'"
+                                        type="mdi"
+                                        :path="mdiLoading"
+                                        :size="18"
+                                        class="shrink-0 animate-spin"
+                                    />
+                                    {{ t(overdriveStateLabelKey(overdriveState)) }}
+                                    <HelpIcon
+                                        v-if="overdriveHintText"
+                                        :text="overdriveHintText"
+                                        :size="1.125"
+                                    />
+                                </span>
+                                <UiButton
+                                    v-if="
+                                        overdriveState === 'not_configured' ||
+                                        overdriveState === 'failed'
+                                    "
+                                    size="sm"
+                                    variant="outline"
+                                    :disabled="amdOverdriveBusy"
+                                    @click="onEnableOverdrive"
+                                >
+                                    {{
+                                        overdriveState === 'failed'
+                                            ? t('components.deviceExtensionSettings.overdriveRetry')
+                                            : t(
+                                                  'components.deviceExtensionSettings.overdriveEnable',
+                                              )
+                                    }}
+                                </UiButton>
+                                <UiButton
+                                    v-if="overdriveCanDisableNow"
+                                    size="sm"
+                                    variant="outline"
+                                    :disabled="amdOverdriveBusy"
+                                    @click="onDisableOverdrive"
+                                >
+                                    {{ t('components.deviceExtensionSettings.overdriveDisable') }}
+                                </UiButton>
                             </span>
-                            <UiButton
-                                v-else
-                                size="sm"
-                                variant="outline"
-                                :disabled="amdOverdriveEnabling"
-                                @click="onEnableOverdrive"
-                            >
-                                {{ t('components.deviceExtensionSettings.overdriveEnable') }}
-                            </UiButton>
                         </div>
                     </template>
                     <template v-if="isThinkPad">

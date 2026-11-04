@@ -159,6 +159,7 @@ argon2 = "0.5"
 subtle = "2.6"
 toml_edit = { version = "0.23.9", features = ["serde"] }
 nix = { version = "0.31.3", default-features = false, features = [
+  "fs",
   "user",
   "signal",
   "process",

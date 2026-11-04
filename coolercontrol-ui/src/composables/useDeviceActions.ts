@@ -7,14 +7,23 @@
 // direct PrimeVue imports (dependency discipline).
 
 import { useConfirm } from '@/shell/confirm'
+import { useDialog } from '@/shell/dialog'
 import { useToast } from '@/shell/toast'
 import { useI18n } from 'vue-i18n'
 import { mdiAlertOutline } from '@mdi/js'
 import type { UID } from '@/models/Device.ts'
 import { CCChannelSettings, CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
 import { ErrorResponse } from '@/models/ErrorResponse.ts'
+import {
+    AmdGpuOverdriveStatus,
+    type OverdriveAction,
+    overdriveOutcomeToast,
+    overdriveResponseIsOutcome,
+    responseIsCurrent,
+} from '@/models/AmdGpuOverdrive.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import OverdrivePlanDialog from '@/shell/devices/OverdrivePlanDialog.vue'
 
 // 'cancelled' is the user backing out of the restart confirm, which must not be
 // treated as a failure: only 'failed' means the daemon refused the change.
@@ -22,6 +31,7 @@ export type SensorChangeOutcome = 'saved' | 'failed' | 'cancelled'
 
 export function useDeviceActions() {
     const confirm = useConfirm()
+    const dialog = useDialog()
     const toast = useToast()
     const { t } = useI18n()
     const deviceStore = useDeviceStore()
@@ -123,24 +133,78 @@ export function useDeviceActions() {
         })
     }
 
-    const enableAmdOverdrive = async (): Promise<void> => {
-        const result = await deviceStore.daemonClient.amdGpuOverdriveEnable()
+    const toastDaemonError = (result: ErrorResponse): void => {
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: result.error ?? t('layout.settings.devices.unknownError'),
+            life: 6000,
+        })
+    }
+
+    // A request that finished at once gets its toast here. A background run gets its toast from
+    // the event that ends it, which may also overtake this response.
+    const applyOverdriveResponse = (
+        atRequest: AmdGpuOverdriveStatus | undefined,
+        result: AmdGpuOverdriveStatus | ErrorResponse,
+    ): void => {
         if (result instanceof ErrorResponse) {
-            toast.add({
-                severity: 'error',
-                summary: t('common.error'),
-                detail: result.error ?? t('layout.settings.devices.unknownError'),
-                life: 6000,
-            })
-        } else {
-            toast.add({
-                severity: 'success',
-                summary: t('components.deviceExtensionSettings.overdriveSuccess'),
-                detail: result,
-                life: 10000,
-            })
+            toastDaemonError(result)
+            return
+        }
+        if (overdriveResponseIsOutcome(atRequest, result)) {
+            const decision = overdriveOutcomeToast(result)
+            if (decision != null) deviceStore.showAmdGpuOverdriveToast(decision)
+        }
+        if (responseIsCurrent(atRequest, deviceStore.amdGpuOverdrive)) {
+            deviceStore.applyAmdGpuOverdrive(result)
         }
     }
+
+    const requestAmdOverdrive = async (rebuild: boolean): Promise<void> => {
+        const atRequest = deviceStore.amdGpuOverdrive
+        applyOverdriveResponse(
+            atRequest,
+            await deviceStore.daemonClient.amdGpuOverdriveEnable(rebuild),
+        )
+    }
+
+    const requestAmdOverdriveDisable = async (): Promise<void> => {
+        const atRequest = deviceStore.amdGpuOverdrive
+        applyOverdriveResponse(atRequest, await deviceStore.daemonClient.amdGpuOverdriveDisable())
+    }
+
+    // Both directions write system files and rebuild every kernel's boot image, so the user
+    // sees the exact command first. Resolves once the request is answered or the user backs out.
+    const openOverdrivePlan = async (
+        action: OverdriveAction,
+        proceed: (rebuild: boolean) => Promise<void>,
+    ): Promise<void> => {
+        const plan = await deviceStore.daemonClient.getAmdGpuOverdrivePlan(action)
+        if (plan instanceof ErrorResponse) {
+            toastDaemonError(plan)
+            return
+        }
+        const header =
+            action === 'enable'
+                ? t('components.deviceExtensionSettings.overdriveConfirmHeader')
+                : t('components.deviceExtensionSettings.overdriveDisableHeader')
+        return new Promise((resolve) => {
+            dialog.open(OverdrivePlanDialog, {
+                props: { header, position: 'center', modal: true },
+                data: { plan, action },
+                onClose: async (options) => {
+                    if (options.data != null) await proceed(options.data.rebuild)
+                    resolve()
+                },
+            })
+        })
+    }
+
+    const enableAmdOverdrive = (): Promise<void> => openOverdrivePlan('enable', requestAmdOverdrive)
+
+    const disableAmdOverdrive = (): Promise<void> =>
+        openOverdrivePlan('disable', requestAmdOverdriveDisable)
 
     const applyThinkPadFanControl = (enable: boolean): void => {
         settingsStore.applyThinkPadFanControl(enable)
@@ -296,6 +360,7 @@ export function useDeviceActions() {
         setPerThreadFreq,
         switchToHwmon,
         enableAmdOverdrive,
+        disableAmdOverdrive,
         applyThinkPadFanControl,
         applySensorChanges,
         applySensorChangesBatch,
