@@ -1472,59 +1472,33 @@ export default {
             overdriveEnable: 'Enable',
             overdriveActive: 'Active',
             overdriveSuccess: 'Overdrive Configured',
-            overdriveSuccessDetail: 'Reboot to apply AMD GPU overdrive.',
+            overdriveSuccessDetail: 'Reboot to apply the change.',
             overdriveConfirmHeader: 'Enable GPU Overdrive?',
             overdriveApplying: 'Applying. Do not power off.',
             overdriveRebootRequired: 'Reboot required',
             overdriveFailed: 'Failed',
             overdriveRetry: 'Retry',
             overdriveFailedSummary: 'Overdrive Setup Failed',
-            overdriveFailedDetail:
-                '{error}. The setting is written. Run {command} as root, then reboot.',
-            overdriveFailedError: '{error}',
+            overdriveFailedDetail: '{error}. Run {command} as root, then reboot.',
             overdriveRebuildStillRunning:
                 'The boot image rebuild is still running in the background. Reboot only once it has finished.',
             overdriveRebuildStillRunningSummary: 'Rebuild Still Running',
             overdriveRebuildSkipped:
-                'CoolerControl did not recognize how this system builds its boot image, so it did not rebuild it. If amdgpu loads from the initramfs, rebuild it before rebooting. Otherwise, just reboot.',
+                'CoolerControl does not recognize how this system builds its boot image, so it does not rebuild it. If amdgpu loads from the initramfs, rebuild it before rebooting.',
             overdriveRebuildYourself: 'The setting is written. Run {command} as root, then reboot.',
-            overdriveEnableAndRebuild: 'Enable and rebuild',
             overdriveConfigOnly: 'Only write the config',
-            overdrivePlanRebuild:
-                'CoolerControl will write {files}, then rebuild the boot images by running this as root:',
-            overdrivePlanKernelArgument:
-                'CoolerControl will add the kernel argument by running this as root:',
-            overdrivePlanConfigOnly:
-                'CoolerControl will write {files}. It does not recognize how this system builds its boot image, so it will not rebuild it. If amdgpu loads from the initramfs, rebuild it yourself before rebooting.',
             overdrivePlanDuration:
                 'This can take a few minutes. Do not power off until it finishes. A reboot applies the change.',
+            overdrivePlanWrites: 'Files to write: {files}',
+            overdrivePlanDeletes: 'Files to delete: {files}',
+            overdrivePlanRunsAsRoot: 'Runs as root:',
             overdrivePlanRecovery:
-                'If the system does not boot afterwards, pick a snapshot in the boot menu if your system keeps them, or start a live system, delete {conf} and rebuild the boot image.',
+                'If the system does not boot afterwards, pick a snapshot in the boot menu if your system keeps them, or start a live system, undo the change and rebuild the boot image.',
             overdrivePlanRecoveryDeployment:
                 'If the system does not boot afterwards, pick the previous deployment in the boot menu.',
-            overdrivePlanBugReports:
-                'While overdrive is on, amdgpu logs a warning at boot asking you to turn it off before reporting bugs unrelated to overdrive.',
             overdriveDisable: 'Disable',
             overdriveDisableHeader: 'Disable GPU Overdrive?',
-            overdriveDisableAndRebuild: 'Disable and rebuild',
-            overdriveRemoving: 'Removing. Do not power off.',
-            overdriveRebootToTurnOff: 'Reboot to turn off',
             overdriveRemovedSummary: 'Overdrive Removed',
-            overdriveRemovedDetail: 'Reboot to turn off AMD GPU overdrive.',
-            overdriveRemovedNowDetail: 'AMD GPU overdrive is off.',
-            overdriveRemovedRebuildSkipped:
-                'The setting is removed, but CoolerControl did not recognize how this system builds its boot image, so it did not rebuild it. If amdgpu loads from the initramfs, rebuild it before rebooting.',
-            overdriveRemoveFailedSummary: 'Overdrive Removal Failed',
-            overdriveRemoveFailedDetail:
-                '{error}. The setting is removed. Run {command} as root, then reboot.',
-            overdrivePlanRemoveRebuild:
-                'CoolerControl will delete {files}, then rebuild the boot images by running this as root:',
-            overdrivePlanRemoveConfigOnly:
-                'CoolerControl will delete {files}. It does not recognize how this system builds its boot image, so it will not rebuild it. If amdgpu loads from the initramfs, rebuild it yourself before rebooting.',
-            overdrivePlanRemoveRecovery:
-                'If the system does not boot afterwards, pick a snapshot in the boot menu if your system keeps them, or start a live system and rebuild the boot image.',
-            overdrivePlanRebuildOnly:
-                'CoolerControl will rebuild the boot images by running this as root:',
             thinkPadFanControl: 'Fan Control',
             thinkPadFanControlDesc:
                 'Enables ThinkPad ACPI Fan Control.\nFan control is disabled by default for safety reasons.\nProceed at your own risk.',

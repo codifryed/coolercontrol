@@ -31,6 +31,7 @@ import {
     AmdGpuOverdriveStatus,
     type OverdriveToast,
     overdriveEventIsOutcome,
+    overdriveMessageText,
     overdriveOutcomeToast,
 } from '@/models/AmdGpuOverdrive.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
@@ -902,7 +903,7 @@ export const useDeviceStore = defineStore('device', () => {
         toast.add({
             severity: decision.severity,
             summary: t(decision.summaryKey),
-            detail: t(decision.detail.key, decision.detail.params),
+            detail: decision.detail != null ? overdriveMessageText(decision.detail, t) : undefined,
             life: 0,
         })
     }

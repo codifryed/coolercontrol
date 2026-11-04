@@ -7,12 +7,14 @@ import {
     AmdGpuOverdrivePlan,
     AmdGpuOverdriveStatus,
     OVERDRIVE_I18N_KEYS,
+    type OverdriveMessage,
     overdriveButtonAction,
     overdriveCanDisable,
     overdriveEventIsOutcome,
     overdriveHint,
+    overdriveMessageText,
     overdriveOutcomeToast,
-    overdrivePlanIntro,
+    overdrivePlanFiles,
     overdrivePlanRecovery,
     overdrivePlanTakesTime,
     overdriveResponseIsOutcome,
@@ -31,6 +33,9 @@ const resolve = (key: string): unknown =>
     key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], en)
 
 const KEYS = 'components.deviceExtensionSettings.'
+
+const keyOf = (message: OverdriveMessage | undefined): string | undefined =>
+    message != null && 'key' in message ? message.key : undefined
 
 describe('overdriveRowState', () => {
     it('falls back to the device info without a status', () => {
@@ -55,7 +60,7 @@ describe('overdriveHint', () => {
             params: { error: 'no space', command: '/usr/bin/mkinitcpio -P' },
         })
         const removal = status({ ...failed, action: 'disable' })
-        expect(overdriveHint(removal)?.key).toBe(`${KEYS}overdriveRemoveFailedDetail`)
+        expect(overdriveHint(removal)).toEqual(overdriveHint(failed))
     })
 
     it('tells the user a rebuild that outlasted the wait is still running', () => {
@@ -69,8 +74,7 @@ describe('overdriveHint', () => {
 
     it('shows the bare error when there is no command', () => {
         expect(overdriveHint(status({ state: 'failed', error: 'rpm-ostree failed' }))).toEqual({
-            key: `${KEYS}overdriveFailedError`,
-            params: { error: 'rpm-ostree failed' },
+            text: 'rpm-ostree failed',
         })
     })
 
@@ -80,29 +84,36 @@ describe('overdriveHint', () => {
             rebuild_skipped: true,
             manual_command: '/usr/bin/dracut --regenerate-all --force',
         })
-        expect(overdriveHint(yourself)?.key).toBe(`${KEYS}overdriveRebuildYourself`)
+        expect(keyOf(overdriveHint(yourself))).toBe(`${KEYS}overdriveRebuildYourself`)
         const unknown = status({ state: 'reboot_required', rebuild_skipped: true })
-        expect(overdriveHint(unknown)?.key).toBe(`${KEYS}overdriveRebuildSkipped`)
+        expect(keyOf(overdriveHint(unknown))).toBe(`${KEYS}overdriveRebuildSkipped`)
         const done = status({ state: 'reboot_required' })
-        expect(overdriveHint(done)?.key).toBe(`${KEYS}overdriveSuccessDetail`)
+        expect(keyOf(overdriveHint(done))).toBe(`${KEYS}overdriveSuccessDetail`)
     })
 
-    it('explains a finished removal', () => {
+    it('words a finished removal like a finished setup', () => {
         const pending = status({ state: 'reboot_required', action: 'disable' })
-        expect(overdriveHint(pending)?.key).toBe(`${KEYS}overdriveRemovedDetail`)
+        expect(keyOf(overdriveHint(pending))).toBe(`${KEYS}overdriveSuccessDetail`)
+        const skipped = status({ ...pending, rebuild_skipped: true })
+        expect(keyOf(overdriveHint(skipped))).toBe(`${KEYS}overdriveRebuildSkipped`)
         const off = status({ state: 'not_configured', action: 'disable' })
-        expect(overdriveHint(off)?.key).toBe(`${KEYS}overdriveRemovedNowDetail`)
-        expect(overdriveHint(status({ state: 'not_configured' }))).toBeUndefined()
+        expect(overdriveHint(off)).toBeUndefined()
+    })
+})
+
+describe('overdriveMessageText', () => {
+    it('translates a key and passes daemon text through', () => {
+        const t = (key: string, params: Record<string, string>) => `${key}|${params.command}`
+        expect(overdriveMessageText({ key: 'k', params: { command: 'c' } }, t)).toBe('k|c')
+        expect(overdriveMessageText({ text: 'No space left' }, t)).toBe('No space left')
     })
 })
 
 describe('labels and buttons', () => {
-    it('says which way a run goes', () => {
-        expect(overdriveStateLabelKey('applying', 'enable')).toBe(`${KEYS}overdriveApplying`)
-        expect(overdriveStateLabelKey('applying', 'disable')).toBe(`${KEYS}overdriveRemoving`)
-        expect(overdriveStateLabelKey('reboot_required', 'disable')).toBe(
-            `${KEYS}overdriveRebootToTurnOff`,
-        )
+    it('labels each state', () => {
+        expect(overdriveStateLabelKey('applying')).toBe(`${KEYS}overdriveApplying`)
+        expect(overdriveStateLabelKey('reboot_required')).toBe(`${KEYS}overdriveRebootRequired`)
+        expect(overdriveStateLabelKey('not_configured')).toBe(`${KEYS}overdriveEnable`)
     })
 
     it('retries the action that failed', () => {
@@ -123,27 +134,21 @@ describe('labels and buttons', () => {
 describe('plan text', () => {
     const files = ['/etc/modprobe.d/99-amdgpu-overdrive.conf']
 
-    it('describes each route', () => {
+    it('lists the files written or deleted', () => {
         const rebuild = plan({ route: 'rebuild', command: '/usr/bin/mkinitcpio -P', files })
-        expect(overdrivePlanIntro(rebuild, 'enable')).toEqual({
-            key: `${KEYS}overdrivePlanRebuild`,
+        expect(overdrivePlanFiles(rebuild, 'enable')).toEqual({
+            key: `${KEYS}overdrivePlanWrites`,
             params: { files: files[0] },
         })
-        expect(overdrivePlanIntro(rebuild, 'disable')?.key).toBe(
-            `${KEYS}overdrivePlanRemoveRebuild`,
-        )
-        const karg = plan({ route: 'kernel_argument', command: '/usr/bin/rpm-ostree kargs' })
-        expect(overdrivePlanIntro(karg, 'enable')?.key).toBe(`${KEYS}overdrivePlanKernelArgument`)
-        const configOnly = plan({ route: 'config_only', files })
-        expect(overdrivePlanIntro(configOnly, 'disable')?.key).toBe(
-            `${KEYS}overdrivePlanRemoveConfigOnly`,
-        )
-        expect(overdrivePlanIntro(plan({ problem: 'NixOS' }), 'enable')).toBeUndefined()
+        expect(keyOf(overdrivePlanFiles(rebuild, 'disable'))).toBe(`${KEYS}overdrivePlanDeletes`)
     })
 
-    it('shows only the rebuild for a retried disable whose files are gone', () => {
+    it('lists no files where there are none or the plan cannot run', () => {
         const retry = plan({ route: 'rebuild', command: '/usr/bin/mkinitcpio -P' })
-        expect(overdrivePlanIntro(retry, 'disable')?.key).toBe(`${KEYS}overdrivePlanRebuildOnly`)
+        expect(overdrivePlanFiles(retry, 'disable')).toBeUndefined()
+        const karg = plan({ route: 'kernel_argument', command: '/usr/bin/rpm-ostree kargs' })
+        expect(overdrivePlanFiles(karg, 'enable')).toBeUndefined()
+        expect(overdrivePlanFiles(plan({ problem: 'NixOS', files }), 'enable')).toBeUndefined()
     })
 
     it('warns about the wait only where a command runs', () => {
@@ -156,12 +161,12 @@ describe('plan text', () => {
         const rebuild = plan({ route: 'rebuild', files })
         expect(overdrivePlanRecovery(rebuild, 'enable')).toEqual({
             key: `${KEYS}overdrivePlanRecovery`,
-            params: { conf: files[0] },
+            params: {},
         })
-        expect(overdrivePlanRecovery(rebuild, 'disable')?.key).toBe(
-            `${KEYS}overdrivePlanRemoveRecovery`,
+        expect(overdrivePlanRecovery(rebuild, 'disable')).toEqual(
+            overdrivePlanRecovery(rebuild, 'enable'),
         )
-        expect(overdrivePlanRecovery(plan({ route: 'kernel_argument' }), 'enable')?.key).toBe(
+        expect(keyOf(overdrivePlanRecovery(plan({ route: 'kernel_argument' }), 'enable'))).toBe(
             `${KEYS}overdrivePlanRecoveryDeployment`,
         )
         expect(overdrivePlanRecovery(plan({ problem: 'NixOS' }), 'enable')).toBeUndefined()
@@ -179,10 +184,14 @@ describe('toasts', () => {
         const failed = overdriveOutcomeToast(status({ state: 'failed', action: 'disable' }))
         expect(failed).toMatchObject({
             severity: 'error',
-            summaryKey: `${KEYS}overdriveRemoveFailedSummary`,
+            summaryKey: `${KEYS}overdriveFailedSummary`,
         })
         const off = overdriveOutcomeToast(status({ state: 'not_configured', action: 'disable' }))
-        expect(off?.summaryKey).toBe(`${KEYS}overdriveRemovedSummary`)
+        expect(off).toEqual({
+            severity: 'success',
+            summaryKey: `${KEYS}overdriveRemovedSummary`,
+            detail: undefined,
+        })
     })
 
     it('warns that a rebuild that outlasted the wait is still running', () => {

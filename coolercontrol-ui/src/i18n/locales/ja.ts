@@ -1486,60 +1486,34 @@ export default {
             overdriveEnable: '有効化',
             overdriveActive: '有効',
             overdriveSuccess: 'オーバードライブ設定完了',
-            overdriveSuccessDetail: 'AMD GPU オーバードライブを適用するには再起動してください。',
+            overdriveSuccessDetail: '変更を適用するには再起動してください。',
             overdriveConfirmHeader: 'GPU オーバードライブを有効にしますか？',
             overdriveApplying: '適用中です。電源を切らないでください。',
             overdriveRebootRequired: '再起動が必要',
             overdriveFailed: '失敗',
             overdriveRetry: '再試行',
             overdriveFailedSummary: 'オーバードライブの設定に失敗しました',
-            overdriveFailedDetail:
-                '{error}。設定は書き込まれています。root で {command} を実行してから再起動してください。',
-            overdriveFailedError: '{error}',
+            overdriveFailedDetail: '{error}。root で {command} を実行してから再起動してください。',
             overdriveRebuildStillRunning:
                 'ブートイメージの再構築はまだバックグラウンドで実行中です。完了してから再起動してください。',
             overdriveRebuildStillRunningSummary: '再構築がまだ実行中です',
             overdriveRebuildSkipped:
-                'CoolerControl はこのシステムのブートイメージの作成方法を認識できなかったため、再構築しませんでした。amdgpu が initramfs から読み込まれる場合は、再起動の前に再構築してください。そうでなければ、再起動するだけで構いません。',
+                'CoolerControl はこのシステムのブートイメージの作成方法を認識できないため、再構築しません。amdgpu が initramfs から読み込まれる場合は、再起動の前に再構築してください。',
             overdriveRebuildYourself:
                 '設定は書き込まれました。{command} を root として実行してから再起動してください。',
-            overdriveEnableAndRebuild: '有効にして再構築',
             overdriveConfigOnly: '設定の書き込みのみ',
-            overdrivePlanRebuild:
-                'CoolerControl は {files} を書き込み、次のコマンドを root として実行してブートイメージを再構築します:',
-            overdrivePlanKernelArgument:
-                'CoolerControl は次のコマンドを root として実行してカーネル引数を追加します:',
-            overdrivePlanConfigOnly:
-                'CoolerControl は {files} を書き込みます。このシステムのブートイメージの作成方法を認識できないため、再構築は行いません。amdgpu が initramfs から読み込まれる場合は、再起動の前にご自身で再構築してください。',
             overdrivePlanDuration:
                 '数分かかることがあります。完了するまで電源を切らないでください。変更は再起動後に反映されます。',
+            overdrivePlanWrites: '書き込むファイル: {files}',
+            overdrivePlanDeletes: '削除するファイル: {files}',
+            overdrivePlanRunsAsRoot: 'root として実行:',
             overdrivePlanRecovery:
-                'その後システムが起動しない場合は、スナップショットを保持するシステムであればブートメニューでスナップショットを選択するか、ライブシステムを起動して {conf} を削除し、ブートイメージを再構築してください。',
+                'その後システムが起動しない場合は、スナップショットを保持するシステムであればブートメニューでスナップショットを選択するか、ライブシステムを起動して変更を元に戻し、ブートイメージを再構築してください。',
             overdrivePlanRecoveryDeployment:
                 'その後システムが起動しない場合は、ブートメニューで以前のデプロイメントを選択してください。',
-            overdrivePlanBugReports:
-                'オーバードライブが有効な間、amdgpu は起動時に、オーバードライブと無関係なバグを報告する前に無効にするよう求める警告をログに出力します。',
             overdriveDisable: '無効にする',
             overdriveDisableHeader: 'GPU オーバードライブを無効にしますか?',
-            overdriveDisableAndRebuild: '無効にして再構築',
-            overdriveRemoving: '削除中です。電源を切らないでください。',
-            overdriveRebootToTurnOff: '再起動で無効になります',
             overdriveRemovedSummary: 'オーバードライブを削除しました',
-            overdriveRemovedDetail: 'AMD GPU オーバードライブを無効にするには再起動してください。',
-            overdriveRemovedNowDetail: 'AMD GPU オーバードライブは無効です。',
-            overdriveRemovedRebuildSkipped:
-                '設定は削除されましたが、CoolerControl はこのシステムのブートイメージの作成方法を認識できなかったため、再構築しませんでした。amdgpu が initramfs から読み込まれる場合は、再起動の前に再構築してください。',
-            overdriveRemoveFailedSummary: 'オーバードライブの削除に失敗しました',
-            overdriveRemoveFailedDetail:
-                '{error}。設定は削除されました。{command} を root として実行してから再起動してください。',
-            overdrivePlanRemoveRebuild:
-                'CoolerControl は {files} を削除し、次のコマンドを root として実行してブートイメージを再構築します:',
-            overdrivePlanRemoveConfigOnly:
-                'CoolerControl は {files} を削除します。このシステムのブートイメージの作成方法を認識できないため、再構築は行いません。amdgpu が initramfs から読み込まれる場合は、再起動の前にご自身で再構築してください。',
-            overdrivePlanRemoveRecovery:
-                'その後システムが起動しない場合は、スナップショットを保持するシステムであればブートメニューでスナップショットを選択するか、ライブシステムを起動してブートイメージを再構築してください。',
-            overdrivePlanRebuildOnly:
-                'CoolerControl は次のコマンドを root として実行してブートイメージを再構築します:',
             thinkPadFanControl: 'ファン制御',
             thinkPadFanControlDesc:
                 'ThinkPad ACPIファン制御を有効にします。\nファン制御は安全上の理由からデフォルトで無効になっています。\n自己責任で続行してください。',

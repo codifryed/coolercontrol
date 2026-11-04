@@ -12,7 +12,8 @@ import {
     type AmdGpuOverdrivePlan,
     type OverdriveAction,
     type OverdriveMessage,
-    overdrivePlanIntro,
+    overdriveMessageText,
+    overdrivePlanFiles,
     overdrivePlanRecovery,
     overdrivePlanTakesTime,
 } from '@/models/AmdGpuOverdrive.ts'
@@ -27,20 +28,9 @@ const action: OverdriveAction = dialogRef.value.data.action
 const enabling = action === 'enable'
 
 const translate = (message: OverdriveMessage | undefined) =>
-    message != null ? t(message.key, message.params) : undefined
-const intro = computed(() => translate(overdrivePlanIntro(plan, action)))
+    message != null ? overdriveMessageText(message, t) : undefined
+const files = computed(() => translate(overdrivePlanFiles(plan, action)))
 const recovery = computed(() => translate(overdrivePlanRecovery(plan, action)))
-const goLabel = computed(() => {
-    const rebuild = plan.route === 'rebuild'
-    if (enabling) {
-        return rebuild
-            ? t('components.deviceExtensionSettings.overdriveEnableAndRebuild')
-            : t('components.deviceExtensionSettings.overdriveEnable')
-    }
-    return rebuild
-        ? t('components.deviceExtensionSettings.overdriveDisableAndRebuild')
-        : t('components.deviceExtensionSettings.overdriveDisable')
-})
 </script>
 
 <template>
@@ -54,19 +44,20 @@ const goLabel = computed(() => {
             </div>
         </template>
         <template v-else>
-            <p>{{ intro }}</p>
-            <code
-                v-if="plan.command"
-                class="select-all break-all rounded-lg bg-bg-one p-3 text-sm"
-                >{{ plan.command }}</code
-            >
+            <p v-if="files">{{ files }}</p>
+            <template v-if="plan.command">
+                <p>{{ t('components.deviceExtensionSettings.overdrivePlanRunsAsRoot') }}</p>
+                <code class="select-all break-all rounded-lg bg-bg-one p-3 text-sm">{{
+                    plan.command
+                }}</code>
+            </template>
+            <p v-if="plan.route === 'config_only'">
+                {{ t('components.deviceExtensionSettings.overdriveRebuildSkipped') }}
+            </p>
             <p v-if="overdrivePlanTakesTime(plan)">
                 {{ t('components.deviceExtensionSettings.overdrivePlanDuration') }}
             </p>
             <p v-if="recovery" class="text-sm text-text-color-secondary">{{ recovery }}</p>
-            <p v-if="enabling" class="text-sm text-text-color-secondary">
-                {{ t('components.deviceExtensionSettings.overdrivePlanBugReports') }}
-            </p>
             <div class="mt-2 flex flex-wrap justify-end gap-3">
                 <UiButton variant="outline" autofocus @click="dialogRef.close()">
                     {{ t('common.cancel') }}
@@ -79,7 +70,11 @@ const goLabel = computed(() => {
                     {{ t('components.deviceExtensionSettings.overdriveConfigOnly') }}
                 </UiButton>
                 <UiButton @click="dialogRef.close({ rebuild: true })">
-                    {{ goLabel }}
+                    {{
+                        enabling
+                            ? t('components.deviceExtensionSettings.overdriveEnable')
+                            : t('components.deviceExtensionSettings.overdriveDisable')
+                    }}
                 </UiButton>
             </div>
         </template>

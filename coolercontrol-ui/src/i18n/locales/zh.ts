@@ -1416,53 +1416,30 @@ export default {
             overdriveEnable: '启用',
             overdriveActive: '已激活',
             overdriveSuccess: '超频已配置',
-            overdriveSuccessDetail: '重启以应用 AMD GPU 超频。',
+            overdriveSuccessDetail: '重启以应用更改。',
             overdriveConfirmHeader: '启用 GPU 超频？',
             overdriveApplying: '正在应用。请勿关机。',
             overdriveRebootRequired: '需要重启',
             overdriveFailed: '失败',
             overdriveRetry: '重试',
             overdriveFailedSummary: '超频设置失败',
-            overdriveFailedDetail: '{error}。设置已写入。请以 root 身份运行 {command}，然后重启。',
-            overdriveFailedError: '{error}',
+            overdriveFailedDetail: '{error}。请以 root 身份运行 {command}，然后重启。',
             overdriveRebuildStillRunning: '启动镜像重建仍在后台运行。请在其完成后再重启。',
             overdriveRebuildStillRunningSummary: '重建仍在进行',
             overdriveRebuildSkipped:
-                'CoolerControl 无法识别此系统构建启动镜像的方式，因此没有重建它。如果 amdgpu 从 initramfs 加载，请在重启前重建它。否则直接重启即可。',
+                'CoolerControl 无法识别此系统构建启动镜像的方式，因此不会重建它。如果 amdgpu 从 initramfs 加载，请在重启前重建它。',
             overdriveRebuildYourself: '设置已写入。请以 root 身份运行 {command}，然后重启。',
-            overdriveEnableAndRebuild: '启用并重建',
             overdriveConfigOnly: '仅写入配置',
-            overdrivePlanRebuild:
-                'CoolerControl 将写入 {files}，然后以 root 身份运行以下命令重建启动镜像：',
-            overdrivePlanKernelArgument: 'CoolerControl 将以 root 身份运行以下命令添加内核参数：',
-            overdrivePlanConfigOnly:
-                'CoolerControl 将写入 {files}。它无法识别此系统构建启动镜像的方式，因此不会重建。如果 amdgpu 从 initramfs 加载，请在重启前自行重建。',
             overdrivePlanDuration: '这可能需要几分钟。完成前请勿关机。重启后更改生效。',
+            overdrivePlanWrites: '要写入的文件：{files}',
+            overdrivePlanDeletes: '要删除的文件：{files}',
+            overdrivePlanRunsAsRoot: '以 root 身份运行：',
             overdrivePlanRecovery:
-                '如果之后系统无法启动，若系统保留快照，可在启动菜单中选择一个快照；或者启动 live 系统，删除 {conf} 并重建启动镜像。',
+                '如果之后系统无法启动，若系统保留快照，可在启动菜单中选择一个快照；或者启动 live 系统，撤销更改并重建启动镜像。',
             overdrivePlanRecoveryDeployment: '如果之后系统无法启动，请在启动菜单中选择上一个部署。',
-            overdrivePlanBugReports:
-                '启用 overdrive 期间，amdgpu 会在启动时记录一条警告，要求在报告与 overdrive 无关的错误前先将其关闭。',
             overdriveDisable: '禁用',
             overdriveDisableHeader: '禁用 GPU Overdrive？',
-            overdriveDisableAndRebuild: '禁用并重建',
-            overdriveRemoving: '正在移除。请勿关机。',
-            overdriveRebootToTurnOff: '重启后关闭',
             overdriveRemovedSummary: 'Overdrive 已移除',
-            overdriveRemovedDetail: '重启以关闭 AMD GPU overdrive。',
-            overdriveRemovedNowDetail: 'AMD GPU overdrive 已关闭。',
-            overdriveRemovedRebuildSkipped:
-                '设置已移除，但 CoolerControl 无法识别此系统构建启动镜像的方式，因此没有重建它。如果 amdgpu 从 initramfs 加载，请在重启前重建它。',
-            overdriveRemoveFailedSummary: '移除 Overdrive 失败',
-            overdriveRemoveFailedDetail:
-                '{error}。设置已移除。请以 root 身份运行 {command}，然后重启。',
-            overdrivePlanRemoveRebuild:
-                'CoolerControl 将删除 {files}，然后以 root 身份运行以下命令重建启动镜像：',
-            overdrivePlanRemoveConfigOnly:
-                'CoolerControl 将删除 {files}。它无法识别此系统构建启动镜像的方式，因此不会重建。如果 amdgpu 从 initramfs 加载，请在重启前自行重建。',
-            overdrivePlanRemoveRecovery:
-                '如果之后系统无法启动，若系统保留快照，可在启动菜单中选择一个快照；或者启动 live 系统并重建启动镜像。',
-            overdrivePlanRebuildOnly: 'CoolerControl 将以 root 身份运行以下命令重建启动镜像：',
             thinkPadFanControl: '风扇控制',
             thinkPadFanControlDesc:
                 '启用 ThinkPad ACPI 风扇控制。\n出于安全原因，风扇控制默认处于禁用状态。\n继续操作需自行承担风险。',

@@ -69,43 +69,35 @@ export const OVERDRIVE_I18N_KEYS: readonly string[] = [
     'overdriveEnable',
     'overdriveFailed',
     'overdriveFailedDetail',
-    'overdriveFailedError',
     'overdriveFailedSummary',
-    'overdrivePlanConfigOnly',
-    'overdrivePlanKernelArgument',
-    'overdrivePlanRebuild',
-    'overdrivePlanRebuildOnly',
+    'overdrivePlanDeletes',
     'overdrivePlanRecovery',
     'overdrivePlanRecoveryDeployment',
-    'overdrivePlanRemoveConfigOnly',
-    'overdrivePlanRemoveRebuild',
-    'overdrivePlanRemoveRecovery',
+    'overdrivePlanWrites',
     'overdriveRebootRequired',
-    'overdriveRebootToTurnOff',
     'overdriveRebuildSkipped',
     'overdriveRebuildStillRunning',
     'overdriveRebuildStillRunningSummary',
     'overdriveRebuildYourself',
-    'overdriveRemoveFailedDetail',
-    'overdriveRemoveFailedSummary',
-    'overdriveRemovedDetail',
-    'overdriveRemovedNowDetail',
-    'overdriveRemovedRebuildSkipped',
     'overdriveRemovedSummary',
-    'overdriveRemoving',
     'overdriveSuccess',
     'overdriveSuccessDetail',
 ].map((key) => `${KEYS}${key}`)
 
-export interface OverdriveMessage {
-    key: string
-    params: Record<string, string>
+/** A key to translate, or the daemon's own text, shown as is. */
+export type OverdriveMessage = { key: string; params: Record<string, string> } | { text: string }
+
+export function overdriveMessageText(
+    message: OverdriveMessage,
+    t: (key: string, params: Record<string, string>) => string,
+): string {
+    return 'text' in message ? message.text : t(message.key, message.params)
 }
 
 export interface OverdriveToast {
     severity: 'success' | 'warn' | 'error'
     summaryKey: string
-    detail: OverdriveMessage
+    detail: OverdriveMessage | undefined
 }
 
 /**
@@ -122,23 +114,15 @@ export function overdriveRowState(
 
 /** What the user should know about the current state, if anything beyond its label. */
 export function overdriveHint(status: AmdGpuOverdriveStatus): OverdriveMessage | undefined {
-    const disabling = status.action === 'disable'
     const command = status.manual_command ?? ''
     switch (status.state) {
-        case 'failed': {
-            if (command.length === 0) {
-                return { key: `${KEYS}overdriveFailedError`, params: { error: status.error ?? '' } }
+        case 'failed':
+            if (command.length === 0) return { text: status.error ?? '' }
+            return {
+                key: `${KEYS}overdriveFailedDetail`,
+                params: { error: status.error ?? '', command },
             }
-            const key = disabling ? 'overdriveRemoveFailedDetail' : 'overdriveFailedDetail'
-            return { key: `${KEYS}${key}`, params: { error: status.error ?? '', command } }
-        }
         case 'reboot_required':
-            if (disabling) {
-                const key = status.rebuild_skipped
-                    ? 'overdriveRemovedRebuildSkipped'
-                    : 'overdriveRemovedDetail'
-                return { key: `${KEYS}${key}`, params: {} }
-            }
             // With a command, the user chose to rebuild it themselves. Without, no tool was found.
             if (status.rebuild_skipped && command.length > 0) {
                 return { key: `${KEYS}overdriveRebuildYourself`, params: { command } }
@@ -149,24 +133,18 @@ export function overdriveHint(status: AmdGpuOverdriveStatus): OverdriveMessage |
             // An error while applying means the rebuild outlasted the wait and goes on alone.
             if (status.error == null) return undefined
             return { key: `${KEYS}overdriveRebuildStillRunning`, params: {} }
-        case 'not_configured':
-            return disabling ? { key: `${KEYS}overdriveRemovedNowDetail`, params: {} } : undefined
         default:
             return undefined
     }
 }
 
-/** The row's label, which says which way a run goes. */
-export function overdriveStateLabelKey(
-    state: OverdriveState,
-    action: OverdriveAction | null | undefined,
-): string {
-    const disabling = action === 'disable'
+/** The row's label. */
+export function overdriveStateLabelKey(state: OverdriveState): string {
     switch (state) {
         case 'applying':
-            return disabling ? `${KEYS}overdriveRemoving` : `${KEYS}overdriveApplying`
+            return `${KEYS}overdriveApplying`
         case 'reboot_required':
-            return disabling ? `${KEYS}overdriveRebootToTurnOff` : `${KEYS}overdriveRebootRequired`
+            return `${KEYS}overdriveRebootRequired`
         case 'failed':
             return `${KEYS}overdriveFailed`
         case 'active':
@@ -194,32 +172,14 @@ export function overdrivePlanTakesTime(plan: AmdGpuOverdrivePlan): boolean {
     return plan.route === 'rebuild' || plan.route === 'kernel_argument'
 }
 
-/** The dialog's account of what the change will do. Undefined for a plan that cannot run. */
-export function overdrivePlanIntro(
+/** The files the change writes or deletes. Undefined when there are none. */
+export function overdrivePlanFiles(
     plan: AmdGpuOverdrivePlan,
     action: OverdriveAction,
 ): OverdriveMessage | undefined {
-    const files = plan.files.join(', ')
-    const disable = action === 'disable'
-    switch (plan.route) {
-        case 'rebuild':
-            // A retried disable finds its files already gone, so only the rebuild is left.
-            if (plan.files.length === 0)
-                return { key: `${KEYS}overdrivePlanRebuildOnly`, params: {} }
-            return {
-                key: `${KEYS}${disable ? 'overdrivePlanRemoveRebuild' : 'overdrivePlanRebuild'}`,
-                params: { files },
-            }
-        case 'kernel_argument':
-            return { key: `${KEYS}overdrivePlanKernelArgument`, params: {} }
-        case 'config_only':
-            return {
-                key: `${KEYS}${disable ? 'overdrivePlanRemoveConfigOnly' : 'overdrivePlanConfigOnly'}`,
-                params: { files },
-            }
-        default:
-            return undefined
-    }
+    if (plan.route == null || plan.files.length === 0) return undefined
+    const key = action === 'disable' ? 'overdrivePlanDeletes' : 'overdrivePlanWrites'
+    return { key: `${KEYS}${key}`, params: { files: plan.files.join(', ') } }
 }
 
 /** How to get back to a system that boots, should the change keep it from booting. */
@@ -230,27 +190,29 @@ export function overdrivePlanRecovery(
     if (plan.route === 'kernel_argument')
         return { key: `${KEYS}overdrivePlanRecoveryDeployment`, params: {} }
     if (plan.route == null) return undefined
-    if (action === 'disable') return { key: `${KEYS}overdrivePlanRemoveRecovery`, params: {} }
-    if (plan.files.length === 0) return undefined
-    return { key: `${KEYS}overdrivePlanRecovery`, params: { conf: plan.files[0] } }
+    if (action === 'enable' && plan.files.length === 0) return undefined
+    return { key: `${KEYS}overdrivePlanRecovery`, params: {} }
 }
 
 /** The toast for a status a run ended in. Undefined for a state that is no outcome. */
 export function overdriveOutcomeToast(status: AmdGpuOverdriveStatus): OverdriveToast | undefined {
-    if (status.state === 'active') return undefined
     const detail = overdriveHint(status)
-    if (detail == null) return undefined
-    if (status.state === 'applying') {
-        return {
-            severity: 'warn',
-            summaryKey: `${KEYS}overdriveRebuildStillRunningSummary`,
-            detail,
-        }
-    }
     const disabling = status.action === 'disable'
-    if (status.state === 'failed') {
-        const summary = disabling ? 'overdriveRemoveFailedSummary' : 'overdriveFailedSummary'
-        return { severity: 'error', summaryKey: `${KEYS}${summary}`, detail }
+    switch (status.state) {
+        case 'active':
+            return undefined
+        case 'applying':
+            if (detail == null) return undefined
+            return {
+                severity: 'warn',
+                summaryKey: `${KEYS}overdriveRebuildStillRunningSummary`,
+                detail,
+            }
+        case 'failed':
+            return { severity: 'error', summaryKey: `${KEYS}overdriveFailedSummary`, detail }
+        case 'not_configured':
+            if (!disabling) return undefined
+            break
     }
     return {
         severity: status.rebuild_skipped ? 'warn' : 'success',

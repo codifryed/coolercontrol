@@ -17,6 +17,7 @@ import {
     overdriveButtonAction,
     overdriveCanDisable,
     overdriveHint,
+    overdriveMessageText,
     overdriveRowState,
     overdriveStateLabelKey,
 } from '@/models/AmdGpuOverdrive.ts'
@@ -117,7 +118,7 @@ const overdriveState = computed(() =>
 const overdriveHintText = computed((): string | undefined => {
     const status = deviceStore.amdGpuOverdrive
     const hint = status != null ? overdriveHint(status) : undefined
-    return hint != null ? t(hint.key, hint.params) : undefined
+    return hint != null ? overdriveMessageText(hint, t) : undefined
 })
 const overdriveAction = computed(() => deviceStore.amdGpuOverdrive?.action)
 const overdriveLabelClass = computed((): string => {
@@ -409,7 +410,7 @@ const enableDevice = openManageSensors
                                         :size="18"
                                         class="shrink-0 animate-spin"
                                     />
-                                    {{ t(overdriveStateLabelKey(overdriveState, overdriveAction)) }}
+                                    {{ t(overdriveStateLabelKey(overdriveState)) }}
                                     <HelpIcon
                                         v-if="overdriveHintText"
                                         :text="overdriveHintText"

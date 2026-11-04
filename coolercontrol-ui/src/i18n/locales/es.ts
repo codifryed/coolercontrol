@@ -1500,60 +1500,34 @@ export default {
             overdriveEnable: 'Habilitar',
             overdriveActive: 'Activo',
             overdriveSuccess: 'Overdrive configurado',
-            overdriveSuccessDetail: 'Reinicia para aplicar el overdrive de la GPU AMD.',
+            overdriveSuccessDetail: 'Reinicia para aplicar el cambio.',
             overdriveConfirmHeader: '¿Activar el overdrive de la GPU?',
             overdriveApplying: 'Aplicando. No apagues el equipo.',
             overdriveRebootRequired: 'Reinicio necesario',
             overdriveFailed: 'Error',
             overdriveRetry: 'Reintentar',
             overdriveFailedSummary: 'Error al configurar el overdrive',
-            overdriveFailedDetail:
-                '{error}. La configuración está escrita. Ejecuta {command} como root y luego reinicia.',
-            overdriveFailedError: '{error}',
+            overdriveFailedDetail: '{error}. Ejecuta {command} como root y luego reinicia.',
             overdriveRebuildStillRunning:
                 'La reconstrucción de la imagen de arranque sigue en segundo plano. Reinicia solo cuando haya terminado.',
             overdriveRebuildStillRunningSummary: 'La reconstrucción sigue en curso',
             overdriveRebuildSkipped:
-                'CoolerControl no reconoció cómo este sistema crea su imagen de arranque, así que no la reconstruyó. Si amdgpu se carga desde el initramfs, reconstrúyelo antes de reiniciar. Si no, basta con reiniciar.',
+                'CoolerControl no reconoce cómo este sistema crea su imagen de arranque, así que no la reconstruye. Si amdgpu se carga desde el initramfs, reconstrúyelo antes de reiniciar.',
             overdriveRebuildYourself:
                 'La configuración está escrita. Ejecuta {command} como root y luego reinicia.',
-            overdriveEnableAndRebuild: 'Activar y reconstruir',
             overdriveConfigOnly: 'Solo escribir la configuración',
-            overdrivePlanRebuild:
-                'CoolerControl escribirá {files} y luego reconstruirá las imágenes de arranque ejecutando esto como root:',
-            overdrivePlanKernelArgument:
-                'CoolerControl añadirá el argumento del kernel ejecutando esto como root:',
-            overdrivePlanConfigOnly:
-                'CoolerControl escribirá {files}. No reconoce cómo este sistema crea su imagen de arranque, así que no la reconstruirá. Si amdgpu se carga desde el initramfs, reconstrúyelo tú antes de reiniciar.',
             overdrivePlanDuration:
                 'Esto puede tardar unos minutos. No apagues el equipo hasta que termine. Un reinicio aplica el cambio.',
+            overdrivePlanWrites: 'Archivos que se escribirán: {files}',
+            overdrivePlanDeletes: 'Archivos que se borrarán: {files}',
+            overdrivePlanRunsAsRoot: 'Se ejecuta como root:',
             overdrivePlanRecovery:
-                'Si el sistema no arranca después, elige una instantánea en el menú de arranque si tu sistema las guarda, o inicia un sistema live, borra {conf} y reconstruye la imagen de arranque.',
+                'Si el sistema no arranca después, elige una instantánea en el menú de arranque si tu sistema las guarda, o inicia un sistema live, deshaz el cambio y reconstruye la imagen de arranque.',
             overdrivePlanRecoveryDeployment:
                 'Si el sistema no arranca después, elige el despliegue anterior en el menú de arranque.',
-            overdrivePlanBugReports:
-                'Mientras overdrive está activo, amdgpu registra una advertencia al arrancar pidiendo desactivarlo antes de informar de errores no relacionados con overdrive.',
             overdriveDisable: 'Desactivar',
             overdriveDisableHeader: '¿Desactivar GPU Overdrive?',
-            overdriveDisableAndRebuild: 'Desactivar y reconstruir',
-            overdriveRemoving: 'Eliminando. No apagues el equipo.',
-            overdriveRebootToTurnOff: 'Reinicia para desactivarlo',
             overdriveRemovedSummary: 'Overdrive eliminado',
-            overdriveRemovedDetail: 'Reinicia para desactivar AMD GPU overdrive.',
-            overdriveRemovedNowDetail: 'AMD GPU overdrive está desactivado.',
-            overdriveRemovedRebuildSkipped:
-                'La configuración se ha eliminado, pero CoolerControl no reconoció cómo este sistema crea su imagen de arranque, así que no la reconstruyó. Si amdgpu se carga desde el initramfs, reconstrúyelo antes de reiniciar.',
-            overdriveRemoveFailedSummary: 'Error al eliminar overdrive',
-            overdriveRemoveFailedDetail:
-                '{error}. La configuración se ha eliminado. Ejecuta {command} como root y luego reinicia.',
-            overdrivePlanRemoveRebuild:
-                'CoolerControl borrará {files} y luego reconstruirá las imágenes de arranque ejecutando esto como root:',
-            overdrivePlanRemoveConfigOnly:
-                'CoolerControl borrará {files}. No reconoce cómo este sistema crea su imagen de arranque, así que no la reconstruirá. Si amdgpu se carga desde el initramfs, reconstrúyelo tú antes de reiniciar.',
-            overdrivePlanRemoveRecovery:
-                'Si el sistema no arranca después, elige una instantánea en el menú de arranque si tu sistema las guarda, o inicia un sistema live y reconstruye la imagen de arranque.',
-            overdrivePlanRebuildOnly:
-                'CoolerControl reconstruirá las imágenes de arranque ejecutando esto como root:',
             thinkPadFanControl: 'Control del ventilador',
             thinkPadFanControlDesc:
                 'Habilita el control del ventilador ACPI de ThinkPad.\nEl control del ventilador está deshabilitado por defecto por razones de seguridad.\nProceda bajo su propio riesgo.',

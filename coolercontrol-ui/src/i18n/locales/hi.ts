@@ -1477,60 +1477,34 @@ export default {
             overdriveEnable: 'सक्षम करें',
             overdriveActive: 'सक्रिय',
             overdriveSuccess: 'ओवरड्राइव कॉन्फ़िगर किया गया',
-            overdriveSuccessDetail: 'AMD GPU ओवरड्राइव लागू करने के लिए रीबूट करें।',
+            overdriveSuccessDetail: 'बदलाव लागू करने के लिए रीबूट करें।',
             overdriveConfirmHeader: 'GPU ओवरड्राइव सक्षम करें?',
             overdriveApplying: 'लागू किया जा रहा है। कंप्यूटर बंद न करें।',
             overdriveRebootRequired: 'रीबूट आवश्यक है',
             overdriveFailed: 'विफल',
             overdriveRetry: 'फिर से कोशिश करें',
             overdriveFailedSummary: 'ओवरड्राइव सेटअप विफल',
-            overdriveFailedDetail:
-                '{error}. सेटिंग लिख दी गई है। {command} को root के रूप में चलाएँ, फिर रीबूट करें।',
-            overdriveFailedError: '{error}',
+            overdriveFailedDetail: '{error}. {command} को root के रूप में चलाएँ, फिर रीबूट करें।',
             overdriveRebuildStillRunning:
                 'बूट इमेज का रीबिल्ड अभी भी बैकग्राउंड में चल रहा है। इसके पूरा होने के बाद ही रीबूट करें।',
             overdriveRebuildStillRunningSummary: 'रीबिल्ड अभी चल रहा है',
             overdriveRebuildSkipped:
-                'CoolerControl यह नहीं पहचान सका कि यह सिस्टम अपनी बूट इमेज कैसे बनाता है, इसलिए उसने उसे फिर से नहीं बनाया। अगर amdgpu initramfs से लोड होता है, तो रीबूट से पहले उसे फिर से बनाएँ। अन्यथा बस रीबूट करें।',
+                'CoolerControl यह नहीं पहचानता कि यह सिस्टम अपनी बूट इमेज कैसे बनाता है, इसलिए वह उसे फिर से नहीं बनाता। अगर amdgpu initramfs से लोड होता है, तो रीबूट से पहले उसे फिर से बनाएँ।',
             overdriveRebuildYourself:
                 'सेटिंग लिख दी गई है। root के रूप में {command} चलाएँ, फिर रीबूट करें।',
-            overdriveEnableAndRebuild: 'सक्षम करें और फिर से बनाएँ',
             overdriveConfigOnly: 'केवल कॉन्फ़िग लिखें',
-            overdrivePlanRebuild:
-                'CoolerControl {files} लिखेगा, फिर root के रूप में यह चलाकर बूट इमेज फिर से बनाएगा:',
-            overdrivePlanKernelArgument:
-                'CoolerControl root के रूप में यह चलाकर कर्नेल आर्ग्युमेंट जोड़ेगा:',
-            overdrivePlanConfigOnly:
-                'CoolerControl {files} लिखेगा। वह यह नहीं पहचान पाता कि यह सिस्टम अपनी बूट इमेज कैसे बनाता है, इसलिए उसे फिर से नहीं बनाएगा। अगर amdgpu initramfs से लोड होता है, तो रीबूट से पहले उसे खुद फिर से बनाएँ।',
             overdrivePlanDuration:
                 'इसमें कुछ मिनट लग सकते हैं। पूरा होने तक बिजली बंद न करें। रीबूट के बाद बदलाव लागू होगा।',
+            overdrivePlanWrites: 'लिखी जाने वाली फ़ाइलें: {files}',
+            overdrivePlanDeletes: 'हटाई जाने वाली फ़ाइलें: {files}',
+            overdrivePlanRunsAsRoot: 'root के रूप में चलता है:',
             overdrivePlanRecovery:
-                'अगर इसके बाद सिस्टम बूट नहीं होता, तो आपका सिस्टम स्नैपशॉट रखता हो तो बूट मेनू में कोई स्नैपशॉट चुनें, या लाइव सिस्टम शुरू करके {conf} हटाएँ और बूट इमेज फिर से बनाएँ।',
+                'अगर इसके बाद सिस्टम बूट नहीं होता, तो आपका सिस्टम स्नैपशॉट रखता हो तो बूट मेनू में कोई स्नैपशॉट चुनें, या लाइव सिस्टम शुरू करके बदलाव वापस लें और बूट इमेज फिर से बनाएँ।',
             overdrivePlanRecoveryDeployment:
                 'अगर इसके बाद सिस्टम बूट नहीं होता, तो बूट मेनू में पिछला डिप्लॉयमेंट चुनें।',
-            overdrivePlanBugReports:
-                'जब तक ओवरड्राइव चालू है, amdgpu बूट पर एक चेतावनी लॉग करता है जिसमें ओवरड्राइव से असंबंधित बग रिपोर्ट करने से पहले इसे बंद करने को कहा जाता है।',
             overdriveDisable: 'अक्षम करें',
             overdriveDisableHeader: 'GPU ओवरड्राइव अक्षम करें?',
-            overdriveDisableAndRebuild: 'अक्षम करें और फिर से बनाएँ',
-            overdriveRemoving: 'हटाया जा रहा है। बिजली बंद न करें।',
-            overdriveRebootToTurnOff: 'बंद करने के लिए रीबूट करें',
             overdriveRemovedSummary: 'ओवरड्राइव हटाया गया',
-            overdriveRemovedDetail: 'AMD GPU ओवरड्राइव बंद करने के लिए रीबूट करें।',
-            overdriveRemovedNowDetail: 'AMD GPU ओवरड्राइव बंद है।',
-            overdriveRemovedRebuildSkipped:
-                'सेटिंग हटा दी गई है, लेकिन CoolerControl यह नहीं पहचान सका कि यह सिस्टम अपनी बूट इमेज कैसे बनाता है, इसलिए उसने उसे फिर से नहीं बनाया। अगर amdgpu initramfs से लोड होता है, तो रीबूट से पहले उसे फिर से बनाएँ।',
-            overdriveRemoveFailedSummary: 'ओवरड्राइव हटाना विफल रहा',
-            overdriveRemoveFailedDetail:
-                '{error}। सेटिंग हटा दी गई है। root के रूप में {command} चलाएँ, फिर रीबूट करें।',
-            overdrivePlanRemoveRebuild:
-                'CoolerControl {files} हटाएगा, फिर root के रूप में यह चलाकर बूट इमेज फिर से बनाएगा:',
-            overdrivePlanRemoveConfigOnly:
-                'CoolerControl {files} हटाएगा। वह यह नहीं पहचान पाता कि यह सिस्टम अपनी बूट इमेज कैसे बनाता है, इसलिए उसे फिर से नहीं बनाएगा। अगर amdgpu initramfs से लोड होता है, तो रीबूट से पहले उसे खुद फिर से बनाएँ।',
-            overdrivePlanRemoveRecovery:
-                'अगर इसके बाद सिस्टम बूट नहीं होता, तो आपका सिस्टम स्नैपशॉट रखता हो तो बूट मेनू में कोई स्नैपशॉट चुनें, या लाइव सिस्टम शुरू करके बूट इमेज फिर से बनाएँ।',
-            overdrivePlanRebuildOnly:
-                'CoolerControl root के रूप में यह चलाकर बूट इमेज फिर से बनाएगा:',
             thinkPadFanControl: 'पंखा नियंत्रण',
             thinkPadFanControlDesc:
                 'ThinkPad ACPI पंखा नियंत्रण सक्षम करें।\nसुरक्षा कारणों से पंखा नियंत्रण डिफ़ॉल्ट रूप से अक्षम है।\nअपने जोखिम पर आगे बढ़ें।',
