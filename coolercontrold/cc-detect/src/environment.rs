@@ -66,33 +66,44 @@ impl Environment {
     }
 
     fn check_container() -> bool {
-        // Check common container indicator files
-        if Path::new("/.dockerenv").exists() {
-            debug!("Detected Docker container (/.dockerenv)");
-            return true;
-        }
-        if Path::new("/run/.containerenv").exists() {
-            debug!("Detected container (/run/.containerenv)");
-            return true;
-        }
-        // Check cgroup for container hints
-        if let Ok(cgroup) = std::fs::read_to_string("/proc/1/cgroup") {
-            if cgroup.contains("docker")
-                || cgroup.contains("containerd")
-                || cgroup.contains("lxc")
-                || cgroup.contains("kubepods")
-            {
-                debug!("Detected container from cgroup");
-                return true;
-            }
-        }
-        false
+        container_detected(Path::new("/"))
     }
 
     fn command_exists(cmd: &str) -> bool {
         std::env::var_os("PATH")
             .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(cmd).is_file()))
     }
+}
+
+/// Whether the tree under `root` (`/` outside tests) is a container. Blocking.
+///
+/// # Panics
+///
+/// If `root` is relative.
+#[must_use]
+pub fn container_detected(root: &Path) -> bool {
+    assert!(root.is_absolute());
+    // Check common container indicator files
+    if root.join(".dockerenv").exists() {
+        debug!("Detected Docker container (/.dockerenv)");
+        return true;
+    }
+    if root.join("run/.containerenv").exists() {
+        debug!("Detected container (/run/.containerenv)");
+        return true;
+    }
+    // Check cgroup for container hints
+    if let Ok(cgroup) = std::fs::read_to_string(root.join("proc/1/cgroup")) {
+        if cgroup.contains("docker")
+            || cgroup.contains("containerd")
+            || cgroup.contains("lxc")
+            || cgroup.contains("kubepods")
+        {
+            debug!("Detected container from cgroup");
+            return true;
+        }
+    }
+    false
 }
 
 /// Parse the content of `/sys/kernel/security/lockdown` and return whether
