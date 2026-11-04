@@ -654,6 +654,11 @@ async fn detect_boot_facts(paths: &OverdrivePaths) -> Result<BootFacts> {
 fn refusal_message(refusal: Refusal, new_mask: u64) -> String {
     let karg = overdrive_karg(new_mask);
     match refusal {
+        Refusal::Container => format!(
+            "CoolerControl is running in a container, which cannot change the host's boot \
+            setup. Enable AMD GPU overdrive on the host: add {karg} to its kernel command \
+            line, then reboot."
+        ),
         Refusal::NixOs => "NixOS manages kernel parameters declaratively. Set \
             hardware.amdgpu.overdrive.enable = true; in configuration.nix, run \
             nixos-rebuild boot, then reboot."
@@ -969,6 +974,8 @@ mod tests {
     // Verify each refusal names the route the user should take instead.
     #[test]
     fn refusals_name_the_route_to_take() {
+        assert!(refusal_message(Refusal::Container, 0x4000)
+            .contains("add amdgpu.ppfeaturemask=0x4000 to its kernel command line"));
         assert!(refusal_message(Refusal::NixOs, 0x4000).contains("configuration.nix"));
         assert!(refusal_message(Refusal::Guix, 0x4000).contains("amdgpu.ppfeaturemask=0x4000"));
         assert!(refusal_message(Refusal::SteamOs, 0x4000).contains("kernel command line"));

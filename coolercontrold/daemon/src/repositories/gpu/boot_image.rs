@@ -23,6 +23,7 @@ const UPDATE_INITRAMFS_FAILURE_MARKERS: [&str; 2] = ["Not updating initramfs", "
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct BootFacts {
+    pub container: bool,
     pub os_id: String,
     pub ostree_booted: bool,
     pub rpm_ostree: bool,
@@ -60,6 +61,8 @@ pub enum BootSetup {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
+    /// The kernel and the boot image are the host's, out of the container's reach.
+    Container,
     NixOs,
     Guix,
     /// `/etc` changes are discarded on every OS update.
@@ -203,6 +206,9 @@ fn classify_unchecked(facts: &BootFacts) -> BootSetup {
 }
 
 fn refusal(facts: &BootFacts) -> Option<Refusal> {
+    if facts.container {
+        return Some(Refusal::Container);
+    }
     match facts.os_id.as_str() {
         "nixos" => Some(Refusal::NixOs),
         "guix" => Some(Refusal::Guix),
@@ -321,6 +327,7 @@ pub fn gather_boot_facts_blocking(root: &Path) -> BootFacts {
     let running_kernel = read("proc/sys/kernel/osrelease").unwrap_or_default();
     let running_kernel = running_kernel.trim();
     BootFacts {
+        container: cc_detect::environment::container_detected(root),
         os_id: parse_os_release_id(&read("etc/os-release").unwrap_or_default()),
         ostree_booted: exists("run/ostree-booted"),
         rpm_ostree: exists("usr/bin/rpm-ostree"),
@@ -466,6 +473,45 @@ mod tests {
             ..arch()
         };
         assert_eq!(classify(&steamos), BootSetup::Refused(Refusal::SteamOs));
+    }
+
+    // Verify a container is refused ahead of the distro and its tools, which only describe the
+    // image, not the host that boots.
+    #[test]
+    fn a_container_is_refused_before_its_tools() {
+        let container = BootFacts {
+            container: true,
+            ..debian()
+        };
+        assert_eq!(classify(&container), BootSetup::Refused(Refusal::Container));
+        let nixos = BootFacts {
+            container: true,
+            os_id: "nixos".to_owned(),
+            ..BootFacts::default()
+        };
+        assert_eq!(classify(&nixos), BootSetup::Refused(Refusal::Container));
+    }
+
+    // Verify each container marker is read under the root, and a plain tree is no container.
+    #[test]
+    fn container_markers_are_read_under_the_root() {
+        let plain = tempfile::tempdir().unwrap();
+        assert!(gather_boot_facts_blocking(plain.path()).container.not());
+        let markers = [
+            (".dockerenv", ""),
+            ("run/.containerenv", ""),
+            ("proc/1/cgroup", "0::/system.slice/docker-0123abcd.scope\n"),
+        ];
+        for (marker, content) in markers {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join(marker);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, content).unwrap();
+            assert!(
+                gather_boot_facts_blocking(root.path()).container,
+                "{marker}"
+            );
+        }
     }
 
     // Verify ostree systems take a kernel argument through rpm-ostree, and ignore the dracut
