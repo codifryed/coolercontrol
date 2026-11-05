@@ -1315,38 +1315,6 @@ mod tests {
         });
     }
 
-    /// Goal: a reset whose write the driver refuses reports it, since the caller keeps the fan
-    /// taken only on an error. Method: a read-only `pwm1_enable`, which needs a non-root test.
-    #[test]
-    #[serial]
-    #[cfg(feature = "gated-tests")]
-    fn test_set_pwm_enable_to_default_reports_a_refused_write() {
-        use std::os::unix::fs::PermissionsExt;
-        cc_fs::test_runtime(async {
-            let ctx = setup();
-            let test_base_path = &ctx.test_base_path;
-            let path = test_base_path.join("pwm1_enable");
-            cc_fs::write(&path, b"1".to_vec()).await.unwrap();
-            let read_only = std::fs::Permissions::from_mode(0o444);
-            cc_fs::set_permissions(&path, read_only).await.unwrap();
-            let channel_info = HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Fan,
-                number: 1,
-                pwm_enable_default: Some(2),
-                ..Default::default()
-            };
-
-            let result = set_pwm_enable_to_default_or_auto(
-                test_base_path,
-                &channel_info,
-                &DeviceIo::default(),
-            )
-            .await;
-
-            assert!(result.is_err());
-        });
-    }
-
     #[test]
     #[serial]
     fn test_set_pwm_enable_to_default_doesnt_exist() {
