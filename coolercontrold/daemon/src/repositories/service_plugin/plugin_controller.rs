@@ -886,14 +886,20 @@ fn write_config_file(
 /// A symlink, or anything else that is not a file, is removed and a file is created in its
 /// place, which is what a handover does with one: see `secure_config_file`. The save is the
 /// user's, and what the plugin planted does not get to lose it.
+///
+/// An existing file is opened without `O_CREAT`: with `fs.protected_regular=2`, the kernel
+/// refuses even root that open of a file it does not own in a group-writable sticky folder.
 fn open_config_for_write(path: &Path) -> Result<File> {
-    let open = || open_entry(path, OpenOptions::new().write(true).create(true));
-    let entry = match open()? {
+    let entry = match open_entry(path, OpenOptions::new().write(true))? {
         Entry::NotAFile => {
             remove_planted(path)?;
-            // Once: an entry that is planted again right away fails the save.
-            open()?
+            Entry::Absent
         }
+        entry => entry,
+    };
+    let entry = match entry {
+        // O_EXCL: an entry that is planted again right away fails the save.
+        Entry::Absent => open_entry(path, OpenOptions::new().write(true).create_new(true))?,
         entry => entry,
     };
     match entry {
@@ -2358,6 +2364,37 @@ mod tests {
                 .permissions()
                 .mode();
             assert_eq!(mode & 0o777, 0o644);
+            assert_eq!(std::fs::read_to_string(&config_path).unwrap(), "{}");
+        });
+    }
+
+    /// Goal: with `fs.protected_regular=2` (as seen on Ubuntu) the kernel refuses root an
+    /// `O_CREAT` open of an existing file it does not own in a group-writable sticky folder,
+    /// which is what a plugin folder is after a handover.
+    /// Method: as root, make the folder 1775 and the config `nobody`'s, as a handover does,
+    /// then save. Run with `sudo sysctl fs.protected_regular=2` and `--ignored`.
+    #[test]
+    #[ignore = "requires root and fs.protected_regular=2"]
+    fn a_config_save_works_in_a_protected_sticky_folder() {
+        const NOBODY: u32 = 65534;
+        // SAFETY: geteuid has no preconditions and cannot fail.
+        assert_eq!(unsafe { libc::geteuid() }, 0, "run as root");
+        let protection = std::fs::read_to_string("/proc/sys/fs/protected_regular").unwrap();
+        assert_eq!(protection.trim(), "2", "run with fs.protected_regular=2");
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let (controller, config_path) = controller_and_config_path(plugins_dir.path());
+            let folder = config_path.parent().unwrap();
+            std::fs::set_permissions(folder, Permissions::from_mode(PLUGIN_FOLDER_PERMISSIONS))
+                .unwrap();
+            std::fs::write(&config_path, "{\"old\": true}").unwrap();
+            std::os::unix::fs::chown(&config_path, Some(NOBODY), Some(NOBODY)).unwrap();
+
+            let saved = controller
+                .save_plugin_config_file("test-plugin", "{}".to_string())
+                .await;
+
+            assert!(saved.is_ok(), "{saved:?}");
             assert_eq!(std::fs::read_to_string(&config_path).unwrap(), "{}");
         });
     }
