@@ -1022,6 +1022,8 @@ export default {
             forgotPasswordHelpIntro:
                 'Run the command for your installation in a terminal, then click Reload UI:',
             forgotPasswordPackageLabel: 'Installed package',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
             forgotPasswordContainerNote:
                 "For Docker or Podman, use your container's name if it is not coolercontrold.",
             forgotPasswordCopyCommand: 'Copy command',

@@ -1014,6 +1014,8 @@ export default {
             forgotPasswordHelpIntro:
                 'قم بتشغيل الأمر المناسب لطريقة التثبيت في الطرفية، ثم انقر على إعادة تحميل واجهة المستخدم:',
             forgotPasswordPackageLabel: 'الحزمة المثبتة',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
             forgotPasswordContainerNote:
                 'في Docker أو Podman، استخدم اسم الحاوية الخاصة بك إذا لم يكن coolercontrold.',
             forgotPasswordCopyCommand: 'نسخ الأمر',

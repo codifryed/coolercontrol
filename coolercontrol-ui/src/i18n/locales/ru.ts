@@ -1041,6 +1041,8 @@ export default {
             forgotPasswordHelpIntro:
                 'Выполните команду для вашей установки в терминале, затем нажмите "Перезагрузить UI":',
             forgotPasswordPackageLabel: 'Установленный пакет',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
             forgotPasswordContainerNote:
                 'Для Docker или Podman укажите имя вашего контейнера, если оно не coolercontrold.',
             forgotPasswordCopyCommand: 'Скопировать команду',

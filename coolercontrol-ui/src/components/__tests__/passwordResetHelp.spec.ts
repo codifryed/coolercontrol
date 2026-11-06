@@ -53,8 +53,8 @@ describe('PasswordDialog reset help', () => {
 
         expect(shown).toEqual(COMMANDS)
         expect(wrapper.text()).toContain(en.components.password.forgotPasswordPackageLabel)
-        expect(wrapper.text()).toContain('Docker')
-        expect(wrapper.text()).toContain('Podman (Bazzite)')
+        expect(wrapper.text()).toContain(en.components.password.forgotPasswordDockerLabel)
+        expect(wrapper.text()).toContain(en.components.password.forgotPasswordPodmanLabel)
         expect(wrapper.text()).toContain(en.components.password.forgotPasswordContainerNote)
         wrapper.unmount()
     })

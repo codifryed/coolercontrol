@@ -20,12 +20,17 @@ const { t } = useI18n()
 const toast = useToast()
 const deviceStore = useDeviceStore()
 
-// Container labels are product names, so only the package label is translated.
-const RESET_COMMANDS: ReadonlyArray<{ label: string | null; command: string }> = [
-    { label: null, command: 'sudo coolercontrold --reset-password' },
-    { label: 'Docker', command: 'sudo docker exec coolercontrold coolercontrold --reset-password' },
+const RESET_COMMANDS: ReadonlyArray<{ labelKey: string; command: string }> = [
     {
-        label: 'Podman (Bazzite)',
+        labelKey: 'components.password.forgotPasswordPackageLabel',
+        command: 'sudo coolercontrold --reset-password',
+    },
+    {
+        labelKey: 'components.password.forgotPasswordDockerLabel',
+        command: 'sudo docker exec coolercontrold coolercontrold --reset-password',
+    },
+    {
+        labelKey: 'components.password.forgotPasswordPodmanLabel',
         command: 'sudo podman exec coolercontrold coolercontrold --reset-password',
     },
 ]
@@ -323,7 +328,7 @@ nextTick(async () => {
                 </p>
                 <div v-for="reset in RESET_COMMANDS" :key="reset.command">
                     <p class="text-text-color-secondary text-xs mb-1">
-                        {{ reset.label ?? t('components.password.forgotPasswordPackageLabel') }}
+                        {{ t(reset.labelKey) }}
                     </p>
                     <div
                         class="flex items-center gap-2 bg-bg-two border border-border-one rounded px-2 py-1"
