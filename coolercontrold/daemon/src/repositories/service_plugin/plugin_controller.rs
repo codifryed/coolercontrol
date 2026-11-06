@@ -898,7 +898,7 @@ fn open_config_for_write(path: &Path) -> Result<File> {
         entry => entry,
     };
     let entry = match entry {
-        // O_EXCL: an entry that is planted again right away fails the save.
+        // O_EXCL: any entry that reappears meanwhile, even a file, fails the save with EEXIST.
         Entry::Absent => open_entry(path, OpenOptions::new().write(true).create_new(true))?,
         entry => entry,
     };
