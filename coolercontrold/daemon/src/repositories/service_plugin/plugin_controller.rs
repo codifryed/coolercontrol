@@ -2377,8 +2377,7 @@ mod tests {
     #[ignore = "requires root and fs.protected_regular=2"]
     fn a_config_save_works_in_a_protected_sticky_folder() {
         const NOBODY: u32 = 65534;
-        // SAFETY: geteuid has no preconditions and cannot fail.
-        assert_eq!(unsafe { libc::geteuid() }, 0, "run as root");
+        assert!(nix::unistd::geteuid().is_root(), "run as root");
         let protection = std::fs::read_to_string("/proc/sys/fs/protected_regular").unwrap();
         assert_eq!(protection.trim(), "2", "run with fs.protected_regular=2");
         crate::rt::test_runtime(async {
