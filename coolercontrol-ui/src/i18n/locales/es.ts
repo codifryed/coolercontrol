@@ -1040,7 +1040,7 @@ export default {
                 'Ejecute el comando de su instalación en una terminal y luego haga clic en Recargar UI:',
             forgotPasswordPackageLabel: 'Paquete instalado',
             forgotPasswordDockerLabel: 'Docker',
-            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
+            forgotPasswordPodmanLabel: 'Podman',
             forgotPasswordContainerNote:
                 'Con Docker o Podman, use el nombre de su contenedor si no es coolercontrold.',
             forgotPasswordCopyCommand: 'Copiar comando',

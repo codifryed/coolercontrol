@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Container installs (Docker, Bazzite's Podman quadlet) have no host coolercontrold binary, so
+// Container installs (Docker, Podman) have no host coolercontrold binary, so
 // the forgot-password help must offer a command for each. These tests pin that every command is
 // shown and that each copy button copies its own command.
 

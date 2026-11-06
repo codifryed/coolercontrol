@@ -985,7 +985,7 @@ export default {
                 '在終端機中執行與您的安裝方式對應的命令，然後點擊重新載入 UI：',
             forgotPasswordPackageLabel: '已安裝的套件',
             forgotPasswordDockerLabel: 'Docker',
-            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
+            forgotPasswordPodmanLabel: 'Podman',
             forgotPasswordContainerNote:
                 '使用 Docker 或 Podman 時，如果容器名稱不是 coolercontrold，請改用您的容器名稱。',
             forgotPasswordCopyCommand: '複製命令',

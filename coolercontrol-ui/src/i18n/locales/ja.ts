@@ -1032,7 +1032,7 @@ export default {
                 'お使いのインストール方法に合ったコマンドをターミナルで実行し、「UI を再読み込み」をクリックしてください：',
             forgotPasswordPackageLabel: 'インストール済みパッケージ',
             forgotPasswordDockerLabel: 'Docker',
-            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
+            forgotPasswordPodmanLabel: 'Podman',
             forgotPasswordContainerNote:
                 'Docker または Podman では、コンテナー名が coolercontrold でない場合はその名前を使用してください。',
             forgotPasswordCopyCommand: 'コマンドをコピー',

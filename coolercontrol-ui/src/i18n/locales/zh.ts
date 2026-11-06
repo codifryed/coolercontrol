@@ -983,7 +983,7 @@ export default {
             forgotPasswordHelpIntro: '在终端中运行与您的安装方式对应的命令，然后点击重新加载 UI：',
             forgotPasswordPackageLabel: '已安装的软件包',
             forgotPasswordDockerLabel: 'Docker',
-            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
+            forgotPasswordPodmanLabel: 'Podman',
             forgotPasswordContainerNote:
                 '使用 Docker 或 Podman 时，如果容器名称不是 coolercontrold，请改用您的容器名称。',
             forgotPasswordCopyCommand: '复制命令',

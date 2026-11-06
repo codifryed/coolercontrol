@@ -1023,7 +1023,7 @@ export default {
                 'अपने इंस्टॉलेशन के अनुसार कमांड को टर्मिनल में चलाएं, फिर UI रीलोड पर क्लिक करें:',
             forgotPasswordPackageLabel: 'इंस्टॉल किया गया पैकेज',
             forgotPasswordDockerLabel: 'Docker',
-            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
+            forgotPasswordPodmanLabel: 'Podman',
             forgotPasswordContainerNote:
                 'Docker या Podman में, यदि आपके कंटेनर का नाम coolercontrold नहीं है तो उसका नाम उपयोग करें।',
             forgotPasswordCopyCommand: 'कमांड कॉपी करें',

@@ -1052,7 +1052,7 @@ export default {
                 'Führen Sie den Befehl für Ihre Installation in einem Terminal aus und klicken Sie dann auf "UI neu laden":',
             forgotPasswordPackageLabel: 'Installiertes Paket',
             forgotPasswordDockerLabel: 'Docker',
-            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
+            forgotPasswordPodmanLabel: 'Podman',
             forgotPasswordContainerNote:
                 'Bei Docker oder Podman verwenden Sie den Namen Ihres Containers, falls er nicht coolercontrold lautet.',
             forgotPasswordCopyCommand: 'Befehl kopieren',

@@ -1015,7 +1015,7 @@ export default {
                 '설치 방식에 맞는 명령어를 터미널에서 실행한 후 UI 다시 로드를 클릭하세요:',
             forgotPasswordPackageLabel: '설치된 패키지',
             forgotPasswordDockerLabel: 'Docker',
-            forgotPasswordPodmanLabel: 'Podman (Bazzite)',
+            forgotPasswordPodmanLabel: 'Podman',
             forgotPasswordContainerNote:
                 'Docker 또는 Podman에서는 컨테이너 이름이 coolercontrold가 아니면 해당 이름을 사용하세요.',
             forgotPasswordCopyCommand: '명령어 복사',
