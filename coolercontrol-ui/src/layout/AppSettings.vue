@@ -147,7 +147,15 @@ const syncFullScreen = async (): Promise<void> => {
 // Also catches exits not made by the switch, such as Escape.
 screenfull.on('change', syncFullScreen)
 onUnmounted(() => screenfull.off('change', syncFullScreen))
-const toggleFullScreen = async (_enable: string | number | boolean): Promise<void> => {
+const toggleFullScreen = async (enable: boolean): Promise<void> => {
+    // @ts-ignore - window.ipc is the QWebChannel bridge, present only in the Qt app.
+    const ipc = deviceStore.isQtApp() ? window.ipc : undefined
+    if (ipc?.setFullScreen != null) {
+        // Qt owns the window state and answers via fullScreenToggled. Page fullscreen
+        // is tracked apart from F11, so using it here lets the two drift.
+        ipc.setFullScreen(enable)
+        return
+    }
     await screenfull.toggle(document.body)
 }
 

@@ -55,6 +55,9 @@ class MainWindow final : public QMainWindow {
 
   void setZoomFactor(double zoomFactor) const;
 
+  // The window state is the one fullscreen truth. Tells the UI the result.
+  void setFullScreen(bool fullScreen);
+
   void setTrayMenuModes(const QString& modesJson) const;
 
   void acknowledgeDaemonErrors() const;
@@ -78,6 +81,8 @@ class MainWindow final : public QMainWindow {
   void dropConnections() const;
 
   void setZoomFactorSignal(double zoomFactor) const;
+
+  void setFullScreenSignal(bool fullScreen) const;
 
   void setTrayMenuModesSignal(const QString& modesJson) const;
 
