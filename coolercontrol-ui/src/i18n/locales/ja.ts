@@ -1029,7 +1029,10 @@ export default {
         password: {
             forgotPassword: 'パスワードをお忘れですか？',
             forgotPasswordHelpIntro:
-                'このコマンドを root としてターミナルで実行し、「UI を再読み込み」をクリックしてください：',
+                'お使いのインストール方法に合ったコマンドをターミナルで実行し、「UI を再読み込み」をクリックしてください：',
+            forgotPasswordPackageLabel: 'インストール済みパッケージ',
+            forgotPasswordContainerNote:
+                'Docker または Podman では、コンテナー名が coolercontrold でない場合はその名前を使用してください。',
             forgotPasswordCopyCommand: 'コマンドをコピー',
             forgotPasswordCommandCopied: 'コマンドをクリップボードにコピーしました',
             forgotPasswordReloadButton: 'UI を再読み込み',

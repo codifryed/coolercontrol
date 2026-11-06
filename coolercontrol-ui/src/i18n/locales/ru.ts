@@ -1039,7 +1039,10 @@ export default {
         password: {
             forgotPassword: 'Забыли пароль?',
             forgotPasswordHelpIntro:
-                'Выполните эту команду в терминале от имени root, затем нажмите "Перезагрузить UI":',
+                'Выполните команду для вашей установки в терминале, затем нажмите "Перезагрузить UI":',
+            forgotPasswordPackageLabel: 'Установленный пакет',
+            forgotPasswordContainerNote:
+                'Для Docker или Podman укажите имя вашего контейнера, если оно не coolercontrold.',
             forgotPasswordCopyCommand: 'Скопировать команду',
             forgotPasswordCommandCopied: 'Команда скопирована в буфер обмена',
             forgotPasswordReloadButton: 'Перезагрузить UI',

@@ -981,7 +981,11 @@ export default {
         },
         password: {
             forgotPassword: '忘記密碼？',
-            forgotPasswordHelpIntro: '以 root 身分在終端機中執行此命令，然後點擊重新載入 UI：',
+            forgotPasswordHelpIntro:
+                '在終端機中執行與您的安裝方式對應的命令，然後點擊重新載入 UI：',
+            forgotPasswordPackageLabel: '已安裝的套件',
+            forgotPasswordContainerNote:
+                '使用 Docker 或 Podman 時，如果容器名稱不是 coolercontrold，請改用您的容器名稱。',
             forgotPasswordCopyCommand: '複製命令',
             forgotPasswordCommandCopied: '命令已複製到剪貼簿',
             forgotPasswordReloadButton: '重新載入 UI',

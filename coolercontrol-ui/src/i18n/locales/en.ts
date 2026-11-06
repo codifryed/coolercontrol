@@ -1020,7 +1020,10 @@ export default {
         password: {
             forgotPassword: 'Forgot password?',
             forgotPasswordHelpIntro:
-                'Run this command in a terminal as root, then click Reload UI:',
+                'Run the command for your installation in a terminal, then click Reload UI:',
+            forgotPasswordPackageLabel: 'Installed package',
+            forgotPasswordContainerNote:
+                "For Docker or Podman, use your container's name if it is not coolercontrold.",
             forgotPasswordCopyCommand: 'Copy command',
             forgotPasswordCommandCopied: 'Command copied to clipboard',
             forgotPasswordReloadButton: 'Reload UI',
