@@ -45,7 +45,7 @@ import { isFanChannel } from '@/shell/channelUnit.ts'
 import type { WindowStatsPayload } from '@/components/chartStats.ts'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
-import { component as Fullscreen } from 'vue-fullscreen'
+import { Fullscreen } from 'vue-fullscreen'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useWindowSize } from '@vueuse/core'
@@ -836,7 +836,6 @@ onUnmounted(() => {
              paints over the chart. -->
         <Fullscreen
             v-model="fullPage"
-            :teleport="true"
             :page-only="true"
             class="min-h-0 flex-1"
             :class="{ 'z-[1200]': fullPage }"

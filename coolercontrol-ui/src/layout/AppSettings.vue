@@ -62,7 +62,7 @@ import { Color } from '@/models/Device.ts'
 import { Emitter, EventType } from 'mitt'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import { useI18n } from 'vue-i18n'
-import { api as fullscreenApi } from 'vue-fullscreen'
+import { screenfull } from 'vue-fullscreen'
 import _ from 'lodash'
 import CCColorPicker from '@/components/CCColorPicker.vue'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
@@ -126,7 +126,7 @@ watch(
 )
 onMounted(() => scrollToSection(props.tabNumber))
 
-const isFullScreen = ref(fullscreenApi.isFullscreen)
+const isFullScreen = ref(screenfull.isFullscreen)
 if (deviceStore.isQtApp()) {
     // @ts-ignore
     const ipc = window.ipc
@@ -135,18 +135,20 @@ if (deviceStore.isQtApp()) {
         isFullScreen.value = fullscreen
     })
 }
+const syncFullScreen = async (): Promise<void> => {
+    isFullScreen.value = screenfull.isFullscreen
+    if (deviceStore.isQtApp()) {
+        await deviceStore.sleep(50)
+        // @ts-ignore
+        const ipc = window.ipc
+        isFullScreen.value = await ipc.getIsFullScreen()
+    }
+}
+// Also catches exits not made by the switch, such as Escape.
+screenfull.on('change', syncFullScreen)
+onUnmounted(() => screenfull.off('change', syncFullScreen))
 const toggleFullScreen = async (_enable: string | number | boolean): Promise<void> => {
-    await fullscreenApi.toggle(null, {
-        callback: async (fullscreen: boolean) => {
-            isFullScreen.value = fullscreen
-            if (deviceStore.isQtApp()) {
-                await deviceStore.sleep(50)
-                // @ts-ignore
-                const ipc = window.ipc
-                isFullScreen.value = await ipc.getIsFullScreen()
-            }
-        },
-    })
+    await screenfull.toggle(document.body)
 }
 
 // Preview swatches. Compiled themes are read back from their own class so the
@@ -652,7 +654,7 @@ onUnmounted(() => {
                 >
                     <UiSwitch
                         v-model="isFullScreen"
-                        :disabled="!fullscreenApi.isEnabled"
+                        :disabled="!screenfull.isEnabled"
                         @update:model-value="toggleFullScreen"
                     />
                 </UiSettingRow>
