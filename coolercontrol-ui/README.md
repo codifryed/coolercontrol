@@ -71,11 +71,6 @@ make dev
     `chokidar` 3), whose GHSA-vfj7-8cjw-p6xm has no fixed release. It is ignored in
     `osv-scanner.toml` until the 4.x bump removes it.
 - "Overrides" section is to handle some current vulnerabilities in the dev dependencies.
-  - `js-beautify: ^2.0.3` because `@vue/test-utils` still declares `^1.14.9`, whose `editorconfig`
-    and `minimatch` chain holds the vulnerable `brace-expansion` (GHSA-mh99-v99m-4gvg). Only
-    `brace-expansion` 5.0.8+ carries the fix and only `minimatch` 10 can consume it: 5.0.8 exports
-    an object instead of a function, so forcing it under an older `minimatch` clears the audit but
-    breaks at runtime with `expand is not a function`.
   - `postcss-selector-parser: ^7.1.6` because `tailwindcss` 3 and its `postcss-nested` still declare
     `^6.1.x`, and the fix for GHSA-rj75-hqrm-r3gf shipped only in 7.1.6, with no 6.x backport.
     `vite build` output is byte-identical under 6.1.4 and 7.1.6, but Tailwind 3 was never released

@@ -75,7 +75,6 @@
         "chrome >= 90"
     ],
     "overrides": {
-        "js-beautify": "^2.0.3",
         "postcss-selector-parser": "^7.1.6"
     },
     "allowScripts": {
