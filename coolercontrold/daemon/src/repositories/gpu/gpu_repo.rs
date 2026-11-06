@@ -178,6 +178,15 @@ impl GpuRepo {
         self.gpus_amd.amd_driver_infos.contains_key(device_uid)
     }
 
+    /// Whether the daemon has driven this channel, which is what a reset needs before it writes.
+    fn is_channel_taken(&self, device_uid: &UID, channel_name: &str) -> bool {
+        if self.is_amd_device(device_uid) {
+            self.gpus_amd.is_channel_taken(device_uid, channel_name)
+        } else {
+            self.gpus_nvidia.is_channel_taken(device_uid, channel_name)
+        }
+    }
+
     async fn get_amd_permit_with_write_timeout(
         &self,
         device_uid: &UID,
@@ -448,6 +457,9 @@ impl Repository for GpuRepo {
             let channel_names: Vec<String> =
                 device_lock.borrow().info.channels.keys().cloned().collect();
             for channel_name in &channel_names {
+                if self.gpus_amd.is_channel_taken(uid, channel_name).not() {
+                    continue;
+                }
                 if let Ok(_device_permit) = self
                     .get_amd_permit_with_write_timeout(uid, channel_name)
                     .await
@@ -468,6 +480,10 @@ impl Repository for GpuRepo {
     }
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
+        if self.is_channel_taken(device_uid, channel_name).not() {
+            debug!("Leaving GPU device: {device_uid} channel: {channel_name} as it is: not taken");
+            return Ok(());
+        }
         debug!(
             "Applying GPU device: {device_uid} channel: {channel_name}; Resetting to Automatic fan control"
         );
@@ -875,6 +891,322 @@ mod nvml_status_tests {
             assert_eq!(fan.duty, Some(MISSING_DUTY_FAILSAFE));
             assert_eq!(fan.rpm, Some(MISSING_RPM_FAILSAFE));
             assert_eq!(repo.failsafing().len(), 2);
+        });
+    }
+}
+
+#[cfg(test)]
+mod amd_taken_channel_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::device::{ChannelInfo, Device, DeviceInfo};
+    use crate::repositories::gpu::amd::AMDDriverInfo;
+    use crate::repositories::hwmon::device_io::DeviceIo;
+    use crate::repositories::hwmon::hwmon_repo::{
+        HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+    };
+    use serial_test::serial;
+    use std::cell::RefCell;
+    use std::path::{Path, PathBuf};
+
+    const FAN: &str = "fan1";
+
+    fn repo_with(driver: AMDDriverInfo) -> (GpuRepo, UID) {
+        let mut repo = GpuRepo::new(Rc::new(Config::init_default_config().unwrap()), false);
+        let mut info = DeviceInfo::default();
+        info.channels
+            .insert(FAN.to_string(), ChannelInfo::default());
+        let device = Device::new(
+            "Test AMD GPU".to_string(),
+            DeviceType::GPU,
+            1,
+            None,
+            info,
+            None,
+            1.0,
+        );
+        let uid = device.uid.clone();
+        repo.gpus_amd
+            .amd_devices
+            .insert(uid.clone(), Rc::new(RefCell::new(device)));
+        repo.gpus_amd
+            .amd_driver_infos
+            .insert(uid.clone(), Rc::new(driver));
+        repo.device_permits
+            .insert(uid.clone(), Semaphore::const_new(1));
+        (repo, uid)
+    }
+
+    fn pmfw_card(io: DeviceIo, fan_curve_path: PathBuf, changeable: bool) -> AMDDriverInfo {
+        let hwmon = HwmonDriverInfo {
+            name: "amdgpu".to_string(),
+            io,
+            ..Default::default()
+        };
+        AMDDriverInfo::for_test_with_fan_curve(hwmon, fan_curve_path, changeable)
+    }
+
+    async fn pwm_enable_at(dir: &Path) -> String {
+        let value = cc_fs::read_sysfs(dir.join("pwm1_enable")).await.unwrap();
+        value.trim().to_owned()
+    }
+
+    /// A pre-RDNA3 card whose fan sits in `dir`, with an automatic startup default.
+    async fn pre_rdna3_card(dir: &Path, pwm_enable: &[u8]) -> AMDDriverInfo {
+        cc_fs::write(dir.join("pwm1_enable"), pwm_enable.to_vec())
+            .await
+            .unwrap();
+        cc_fs::write(dir.join("pwm1"), b"128".to_vec())
+            .await
+            .unwrap();
+        AMDDriverInfo::for_test(HwmonDriverInfo {
+            name: "amdgpu".to_string(),
+            path: dir.to_path_buf(),
+            channels: vec![HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                name: FAN.to_string(),
+                pwm_enable_default: Some(2),
+                caps: HwmonChannelCapabilities::FAN_WRITABLE | HwmonChannelCapabilities::PWM,
+                pwm_path: Some(dir.join("pwm1")),
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+    }
+
+    /// Goal: the issue's two cases on RDNA3/4. A restart and a saved Unmanaged setting must not
+    /// write to a fan the daemon never drove, since `r` wipes what another tool set. Method: a
+    /// recording device through a boot-time reset and a shutdown.
+    #[test]
+    fn a_pmfw_fan_it_never_took_gets_no_writes() {
+        cc_fs::test_runtime(async {
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+            let (repo, uid) = repo_with(pmfw_card(io, PathBuf::from("/fake/fan_curve"), true));
+
+            let reset = recorder.serve(repo.apply_setting_reset(&uid, FAN)).await;
+            let shutdown = recorder.serve(repo.shutdown()).await;
+
+            assert!(reset.is_ok(), "{reset:?}");
+            assert!(shutdown.is_ok(), "{shutdown:?}");
+            assert_eq!(recorder.writes(), []);
+        });
+    }
+
+    /// Goal: a Mode moving a driven fan to Unmanaged hands it back once, and neither reapplying
+    /// Unmanaged nor shutdown writes again. Method: drive the fan on a recording device, reset
+    /// twice, shut down, and count the writes after the first reset.
+    #[test]
+    fn a_pmfw_fan_is_reset_once_and_then_left_alone() {
+        cc_fs::test_runtime(async {
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+            let curve = PathBuf::from("/fake/fan_curve");
+            let (repo, uid) = repo_with(pmfw_card(io, curve.clone(), true));
+            recorder
+                .serve(repo.apply_setting_speed_fixed(&uid, FAN, 50))
+                .await
+                .unwrap();
+            let writes_driving = recorder.writes().len();
+
+            recorder
+                .serve(repo.apply_setting_reset(&uid, FAN))
+                .await
+                .unwrap();
+            let writes_after_reset = recorder.writes().len();
+            recorder
+                .serve(repo.apply_setting_reset(&uid, FAN))
+                .await
+                .unwrap();
+            recorder.serve(repo.shutdown()).await.unwrap();
+
+            assert!(writes_driving > 0);
+            assert_eq!(writes_after_reset, writes_driving + 1);
+            assert_eq!(recorder.writes().len(), writes_after_reset);
+            assert_eq!(recorder.writes().last(), Some(&(curve, "r\n".to_owned())));
+        });
+    }
+
+    /// Goal: shutdown hands back a fan still under control. Method: drive it, then shut down.
+    #[test]
+    fn shutdown_returns_a_pmfw_fan_under_control() {
+        cc_fs::test_runtime(async {
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+            let curve = PathBuf::from("/fake/fan_curve");
+            let (repo, uid) = repo_with(pmfw_card(io, curve.clone(), true));
+            recorder
+                .serve(repo.apply_setting_speed_fixed(&uid, FAN, 50))
+                .await
+                .unwrap();
+
+            recorder.serve(repo.shutdown()).await.unwrap();
+
+            assert_eq!(recorder.writes().last(), Some(&(curve, "r\n".to_owned())));
+        });
+    }
+
+    /// Goal: a firmware curve takes the fan like a duty does. Method: apply one to a recording
+    /// device, then reset it.
+    #[test]
+    fn a_pmfw_hardware_curve_takes_the_fan() {
+        cc_fs::test_runtime(async {
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+            let curve = PathBuf::from("/fake/fan_curve");
+            let (repo, uid) = repo_with(pmfw_card(io, curve.clone(), true));
+            let temp_source = TempSource {
+                device_uid: uid.clone(),
+                temp_name: TEMP_FOR_FAN_CURVE.to_string(),
+            };
+            let profile = [(30.0, 20), (50.0, 40), (60.0, 60), (70.0, 80), (80.0, 100)];
+            recorder
+                .serve(repo.apply_setting_speed_profile(&uid, FAN, &temp_source, &profile))
+                .await
+                .unwrap();
+
+            recorder
+                .serve(repo.apply_setting_reset(&uid, FAN))
+                .await
+                .unwrap();
+
+            assert_eq!(recorder.writes().last(), Some(&(curve, "r\n".to_owned())));
+        });
+    }
+
+    /// Goal: a write that fails part way still takes the fan, and a reset that fails leaves it
+    /// taken, so shutdown tries the hand-back again. Method: a fan curve path that is a
+    /// directory, which no write can land on, then a real file for shutdown.
+    #[test]
+    #[serial]
+    fn a_failed_pmfw_reset_is_retried_at_shutdown() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let curve = tmp.path().join("fan_curve");
+            cc_fs::create_dir_all(&curve).await.unwrap();
+            let card = pmfw_card(DeviceIo::default(), curve.clone(), true);
+            let (repo, uid) = repo_with(card);
+
+            let duty = repo.apply_setting_speed_fixed(&uid, FAN, 50).await;
+            let reset = repo.apply_setting_reset(&uid, FAN).await;
+
+            cc_fs::remove_dir_all(&curve).await.unwrap();
+            cc_fs::write(&curve, b"OD_FAN_CURVE:\n".to_vec())
+                .await
+                .unwrap();
+            let shutdown = repo.shutdown().await;
+
+            assert!(duty.is_err());
+            assert!(reset.is_err());
+            assert!(shutdown.is_ok(), "{shutdown:?}");
+            let handed_back = cc_fs::read_sysfs(&curve).await.unwrap();
+            assert_eq!(handed_back.trim(), "r");
+        });
+    }
+
+    /// Goal: a Zero RPM restore that fails keeps the card taken even when the curve restore lands,
+    /// or firmware keeps the stop temperature the daemon set. Method: for each Zero RPM file, make
+    /// it a directory, which no write can land on, reset, then make it a real file for shutdown.
+    #[test]
+    #[serial]
+    fn a_failed_zero_rpm_reset_is_retried_at_shutdown() {
+        cc_fs::test_runtime(async {
+            for failing_file in ["zero_rpm", "zero_rpm_stop_temp"] {
+                let tmp = tempfile::tempdir().unwrap();
+                let curve = tmp.path().join("fan_curve");
+                let zero_rpm = tmp.path().join("zero_rpm");
+                let stop_temp = tmp.path().join("zero_rpm_stop_temp");
+                let failing = tmp.path().join(failing_file);
+                for path in [&curve, &zero_rpm, &stop_temp] {
+                    cc_fs::write(path, Vec::new()).await.unwrap();
+                }
+                cc_fs::remove_file(&failing).await.unwrap();
+                cc_fs::create_dir_all(&failing).await.unwrap();
+                let hwmon = HwmonDriverInfo {
+                    name: "amdgpu".to_string(),
+                    ..Default::default()
+                };
+                let (repo, uid) = repo_with(AMDDriverInfo::for_test_with_zero_rpm(
+                    hwmon,
+                    curve.clone(),
+                    zero_rpm,
+                    stop_temp,
+                ));
+                repo.apply_setting_speed_fixed(&uid, FAN, 50).await.unwrap();
+
+                let reset = repo.apply_setting_reset(&uid, FAN).await;
+
+                assert!(reset.is_err(), "{failing_file}");
+                assert!(repo.is_channel_taken(&uid, FAN), "{failing_file}");
+                let curve_after_reset = cc_fs::read_sysfs(&curve).await.unwrap();
+                assert_eq!(curve_after_reset.trim(), "r", "{failing_file}");
+
+                cc_fs::remove_dir_all(&failing).await.unwrap();
+                cc_fs::write(&failing, Vec::new()).await.unwrap();
+                repo.shutdown().await.unwrap();
+                let handed_back = cc_fs::read_sysfs(&failing).await.unwrap();
+                assert_eq!(handed_back.trim(), "r", "{failing_file}");
+            }
+        });
+    }
+
+    /// Goal: a saved Unmanaged setting on a card with its fan control off stops failing at boot,
+    /// where the error would clear the active Mode. Method: a card whose curve is not changeable,
+    /// with no write allowed to reach the device.
+    #[test]
+    fn a_card_without_fan_control_resets_without_error() {
+        cc_fs::test_runtime(async {
+            let (io, mut recorder) = DeviceIo::recording_for_test();
+            let (repo, uid) = repo_with(pmfw_card(io, PathBuf::from("/fake/fan_curve"), false));
+
+            let refused = recorder
+                .serve(repo.apply_setting_speed_fixed(&uid, FAN, 50))
+                .await;
+            let reset = recorder.serve(repo.apply_setting_reset(&uid, FAN)).await;
+
+            assert!(refused.is_err());
+            assert!(reset.is_ok(), "{reset:?}");
+            assert_eq!(recorder.writes(), []);
+        });
+    }
+
+    /// Goal: the hwmon path on older cards leaves an untaken fan as another tool set it. Method:
+    /// a fan held in manual with an automatic startup default, through a reset and a shutdown.
+    #[test]
+    #[serial]
+    fn a_pre_rdna3_fan_it_never_took_is_left_alone() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let (repo, uid) = repo_with(pre_rdna3_card(tmp.path(), b"1").await);
+
+            let reset = repo.apply_setting_reset(&uid, FAN).await;
+            let shutdown = repo.shutdown().await;
+
+            assert!(reset.is_ok(), "{reset:?}");
+            assert!(shutdown.is_ok(), "{shutdown:?}");
+            assert_eq!(pwm_enable_at(tmp.path()).await, "1");
+        });
+    }
+
+    /// Goal: the hwmon path on older cards hands a driven fan back once. Method: drive it, reset
+    /// it, play another tool, then reset again and shut down.
+    #[test]
+    #[serial]
+    fn a_pre_rdna3_fan_is_reset_once_and_then_left_alone() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let (repo, uid) = repo_with(pre_rdna3_card(tmp.path(), b"2").await);
+            repo.apply_setting_speed_fixed(&uid, FAN, 50).await.unwrap();
+            let while_taken = pwm_enable_at(tmp.path()).await;
+
+            repo.apply_setting_reset(&uid, FAN).await.unwrap();
+            let after_reset = pwm_enable_at(tmp.path()).await;
+            cc_fs::write(tmp.path().join("pwm1_enable"), b"1".to_vec())
+                .await
+                .unwrap();
+            repo.apply_setting_reset(&uid, FAN).await.unwrap();
+            repo.shutdown().await.unwrap();
+
+            assert_eq!(while_taken, "1");
+            assert_eq!(after_reset, "2");
+            assert_eq!(pwm_enable_at(tmp.path()).await, "1");
         });
     }
 }

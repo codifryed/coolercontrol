@@ -958,9 +958,7 @@ pub async fn set_pwm_enable_to_default_or_auto(
         .await
         .and_then(check_parsing_8)?;
     if current_pwm_enable < PWM_ENABLE_AUTO_VALUE && current_pwm_enable != default_value {
-        if let Err(err) = write_pwm_enable(&path_pwm_enable, default_value, io).await {
-            warn!("Failed to reset pwm_enable to default: {err}");
-        }
+        write_pwm_enable(&path_pwm_enable, default_value, io).await?;
     }
     debug!(
         "Reset Hwmon value at {}/pwm{}_enable to default/auto value",
@@ -1918,6 +1916,7 @@ mod tests {
             drivetemp: drivetemp::DrivetempState::default(),
             apple_fans: None,
             io: DeviceIo::default(),
+            ..Default::default()
         }
         .with_read_registry()
         .await

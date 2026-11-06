@@ -21,6 +21,9 @@ Release notes are automatically generated from this file and git tags.
 - RDNA3/4 AMD GPU fans on newer firmwares could stay stopped after Zero RPM was disabled, until the
   fan speed changed. Changed our commit method so that everything is applied in one firmware upload,
   which works for newer and older firmwares despite the same kernel driver
+- CoolerControl no longer overwrites fan settings from other programs, such as LACT, on fans it is
+  not controlling. Unmanaged fans get one reset when leaving CoolerControl's control, then no writes
+  at boot, on resume, on a Mode change or at shutdown
 
 ## [5.1.1] - 2026-10-19
 

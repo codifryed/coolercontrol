@@ -11,11 +11,12 @@ use crate::events::amd_gpu_overdrive::{
     AmdGpuOverdriveHandle, AmdGpuOverdrivePlan, AmdGpuOverdriveStatus, OverdriveAction,
 };
 use crate::events::notifier::NotificationHandle;
-use crate::modes::ModeController;
+use crate::modes::{channel_is_available, ModeController};
 use crate::overrides::OverridesController;
 use crate::repositories::gpu::amd_overdrive::OverdriveSetup;
 use crate::setting::{
-    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting, SettingKind,
+    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, ProfileType, ProfileUID, Setting,
+    SettingKind,
 };
 use crate::AllDevices;
 use anyhow::Result;
@@ -184,6 +185,36 @@ impl DeviceActor {
         self.config.set_device_setting(device_uid, setting);
         self.modes_controller.clear_active_modes().await;
         self.config.save_config_file().await
+    }
+
+    /// Saves an Unmanaged choice even when its hand-back write failed, as Modes do. The channel
+    /// stays taken, so shutdown tries the hand-back again, and the next start does not bring back
+    /// the old Profile. The error is still returned. A channel the device lacks is not saved.
+    async fn save_after_hand_back(
+        &self,
+        device_uid: &DeviceUID,
+        setting: &Setting,
+        hand_back: Result<()>,
+    ) -> Result<()> {
+        let Err(hand_back_err) = hand_back else {
+            return self.save_setting_if_changed(device_uid, setting).await;
+        };
+        if channel_is_available(&self.all_devices, device_uid, &setting.channel_name).not() {
+            return Err(hand_back_err);
+        }
+        if let Err(save_err) = self.save_setting_if_changed(device_uid, setting).await {
+            error!("Unable to save the Unmanaged setting after a failed hand-back: {save_err}");
+        }
+        Err(hand_back_err)
+    }
+
+    /// Whether applying this Profile hands the channel back, as Unmanaged does.
+    async fn is_default_profile(&self, profile_uid: &ProfileUID) -> bool {
+        self.config.get_profiles().await.is_ok_and(|profiles| {
+            profiles
+                .iter()
+                .any(|p| &p.uid == profile_uid && p.p_type() == ProfileType::Default)
+        })
     }
 
     /// A `log=false` LCD write comes from an external tool pushing frames. It owns the screen
@@ -381,14 +412,18 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.engine
+                    let applied = self
+                        .engine
                         .set_profile(&device_uid, &channel_name, &profile_uid)
-                        .await?;
+                        .await;
+                    if applied.is_err() && self.is_default_profile(&profile_uid).await.not() {
+                        return applied;
+                    }
                     let config_setting = Setting {
                         channel_name,
                         kind: SettingKind::Profile { profile_uid },
                     };
-                    self.save_setting_if_changed(&device_uid, &config_setting)
+                    self.save_after_hand_back(&device_uid, &config_setting, applied)
                         .await
                 }
                 .await;
@@ -471,14 +506,14 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.engine.set_reset(&device_uid, &channel_name).await?;
+                    let applied = self.engine.set_reset(&device_uid, &channel_name).await;
                     let config_setting = Setting {
                         channel_name,
                         kind: SettingKind::Reset {
                             reset_to_default: true,
                         },
                     };
-                    self.save_setting_if_changed(&device_uid, &config_setting)
+                    self.save_after_hand_back(&device_uid, &config_setting, applied)
                         .await
                 }
                 .await;
@@ -920,6 +955,7 @@ mod tests {
     use crate::events::amd_gpu_overdrive::OverdriveState;
     use crate::listeners::power_profile::PowerProfiles;
     use crate::repositories::repository::Repositories;
+    use crate::setting::DEFAULT_PROFILE_UID;
     use axum::body::Body;
     use axum::http::{header, Request, StatusCode};
     use axum::routing::post;
@@ -1073,6 +1109,178 @@ mod tests {
                 config.get_device_settings(DEVICE_UID).unwrap(),
                 vec![setting]
             );
+        });
+    }
+
+    /// A device actor with one fan and an active Mode. No repository runs, so every reset fails
+    /// the way a refused hand-back write does.
+    async fn actor_with_unreachable_fan() -> (DeviceActor, Rc<Config>, Rc<ModeController>, DeviceUID)
+    {
+        let mut info = DeviceInfo::default();
+        info.channels
+            .insert("fan1".to_string(), ChannelInfo::default());
+        let device = crate::device::Device::new(
+            "fan device".to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            info,
+            None,
+            1.0,
+        );
+        let device_uid = device.uid.clone();
+        let all_devices: AllDevices = Rc::new(HashMap::from([(
+            device_uid.clone(),
+            Rc::new(std::cell::RefCell::new(device)),
+        )]));
+        let config = Rc::new(Config::init_default_config().unwrap());
+        config.create_device_list(&all_devices);
+        let engine = Rc::new(Engine::new(
+            Rc::clone(&all_devices),
+            &Rc::new(Repositories::default()),
+            Rc::clone(&config),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+            Rc::new(OverridesController::empty()),
+        ));
+        let modes_controller = Rc::new(
+            ModeController::init(
+                Rc::clone(&config),
+                Rc::clone(&all_devices),
+                Rc::clone(&engine),
+                PowerProfiles::default(),
+            )
+            .await
+            .unwrap(),
+        );
+        modes_controller
+            .create_mode("Test Mode".to_string())
+            .await
+            .unwrap();
+        let (_sender, receiver) = mpsc::channel(1);
+        let actor = DeviceActor::new(
+            receiver,
+            all_devices,
+            engine,
+            Rc::clone(&modes_controller),
+            Rc::clone(&config),
+            Rc::new(OverridesController::empty()),
+            OverdriveSetup::with_root(
+                AmdGpuOverdriveHandle::new(CancellationToken::new()),
+                NotificationHandle::new(CancellationToken::new()),
+                std::path::Path::new("/nonexistent/coolercontrold-test-root"),
+            ),
+        );
+        (actor, config, modes_controller, device_uid)
+    }
+
+    fn graph_profile_setting() -> Setting {
+        Setting {
+            channel_name: "fan1".to_string(),
+            kind: SettingKind::Profile {
+                profile_uid: "graph-profile".to_string(),
+            },
+        }
+    }
+
+    async fn send_profile(
+        actor: &mut DeviceActor,
+        device_uid: &DeviceUID,
+        profile_uid: &str,
+    ) -> Result<()> {
+        let (respond_to, rx) = oneshot::channel();
+        actor
+            .handle_message(DeviceMessage::DeviceSettingProfile {
+                device_uid: device_uid.clone(),
+                channel_name: "fan1".to_string(),
+                profile_uid: profile_uid.to_string(),
+                respond_to,
+            })
+            .await;
+        rx.await.unwrap()
+    }
+
+    async fn send_reset(
+        actor: &mut DeviceActor,
+        device_uid: &DeviceUID,
+        channel_name: &str,
+    ) -> Result<()> {
+        let (respond_to, rx) = oneshot::channel();
+        actor
+            .handle_message(DeviceMessage::DeviceSettingReset {
+                device_uid: device_uid.clone(),
+                channel_name: channel_name.to_string(),
+                respond_to,
+            })
+            .await;
+        rx.await.unwrap()
+    }
+
+    /// Goal: choosing Unmanaged is saved even when the hand-back write fails, so the next start
+    /// does not bring back the old Profile, and the error still reaches the UI. Method: apply
+    /// the Default Profile to a fan whose reset fails, over a saved Graph Profile.
+    #[test]
+    #[serial(modes_file)]
+    fn unmanaged_is_saved_when_its_hand_back_fails() {
+        crate::rt::test_runtime(async {
+            let (mut actor, config, modes_controller, device_uid) =
+                actor_with_unreachable_fan().await;
+            config.set_device_setting(&device_uid, &graph_profile_setting());
+
+            let result = send_profile(&mut actor, &device_uid, DEFAULT_PROFILE_UID).await;
+
+            assert!(result.is_err());
+            let saved = config.get_device_settings(&device_uid).unwrap();
+            assert_eq!(saved.len(), 1);
+            assert_eq!(
+                saved[0].kind,
+                SettingKind::Profile {
+                    profile_uid: DEFAULT_PROFILE_UID.to_string()
+                }
+            );
+            assert!(is_mode_active(&modes_controller).not());
+        });
+    }
+
+    /// Goal: the reset endpoint, used for LCD and lighting, saves its choice the same way.
+    /// Method: reset a fan whose reset fails, over a saved Graph Profile.
+    #[test]
+    #[serial(modes_file)]
+    fn reset_is_saved_when_its_hand_back_fails() {
+        crate::rt::test_runtime(async {
+            let (mut actor, config, _modes_controller, device_uid) =
+                actor_with_unreachable_fan().await;
+            config.set_device_setting(&device_uid, &graph_profile_setting());
+
+            let result = send_reset(&mut actor, &device_uid, "fan1").await;
+
+            assert!(result.is_err());
+            // A saved reset removes the channel's entry, so the old Profile is gone.
+            assert!(config.get_device_settings(&device_uid).unwrap().is_empty());
+        });
+    }
+
+    /// Goal: only a hand-back is saved on failure. A Profile that did not apply, or a channel the
+    /// device lacks, leaves the config as it was. Method: apply an unknown Profile, then reset an
+    /// unknown channel, and compare the saved settings.
+    #[test]
+    #[serial(modes_file)]
+    fn other_failures_are_not_saved() {
+        crate::rt::test_runtime(async {
+            let (mut actor, config, modes_controller, device_uid) =
+                actor_with_unreachable_fan().await;
+            config.set_device_setting(&device_uid, &graph_profile_setting());
+
+            let profile_result = send_profile(&mut actor, &device_uid, "missing-profile").await;
+            let reset_result = send_reset(&mut actor, &device_uid, "fan9").await;
+
+            assert!(profile_result.is_err());
+            assert!(reset_result.is_err());
+            assert_eq!(
+                config.get_device_settings(&device_uid).unwrap(),
+                vec![graph_profile_setting()]
+            );
+            assert!(is_mode_active(&modes_controller));
         });
     }
 

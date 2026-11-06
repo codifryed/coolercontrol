@@ -734,7 +734,7 @@ impl ModeController {
 /// A saved setting can name a channel that is not there: the user disabled it, their lm-sensors
 /// configuration ignores it, or the driver stopped reporting it. Such settings are kept in the
 /// config, since the channel can come back, but they cannot be applied while it is gone.
-fn channel_is_available(
+pub fn channel_is_available(
     all_devices: &AllDevices,
     device_uid: &DeviceUID,
     channel_name: &str,
