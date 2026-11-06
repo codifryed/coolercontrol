@@ -2376,7 +2376,7 @@ mod tests {
     #[test]
     #[ignore = "requires root and fs.protected_regular=2"]
     fn a_config_save_works_in_a_protected_sticky_folder() {
-        const NOBODY: u32 = 65534;
+        const NOBODY_ID: u32 = 65534;
         assert!(nix::unistd::geteuid().is_root(), "run as root");
         let protection = std::fs::read_to_string("/proc/sys/fs/protected_regular").unwrap();
         assert_eq!(protection.trim(), "2", "run with fs.protected_regular=2");
@@ -2387,7 +2387,7 @@ mod tests {
             std::fs::set_permissions(folder, Permissions::from_mode(PLUGIN_FOLDER_PERMISSIONS))
                 .unwrap();
             std::fs::write(&config_path, "{\"old\": true}").unwrap();
-            std::os::unix::fs::chown(&config_path, Some(NOBODY), Some(NOBODY)).unwrap();
+            std::os::unix::fs::chown(&config_path, Some(NOBODY_ID), Some(NOBODY_ID)).unwrap();
 
             let saved = controller
                 .save_plugin_config_file("test-plugin", "{}".to_string())
