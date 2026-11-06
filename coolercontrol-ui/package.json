@@ -75,6 +75,12 @@
         "chrome >= 90"
     ],
     "overrides": {
+        "editorconfig": {
+            "minimatch": "^11.0.5"
+        },
+        "js-beautify": {
+            "glob": "^14.0.4"
+        },
         "postcss-selector-parser": "^7.1.6"
     },
     "allowScripts": {

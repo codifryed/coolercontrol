@@ -71,6 +71,13 @@ make dev
     `chokidar` 3), whose GHSA-vfj7-8cjw-p6xm has no fixed release. It is ignored in
     `osv-scanner.toml` until the 4.x bump removes it.
 - "Overrides" section is to handle some current vulnerabilities in the dev dependencies.
+  - `js-beautify > glob: ^14.0.4` and `editorconfig > minimatch: ^11.0.5`, both reached through
+    `@vue/test-utils`. The fixes for GHSA-3g3m-2fjr-6pw4 (`glob` 14.0.2) and GHSA-g3hv-75wg-m249
+    (`minimatch` 11.0.1) shipped only in new majors, while `js-beautify` 2.0.3 still declares
+    `glob ^13` and `editorconfig` 3.0.2 declares `minimatch ~10.2.4`. Only the `js-beautify` CLI
+    loads either package, never the `html()` path the tests use, and the CLI's `globSync`,
+    `hasMagic`, `Minimatch` and `escape` calls are unchanged in the new majors. Drop each once its
+    parent declares the fixed major.
   - `postcss-selector-parser: ^7.1.6` because `tailwindcss` 3 and its `postcss-nested` still declare
     `^6.1.x`, and the fix for GHSA-rj75-hqrm-r3gf shipped only in 7.1.6, with no 6.x backport.
     `vite build` output is byte-identical under 6.1.4 and 7.1.6, but Tailwind 3 was never released
