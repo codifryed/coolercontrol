@@ -67,9 +67,6 @@ make dev
   - Looks like 4.0 only works for Chrome 111+ (We need to support 90+ for older debian/ubuntu
     distros with QtWebEngine)
   - https://wiki.qt.io/QtWebEngine/ChromiumVersions
-  - Tailwind 3 is also the only thing holding `braces` (via `micromatch`, `fast-glob` and its own
-    `chokidar` 3), whose GHSA-vfj7-8cjw-p6xm has no fixed release. It is ignored in
-    `osv-scanner.toml` until the 4.x bump removes it.
 - "Overrides" section is to handle some current vulnerabilities in the dev dependencies.
   - `js-beautify > glob: ^14.0.4` and `editorconfig > minimatch: ^11.0.5`, both reached through
     `@vue/test-utils`. The fixes for GHSA-3g3m-2fjr-6pw4 (`glob` 14.0.2) and GHSA-g3hv-75wg-m249
