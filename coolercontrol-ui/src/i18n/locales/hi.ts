@@ -1020,7 +1020,12 @@ export default {
         password: {
             forgotPassword: 'पासवर्ड भूल गए?',
             forgotPasswordHelpIntro:
-                'इस कमांड को टर्मिनल में रूट के रूप में चलाएं, फिर UI रीलोड पर क्लिक करें:',
+                'अपने इंस्टॉलेशन के अनुसार कमांड को टर्मिनल में चलाएं, फिर UI रीलोड पर क्लिक करें:',
+            forgotPasswordPackageLabel: 'इंस्टॉल किया गया पैकेज',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman',
+            forgotPasswordContainerNote:
+                'Docker या Podman में, यदि आपके कंटेनर का नाम coolercontrold नहीं है तो उसका नाम उपयोग करें।',
             forgotPasswordCopyCommand: 'कमांड कॉपी करें',
             forgotPasswordCommandCopied: 'कमांड क्लिपबोर्ड पर कॉपी हो गया',
             forgotPasswordReloadButton: 'UI रीलोड',

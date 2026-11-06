@@ -1012,7 +1012,12 @@ export default {
         password: {
             forgotPassword: 'هل نسيت كلمة المرور؟',
             forgotPasswordHelpIntro:
-                'قم بتشغيل هذا الأمر في الطرفية كمستخدم جذر، ثم انقر على إعادة تحميل واجهة المستخدم:',
+                'قم بتشغيل الأمر المناسب لطريقة التثبيت في الطرفية، ثم انقر على إعادة تحميل واجهة المستخدم:',
+            forgotPasswordPackageLabel: 'الحزمة المثبتة',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman',
+            forgotPasswordContainerNote:
+                'في Docker أو Podman، استخدم اسم الحاوية الخاصة بك إذا لم يكن coolercontrold.',
             forgotPasswordCopyCommand: 'نسخ الأمر',
             forgotPasswordCommandCopied: 'تم نسخ الأمر إلى الحافظة',
             forgotPasswordReloadButton: 'إعادة تحميل واجهة المستخدم',

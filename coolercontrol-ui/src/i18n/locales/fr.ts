@@ -1052,7 +1052,12 @@ export default {
         password: {
             forgotPassword: 'Mot de passe oublié ?',
             forgotPasswordHelpIntro:
-                "Exécutez cette commande dans un terminal en tant que root, puis cliquez sur Recharger l'UI :",
+                "Exécutez la commande correspondant à votre installation dans un terminal, puis cliquez sur Recharger l'UI :",
+            forgotPasswordPackageLabel: 'Paquet installé',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman',
+            forgotPasswordContainerNote:
+                "Avec Docker ou Podman, utilisez le nom de votre conteneur s'il ne s'appelle pas coolercontrold.",
             forgotPasswordCopyCommand: 'Copier la commande',
             forgotPasswordCommandCopied: 'Commande copiée dans le presse-papiers',
             forgotPasswordReloadButton: "Recharger l'UI",
