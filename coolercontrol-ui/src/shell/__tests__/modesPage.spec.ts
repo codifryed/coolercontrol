@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { shallowMount } from '@vue/test-utils'
+import { mount, shallowMount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import en from '@/i18n/locales/en.ts'
+import { tooltipDirective } from '@/shell/tooltipDirective.ts'
+import { mdiInformationOutline } from '@mdi/js'
 
 const loadPowerProfiles = vi.fn(() => Promise.resolve())
 const refreshAvailablePowerProfiles = vi.fn(() => Promise.resolve())
@@ -38,6 +40,26 @@ const mountPage = async () => {
     })
 }
 
+// Full mount for the power profile card: shallowMount stubs drop named slots,
+// and the info icon lives in a named slot. The tooltip directive is the real
+// one, so the test reads the value it receives, and the icon renders as a
+// path-bearing stub. Heavy children are stubbed individually.
+const mountCard = async () => {
+    const { default: ModesPage } = await import('@/shell/cooling/ModesPage.vue')
+    return mount(ModesPage, {
+        global: {
+            plugins: [i18n],
+            directives: { tooltip: tooltipDirective },
+            stubs: {
+                RouterLink: true,
+                UiSelect: true,
+                UiButton: true,
+                'svg-icon': { props: ['path'], template: '<i :data-path="path" />' },
+            },
+        },
+    })
+}
+
 beforeEach(() => {
     loadPowerProfiles.mockClear()
     refreshAvailablePowerProfiles.mockClear()
@@ -60,5 +82,22 @@ describe('ModesPage power profiles', () => {
     it('does not reload the active profile or the mapping on a visit', async () => {
         await mountPage()
         expect(loadPowerProfiles).not.toHaveBeenCalled()
+    })
+
+    // The cooldown is daemon behavior with no setting to configure, so the page itself has to
+    // carry the explanation: an info icon on the card's first row whose tooltip is the
+    // translated cooldown text.
+    it('documents the cooldown on an info icon', async () => {
+        const wrapper = await mountCard()
+
+        const label = wrapper.find('.cursor-help')
+        expect(label.exists()).toBe(true)
+        const tooltip = (label.element as HTMLElement & { $ccTooltip?: { value: string } })
+            .$ccTooltip
+        expect(tooltip?.value).toBe(en.layout.shell.coolingPage.powerProfiles.cooldownTooltip)
+        expect(tooltip?.position).toBe('top')
+
+        const icon = wrapper.find(`i[data-path="${mdiInformationOutline}"]`)
+        expect(icon.exists()).toBe(true)
     })
 })

@@ -280,6 +280,8 @@ export default {
                     modeNotActive: '{mode} назначен текущему профилю, но не активен.',
                     modeNotActiveRestart:
                         'Он будет снова активирован при следующем запуске демона.',
+                    cooldownTooltip:
+                        'Когда система покидает профиль «Производительность», назначенный режим активируется только после 10-секундной паузы, чтобы система успела отдать тепло до снижения оборотов вентиляторов.',
                     profileNames: {
                         'power-saver': 'Энергосбережение',
                         balanced: 'Сбалансированный',
@@ -1503,6 +1505,35 @@ export default {
             overdriveEnable: 'Включить',
             overdriveActive: 'Активно',
             overdriveSuccess: 'Overdrive настроен',
+            overdriveSuccessDetail: 'Перезагрузите компьютер, чтобы применить изменение.',
+            overdriveConfirmHeader: 'Включить overdrive для GPU?',
+            overdriveApplying: 'Применяется. Не выключайте компьютер.',
+            overdriveRebootRequired: 'Требуется перезагрузка',
+            overdriveFailed: 'Ошибка',
+            overdriveRetry: 'Повторить',
+            overdriveFailedSummary: 'Не удалось настроить overdrive',
+            overdriveFailedDetail:
+                '{error}. Выполните {command} от имени root, затем перезагрузите компьютер.',
+            overdriveRebuildStillRunning:
+                'Пересборка загрузочного образа ещё выполняется в фоне. Перезагружайтесь только после её завершения.',
+            overdriveRebuildStillRunningSummary: 'Пересборка ещё выполняется',
+            overdriveRebuildSkipped:
+                'CoolerControl не распознаёт, как эта система собирает загрузочный образ, поэтому не пересобирает его. Если amdgpu загружается из initramfs, пересоберите его перед перезагрузкой.',
+            overdriveRebuildYourself:
+                'Настройка записана. Выполните {command} от имени root, затем перезагрузите компьютер.',
+            overdriveConfigOnly: 'Только записать конфигурацию',
+            overdrivePlanDuration:
+                'Это может занять несколько минут. Не выключайте компьютер, пока процесс не завершится. Изменение вступит в силу после перезагрузки.',
+            overdrivePlanWrites: 'Файлы для записи: {files}',
+            overdrivePlanDeletes: 'Файлы для удаления: {files}',
+            overdrivePlanRunsAsRoot: 'Выполняется от имени root:',
+            overdrivePlanRecovery:
+                'Если после этого система не загрузится, выберите снимок в загрузочном меню, если ваша система их хранит, или загрузитесь с live-системы, отмените изменение и пересоберите загрузочный образ.',
+            overdrivePlanRecoveryDeployment:
+                'Если после этого система не загрузится, выберите предыдущее развёртывание в загрузочном меню.',
+            overdriveDisable: 'Отключить',
+            overdriveDisableHeader: 'Отключить GPU Overdrive?',
+            overdriveRemovedSummary: 'Overdrive удалён',
             thinkPadFanControl: 'Управление вентилятором',
             thinkPadFanControlDesc:
                 'Включает управление вентилятором ThinkPad ACPI.\nУправление вентилятором отключено по умолчанию из соображений безопасности.\nПродолжайте на свой страх и риск.',

@@ -7,16 +7,20 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{ChannelAttribute, ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
+use crate::events::amd_gpu_overdrive::{
+    AmdGpuOverdriveHandle, AmdGpuOverdrivePlan, AmdGpuOverdriveStatus, OverdriveAction,
+};
 use crate::events::notifier::NotificationHandle;
-use crate::modes::ModeController;
+use crate::modes::{channel_is_available, ModeController};
 use crate::overrides::OverridesController;
-use crate::repositories::gpu::amd_overdrive;
+use crate::repositories::gpu::amd_overdrive::OverdriveSetup;
 use crate::setting::{
-    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting, SettingKind,
+    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, ProfileType, ProfileUID, Setting,
+    SettingKind,
 };
 use crate::AllDevices;
 use anyhow::Result;
-use log::{error, info};
+use log::{debug, error, info};
 use mime::Mime;
 use moro_local::Scope;
 use std::ops::{Deref, Not};
@@ -31,6 +35,7 @@ struct DeviceActor {
     modes_controller: Rc<ModeController>,
     config: Rc<Config>,
     overrides: Rc<OverridesController>,
+    overdrive: OverdriveSetup,
 }
 
 enum DeviceMessage {
@@ -39,8 +44,18 @@ enum DeviceMessage {
         respond_to: oneshot::Sender<Result<()>>,
     },
     AmdGpuOverdriveEnable {
-        notification_handle: NotificationHandle,
-        respond_to: oneshot::Sender<Result<String>>,
+        rebuild: bool,
+        respond_to: oneshot::Sender<Result<AmdGpuOverdriveStatus>>,
+    },
+    AmdGpuOverdriveDisable {
+        respond_to: oneshot::Sender<Result<AmdGpuOverdriveStatus>>,
+    },
+    AmdGpuOverdrivePlan {
+        action: OverdriveAction,
+        respond_to: oneshot::Sender<Result<AmdGpuOverdrivePlan>>,
+    },
+    AmdGpuOverdriveGet {
+        respond_to: oneshot::Sender<AmdGpuOverdriveStatus>,
     },
     DevicesGet {
         respond_to: oneshot::Sender<Result<Vec<DeviceDto>>>,
@@ -140,6 +155,7 @@ impl DeviceActor {
         modes_controller: Rc<ModeController>,
         config: Rc<Config>,
         overrides: Rc<OverridesController>,
+        overdrive: OverdriveSetup,
     ) -> Self {
         Self {
             receiver,
@@ -148,6 +164,7 @@ impl DeviceActor {
             modes_controller,
             config,
             overrides,
+            overdrive,
         }
     }
 
@@ -170,6 +187,36 @@ impl DeviceActor {
         self.config.save_config_file().await
     }
 
+    /// Saves an Unmanaged choice even when its hand-back write failed, as Modes do. The channel
+    /// stays taken, so shutdown tries the hand-back again, and the next start does not bring back
+    /// the old Profile. The error is still returned. A channel the device lacks is not saved.
+    async fn save_after_hand_back(
+        &self,
+        device_uid: &DeviceUID,
+        setting: &Setting,
+        hand_back: Result<()>,
+    ) -> Result<()> {
+        let Err(hand_back_err) = hand_back else {
+            return self.save_setting_if_changed(device_uid, setting).await;
+        };
+        if channel_is_available(&self.all_devices, device_uid, &setting.channel_name).not() {
+            return Err(hand_back_err);
+        }
+        if let Err(save_err) = self.save_setting_if_changed(device_uid, setting).await {
+            error!("Unable to save the Unmanaged setting after a failed hand-back: {save_err}");
+        }
+        Err(hand_back_err)
+    }
+
+    /// Whether applying this Profile hands the channel back, as Unmanaged does.
+    async fn is_default_profile(&self, profile_uid: &ProfileUID) -> bool {
+        self.config.get_profiles().await.is_ok_and(|profiles| {
+            profiles
+                .iter()
+                .any(|p| &p.uid == profile_uid && p.p_type() == ProfileType::Default)
+        })
+    }
+
     /// A `log=false` LCD write comes from an external tool pushing frames. It owns the screen
     /// but is never saved, so the user's own setting survives and their Mode stays active.
     async fn save_lcd_setting(
@@ -182,6 +229,22 @@ impl DeviceActor {
             return Ok(());
         }
         self.save_setting_if_changed(device_uid, setting).await
+    }
+}
+
+/// A refusal is an expected answer, which the UI shows and `CCError` logs at debug.
+fn is_expected_refusal(err: &anyhow::Error) -> bool {
+    matches!(
+        err.downcast_ref::<CCError>(),
+        Some(CCError::Conflict { .. } | CCError::UserError { .. })
+    )
+}
+
+fn log_overdrive_failure(doing: &str, err: &anyhow::Error) {
+    if is_expected_refusal(err) {
+        debug!("Refused {doing} AMD GPU overdrive: {err}");
+    } else {
+        error!("Error {doing} AMD GPU overdrive: {err}");
     }
 }
 
@@ -202,14 +265,31 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 let _ = respond_to.send(response);
             }
             DeviceMessage::AmdGpuOverdriveEnable {
-                notification_handle,
+                rebuild,
                 respond_to,
             } => {
-                let response = amd_overdrive::amd_gpu_overdrive_enable(notification_handle)
+                let response = self
+                    .overdrive
+                    .enable(rebuild)
                     .await
-                    .inspect(|msg| info!("AMD GPU overdrive enable: {msg}"))
-                    .inspect_err(|err| error!("Error enabling AMD GPU overdrive: {err}"));
+                    .inspect(|status| info!("AMD GPU overdrive enable: {:?}", status.state))
+                    .inspect_err(|err| log_overdrive_failure("enabling", err));
                 let _ = respond_to.send(response);
+            }
+            DeviceMessage::AmdGpuOverdriveDisable { respond_to } => {
+                let response = self
+                    .overdrive
+                    .disable()
+                    .await
+                    .inspect(|status| info!("AMD GPU overdrive disable: {:?}", status.state))
+                    .inspect_err(|err| log_overdrive_failure("disabling", err));
+                let _ = respond_to.send(response);
+            }
+            DeviceMessage::AmdGpuOverdrivePlan { action, respond_to } => {
+                let _ = respond_to.send(self.overdrive.plan(action).await);
+            }
+            DeviceMessage::AmdGpuOverdriveGet { respond_to } => {
+                let _ = respond_to.send(self.overdrive.status().await);
             }
             DeviceMessage::DevicesGet { respond_to } => {
                 let mut all_devices = Vec::new();
@@ -332,14 +412,18 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.engine
+                    let applied = self
+                        .engine
                         .set_profile(&device_uid, &channel_name, &profile_uid)
-                        .await?;
+                        .await;
+                    if applied.is_err() && self.is_default_profile(&profile_uid).await.not() {
+                        return applied;
+                    }
                     let config_setting = Setting {
                         channel_name,
                         kind: SettingKind::Profile { profile_uid },
                     };
-                    self.save_setting_if_changed(&device_uid, &config_setting)
+                    self.save_after_hand_back(&device_uid, &config_setting, applied)
                         .await
                 }
                 .await;
@@ -422,14 +506,14 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.engine.set_reset(&device_uid, &channel_name).await?;
+                    let applied = self.engine.set_reset(&device_uid, &channel_name).await;
                     let config_setting = Setting {
                         channel_name,
                         kind: SettingKind::Reset {
                             reset_to_default: true,
                         },
                     };
-                    self.save_setting_if_changed(&device_uid, &config_setting)
+                    self.save_after_hand_back(&device_uid, &config_setting, applied)
                         .await
                 }
                 .await;
@@ -529,10 +613,13 @@ impl DeviceHandle {
         modes_controller: Rc<ModeController>,
         config: Rc<Config>,
         overrides: Rc<OverridesController>,
+        overdrive_handle: AmdGpuOverdriveHandle,
+        notification_handle: NotificationHandle,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
+        let overdrive = OverdriveSetup::new(overdrive_handle, notification_handle);
         let actor = DeviceActor::new(
             receiver,
             all_devices,
@@ -540,6 +627,7 @@ impl DeviceHandle {
             modes_controller,
             config,
             overrides,
+            overdrive,
         );
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
@@ -555,17 +643,41 @@ impl DeviceHandle {
         rx.await?
     }
 
-    pub async fn amd_gpu_overdrive_enable(
-        &self,
-        notification_handle: NotificationHandle,
-    ) -> Result<String> {
+    pub async fn amd_gpu_overdrive_enable(&self, rebuild: bool) -> Result<AmdGpuOverdriveStatus> {
         let (tx, rx) = oneshot::channel();
         let msg = DeviceMessage::AmdGpuOverdriveEnable {
-            notification_handle,
+            rebuild,
             respond_to: tx,
         };
         let _ = self.sender.send(msg).await;
         rx.await?
+    }
+
+    pub async fn amd_gpu_overdrive_disable(&self) -> Result<AmdGpuOverdriveStatus> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::AmdGpuOverdriveDisable { respond_to: tx };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn amd_gpu_overdrive_plan(
+        &self,
+        action: OverdriveAction,
+    ) -> Result<AmdGpuOverdrivePlan> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::AmdGpuOverdrivePlan {
+            action,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn amd_gpu_overdrive_get(&self) -> Result<AmdGpuOverdriveStatus> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::AmdGpuOverdriveGet { respond_to: tx };
+        let _ = self.sender.send(msg).await;
+        Ok(rx.await?)
     }
 
     pub async fn devices_get(&self) -> Result<Vec<DeviceDto>> {
@@ -837,14 +949,36 @@ fn apply_name_overrides(overrides: &OverridesController, devices: &mut [DeviceDt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::devices;
     use crate::calibration::{CalibrationStore, FanStateMap};
     use crate::device::{ChannelInfo, ChannelKind, DeviceInfo, DeviceType, TempInfo};
+    use crate::events::amd_gpu_overdrive::OverdriveState;
     use crate::listeners::power_profile::PowerProfiles;
     use crate::repositories::repository::Repositories;
+    use crate::setting::DEFAULT_PROFILE_UID;
+    use axum::body::Body;
+    use axum::http::{header, Request, StatusCode};
+    use axum::routing::post;
+    use axum::Router;
     use serial_test::serial;
     use std::collections::HashMap;
+    use tower::ServiceExt;
 
     const DEVICE_UID: &str = "dev-lcd";
+
+    // Verify a conflict and a user error count as expected refusals, and anything else, such
+    // as an IO failure, as a real failure that keeps its ERROR line.
+    #[test]
+    fn only_refusals_stay_off_error() {
+        let msg = "refused".to_owned();
+        let conflict = anyhow::Error::from(CCError::Conflict { msg: msg.clone() });
+        assert!(is_expected_refusal(&conflict));
+        let user = anyhow::Error::from(CCError::UserError { msg: msg.clone() });
+        assert!(is_expected_refusal(&user));
+        let internal = anyhow::Error::from(CCError::InternalError { msg });
+        assert!(is_expected_refusal(&internal).not());
+        assert!(is_expected_refusal(&anyhow::anyhow!("no space left")).not());
+    }
 
     /// A device actor with no devices and a freshly created, active Mode. Nothing reaches
     /// hardware, so only the save path is exercised.
@@ -882,6 +1016,11 @@ mod tests {
             Rc::clone(&modes_controller),
             Rc::clone(&config),
             Rc::new(OverridesController::empty()),
+            OverdriveSetup::with_root(
+                AmdGpuOverdriveHandle::new(CancellationToken::new()),
+                NotificationHandle::new(CancellationToken::new()),
+                std::path::Path::new("/nonexistent/coolercontrold-test-root"),
+            ),
         );
         (actor, config, modes_controller)
     }
@@ -973,6 +1112,178 @@ mod tests {
         });
     }
 
+    /// A device actor with one fan and an active Mode. No repository runs, so every reset fails
+    /// the way a refused hand-back write does.
+    async fn actor_with_unreachable_fan() -> (DeviceActor, Rc<Config>, Rc<ModeController>, DeviceUID)
+    {
+        let mut info = DeviceInfo::default();
+        info.channels
+            .insert("fan1".to_string(), ChannelInfo::default());
+        let device = crate::device::Device::new(
+            "fan device".to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            info,
+            None,
+            1.0,
+        );
+        let device_uid = device.uid.clone();
+        let all_devices: AllDevices = Rc::new(HashMap::from([(
+            device_uid.clone(),
+            Rc::new(std::cell::RefCell::new(device)),
+        )]));
+        let config = Rc::new(Config::init_default_config().unwrap());
+        config.create_device_list(&all_devices);
+        let engine = Rc::new(Engine::new(
+            Rc::clone(&all_devices),
+            &Rc::new(Repositories::default()),
+            Rc::clone(&config),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+            Rc::new(OverridesController::empty()),
+        ));
+        let modes_controller = Rc::new(
+            ModeController::init(
+                Rc::clone(&config),
+                Rc::clone(&all_devices),
+                Rc::clone(&engine),
+                PowerProfiles::default(),
+            )
+            .await
+            .unwrap(),
+        );
+        modes_controller
+            .create_mode("Test Mode".to_string())
+            .await
+            .unwrap();
+        let (_sender, receiver) = mpsc::channel(1);
+        let actor = DeviceActor::new(
+            receiver,
+            all_devices,
+            engine,
+            Rc::clone(&modes_controller),
+            Rc::clone(&config),
+            Rc::new(OverridesController::empty()),
+            OverdriveSetup::with_root(
+                AmdGpuOverdriveHandle::new(CancellationToken::new()),
+                NotificationHandle::new(CancellationToken::new()),
+                std::path::Path::new("/nonexistent/coolercontrold-test-root"),
+            ),
+        );
+        (actor, config, modes_controller, device_uid)
+    }
+
+    fn graph_profile_setting() -> Setting {
+        Setting {
+            channel_name: "fan1".to_string(),
+            kind: SettingKind::Profile {
+                profile_uid: "graph-profile".to_string(),
+            },
+        }
+    }
+
+    async fn send_profile(
+        actor: &mut DeviceActor,
+        device_uid: &DeviceUID,
+        profile_uid: &str,
+    ) -> Result<()> {
+        let (respond_to, rx) = oneshot::channel();
+        actor
+            .handle_message(DeviceMessage::DeviceSettingProfile {
+                device_uid: device_uid.clone(),
+                channel_name: "fan1".to_string(),
+                profile_uid: profile_uid.to_string(),
+                respond_to,
+            })
+            .await;
+        rx.await.unwrap()
+    }
+
+    async fn send_reset(
+        actor: &mut DeviceActor,
+        device_uid: &DeviceUID,
+        channel_name: &str,
+    ) -> Result<()> {
+        let (respond_to, rx) = oneshot::channel();
+        actor
+            .handle_message(DeviceMessage::DeviceSettingReset {
+                device_uid: device_uid.clone(),
+                channel_name: channel_name.to_string(),
+                respond_to,
+            })
+            .await;
+        rx.await.unwrap()
+    }
+
+    /// Goal: choosing Unmanaged is saved even when the hand-back write fails, so the next start
+    /// does not bring back the old Profile, and the error still reaches the UI. Method: apply
+    /// the Default Profile to a fan whose reset fails, over a saved Graph Profile.
+    #[test]
+    #[serial(modes_file)]
+    fn unmanaged_is_saved_when_its_hand_back_fails() {
+        crate::rt::test_runtime(async {
+            let (mut actor, config, modes_controller, device_uid) =
+                actor_with_unreachable_fan().await;
+            config.set_device_setting(&device_uid, &graph_profile_setting());
+
+            let result = send_profile(&mut actor, &device_uid, DEFAULT_PROFILE_UID).await;
+
+            assert!(result.is_err());
+            let saved = config.get_device_settings(&device_uid).unwrap();
+            assert_eq!(saved.len(), 1);
+            assert_eq!(
+                saved[0].kind,
+                SettingKind::Profile {
+                    profile_uid: DEFAULT_PROFILE_UID.to_string()
+                }
+            );
+            assert!(is_mode_active(&modes_controller).not());
+        });
+    }
+
+    /// Goal: the reset endpoint, used for LCD and lighting, saves its choice the same way.
+    /// Method: reset a fan whose reset fails, over a saved Graph Profile.
+    #[test]
+    #[serial(modes_file)]
+    fn reset_is_saved_when_its_hand_back_fails() {
+        crate::rt::test_runtime(async {
+            let (mut actor, config, _modes_controller, device_uid) =
+                actor_with_unreachable_fan().await;
+            config.set_device_setting(&device_uid, &graph_profile_setting());
+
+            let result = send_reset(&mut actor, &device_uid, "fan1").await;
+
+            assert!(result.is_err());
+            // A saved reset removes the channel's entry, so the old Profile is gone.
+            assert!(config.get_device_settings(&device_uid).unwrap().is_empty());
+        });
+    }
+
+    /// Goal: only a hand-back is saved on failure. A Profile that did not apply, or a channel the
+    /// device lacks, leaves the config as it was. Method: apply an unknown Profile, then reset an
+    /// unknown channel, and compare the saved settings.
+    #[test]
+    #[serial(modes_file)]
+    fn other_failures_are_not_saved() {
+        crate::rt::test_runtime(async {
+            let (mut actor, config, modes_controller, device_uid) =
+                actor_with_unreachable_fan().await;
+            config.set_device_setting(&device_uid, &graph_profile_setting());
+
+            let profile_result = send_profile(&mut actor, &device_uid, "missing-profile").await;
+            let reset_result = send_reset(&mut actor, &device_uid, "fan9").await;
+
+            assert!(profile_result.is_err());
+            assert!(reset_result.is_err());
+            assert_eq!(
+                config.get_device_settings(&device_uid).unwrap(),
+                vec![graph_profile_setting()]
+            );
+            assert!(is_mode_active(&modes_controller));
+        });
+    }
+
     #[test]
     fn overrides_replace_device_name_and_labels_in_dtos() {
         // Goal: GET /devices (and gRPC list_devices) DTOs carry resolved
@@ -1025,5 +1336,101 @@ mod tests {
                 Some("Raw Fan".to_string())
             );
         });
+    }
+
+    /// POSTs through the real handler, with a stand-in actor that accepts any enable. Returns
+    /// the answer and the `rebuild` of the run it started, if any.
+    async fn post_overdrive(request: Request<Body>) -> (StatusCode, Option<bool>) {
+        let (sender, mut receiver) = mpsc::channel(1);
+        let app = Router::new()
+            .route(
+                "/amd-gpu-overdrive",
+                post(devices::amd_gpu_overdrive_enable),
+            )
+            .with_state(DeviceHandle { sender });
+        let actor = async {
+            let Some(DeviceMessage::AmdGpuOverdriveEnable {
+                rebuild,
+                respond_to,
+            }) = receiver.recv().await
+            else {
+                return None;
+            };
+            let status = AmdGpuOverdriveStatus {
+                state: OverdriveState::Applying,
+                tool: None,
+                manual_command: None,
+                error: None,
+                rebuild_skipped: rebuild.not(),
+                action: None,
+                removable: false,
+            };
+            let _ = respond_to.send(Ok(status));
+            Some(rebuild)
+        };
+        let (response, started) = tokio::join!(app.oneshot(request), actor);
+        (response.unwrap().status(), started)
+    }
+
+    fn overdrive_request(
+        uri: &str,
+        content_type: Option<&str>,
+        body: &'static str,
+    ) -> Request<Body> {
+        let mut request = Request::builder().method("POST").uri(uri);
+        if let Some(content_type) = content_type {
+            request = request.header(header::CONTENT_TYPE, content_type);
+        }
+        request.body(Body::from(body)).unwrap()
+    }
+
+    // A CSRF page can only send what needs no preflight: no body, or a CORS-simple content type.
+    #[tokio::test]
+    async fn overdrive_enable_refuses_preflight_free_requests() {
+        const URI: &str = "/amd-gpu-overdrive";
+        let body = r#"{"rebuild":true}"#;
+        let requests = [
+            overdrive_request(URI, None, ""),
+            overdrive_request("/amd-gpu-overdrive?rebuild=true", None, ""),
+            overdrive_request(URI, None, body),
+            overdrive_request(URI, Some("text/plain"), body),
+            overdrive_request(URI, Some("application/x-www-form-urlencoded"), body),
+        ];
+        for request in requests {
+            let (status, started) = post_overdrive(request).await;
+            assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+            assert_eq!(started, None);
+        }
+    }
+
+    // `rebuild` has no default: a JSON body without a bool in it starts nothing.
+    #[tokio::test]
+    async fn overdrive_enable_requires_a_rebuild_bool() {
+        let json = Some("application/json");
+        let (status, started) =
+            post_overdrive(overdrive_request("/amd-gpu-overdrive", json, "")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(started, None);
+        for body in ["{}", r#"{"rebuild":null}"#, r#"{"rebuild":"true"}"#] {
+            let (status, started) =
+                post_overdrive(overdrive_request("/amd-gpu-overdrive", json, body)).await;
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+            assert_eq!(started, None);
+        }
+    }
+
+    // Verify the body's bool reaches the actor unchanged, through the real handler.
+    #[tokio::test]
+    async fn overdrive_enable_passes_rebuild_through() {
+        let json = Some("application/json");
+        for (body, rebuild) in [
+            (r#"{"rebuild":true}"#, true),
+            (r#"{"rebuild":false}"#, false),
+        ] {
+            let (status, started) =
+                post_overdrive(overdrive_request("/amd-gpu-overdrive", json, body)).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(started, Some(rebuild));
+        }
     }
 }

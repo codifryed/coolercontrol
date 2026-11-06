@@ -274,6 +274,8 @@ export default {
                     saveFailed: 'The power profile mapping could not be saved.',
                     modeNotActive: '{mode} is set for the current profile but is not active.',
                     modeNotActiveRestart: 'It is activated again the next time the daemon starts.',
+                    cooldownTooltip:
+                        'When the system leaves the Performance profile, the mapped mode only becomes active after a 10-second cooldown, so the system can shed heat before the fans ramp down.',
                     profileNames: {
                         'power-saver': 'Power Saver',
                         balanced: 'Balanced',
@@ -1472,6 +1474,33 @@ export default {
             overdriveEnable: 'Enable',
             overdriveActive: 'Active',
             overdriveSuccess: 'Overdrive Configured',
+            overdriveSuccessDetail: 'Reboot to apply the change.',
+            overdriveConfirmHeader: 'Enable GPU Overdrive?',
+            overdriveApplying: 'Applying. Do not power off.',
+            overdriveRebootRequired: 'Reboot required',
+            overdriveFailed: 'Failed',
+            overdriveRetry: 'Retry',
+            overdriveFailedSummary: 'Overdrive Setup Failed',
+            overdriveFailedDetail: '{error}. Run {command} as root, then reboot.',
+            overdriveRebuildStillRunning:
+                'The boot image rebuild is still running in the background. Reboot only once it has finished.',
+            overdriveRebuildStillRunningSummary: 'Rebuild Still Running',
+            overdriveRebuildSkipped:
+                'CoolerControl does not recognize how this system builds its boot image, so it does not rebuild it. If amdgpu loads from the initramfs, rebuild it before rebooting.',
+            overdriveRebuildYourself: 'The setting is written. Run {command} as root, then reboot.',
+            overdriveConfigOnly: 'Only write the config',
+            overdrivePlanDuration:
+                'This can take a few minutes. Do not power off until it finishes. A reboot applies the change.',
+            overdrivePlanWrites: 'Files to write: {files}',
+            overdrivePlanDeletes: 'Files to delete: {files}',
+            overdrivePlanRunsAsRoot: 'Runs as root:',
+            overdrivePlanRecovery:
+                'If the system does not boot afterwards, pick a snapshot in the boot menu if your system keeps them, or start a live system, undo the change and rebuild the boot image.',
+            overdrivePlanRecoveryDeployment:
+                'If the system does not boot afterwards, pick the previous deployment in the boot menu.',
+            overdriveDisable: 'Disable',
+            overdriveDisableHeader: 'Disable GPU Overdrive?',
+            overdriveRemovedSummary: 'Overdrive Removed',
             thinkPadFanControl: 'Fan Control',
             thinkPadFanControlDesc:
                 'Enables ThinkPad ACPI Fan Control.\nFan control is disabled by default for safety reasons.\nProceed at your own risk.',

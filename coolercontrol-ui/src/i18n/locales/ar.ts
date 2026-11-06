@@ -273,6 +273,8 @@ export default {
                     saveFailed: 'تعذر حفظ ربط ملفات الطاقة.',
                     modeNotActive: 'تم تعيين {mode} للملف الحالي لكنه غير مفعّل.',
                     modeNotActiveRestart: 'سيُفعَّل مجددًا عند بدء تشغيل الخدمة في المرة القادمة.',
+                    cooldownTooltip:
+                        'عندما يترك النظام ملف الأداء، لا يُفعَّل الوضع المرتبط إلا بعد فترة تهدئة مدتها 10 ثوانٍ، حتى يتخلص النظام من الحرارة قبل أن تنخفض سرعة المراوح.',
                     profileNames: {
                         'power-saver': 'توفير الطاقة',
                         balanced: 'متوازن',
@@ -1462,6 +1464,34 @@ export default {
             overdriveEnable: 'تفعيل',
             overdriveActive: 'نشط',
             overdriveSuccess: 'تم تكوين Overdrive',
+            overdriveSuccessDetail: 'أعد التشغيل لتطبيق التغيير.',
+            overdriveConfirmHeader: 'تفعيل Overdrive لمعالج الرسومات؟',
+            overdriveApplying: 'جارٍ التطبيق. لا تطفئ الجهاز.',
+            overdriveRebootRequired: 'إعادة التشغيل مطلوبة',
+            overdriveFailed: 'فشل',
+            overdriveRetry: 'إعادة المحاولة',
+            overdriveFailedSummary: 'فشل إعداد Overdrive',
+            overdriveFailedDetail: '{error}. شغّل {command} بصلاحيات root، ثم أعد التشغيل.',
+            overdriveRebuildStillRunning:
+                'لا تزال إعادة بناء صورة الإقلاع جارية في الخلفية. أعد التشغيل فقط بعد اكتمالها.',
+            overdriveRebuildStillRunningSummary: 'لا تزال إعادة البناء جارية',
+            overdriveRebuildSkipped:
+                'لا يتعرف CoolerControl على طريقة بناء هذا النظام لصورة الإقلاع، لذا لا يُعيد بناءها. إذا كان amdgpu يُحمَّل من initramfs، فأعد بناءه قبل إعادة التشغيل.',
+            overdriveRebuildYourself:
+                'تمت كتابة الإعداد. شغّل {command} بصلاحيات root، ثم أعد التشغيل.',
+            overdriveConfigOnly: 'كتابة الإعداد فقط',
+            overdrivePlanDuration:
+                'قد يستغرق ذلك بضع دقائق. لا تُطفئ الجهاز حتى ينتهي. تُطبَّق التغييرات بعد إعادة التشغيل.',
+            overdrivePlanWrites: 'الملفات التي ستُكتب: {files}',
+            overdrivePlanDeletes: 'الملفات التي ستُحذف: {files}',
+            overdrivePlanRunsAsRoot: 'يُشغَّل بصلاحيات root:',
+            overdrivePlanRecovery:
+                'إذا لم يُقلع النظام بعد ذلك، فاختر لقطة من قائمة الإقلاع إن كان نظامك يحتفظ بها، أو شغّل نظامًا حيًا وتراجع عن التغيير ثم أعد بناء صورة الإقلاع.',
+            overdrivePlanRecoveryDeployment:
+                'إذا لم يُقلع النظام بعد ذلك، فاختر النشر السابق من قائمة الإقلاع.',
+            overdriveDisable: 'تعطيل',
+            overdriveDisableHeader: 'تعطيل GPU Overdrive؟',
+            overdriveRemovedSummary: 'تمت إزالة Overdrive',
             thinkPadFanControl: 'التحكم في المروحة',
             thinkPadFanControlDesc:
                 'تمكين التحكم في مروحة ThinkPad ACPI.\nالتحكم في المروحة معطل افتراضيًا لأسباب تتعلق بالسلامة.\nتابع على مسؤوليتك الخاصة.',

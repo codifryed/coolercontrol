@@ -274,6 +274,8 @@ export default {
                     modeNotActive:
                         '{mode}이(가) 현재 프로필에 지정되어 있지만 활성 상태가 아닙니다.',
                     modeNotActiveRestart: '다음에 데몬이 시작될 때 다시 활성화됩니다.',
+                    cooldownTooltip:
+                        '시스템이 성능 프로필을 벗어나면 매핑된 모드는 10초의 쿨다운 후에만 활성화되어, 팬이 감속하기 전에 시스템이 열을 식힙니다.',
                     profileNames: {
                         'power-saver': '절전',
                         balanced: '균형',
@@ -1465,6 +1467,35 @@ export default {
             overdriveEnable: '활성화',
             overdriveActive: '활성',
             overdriveSuccess: '오버드라이브 구성됨',
+            overdriveSuccessDetail: '변경 사항을 적용하려면 재부팅하세요.',
+            overdriveConfirmHeader: 'GPU 오버드라이브를 활성화할까요?',
+            overdriveApplying: '적용 중입니다. 전원을 끄지 마세요.',
+            overdriveRebootRequired: '재부팅 필요',
+            overdriveFailed: '실패',
+            overdriveRetry: '다시 시도',
+            overdriveFailedSummary: '오버드라이브 설정 실패',
+            overdriveFailedDetail:
+                '{error}. root 권한으로 {command}을(를) 실행한 다음 재부팅하세요.',
+            overdriveRebuildStillRunning:
+                '부트 이미지 재빌드가 아직 백그라운드에서 실행 중입니다. 완료된 후에만 재부팅하세요.',
+            overdriveRebuildStillRunningSummary: '재빌드가 아직 실행 중',
+            overdriveRebuildSkipped:
+                'CoolerControl이 이 시스템의 부팅 이미지 생성 방식을 인식하지 못하므로 다시 빌드하지 않습니다. amdgpu가 initramfs에서 로드된다면 재부팅하기 전에 다시 빌드하세요.',
+            overdriveRebuildYourself:
+                '설정이 저장되었습니다. root 권한으로 {command}을(를) 실행한 다음 재부팅하세요.',
+            overdriveConfigOnly: '설정만 쓰기',
+            overdrivePlanDuration:
+                '몇 분 정도 걸릴 수 있습니다. 끝날 때까지 전원을 끄지 마세요. 변경 사항은 재부팅하면 적용됩니다.',
+            overdrivePlanWrites: '기록할 파일: {files}',
+            overdrivePlanDeletes: '삭제할 파일: {files}',
+            overdrivePlanRunsAsRoot: 'root 권한으로 실행:',
+            overdrivePlanRecovery:
+                '이후 시스템이 부팅되지 않으면, 스냅샷을 보관하는 시스템이라면 부팅 메뉴에서 스냅샷을 선택하거나, 라이브 시스템으로 부팅해 변경 사항을 되돌리고 부팅 이미지를 다시 빌드하세요.',
+            overdrivePlanRecoveryDeployment:
+                '이후 시스템이 부팅되지 않으면 부팅 메뉴에서 이전 배포를 선택하세요.',
+            overdriveDisable: '비활성화',
+            overdriveDisableHeader: 'GPU 오버드라이브를 비활성화할까요?',
+            overdriveRemovedSummary: '오버드라이브 제거됨',
             thinkPadFanControl: '팬 제어',
             thinkPadFanControlDesc:
                 'ThinkPad ACPI 팬 제어를 활성화합니다.\n안전상의 이유로 팬 제어는 기본적으로 비활성화되어 있습니다.\n본인의 책임 하에 진행하십시오.',

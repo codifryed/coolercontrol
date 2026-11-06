@@ -220,6 +220,10 @@ fn connect(endpoint: &Endpoint, abandoned: &dyn Fn() -> bool) -> Result<UnixStre
         }
         match UnixStream::connect(&endpoint.socket_path) {
             Ok(stream) => {
+                // The caller may have left after the last check, before liqctld listened.
+                if abandoned() {
+                    return Err(HttpError::Abandoned);
+                }
                 stream.set_read_timeout(Some(endpoint.io_timeout))?;
                 stream.set_write_timeout(Some(endpoint.io_timeout))?;
                 trace!("Created a new liqctld connection.");
@@ -425,7 +429,9 @@ fn successful_body<'a>(head: &ResponseHead, buf: &'a [u8]) -> Result<&'a [u8], H
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::{Cell, RefCell};
     use std::collections::VecDeque;
+    use std::os::unix::net::UnixListener;
 
     /// A reader that hands out the given chunks one per read, then EOF.
     struct Chunks(VecDeque<Vec<u8>>);
@@ -684,5 +690,42 @@ mod tests {
         let endpoint = Endpoint::liqctld(LIQCTLD_CONNECTION_TRIES);
 
         assert_eq!(endpoint.exchange_budget(), Duration::from_secs(25));
+    }
+
+    /// Goal: a caller that leaves while liqctld is not listening must not reach it once it is,
+    /// or a late `/quit` stops a freshly restarted liqctld. Method: the check before the second
+    /// connect try passes, then abandons the caller and binds the socket, so that try connects.
+    #[test]
+    fn a_call_abandoned_before_liqctld_listens_is_not_sent() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("liqctld.sock");
+        let mut http = LiqctldHttp::new(Endpoint {
+            socket_path: socket_path.clone(),
+            connect_tries: 2,
+            connect_pause: Duration::ZERO,
+            io_timeout: Duration::from_secs(1),
+        });
+        let checks = Cell::new(0_usize);
+        let listener = RefCell::new(None);
+        // Check 1 is before the first send, check 2 before the second connect try.
+        let abandoned = || {
+            checks.set(checks.get() + 1);
+            if checks.get() == 2 {
+                *listener.borrow_mut() = Some(UnixListener::bind(&socket_path).unwrap());
+                return false;
+            }
+            checks.get() > 2
+        };
+
+        let result = http.exchange(Method::Post, format_args!("/quit"), None::<&()>, &abandoned);
+
+        assert!(matches!(result, Err(HttpError::Abandoned)), "{result:?}");
+        let listener = listener
+            .into_inner()
+            .expect("the second connect try was reached");
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut received = Vec::new();
+        stream.read_to_end(&mut received).unwrap();
+        assert!(received.is_empty(), "sent {received:?}");
     }
 }

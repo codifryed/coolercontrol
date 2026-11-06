@@ -28,6 +28,7 @@ use crate::repositories::hwmon::hwmon_repo::{
 use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{devices, fans, freqs, power, temps};
 use crate::repositories::repository::DeviceLock;
+use crate::repositories::taken_channels::TakenChannels;
 use anyhow::{anyhow, Context, Result};
 use heck::ToTitleCase;
 use libdrm_amdgpu_sys::LibDrmAmdgpu;
@@ -207,6 +208,7 @@ impl GpuAMD {
                 identity::log_skipped(&device_name, &path);
                 continue;
             };
+            let taken_channels = TakenChannels::with_capacity(channels.len());
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
                     name: device_name,
@@ -215,6 +217,7 @@ impl GpuAMD {
                     u_id,
                     channels,
                     io,
+                    taken_channels,
                     ..Default::default()
                 },
                 device_path,
@@ -1013,14 +1016,25 @@ impl GpuAMD {
         }
     }
 
+    /// Whether the daemon has driven this channel. A reset writes to nothing else, so what the
+    /// firmware or another tool set is not overwritten.
+    pub fn is_channel_taken(&self, device_uid: &UID, channel_name: &str) -> bool {
+        self.amd_driver_infos
+            .get(device_uid)
+            .is_some_and(|info| info.hwmon.taken_channels.is_taken(channel_name))
+    }
+
     pub async fn reset_amd_to_default(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         let amd_hwmon_info = self
             .amd_driver_infos
             .get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
+        let taken_channels = &amd_hwmon_info.hwmon.taken_channels;
         if let Some(fan_curve_info) = &amd_hwmon_info.fan_curve_info {
             if fan_curve_info.changeable {
-                Self::reset_fan_curve_and_zero_rpm(fan_curve_info, &amd_hwmon_info.hwmon.io).await
+                Self::reset_fan_curve_and_zero_rpm(fan_curve_info, &amd_hwmon_info.hwmon.io)
+                    .await
+                    .inspect(|()| taken_channels.release_device())
             } else {
                 Err(anyhow!(
                     "PMFW Fan Curve control is present for this device, but not enabled"
@@ -1041,6 +1055,7 @@ impl GpuAMD {
                 &amd_hwmon_info.hwmon.io,
             )
             .await
+            .inspect(|()| taken_channels.release(channel_name))
         }
     }
 
@@ -1049,26 +1064,35 @@ impl GpuAMD {
     /// For the reset-to-default and shutdown paths, where the curve itself must be given back.
     /// Zero RPM goes back to its boot default, which is enabled on most RDNA3/4 cards. Each
     /// restore commits by itself, since the kernel falls through from restore into commit.
+    ///
+    /// Every restore is attempted, so one failure hands back what it can, then any error returns:
+    /// firmware keeps a stop temperature that was not restored, so the card stays taken. The
+    /// curve's error returns first, as the fan is still on our curve and Zero RPM's are warned.
     async fn reset_fan_curve_and_zero_rpm(
         fan_curve_info: &FanCurveInfo,
         io: &DeviceIo,
     ) -> Result<()> {
+        let mut zero_rpm_reset = Ok(());
         if let Some(zero_rpm_path) = &fan_curve_info.zero_rpm {
-            if let Err(err) = io.write_value(zero_rpm_path, b"r\n".to_vec()).await {
-                warn!("Error resetting Zero RPM Enable: {err}");
-            }
+            zero_rpm_reset = io
+                .write_value(zero_rpm_path, b"r\n".to_vec())
+                .await
+                .with_context(|| "Resetting Zero RPM Enable")
+                .inspect_err(|err| warn!("{err:#}"));
         }
+        let mut stop_temp_reset = Ok(());
         if let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp {
-            if let Err(err) = io
+            stop_temp_reset = io
                 .write_value(zero_rpm_stop_temp_path, b"r\n".to_vec())
                 .await
-            {
-                warn!("Error resetting Zero RPM Stop Temperature: {err}");
-            }
+                .with_context(|| "Resetting Zero RPM Stop Temperature")
+                .inspect_err(|err| warn!("{err:#}"));
         }
-        io.write_value(&fan_curve_info.path, b"r\n".to_vec())
+        let curve_reset = io
+            .write_value(&fan_curve_info.path, b"r\n".to_vec())
             .await
-            .with_context(|| "Resetting Fan Curve file to automatic mode")
+            .with_context(|| "Resetting Fan Curve file to automatic mode");
+        curve_reset.and(zero_rpm_reset).and(stop_temp_reset)
     }
 
     /// PMFW `FAN_CURVE_SPEED` floor for an RDNA3/4 card, `None` for any
@@ -1103,6 +1127,7 @@ impl GpuAMD {
                     "PMFW Fan Curve control is present for this device, but not enabled. Please see documentation."
                 ));
             }
+            amd_driver_info.hwmon.taken_channels.mark_device();
             Self::set_pmfw_duty(fan_curve_info, fixed_speed, &amd_driver_info.hwmon.io)
                 .await
                 .map_err(|err| {
@@ -1129,6 +1154,7 @@ impl GpuAMD {
                     channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
                 })
                 .with_context(|| "Searching for channel name")?;
+            amd_driver_info.hwmon.taken_channels.mark(channel_name);
             fans::set_pwm_enable_if_not_already(
                 fans::PWM_ENABLE_MANUAL_VALUE,
                 &amd_driver_info.hwmon.path,
@@ -1367,6 +1393,7 @@ impl GpuAMD {
                 but not enabled. Please see the documentation about enabling this in the kernel."
             ));
         }
+        amd_driver_info.hwmon.taken_channels.mark_device();
         Self::set_pmfw_profile(fan_curve_info, speed_profile, &amd_driver_info.hwmon.io)
             .await
             .map_err(|err| {
@@ -1579,6 +1606,47 @@ impl AMDDriverInfo {
             is_rdna3_or_newer: false,
             fdinfo_load: None,
         }
+    }
+
+    /// An RDNA3/4 card with a five point firmware curve, for tests outside this module.
+    #[cfg(test)]
+    pub fn for_test_with_fan_curve(
+        hwmon: HwmonDriverInfo,
+        fan_curve_path: PathBuf,
+        changeable: bool,
+    ) -> Self {
+        Self {
+            fan_curve_info: Some(FanCurveInfo {
+                fan_curve: FanCurve {
+                    points: vec![(0, 0); 5],
+                },
+                changeable,
+                temperature_range: RangeInclusive::new(25, 100),
+                speed_range: RangeInclusive::new(15, 100),
+                path: fan_curve_path,
+                zero_rpm: None,
+                zero_rpm_stop_temp: None,
+                zero_rpm_stop_temp_range: RangeInclusive::new(30, 80),
+            }),
+            has_rdna_fan_ctrl: true,
+            ..Self::for_test(hwmon)
+        }
+    }
+
+    /// As `for_test_with_fan_curve`, with both Zero RPM files.
+    #[cfg(test)]
+    pub fn for_test_with_zero_rpm(
+        hwmon: HwmonDriverInfo,
+        fan_curve_path: PathBuf,
+        zero_rpm_path: PathBuf,
+        zero_rpm_stop_temp_path: PathBuf,
+    ) -> Self {
+        let mut driver = Self::for_test_with_fan_curve(hwmon, fan_curve_path, true);
+        if let Some(fan_curve_info) = &mut driver.fan_curve_info {
+            fan_curve_info.zero_rpm = Some(zero_rpm_path);
+            fan_curve_info.zero_rpm_stop_temp = Some(zero_rpm_stop_temp_path);
+        }
+        driver
     }
 
     /// Whether this card uses the RDNA3/4 PMFW fan-curve interface, for which the
@@ -3010,6 +3078,29 @@ mod tests {
             let curve = cc_fs::read_txt(&info.path).await.unwrap();
             assert!(result.is_err(), "a wedged device must not report success");
             assert!(curve.contains('r').not(), "nothing may reach the card");
+        });
+    }
+
+    /// Goal: a failed curve reset must surface even when the Zero RPM resets also fail, since the
+    /// fan is then still on the daemon's curve. Method: fail all three writes through a worker
+    /// nobody drains and assert the returned error is the curve's.
+    #[test]
+    #[serial]
+    fn a_failed_curve_reset_outranks_failed_zero_rpm_resets() {
+        cc_fs::test_runtime(async {
+            let ctx = load_setup();
+            let info = fan_curve_info_with_paths(&ctx).await;
+            assert!(info.zero_rpm.is_some());
+            assert!(info.zero_rpm_stop_temp.is_some());
+            let (wedged, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+
+            let result = GpuAMD::reset_fan_curve_and_zero_rpm(&info, &wedged).await;
+
+            let err = result.expect_err("a wedged device must not report success");
+            assert_eq!(
+                err.to_string(),
+                "Resetting Fan Curve file to automatic mode"
+            );
         });
     }
 

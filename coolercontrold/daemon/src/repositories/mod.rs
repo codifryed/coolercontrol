@@ -11,4 +11,5 @@ pub mod hwmon;
 pub mod liquidctl;
 pub mod repository;
 pub mod service_plugin;
+pub mod taken_channels;
 pub mod utils;

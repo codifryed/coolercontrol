@@ -282,6 +282,8 @@ export default {
                     modeNotActive: '{mode} ist dem aktuellen Profil zugeordnet, aber nicht aktiv.',
                     modeNotActiveRestart:
                         'Er wird beim nächsten Start des Daemons wieder aktiviert.',
+                    cooldownTooltip:
+                        'Beim Verlassen des Leistungsprofils wird der zugeordnete Modus erst nach einer Abklingzeit von 10 Sekunden aktiv, damit das System Wärme abgeben kann, bevor die Lüfter herunterregeln.',
                     profileNames: {
                         'power-saver': 'Energiesparmodus',
                         balanced: 'Ausgeglichen',
@@ -1513,6 +1515,34 @@ export default {
             overdriveEnable: 'Aktivieren',
             overdriveActive: 'Aktiv',
             overdriveSuccess: 'Overdrive konfiguriert',
+            overdriveSuccessDetail: 'Neustart, um die Änderung anzuwenden.',
+            overdriveConfirmHeader: 'GPU Overdrive aktivieren?',
+            overdriveApplying: 'Wird angewendet. Nicht ausschalten.',
+            overdriveRebootRequired: 'Neustart erforderlich',
+            overdriveFailed: 'Fehlgeschlagen',
+            overdriveRetry: 'Erneut versuchen',
+            overdriveFailedSummary: 'Overdrive-Einrichtung fehlgeschlagen',
+            overdriveFailedDetail: '{error}. Führe {command} als root aus und starte dann neu.',
+            overdriveRebuildStillRunning:
+                'Der Neuaufbau des Boot-Images läuft noch im Hintergrund. Starte erst neu, wenn er abgeschlossen ist.',
+            overdriveRebuildStillRunningSummary: 'Neuaufbau läuft noch',
+            overdriveRebuildSkipped:
+                'CoolerControl erkennt nicht, wie dieses System sein Boot-Image erstellt, und erstellt es daher nicht neu. Wenn amdgpu aus dem initramfs geladen wird, erstelle es vor dem Neustart neu.',
+            overdriveRebuildYourself:
+                'Die Einstellung ist geschrieben. Führe {command} als root aus und starte dann neu.',
+            overdriveConfigOnly: 'Nur die Konfiguration schreiben',
+            overdrivePlanDuration:
+                'Das kann einige Minuten dauern. Schalte den Rechner nicht aus, bevor es fertig ist. Ein Neustart übernimmt die Änderung.',
+            overdrivePlanWrites: 'Zu schreibende Dateien: {files}',
+            overdrivePlanDeletes: 'Zu löschende Dateien: {files}',
+            overdrivePlanRunsAsRoot: 'Wird als root ausgeführt:',
+            overdrivePlanRecovery:
+                'Falls das System danach nicht startet, wähle im Bootmenü einen Snapshot, sofern dein System welche anlegt, oder starte ein Live-System, mache die Änderung rückgängig und erstelle das Boot-Image neu.',
+            overdrivePlanRecoveryDeployment:
+                'Falls das System danach nicht startet, wähle im Bootmenü das vorherige Deployment.',
+            overdriveDisable: 'Deaktivieren',
+            overdriveDisableHeader: 'GPU Overdrive deaktivieren?',
+            overdriveRemovedSummary: 'Overdrive entfernt',
             thinkPadFanControl: 'Lüftersteuerung',
             thinkPadFanControlDesc:
                 'Aktiviert die ThinkPad ACPI Lüftersteuerung.\nDie Lüftersteuerung ist aus Sicherheitsgründen standardmäßig deaktiviert.\nFortfahren auf eigene Gefahr.',
