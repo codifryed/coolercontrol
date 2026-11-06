@@ -24,6 +24,9 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 log = "0.4"
 
+[dev-dependencies]
+tempfile = "3.27"
+
 # Nested `if` is deliberate per RUST_STYLE.md: compound conditions are split so each
 # case stays individually visible. Matches the daemon crate.
 [lints.clippy]

@@ -1122,6 +1122,7 @@ mod tests {
         let timeout = CommandTimedOut {
             binary: SYSTEMD_RUN_PATH.to_owned(),
             timeout: REBUILD_WAIT_LIMIT,
+            stderr: String::new(),
         };
         let result = launch_outcome(RebuildTool::Mkinitcpio, Err(timeout.into()), "");
         finish_run(&mut job, &result, Some("/usr/bin/mkinitcpio -P".to_owned()));
