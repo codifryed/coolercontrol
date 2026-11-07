@@ -678,6 +678,8 @@ impl CustomSensorsRepo {
         }
         let sample_count = Self::window_sample_count(window_seconds, self.poll_rate);
         let start = (index + 1).saturating_sub(sample_count).max(first_reading);
+        debug_assert!(start <= index);
+        debug_assert!(index + 1 - start <= sample_count);
         let samples =
             Self::collect_indexed_source_samples(metric, &device, &source.name, start, index);
         if is_ema {
