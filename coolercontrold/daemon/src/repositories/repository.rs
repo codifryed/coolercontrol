@@ -112,8 +112,9 @@ pub trait Repository {
     /// This is helpful/necessary after waking from sleep.
     async fn reinitialize_devices(&self);
 
-    /// Zeroes the status history of every device in this repository. The only way to zero a
-    /// history, so a repository that derives state from history age can reset it alongside.
+    /// Zeroes the status history of every device in this repository. Zero histories through
+    /// this method, not `Device::zero_status_history`, so a repository that derives state
+    /// from history age can reset it alongside.
     async fn zero_status_histories(&self, poll_rate: f64) {
         zero_device_status_histories(&self.devices().await, poll_rate);
     }
