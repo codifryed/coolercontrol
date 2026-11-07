@@ -826,6 +826,7 @@ dependencies = [
  "env_logger",
  "flate2",
  "futures-util",
+ "glob",
  "heck",
  "http-body-util",
  "httparse",
@@ -839,7 +840,6 @@ dependencies = [
  "mime",
  "moro-local",
  "nix",
- "nu-glob",
  "nvml-wrapper",
  "pin-project-lite",
  "prost",
@@ -1641,6 +1641,12 @@ dependencies = [
  "log",
  "xml-rs",
 ]
+
+[[package]]
+name = "glob"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "glow"
@@ -2592,12 +2598,6 @@ checksum = "c3b335231dfd352ffb0f8017f3b6027a4917f7df785ea2143d8af2adc66980ae"
 dependencies = [
  "winapi",
 ]
-
-[[package]]
-name = "nu-glob"
-version = "0.111.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01ee787f61353c9c90581ddf4c0602a07b991cdd06c97dac8b6d323a1a52c43a"
 
 [[package]]
 name = "num-bigint"

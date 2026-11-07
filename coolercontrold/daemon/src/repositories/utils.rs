@@ -20,8 +20,8 @@ use anyhow::{anyhow, Result};
 // The daemon and the detection crate spawn the same shell for the same reason, so the
 // path and its rationale live in one place.
 use cc_detect::shell_command::SHELL;
+use glob::glob;
 use log::{debug, error, info, warn};
-use nu_glob::{glob, Uninterruptible};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
@@ -381,13 +381,13 @@ pub fn find_xauthority_path() -> Option<String> {
         return Some(environment_xauthority);
     }
     // glob() only fails for invalid pattern syntax; these are compile-time constants.
-    let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM, Uninterruptible)
+    let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM)
         .unwrap()
-        .chain(glob(GLOB_XAUTHORITY_PATH_USER, Uninterruptible).unwrap())
-        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM, Uninterruptible).unwrap())
-        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER, Uninterruptible).unwrap())
-        .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER, Uninterruptible).unwrap())
-        .chain(glob(GLOB_XAUTHORITY_PATH_ROOT, Uninterruptible).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_USER).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_ROOT).unwrap())
         .filter_map(Result::ok)
         .find(|path| path.is_absolute());
     if let Some(xauthority_path) = xauthority_path_opt {
@@ -411,12 +411,40 @@ pub async fn apply_device_command_delay(delay_millis: u16) {
 #[cfg(test)]
 mod tests {
     use crate::repositories::utils::{
-        captured_to_string, drain_pipe, limit_output_length, MAX_OUTPUT_LENGTH_BYTES,
-        OUTPUT_CAPTURE_BYTES,
+        captured_to_string, drain_pipe, limit_output_length,
+        GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER, MAX_OUTPUT_LENGTH_BYTES, OUTPUT_CAPTURE_BYTES,
     };
+    use glob::glob;
     use std::cell::RefCell;
     use std::ops::Not;
     use tokio::io::AsyncReadExt;
+
+    #[test]
+    fn xwayland_pattern_matches_only_the_hidden_mutter_cookie() {
+        // Goal: mutter writes its Xwayland cookie as a hidden file, so the pattern must match a
+        // leading-dot name and nothing else in the runtime dir. Method: lay out a fake
+        // `/run/user/<uid>` under a temp root, glob the real pattern beneath that root, and check
+        // that only the mutter cookie is found.
+        let root = tempfile::tempdir().unwrap();
+        let runtime_dir = root.path().join("run/user/1000");
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+        for name in [
+            ".mutter-Xwaylandauth.Q1W2E3",
+            "Xwaylandauth.visible",
+            ".other-cookie",
+        ] {
+            std::fs::write(runtime_dir.join(name), b"").unwrap();
+        }
+        let root_str = root.path().to_str().unwrap();
+        let pattern = format!("{root_str}{GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER}");
+
+        let found = glob(&pattern)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert_eq!(found, vec![runtime_dir.join(".mutter-Xwaylandauth.Q1W2E3")]);
+    }
 
     #[tokio::test]
     async fn drain_keeps_the_start_of_a_pipe_and_reads_all_of_it() {

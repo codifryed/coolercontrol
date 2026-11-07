@@ -312,7 +312,7 @@ impl CpuRepo {
     /// already has two of.
     async fn any_cpu_on_a_later_die(identity: &IdentityReader) -> Result<bool, Stalled> {
         let pattern = "/sys/devices/system/cpu/cpu[0-9]*/topology/die_id";
-        let Ok(paths) = nu_glob::glob(pattern, nu_glob::Uninterruptible) else {
+        let Ok(paths) = glob::glob(pattern) else {
             return Ok(false);
         };
         for path in paths.filter_map(Result::ok) {
