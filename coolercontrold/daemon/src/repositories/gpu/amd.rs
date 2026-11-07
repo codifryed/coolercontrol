@@ -782,7 +782,7 @@ impl GpuAMD {
                     driver_info: DriverInfo {
                         drv_type: DriverType::Kernel,
                         name: devices::get_device_driver_name(&amd_driver.hwmon.path),
-                        version: sysinfo::System::kernel_version(),
+                        version: sysinfo::System::kernel_version().ok(),
                         locations: Self::get_driver_locations(&amd_driver.hwmon.path, &identity)
                             .await,
                     },

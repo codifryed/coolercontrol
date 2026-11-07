@@ -15,7 +15,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
-use zbus::{zvariant, Connection, Proxy};
+use zbus::{Connection, Proxy};
 
 const SLEEP_DEFAULT_BUS_NAME: &str = "org.freedesktop.login1";
 const SLEEP_OBJECTPATH: &str = "/org/freedesktop/login1";
@@ -380,7 +380,7 @@ async fn take_inhibitor(proxy: &Proxy<'_>, signals: &SleepSignals) {
     }
     // Only the listener takes locks, so none can appear before the call below returns.
     debug_assert!(signals.holds_inhibitor().not());
-    let call = proxy.call::<_, _, zvariant::OwnedFd>(
+    let call = proxy.call::<_, _, zbus::OwnedFd>(
         METHOD_INHIBIT,
         &(INHIBIT_WHAT, INHIBIT_WHO, INHIBIT_WHY, INHIBIT_MODE),
     );

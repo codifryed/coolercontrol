@@ -218,7 +218,7 @@ fn write_header(report: &mut String, system_info: &SystemInfo) {
     let _ = writeln!(
         report,
         "Kernel   {} ({})",
-        sysinfo::System::kernel_version().unwrap_or_else(|| "unknown".to_string()),
+        sysinfo::System::kernel_version().unwrap_or_else(|_| "unknown".to_string()),
         sysinfo::System::cpu_arch()
     );
 }

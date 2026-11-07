@@ -10,9 +10,9 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use env_logger::fmt::TimestampPrecision;
 use env_logger::{Logger, WriteStyle};
+use glob::glob;
 use log::{debug, info, trace, Level, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use nix::NixPath;
-use nu_glob::{glob, Uninterruptible};
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -243,7 +243,7 @@ pub fn read_dmi_system_info(name: &str) -> String {
 fn read_xdg_desktop_info() -> Result<(String, String)> {
     let mut desktops = HashSet::new();
     let mut sessions_types = HashSet::new();
-    let environ_paths = glob("/proc/*/environ", Uninterruptible)?
+    let environ_paths = glob("/proc/*/environ")?
         .filter_map(Result::ok)
         .collect::<Vec<PathBuf>>();
     let regex_desktop = Regex::new(r"XDG_SESSION_DESKTOP=(?P<desktop>\w+)")?;

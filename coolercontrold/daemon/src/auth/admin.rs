@@ -6,8 +6,6 @@ use std::path::Path;
 use crate::cc_fs;
 use crate::cc_fs::sidecar_fs;
 use anyhow::{anyhow, Result};
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
@@ -194,9 +192,8 @@ async fn hash_password(passwd: &str) -> Result<String> {
 
 /// Sync Argon2id hash. CPU-bound; prefer `hash_password` in async contexts. Used directly by tests.
 fn hash_password_argon2(passwd: &str) -> Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
-        .hash_password(passwd.as_bytes(), &salt)
+        .hash_password(passwd.as_bytes())
         .map_err(|e| anyhow!("Failed to hash password: {e}"))?;
     Ok(hash.to_string())
 }
@@ -239,6 +236,16 @@ mod tests {
     fn test_argon2_hash_format() {
         let result = hash_password_argon2("password").unwrap();
         assert!(result.starts_with("$argon2id$"));
+    }
+
+    /// Goal: hashes stored by older daemons still verify after an argon2 upgrade.
+    /// Method: a fixed hash of "password" written by argon2 0.5.3.
+    #[test]
+    fn verify_password_argon2_accepts_argon2_0_5_hash() {
+        let stored = "$argon2id$v=19$m=19456,t=2,p=1$/welf19R5nQytNbtza9q0A\
+                      $jfYZea+W6JfB07j2lyCijxWejW4Wv+1wIl9xay608xA";
+        assert!(verify_password_argon2("password", stored));
+        assert!(!verify_password_argon2("wrong", stored));
     }
 
     #[test]
