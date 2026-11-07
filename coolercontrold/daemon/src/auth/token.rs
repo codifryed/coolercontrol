@@ -4,8 +4,6 @@
 use crate::cc_fs::sidecar_fs;
 use crate::hashutil;
 use anyhow::{anyhow, Result};
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use chrono::{DateTime, Local};
 use log::error;
@@ -51,9 +49,8 @@ pub fn generate_token() -> String {
 }
 
 pub fn hash_token(token: &str) -> Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
-        .hash_password(token.as_bytes(), &salt)
+        .hash_password(token.as_bytes())
         .map_err(|e| anyhow!("Failed to hash token: {e}"))?;
     Ok(hash.to_string())
 }
@@ -219,6 +216,17 @@ pub fn match_legacy(raw_token: &str, legacy: &[LegacyToken]) -> Option<TokenMatc
 mod tests {
     use super::*;
     use std::ops::Not;
+
+    /// Goal: tokens minted before 5.0.0 still verify after an argon2 upgrade.
+    /// Method: a fixed hash of a fake token written by argon2 0.5.3.
+    #[test]
+    fn verify_token_accepts_argon2_0_5_hash() {
+        let raw = "cc_0123456789abcdef0123456789abcdef";
+        let stored = "$argon2id$v=19$m=19456,t=2,p=1$hsggU37Bkv8ioGErpB6VQQ\
+                      $FxwMXvebuM4OjjACO84AUb5L/fFNQOaf5TGEVaHdm1c";
+        assert!(verify_token(raw, stored));
+        assert!(verify_token(&generate_token(), stored).not());
+    }
 
     /// Builds a stored token carrying both a digest and an argon2 hash, as `create`
     /// does since 5.0.0.

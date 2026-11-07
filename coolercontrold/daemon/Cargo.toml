@@ -34,7 +34,7 @@ clap = { version = "4.6", features = [
 ] } # Command line argument parser - pkg
 anyhow = "1.0"
 thiserror = "2.0"
-tokio = { version = "1.53", default-features = false, features = [
+tokio = { version = "1.54", default-features = false, features = [
   "rt",
   "fs",
   "macros",
@@ -47,8 +47,8 @@ tokio = { version = "1.53", default-features = false, features = [
   "io-util",
   "process",
 ] }
-tokio-util = "0.7.19"
-tokio-stream = { version = "0.1.18", default-features = false, features = [
+tokio-util = "0.7.20"
+tokio-stream = { version = "0.1.19", default-features = false, features = [
   "sync",
   "io-util",
 ] }
@@ -58,7 +58,7 @@ bitflags = { version = "2.13", features = ["serde"] }
 axum = { version = "0.8.9", features = ["multipart", "macros", "query"] }
 # This should follow the dependencies of axum version as well
 tower = { version = "0.5.3" }
-tower-http = { version = "0.7.0", features = [
+tower-http = { version = "0.7.1", features = [
   "timeout",
   "trace",
   "limit",
@@ -114,7 +114,7 @@ tempfile = "3.27"
 # codegen. tar is pure Rust with no C dependency; xattrs are unused for config backups.
 flate2 = "1.1"
 tar = { version = "0.4", default-features = false }
-hyper = { version = "1.11", default-features = false, features = [
+hyper = { version = "1.12", default-features = false, features = [
   "http1",
   "client",
 ] }
@@ -149,13 +149,13 @@ regex = "1.13"
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
 # nu-glob > 0.111 requires Rust >=1.92
 nu-glob = "=0.111"
-nvml-wrapper = "0.12.1"
+nvml-wrapper = "0.13.0"
 # Held at 0.8 to share one libloading with ash, khronos-egl, libdrm_amdgpu_sys,
 # nvml-wrapper and wgpu-hal. 0.9 buys us nothing and would duplicate the stack.
 libloading = "0.8"
 # Held at 0.10 to share one digest stack with the sha2 that cookie/tower-sessions pulls.
 sha2 = "=0.10"
-argon2 = "0.5"
+argon2 = "0.6"
 subtle = "2.6"
 toml_edit = { version = "0.23.9", features = ["serde"] }
 nix = { version = "0.31.3", default-features = false, features = [
@@ -168,7 +168,7 @@ nix = { version = "0.31.3", default-features = false, features = [
   "net",
   "fs",
 ] }
-libdrm_amdgpu_sys = { version = "0.8.16", default-features = false, features = [
+libdrm_amdgpu_sys = { version = "0.9.0", default-features = false, features = [
   "dynamic_loading",
 ] }
 indexmap = "2.14"
@@ -182,8 +182,8 @@ tonic = { version = "0.14.6", default-features = false, features = [
   "router",
 ] }
 prost = "0.14.4"
-tonic-prost = "0.14.6"
-tonic-health = "0.14.6"
+tonic-prost = "0.14.9"
+tonic-health = "0.14.9"
 # Pure Rust (libc only, no libsystemd C dependency). 0.5 for
 # `watchdog_enabled() -> Option<Duration>`; 0.4 used an out-parameter.
 sd-notify = "0.5.0"
@@ -191,13 +191,13 @@ sd-notify = "0.5.0"
 [dev-dependencies]
 # serial_test 4.0 requires Rust >=1.93.1
 serial_test = "=3.5"
-tokio = { version = "1.53", default-features = false, features = ["test-util"] }
+tokio = { version = "1.54", default-features = false, features = ["test-util"] }
 
 [build-dependencies]
 # Gzips the embedded UI at build time. Already in the tree through tower-http.
 flate2 = "1.1"
-tonic-prost-build = "0.14.6"
-tonic-build = "0.14.6"
+tonic-prost-build = "0.14.9"
+tonic-build = "0.14.9"
 # Pure-Rust protobuf compiler: drops the protoc binary as a system build dependency. Pinned to 0.9.1
 # to match prost 0.14 (tonic-prost-build).
 # build.rs persists its descriptor set (via the re-exported protox::prost) for the gRPC reflection service.
