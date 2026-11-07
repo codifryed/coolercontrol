@@ -132,8 +132,10 @@ http-body-util = "0.1"
 httparse = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-zbus = { version = "5.18", default-features = false, features = [
+# Client only: `proxy` brings the connection and proxies, without the service side.
+zbus = { version = "6.2.1", default-features = false, features = [
   "tokio",
+  "proxy",
 ] } # our preferred DBus lib
 futures-util = { version = "0.3", default-features = false, features = [
   "std",
