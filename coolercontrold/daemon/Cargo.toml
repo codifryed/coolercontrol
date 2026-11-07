@@ -152,7 +152,7 @@ glob = "0.3.4"
 nvml-wrapper = "0.13.0"
 # Held at 0.8 to share one libloading with ash, khronos-egl, libdrm_amdgpu_sys,
 # nvml-wrapper and wgpu-hal. 0.9 buys us nothing and would duplicate the stack.
-libloading = "0.8"
+libloading = "=0.8"
 # Held at 0.10 to share one sha2 with cookie (via tower-sessions), which still requires 0.10.
 sha2 = "=0.10"
 argon2 = "0.6"
