@@ -42,6 +42,15 @@
 //! almost never triggers in practice; when it does, at least
 //! one device is wedged and the engine should not be waiting
 //! for it.
+//!
+//! Every tick, each repository preloads and then writes one
+//! status history entry, all stamped with the same instant, so
+//! device histories advance in lockstep. Startup initializes
+//! every device before the first tick, and wake zeroes every
+//! history at once, so each device's first real reading lands
+//! on the same tick. Failsafe substitutions are written as
+//! ordinary entries. Code that reasons about history age, such
+//! as the custom sensors' `readings_since_reset`, relies on this.
 
 use crate::alerts::AlertController;
 use crate::api::actor::StatusHandle;
