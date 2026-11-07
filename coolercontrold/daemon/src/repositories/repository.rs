@@ -16,6 +16,17 @@ use thiserror::Error;
 pub type DeviceLock = Rc<RefCell<Device>>;
 pub type DeviceList = Vec<DeviceLock>;
 
+/// Zeroes each device's status history, as wake requires: the history is no longer sequential.
+pub fn zero_device_status_histories(devices: &DeviceList, poll_rate: f64) {
+    // The next snapshot will most likely be after another loop interval:
+    let timestamp = Local::now();
+    for device in devices {
+        device
+            .borrow_mut()
+            .zero_status_history(timestamp, poll_rate);
+    }
+}
+
 /// A Repository is used to access device hardware data
 #[async_trait(?Send)]
 pub trait Repository {
@@ -100,6 +111,12 @@ pub trait Repository {
 
     /// This is helpful/necessary after waking from sleep.
     async fn reinitialize_devices(&self);
+
+    /// Zeroes the status history of every device in this repository. The only way to zero a
+    /// history, so a repository that derives state from history age can reset it alongside.
+    async fn zero_status_histories(&self, poll_rate: f64) {
+        zero_device_status_histories(&self.devices().await, poll_rate);
+    }
 
     /// Returns the channels/temps this repository is currently serving failsafe
     /// values for. Default empty: only repositories with a failsafe layer

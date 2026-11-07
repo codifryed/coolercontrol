@@ -371,7 +371,7 @@ async fn wake_from_sleep(
             .await;
         watchdog.ping();
     }
-    engine.reinitialize_all_status_histories()?;
+    engine.reinitialize_all_status_histories().await?;
     Ok(true)
 }
 

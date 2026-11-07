@@ -35,7 +35,9 @@ use crate::repositories::hwmon::device_io::{
     UNREACHABLE_PROBE_INTERVAL,
 };
 use crate::repositories::hwmon::fans::pwm_value_to_duty;
-use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
+use crate::repositories::repository::{
+    zero_device_status_histories, DeviceList, DeviceLock, Repository,
+};
 use crate::setting::{
     CustomSensor, CustomSensorId, CustomSensorKind, CustomSensorMetric,
     CustomSensorMixFunctionType, LcdSettings, LightingSettings, Scale, SensorSource, TempSource,
@@ -116,9 +118,9 @@ pub struct CustomSensorsRepo {
     /// sensor id. Lets each tick fetch only the current source sample instead of
     /// rescanning up to `SAMPLE_WINDOW_MAX_SLOTS` history entries per sensor.
     sample_windows: RefCell<HashMap<CustomSensorId, SampleWindow>>,
-    /// Ticks since startup or the last sleep. Every device starts reading on the same tick
-    /// then, so each source history holds this many readings and, before them, the zeros
-    /// startup and wake pad it with, which the windowed sensors must not average.
+    /// Ticks since startup or the last history zeroing. Every device starts reading on the
+    /// same tick then, so each source history holds this many readings and, before them, the
+    /// zeros startup and wake pad it with, which the windowed sensors must not average.
     reading_count_since_reset: Cell<usize>,
     /// Transient read state for `File` sensors. See [`FileReadState`].
     file_read_state: RefCell<HashMap<CustomSensorId, FileReadState>>,
@@ -2001,10 +2003,10 @@ impl Repository for CustomSensorsRepo {
         self.abort_token.cancel();
     }
 
-    /// Drops all rolling sample windows, as the samples before sleep are stale. Wake zeroes
-    /// every history and polling stops until then, so the reading count restarts here and
-    /// the post-wake reseed starts from the first reading after it.
-    async fn prepare_for_sleep(&self) {
+    /// Zeroing every history makes the held samples stale and the reading count wrong, so both
+    /// restart here and the next reseed starts from the first reading after it.
+    async fn zero_status_histories(&self, poll_rate: f64) {
+        zero_device_status_histories(&self.devices().await, poll_rate);
         self.sample_windows.borrow_mut().clear();
         self.reading_count_since_reset.set(0);
     }
@@ -4982,11 +4984,12 @@ mod tests {
         });
     }
 
-    // Sleep must clear the windows: histories get zeroed on wake, so held-over samples
-    // would be wrong. The next tick reseeds from the first reading after wake.
+    // Wake can zero the histories without a sleep ever being seen, such as a daemon started
+    // mid-sleep. Warms a window, zeroes histories with no prepare_for_sleep call, then checks
+    // the windows and the reading count restart with the history.
     #[test]
     #[serial]
-    fn prepare_for_sleep_clears_windows() {
+    fn zeroing_histories_resets_windows_and_reading_count() {
         cc_fs::test_runtime(async {
             let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
                 name: "cpu".to_string(),
@@ -5007,8 +5010,10 @@ mod tests {
             push_source_tick(&source_dev, "cpu", Some(70.0));
             repo.update_statuses(Local::now()).unwrap();
             assert!(repo.sample_windows.borrow().is_empty().not());
-            repo.prepare_for_sleep().await;
+            assert!(repo.reading_count_since_reset.get() > 0);
+            repo.zero_status_histories(1.0).await;
             assert!(repo.sample_windows.borrow().is_empty());
+            assert_eq!(repo.reading_count_since_reset.get(), 0);
         });
     }
 
@@ -5054,7 +5059,8 @@ mod tests {
 
     // Wake zeroes every history, the Custom Sensors device's included, so the reseed after
     // wake must skip that padding too. Warms external and child-source windowed sensors at
-    // 40, wakes as the engine does, then checks the first tick after reports the new 55.
+    // 40, zeroes histories as the engine does on wake with no sleep seen, then checks the
+    // first tick after reports the new 55.
     #[test]
     #[serial]
     fn windowed_sensors_restart_from_the_first_reading_after_wake() {
@@ -5087,14 +5093,10 @@ mod tests {
                 repo.update_statuses(Local::now()).unwrap();
             }
 
-            repo.prepare_for_sleep().await;
             source_dev
                 .borrow_mut()
                 .zero_status_history(Local::now(), 1.0);
-            let cs_device = repo.custom_sensor_device.clone().unwrap();
-            cs_device
-                .borrow_mut()
-                .zero_status_history(Local::now(), 1.0);
+            repo.zero_status_histories(1.0).await;
             push_source_tick(&source_dev, "water", Some(55.0));
             repo.update_statuses(Local::now()).unwrap();
 
