@@ -232,8 +232,9 @@ impl GpuAMD {
         if libdrm_unavailable {
             warn!(
                 "libdrm could not be loaded. It provides AMD GPU model names and \
-                identifies RDNA3/4 GPUs while AMD GPU Overdrive is disabled, so those \
-                GPUs do not show the Overdrive setting. Install libdrm for full support."
+                identifies RDNA3/4 GPUs while AMD GPU Overdrive is disabled. Without it, \
+                those GPUs do not show the Overdrive setting, and their fans appear \
+                controllable but cannot be set. Install libdrm for full support."
             );
         }
         amd_infos
