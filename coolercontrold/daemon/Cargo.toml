@@ -138,8 +138,7 @@ zbus = { version = "5.18", default-features = false, features = [
 futures-util = { version = "0.3", default-features = false, features = [
   "std",
 ] } # future utilities we use like join3
-# sysinfo > 0.38 requires Rust >= 1.95
-sysinfo = { version = "=0.38", default-features = false, features = [
+sysinfo = { version = "0.40.1", default-features = false, features = [
   "system",
 ] } # gets detailed system info
 chrono = { version = "0.4.45", features = [
@@ -148,7 +147,8 @@ chrono = { version = "0.4.45", features = [
 strum = { version = "0.28.0", features = ["derive"] } # Enum -> String
 regex = "1.13"
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
-# nu-glob > 0.111 requires Rust >=1.92
+# Held at 0.111, the last release with no dependencies. 0.114+ requires rayon and
+# nu-experimental for an opt-in parallel globber.
 nu-glob = "=0.111"
 nvml-wrapper = "0.13.0"
 # Held at 0.8 to share one libloading with ash, khronos-egl, libdrm_amdgpu_sys,
@@ -190,8 +190,7 @@ tonic-health = "0.14.9"
 sd-notify = "0.5.0"
 
 [dev-dependencies]
-# serial_test 4.0 requires Rust >=1.93.1
-serial_test = "=3.5"
+serial_test = "4.0.1"
 tokio = { version = "1.54", default-features = false, features = ["test-util"] }
 
 [build-dependencies]

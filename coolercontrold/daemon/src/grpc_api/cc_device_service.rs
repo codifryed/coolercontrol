@@ -97,8 +97,10 @@ impl DeviceService for CCDeviceService {
         &self,
         _request: Request<HealthRequest>,
     ) -> Result<Response<HealthResponse>, Status> {
-        let (pid, system) = own_process(sysinfo::ProcessRefreshKind::nothing());
-        let uptime_seconds = system.process(pid).map_or(0, sysinfo::Process::run_time);
+        let uptime_seconds = own_process(sysinfo::ProcessRefreshKind::nothing())
+            .ok()
+            .and_then(|(pid, system)| system.process(pid).map(sysinfo::Process::run_time))
+            .unwrap_or(0);
         let reply = HealthResponse {
             name: self.service_id.clone(),
             version: self.version.clone(),
