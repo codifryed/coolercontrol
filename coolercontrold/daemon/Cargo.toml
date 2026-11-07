@@ -73,7 +73,8 @@ tower-http = { version = "0.7.1", features = [
 ] }
 tower-sessions = { version = "0.15.0", features = ["private"] }
 tower-sessions-core = { version = "0.15.0", features = ["deletion-task"] }
-# Held at 0.22 to share one base64 with cookie, pem/rcgen and tonic.
+# Held at 0.22 to share one base64 with tonic, cookie and tower-sessions-core. pem 4 (rcgen) uses
+# 0.23; move when those three do.
 base64 = "=0.22"
 time = "0.3"
 # The `metadata` feature bakes each embedded file's mtime in at compile time and
