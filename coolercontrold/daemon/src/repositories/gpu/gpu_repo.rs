@@ -234,6 +234,14 @@ impl GpuRepo {
         let nvidia_dev_count = if nvidia::nvidia_gpu_may_be_present().await.not() {
             info!("No NVIDIA GPU or driver found, skipping NVML and nvidia-smi.");
             0
+        } else if cfg!(target_env = "musl") {
+            // NVML is a glibc library and segfaults under musl. The CLI tools need glibc, and
+            // fan control through them also needs X.
+            warn!(
+                "NVIDIA GPUs are not supported in musl builds, such as the Alpine Docker image. \
+                 Use a glibc build, such as the default Docker image."
+            );
+            0
         } else if self.force_nvidia_cli || nvml_enabled.not() {
             self.gpus_nvidia
                 .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
