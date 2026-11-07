@@ -670,7 +670,7 @@ impl CustomSensorsRepo {
         let device = source_device.borrow();
         // Between ticks, so the Custom Sensors device holds as many readings as any source.
         let reading_count = self.reading_count_since_reset.get();
-        let first_reading = device.history_len() - reading_count.min(device.history_len());
+        let first_reading = device.history_len().saturating_sub(reading_count);
         if index < first_reading {
             // The source shows placeholder zeros here, so this sensor does too. Not a
             // missing reading, which would failsafe.
