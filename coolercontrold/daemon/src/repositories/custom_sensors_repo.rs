@@ -119,7 +119,7 @@ pub struct CustomSensorsRepo {
     /// Ticks since startup or the last sleep. Every device starts reading on the same tick
     /// then, so each source history holds this many readings and, before them, the zeros
     /// startup and wake pad it with, which the windowed sensors must not average.
-    readings_since_reset: Cell<usize>,
+    reading_count_since_reset: Cell<usize>,
     /// Transient read state for `File` sensors. See [`FileReadState`].
     file_read_state: RefCell<HashMap<CustomSensorId, FileReadState>>,
     /// Every sensor's value this tick, in processing order, kept across ticks so each id is
@@ -233,7 +233,7 @@ impl CustomSensorsRepo {
             start_check_worker: DeviceIo::threaded,
             abort_token: CancellationToken::new(),
             sample_windows: RefCell::new(HashMap::new()),
-            readings_since_reset: Cell::new(0),
+            reading_count_since_reset: Cell::new(0),
         })
     }
 
@@ -669,8 +669,8 @@ impl CustomSensorsRepo {
         };
         let device = source_device.borrow();
         // Between ticks, so the Custom Sensors device holds as many readings as any source.
-        let readings = self.readings_since_reset.get();
-        let first_reading = device.history_len() - readings.min(device.history_len());
+        let reading_count = self.reading_count_since_reset.get();
+        let first_reading = device.history_len() - reading_count.min(device.history_len());
         if index < first_reading {
             // The source shows placeholder zeros here, so this sensor does too. Not a
             // missing reading, which would failsafe.
@@ -927,8 +927,8 @@ impl CustomSensorsRepo {
         let mut samples: VecDeque<Option<f64>> = VecDeque::with_capacity(sample_count);
         // Mid-tick: every source has this tick's reading, but the Custom Sensors device
         // writes its own only after the sensors are processed.
-        let readings = self.readings_since_reset.get();
-        debug_assert!(readings >= 1);
+        let reading_count = self.reading_count_since_reset.get();
+        debug_assert!(reading_count >= 1);
         // Collect newest-first as the old walk did, then reverse into window order.
         let push_newest = |samples: &mut VecDeque<Option<f64>>, device: &Device, count: usize| {
             let len = device.history_len();
@@ -939,14 +939,14 @@ impl CustomSensorsRepo {
         if source.device_uid == self.device_uid {
             samples.push_back(Self::child_value(metric, &source.name, values));
             if let Some(cs_device) = self.custom_sensor_device.as_ref() {
-                let count = (sample_count - 1).min(readings - 1);
+                let count = (sample_count - 1).min(reading_count - 1);
                 push_newest(&mut samples, &cs_device.borrow(), count);
             }
         } else if let Some(source_device) = self.all_devices.get(&source.device_uid) {
             push_newest(
                 &mut samples,
                 &source_device.borrow(),
-                sample_count.min(readings),
+                sample_count.min(reading_count),
             );
         }
         samples.make_contiguous().reverse();
@@ -1834,8 +1834,8 @@ impl CustomSensorsRepo {
             return;
         };
         // Saturates: past the history length the count no longer limits anything.
-        let readings = self.readings_since_reset.get().saturating_add(1);
-        self.readings_since_reset.set(readings);
+        let reading_count = self.reading_count_since_reset.get().saturating_add(1);
+        self.reading_count_since_reset.set(reading_count);
         let start_update = Instant::now();
         let sensors = self.sensors.borrow();
         let mut values = self.tick_values.borrow_mut();
@@ -2004,7 +2004,7 @@ impl Repository for CustomSensorsRepo {
     /// the post-wake reseed starts from the first reading after it.
     async fn prepare_for_sleep(&self) {
         self.sample_windows.borrow_mut().clear();
-        self.readings_since_reset.set(0);
+        self.reading_count_since_reset.set(0);
     }
 
     fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
@@ -4763,14 +4763,14 @@ mod tests {
                 push_source_tick(&source_dev, "cpu", Some(temp));
                 repo.update_statuses(Local::now()).unwrap();
                 // The init reading plus this and every earlier tick, on both devices.
-                let readings = tick + 2;
+                let reading_count = tick + 2;
                 for (label, window) in windows {
                     let sample_count = usize::from(window);
                     let avg_ref =
-                        reference_windowed(&source_dev, "cpu", sample_count, readings, false)
+                        reference_windowed(&source_dev, "cpu", sample_count, reading_count, false)
                             .unwrap();
                     let ema_ref =
-                        reference_windowed(&source_dev, "cpu", sample_count, readings, true)
+                        reference_windowed(&source_dev, "cpu", sample_count, reading_count, true)
                             .unwrap();
                     assert_eq!(
                         current_temp_for(&repo, &format!("avg_{label}")).to_bits(),
@@ -4785,9 +4785,9 @@ mod tests {
                 }
                 let cs_device = repo.custom_sensor_device.as_ref().unwrap();
                 let child_avg_ref =
-                    reference_windowed(cs_device, "mix1", 4, readings, false).unwrap();
+                    reference_windowed(cs_device, "mix1", 4, reading_count, false).unwrap();
                 let child_ema_ref =
-                    reference_windowed(cs_device, "mix1", 4, readings, true).unwrap();
+                    reference_windowed(cs_device, "mix1", 4, reading_count, true).unwrap();
                 assert_eq!(
                     current_temp_for(&repo, "avg_child").to_bits(),
                     child_avg_ref.to_bits(),
@@ -4843,9 +4843,11 @@ mod tests {
                 push_source_tick(&source_dev, "cpu", temp);
                 repo.update_statuses(Local::now()).unwrap();
                 // A gap tick is still an entry the window spans.
-                let readings = tick + 2;
-                let avg_ref = reference_windowed(&source_dev, "cpu", 5, readings, false).unwrap();
-                let ema_ref = reference_windowed(&source_dev, "cpu", 5, readings, true).unwrap();
+                let reading_count = tick + 2;
+                let avg_ref =
+                    reference_windowed(&source_dev, "cpu", 5, reading_count, false).unwrap();
+                let ema_ref =
+                    reference_windowed(&source_dev, "cpu", 5, reading_count, true).unwrap();
                 assert_eq!(current_temp_for(&repo, "avg").to_bits(), avg_ref.to_bits());
                 assert_eq!(current_temp_for(&repo, "ema").to_bits(), ema_ref.to_bits());
             }

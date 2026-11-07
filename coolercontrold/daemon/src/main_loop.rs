@@ -50,7 +50,7 @@
 //! history at once, so each device's first real reading lands
 //! on the same tick. Failsafe substitutions are written as
 //! ordinary entries. Code that reasons about history age, such
-//! as the custom sensors' `readings_since_reset`, relies on this.
+//! as the custom sensors' `reading_count_since_reset`, relies on this.
 
 use crate::alerts::AlertController;
 use crate::api::actor::StatusHandle;
