@@ -1516,7 +1516,7 @@ impl GpuNVidia {
                     if xauthority_path.is_none() {
                         warn!(
                             "No Xauthority cookie found within {XAUTHORITY_SEARCH_TIMEOUT:?}. \
-                             NVIDIA fan control is disabled until the daemon restarts."
+                             NVIDIA fans stay at their last set speed until the daemon restarts."
                         );
                     }
                     self.xauthority_path.replace(xauthority_path);
