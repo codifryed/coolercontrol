@@ -187,9 +187,14 @@ where
         return response.map(Body::new);
     }
     let (mut parts, body) = response.into_parts();
+    // The inner service runs without include_dir metadata, so these are the only validators.
     debug_assert!(
-        parts.headers.contains_key(LAST_MODIFIED).not() && parts.headers.contains_key(ETAG).not(),
-        "the inner service runs without include_dir metadata, so these are the only validators"
+        parts.headers.contains_key(LAST_MODIFIED).not(),
+        "the inner service sets no Last-Modified"
+    );
+    debug_assert!(
+        parts.headers.contains_key(ETAG).not(),
+        "the inner service sets no ETag"
     );
     parts.headers.insert(LAST_MODIFIED, last_modified);
     parts.headers.insert(ETAG, etag);
@@ -303,7 +308,14 @@ mod tests {
         let unquoted = ASSETS_ETAG.trim_end_matches('"');
         assert_eq!(ASSETS_ETAG_GZIP, format!("{unquoted}-gzip\""));
         assert!(ASSETS_ETAG.len() > 2);
-        assert!(ASSETS_ETAG.starts_with('"') && ASSETS_ETAG.ends_with('"'));
+        assert!(
+            ASSETS_ETAG.starts_with('"'),
+            "{ASSETS_ETAG} opens with a quote"
+        );
+        assert!(
+            ASSETS_ETAG.ends_with('"'),
+            "{ASSETS_ETAG} closes with a quote"
+        );
     }
 
     // Goal: a plain request gets the full body, its content type, and both validators.
