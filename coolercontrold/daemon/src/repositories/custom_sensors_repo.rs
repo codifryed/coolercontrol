@@ -293,9 +293,13 @@ impl CustomSensorsRepo {
         self.config.set_custom_sensor(custom_sensor.clone())?;
         // After the config write, so a failed one leaves no window behind.
         if let Some(window) = window {
-            self.sample_windows
+            debug_assert!(window.samples.len() <= window.sample_count);
+            let replaced = self
+                .sample_windows
                 .borrow_mut()
                 .insert(custom_sensor.id.clone(), window);
+            // verify_sensor_id_is_new leaves no window to replace.
+            debug_assert!(replaced.is_none());
         }
         self.sensors.borrow_mut().push(custom_sensor);
         self.update_device_info();
