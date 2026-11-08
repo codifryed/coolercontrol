@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Log lines are escaped and highlighted once on arrival; views render the
-// pre-built html per line. The cap mirrors the daemon's own log buffer so the
+// pre-built html per line. Leading UTC stamps are rewritten to local journal
+// form first. The cap mirrors the daemon's own log buffer so the
 // UI state always looks like a fresh /logs fetch.
 
 export const LOG_LINE_CAP = 500
