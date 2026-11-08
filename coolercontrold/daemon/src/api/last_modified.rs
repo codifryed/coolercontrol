@@ -96,7 +96,7 @@ where
 }
 
 pin_project! {
-    /// The inner service's future, finished by [`validate`].
+    /// The inner service's future, finished by [`apply_validators`].
     pub struct LastModifiedFuture<F> {
         #[pin]
         inner: F,
@@ -118,7 +118,11 @@ where
         let this = self.project();
         let response = ready!(this.inner.poll(cx))?;
         let validators = (this.last_modified.clone(), this.etag.clone());
-        Poll::Ready(Ok(validate(response, validators, *this.holds_current)))
+        Poll::Ready(Ok(apply_validators(
+            response,
+            validators,
+            *this.holds_current,
+        )))
     }
 }
 
@@ -154,7 +158,7 @@ fn lists_etag(tags: &HeaderValue, etag: &HeaderValue) -> bool {
 /// Adds the validators to a served file, or turns it into a 304 when the client holds them.
 /// Anything but a 200 passes through. The 304 keeps the response's own header map, and its
 /// static body is dropped unread.
-fn validate<B>(
+fn apply_validators<B>(
     response: Response<B>,
     (last_modified, etag): (HeaderValue, HeaderValue),
     holds_current: bool,
