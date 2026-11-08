@@ -851,8 +851,9 @@ mod tests {
 
     // Goal: the fallback's stages cost no more than the `StaticAsset` marker over serving the
     // file bare, a 304 no more than a 200, and a gzip copy only its swapped body, the length
-    // axum then sets, and its one extra header. Method: count one hashed bundle request through a router over a
-    // bare `ServeDir` and over the production stack, both over the same test files.
+    // axum then sets, and its one extra header. Method: count one hashed bundle request
+    // through a router over a bare `ServeDir` and over the production stack, both over the
+    // same test files.
     #[tokio::test]
     #[cfg(feature = "gated-tests")]
     async fn test_static_stack_allocations() {
