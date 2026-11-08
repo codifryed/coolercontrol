@@ -896,7 +896,7 @@ impl LiquidctlRepo {
             let delay = self.device_delay(uid);
             let device_name = || overrides.log_device_name(uid, &device_lock.borrow().name);
             let read = || self.call_status(&device_id, delay);
-            match read_with_retries(&self.run_token, retry_interval, read).await {
+            match read_with_retries(&device_name, &self.run_token, retry_interval, read).await {
                 Ok(status) => {
                     self.store_status(device_id, status, device_name);
                     None
@@ -2274,6 +2274,7 @@ where
 /// between tries. Returns the last error when every attempt fails, or once `run_token` is
 /// cancelled.
 async fn read_with_retries<T, F, Fut>(
+    device_name: impl Fn() -> String,
     run_token: &CancellationToken,
     retry_interval: Duration,
     mut read: F,
@@ -2294,7 +2295,10 @@ where
         match read().await {
             Ok(value) => return Ok(value),
             Err(err) => {
-                debug!("First status read attempt {attempt} failed: {err}");
+                debug!(
+                    "First status read attempt {attempt} failed for liquidctl device {}: {err}",
+                    device_name()
+                );
                 last_err = Some(err);
             }
         }
@@ -2676,6 +2680,10 @@ mod tests {
         )))
     }
 
+    fn test_name() -> String {
+        "Test Cooler".to_string()
+    }
+
     /// Goal: a first read that succeeds is not repeated. Method: count the calls of a read that
     /// always succeeds.
     #[tokio::test]
@@ -2686,7 +2694,7 @@ mod tests {
             async { Ok::<_, anyhow::Error>(7) }
         };
 
-        let value = read_with_retries(&CancellationToken::new(), Duration::ZERO, read)
+        let value = read_with_retries(test_name, &CancellationToken::new(), Duration::ZERO, read)
             .await
             .unwrap();
 
@@ -2711,7 +2719,7 @@ mod tests {
             }
         };
 
-        let value = read_with_retries(&CancellationToken::new(), Duration::ZERO, read)
+        let value = read_with_retries(test_name, &CancellationToken::new(), Duration::ZERO, read)
             .await
             .unwrap();
 
@@ -2733,7 +2741,7 @@ mod tests {
         };
         let start = Instant::now();
 
-        let err = read_with_retries(&CancellationToken::new(), retry_interval, read)
+        let err = read_with_retries(test_name, &CancellationToken::new(), retry_interval, read)
             .await
             .unwrap_err();
 
@@ -2755,7 +2763,7 @@ mod tests {
             async { Err::<u8, _>(anyhow!("no data")) }
         };
 
-        let err = read_with_retries(&run_token, Duration::ZERO, read)
+        let err = read_with_retries(test_name, &run_token, Duration::ZERO, read)
             .await
             .unwrap_err();
 
