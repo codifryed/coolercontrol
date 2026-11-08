@@ -122,8 +122,8 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
         - coolercontrold/target/release/build
       policy: pull-push
 
-# cache_template plus the debug build's compiled dependencies, for test_all. Nothing built from it
-# is released.
+# cache_template plus the debug build's compiled dependencies, for test_all and test_daemon_musl.
+# Nothing built from it is released.
 .rust_debug_cache: &rust_debug_cache
   cache:
     - *cache_npm
@@ -302,6 +302,28 @@ test_msrv:
     # dh_auto_test.
     - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml --workspace
       --all-targets
+
+####################################### musl
+# The Alpine image builds the daemon against musl, whose libc types and behaviour differ from
+# glibc's, and nothing else builds it there before a release rehearsal. Linked dynamically, like
+# the image. util-linux's setsid: the detached-run tests need its --fork --wait, which BusyBox's
+# lacks. CI embeds no UI, as in test_all.
+test_daemon_musl:
+  stage: test
+  image: rust:alpine
+  <<: [*rust_debug_cache]
+  rules:
+    - if: $RELEASE_REHEARSAL == "true"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  needs: []
+  variables:
+    RUSTFLAGS: -Dwarnings -C target-feature=-crt-static
+  before_script:
+    - apk add --no-cache build-base pkgconfig perl util-linux-misc
+    - rustc --version
+  script:
+    - cargo test --locked --no-fail-fast --manifest-path coolercontrold/Cargo.toml --workspace
+      --features gated-tests
 
 ####################################### Newest Rust toolchain
 # Arch and AUR users build with the newest stable Rust as soon as it ships, so its new warnings
