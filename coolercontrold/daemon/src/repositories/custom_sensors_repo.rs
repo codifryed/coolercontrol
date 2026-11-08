@@ -553,15 +553,7 @@ impl CustomSensorsRepo {
             };
             values.push(value);
         }
-        // The window ends at the source's newest entry only when the source's history is as
-        // long as this device's, as lockstep polling keeps it. Otherwise the first tick reseeds.
-        let window = window.filter(|_| {
-            sensor
-                .sources()
-                .first()
-                .and_then(|source| self.backfill_source_device(source))
-                .is_some_and(|source_device| source_device.borrow().history_len() == history_len)
-        });
+        let window = window.filter(|_| self.backfill_window_is_live(sensor, history_len));
         let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
         if sensor.metric.is_temp() {
             device.add_temp_column(&sensor.id, &values);
@@ -611,6 +603,17 @@ impl CustomSensorsRepo {
             }
         }
         Ok(())
+    }
+
+    /// The backfill's window ends at the source's newest entry only when the source's history
+    /// is as long as this device's, as lockstep polling keeps it. Otherwise the first tick
+    /// reseeds.
+    fn backfill_window_is_live(&self, sensor: &CustomSensor, history_len: usize) -> bool {
+        sensor
+            .sources()
+            .first()
+            .and_then(|source| self.backfill_source_device(source))
+            .is_some_and(|source_device| source_device.borrow().history_len() == history_len)
     }
 
     /// The device a new sensor's source is read from: the Custom Sensors device itself for a
