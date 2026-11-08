@@ -896,7 +896,7 @@ impl LiquidctlRepo {
             let delay = self.device_delay(uid);
             let device_name = || overrides.log_device_name(uid, &device_lock.borrow().name);
             let read = || self.call_status(&device_id, delay);
-            match read_with_retries(retry_interval, read).await {
+            match read_with_retries(&self.run_token, retry_interval, read).await {
                 Ok(status) => {
                     self.store_status(device_id, status, device_name);
                     None
@@ -2271,8 +2271,13 @@ where
 }
 
 /// Runs `read` until it succeeds, at most `FIRST_STATUS_ATTEMPTS` times, pausing `retry_interval`
-/// between tries. Returns the last error when every attempt fails.
-async fn read_with_retries<T, F, Fut>(retry_interval: Duration, mut read: F) -> Result<T>
+/// between tries. Returns the last error when every attempt fails, or once `run_token` is
+/// cancelled.
+async fn read_with_retries<T, F, Fut>(
+    run_token: &CancellationToken,
+    retry_interval: Duration,
+    mut read: F,
+) -> Result<T>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T>>,
@@ -2280,6 +2285,10 @@ where
     let mut last_err = None;
     for attempt in 1..=FIRST_STATUS_ATTEMPTS {
         if attempt > 1 {
+            // Shutting down: further reads only delay the exit.
+            if run_token.is_cancelled() {
+                break;
+            }
             sleep(retry_interval).await;
         }
         match read().await {
@@ -2290,7 +2299,7 @@ where
             }
         }
     }
-    // FIRST_STATUS_ATTEMPTS >= 1, so the loop ran and every pass set an error.
+    // FIRST_STATUS_ATTEMPTS >= 1, so the first pass ran and every pass set an error.
     Err(last_err.expect("at least one attempt was made"))
 }
 
@@ -2677,7 +2686,9 @@ mod tests {
             async { Ok::<_, anyhow::Error>(7) }
         };
 
-        let value = read_with_retries(Duration::ZERO, read).await.unwrap();
+        let value = read_with_retries(&CancellationToken::new(), Duration::ZERO, read)
+            .await
+            .unwrap();
 
         assert_eq!(value, 7);
         assert_eq!(calls.get(), 1);
@@ -2700,7 +2711,9 @@ mod tests {
             }
         };
 
-        let value = read_with_retries(Duration::ZERO, read).await.unwrap();
+        let value = read_with_retries(&CancellationToken::new(), Duration::ZERO, read)
+            .await
+            .unwrap();
 
         assert_eq!(value, 7);
         assert_eq!(calls.get(), FIRST_STATUS_ATTEMPTS);
@@ -2720,12 +2733,34 @@ mod tests {
         };
         let start = Instant::now();
 
-        let err = read_with_retries(retry_interval, read).await.unwrap_err();
+        let err = read_with_retries(&CancellationToken::new(), retry_interval, read)
+            .await
+            .unwrap_err();
 
         assert_eq!(calls.get(), FIRST_STATUS_ATTEMPTS);
         assert_eq!(err.to_string(), format!("no data {FIRST_STATUS_ATTEMPTS}"));
         let pauses = u32::try_from(FIRST_STATUS_ATTEMPTS - 1).unwrap();
         assert!(start.elapsed() >= retry_interval * pauses);
+    }
+
+    /// Goal: shutdown stops the first status retries after one failed read. Method: a cancelled
+    /// token and a read that always fails, then check the call count and the error.
+    #[tokio::test]
+    async fn first_status_read_stops_retrying_once_cancelled() {
+        let run_token = CancellationToken::new();
+        run_token.cancel();
+        let calls = Cell::new(0_usize);
+        let read = || {
+            calls.set(calls.get() + 1);
+            async { Err::<u8, _>(anyhow!("no data")) }
+        };
+
+        let err = read_with_retries(&run_token, Duration::ZERO, read)
+            .await
+            .unwrap_err();
+
+        assert_eq!(calls.get(), 1);
+        assert_eq!(err.to_string(), "no data");
     }
 
     /// Goal: an unreadable device's driver locations are collected so hwmon keeps skipping it,
