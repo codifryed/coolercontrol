@@ -48,15 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
     let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
-    let app_dir = manifest_dir.join("resources/app");
-    let app_files = list_files(&app_dir)?;
-    precompress_app(&app_dir, &app_files, &out_dir.join("app-gzip"))?;
-    // api/last_modified.rs serves this as every embedded file's Last-Modified. include_dir's
-    // own metadata is all or nothing, and musl cannot read the creation time it also asks for.
-    let plugin_lib = manifest_dir.join(PLUGIN_LIB);
-    let assets_modified_unix_secs =
-        assets_modified_unix_secs(app_files.iter().chain([&plugin_lib]))?;
-    println!("cargo:rustc-env=CC_ASSETS_MODIFIED_UNIX_SECS={assets_modified_unix_secs}");
+    embed_app_assets(&manifest_dir, &out_dir)?;
 
     // Query pkg-config for hwdata's pkgdatadir at build time (e.g., NixOS).
     if let Ok(output) = std::process::Command::new("pkg-config")
@@ -85,6 +77,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         .build_client(true)
         .compile_fds(file_descriptor_set)?;
+    Ok(())
+}
+
+/// Gzips the UI for api/base.rs and records the embedded assets' validator.
+fn embed_app_assets(manifest_dir: &Path, out_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let app_dir = manifest_dir.join("resources/app");
+    let app_files = list_files(&app_dir)?;
+    precompress_app(&app_dir, &app_files, &out_dir.join("app-gzip"))?;
+    // api/last_modified.rs serves this as every embedded file's Last-Modified. include_dir's
+    // own metadata is all or nothing, and musl cannot read the creation time it also asks for.
+    let plugin_lib = manifest_dir.join(PLUGIN_LIB);
+    let assets_modified_unix_secs =
+        assets_modified_unix_secs(app_files.iter().chain([&plugin_lib]))?;
+    println!("cargo:rustc-env=CC_ASSETS_MODIFIED_UNIX_SECS={assets_modified_unix_secs}");
     Ok(())
 }
 
