@@ -32,13 +32,16 @@ const HTTP_DATE_MAX_UNIX_SECS: u64 = 253_402_300_799;
 const _: () = assert!(ASSETS_MODIFIED_UNIX_SECS <= HTTP_DATE_MAX_UNIX_SECS);
 /// A quoted hash of the embedded assets' paths and bytes, from build.rs.
 const ASSETS_ETAG: &str = env!("CC_ASSETS_ETAG");
+/// The same hash tagged for the gzip copies, which api/base.rs swaps in.
+pub const ASSETS_ETAG_GZIP: &str = env!("CC_ASSETS_ETAG_GZIP");
 
 /// Formatted once, so every response borrows it rather than allocating.
 static ASSETS_LAST_MODIFIED: LazyLock<String> =
     LazyLock::new(|| http_date(ASSETS_MODIFIED_UNIX_SECS));
 
 /// Wraps a static file service: each file it serves gets the build's validators, and a
-/// request that already holds them gets a 304.
+/// request that already holds them gets a 304. An `If-None-Match` holding the gzip tag
+/// matches too, since only the outer layer knows which coding it sends.
 ///
 /// One pair for every file means any change revalidates all of them, which is cheap: the
 /// hashed bundles are pinned and only a few unhashed files remain. The match is exact, as nginx
@@ -54,18 +57,29 @@ pub struct LastModified<S> {
     date: HeaderValue,
     /// Static too.
     etag: HeaderValue,
+    /// Static too. Only matched here; api/base.rs sends it.
+    gzip_etag: HeaderValue,
 }
 
 impl<S> LastModified<S> {
     pub fn new(inner: S) -> Self {
-        Self::with_values(inner, ASSETS_LAST_MODIFIED.as_str(), ASSETS_ETAG)
+        Self::with_values(
+            inner,
+            ASSETS_LAST_MODIFIED.as_str(),
+            (ASSETS_ETAG, ASSETS_ETAG_GZIP),
+        )
     }
 
-    fn with_values(inner: S, last_modified: &'static str, etag: &'static str) -> Self {
+    fn with_values(
+        inner: S,
+        last_modified: &'static str,
+        (etag, gzip_etag): (&'static str, &'static str),
+    ) -> Self {
         Self {
             inner,
             date: HeaderValue::from_static(last_modified),
             etag: HeaderValue::from_static(etag),
+            gzip_etag: HeaderValue::from_static(gzip_etag),
         }
     }
 }
@@ -85,7 +99,8 @@ where
     }
 
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
-        let holds_current = holds_validator(&request, &self.date, &self.etag);
+        let etags = [&self.etag, &self.gzip_etag];
+        let holds_current = holds_validator(&request, &self.date, etags);
         LastModifiedFuture {
             inner: self.inner.call(request),
             last_modified: self.date.clone(),
@@ -130,11 +145,12 @@ where
 /// methods ignore the condition, as RFC 9110 specifies.
 ///
 /// An `If-None-Match` decides alone (RFC 9110 13.2.2), so a pinned date cannot vouch for an
-/// outdated copy. Without one, `If-Modified-Since` must be exactly `last_modified`.
+/// outdated copy. It holds the build when it names any of `etags`. Without one,
+/// `If-Modified-Since` must be exactly `last_modified`.
 fn holds_validator<B>(
     request: &Request<B>,
     last_modified: &HeaderValue,
-    etag: &HeaderValue,
+    etags: [&HeaderValue; 2],
 ) -> bool {
     if matches!(*request.method(), Method::GET | Method::HEAD).not() {
         return false;
@@ -142,7 +158,7 @@ fn holds_validator<B>(
     let headers = request.headers();
     let mut if_none_match = headers.get_all(IF_NONE_MATCH).iter().peekable();
     if if_none_match.peek().is_some() {
-        return if_none_match.any(|tags| lists_etag(tags, etag));
+        return if_none_match.any(|tags| etags.iter().any(|etag| lists_etag(tags, etag)));
     }
     headers.get(IF_MODIFIED_SINCE) == Some(last_modified)
 }
@@ -209,6 +225,7 @@ mod tests {
 
     const TEST_LAST_MODIFIED: &str = "Sun, 06 Nov 1994 08:49:37 GMT";
     const TEST_ETAG: &str = "\"0123abcd\"";
+    const TEST_ETAG_GZIP: &str = "\"0123abcd-gzip\"";
 
     static TEST_ASSETS: Dir<'static> = Dir::new(
         "",
@@ -239,7 +256,8 @@ mod tests {
 
     /// `request` through a real `ServeDir` over `TEST_ASSETS`, wrapped.
     async fn serve(request: Request<Body>) -> Response<Body> {
-        LastModified::with_values(ServeDir::new(&TEST_ASSETS), TEST_LAST_MODIFIED, TEST_ETAG)
+        let etags = (TEST_ETAG, TEST_ETAG_GZIP);
+        LastModified::with_values(ServeDir::new(&TEST_ASSETS), TEST_LAST_MODIFIED, etags)
             .oneshot(request)
             .await
             .unwrap()
@@ -281,6 +299,9 @@ mod tests {
         let service = LastModified::new(());
         assert_eq!(service.date, ASSETS_LAST_MODIFIED.as_str());
         assert_eq!(service.etag, ASSETS_ETAG);
+        assert_eq!(service.gzip_etag, ASSETS_ETAG_GZIP);
+        let unquoted = ASSETS_ETAG.trim_end_matches('"');
+        assert_eq!(ASSETS_ETAG_GZIP, format!("{unquoted}-gzip\""));
         assert!(ASSETS_ETAG.len() > 2);
         assert!(ASSETS_ETAG.starts_with('"') && ASSETS_ETAG.ends_with('"'));
     }
@@ -313,11 +334,17 @@ mod tests {
         }
     }
 
-    // Goal: a client holding the current ETag gets a 304. Method: the tag alone, weak, and
-    // inside a list, each with no date.
+    // Goal: a client holding the current ETag, plain or gzip, gets a 304. Method: each tag
+    // alone, weak, and inside a list, each with no date.
     #[tokio::test]
     async fn test_matching_etag_is_not_modified() {
-        for tags in [TEST_ETAG, "W/\"0123abcd\"", "\"old\", \"0123abcd\""] {
+        for tags in [
+            TEST_ETAG,
+            "W/\"0123abcd\"",
+            "\"old\", \"0123abcd\"",
+            TEST_ETAG_GZIP,
+            "W/\"0123abcd-gzip\"",
+        ] {
             let response = serve(tagged_request(tags, None)).await;
             assert_eq!(response.status(), StatusCode::NOT_MODIFIED, "{tags}");
             assert_eq!(response.headers()[ETAG], TEST_ETAG);
@@ -330,7 +357,7 @@ mod tests {
     // mismatching ETag and a prefix of the current one, each with the matching date.
     #[tokio::test]
     async fn test_mismatching_etag_overrides_matching_date() {
-        for tags in ["\"old\"", "\"0123abc\""] {
+        for tags in ["\"old\"", "\"0123abc\"", "\"0123abcd-br\""] {
             let response = serve(tagged_request(tags, Some(TEST_LAST_MODIFIED))).await;
             assert_eq!(response.status(), StatusCode::OK, "{tags}");
             assert_eq!(response.headers()[ETAG], TEST_ETAG);

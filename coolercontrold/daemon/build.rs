@@ -91,15 +91,18 @@ fn embed_app_assets(manifest_dir: &Path, out_dir: &Path) -> Result<(), Box<dyn s
     let embedded: Vec<&PathBuf> = app_files.iter().chain([&plugin_lib]).collect();
     let assets_modified_unix_secs = assets_modified_unix_secs(embedded.iter().copied())?;
     println!("cargo:rustc-env=CC_ASSETS_MODIFIED_UNIX_SECS={assets_modified_unix_secs}");
-    let assets_etag = assets_etag(manifest_dir, &embedded)?;
-    println!("cargo:rustc-env=CC_ASSETS_ETAG={assets_etag}");
+    let assets_hash = assets_hash(manifest_dir, &embedded)?;
+    println!("cargo:rustc-env=CC_ASSETS_ETAG=\"{assets_hash}\"");
+    // A strong ETag differs across content codings (RFC 9110 8.8.3), so the gzip copies get
+    // their own.
+    println!("cargo:rustc-env=CC_ASSETS_ETAG_GZIP=\"{assets_hash}-gzip\"");
     Ok(())
 }
 
-/// A strong `ETag` over every embedded file's path and bytes. Packagers can pin
-/// `SOURCE_DATE_EPOCH` to one value for every release (nixpkgs does), so Last-Modified alone
-/// would let a browser keep the old index.html after an upgrade.
-fn assets_etag(
+/// The hash behind the strong `ETag`s, over every embedded file's path and bytes. Packagers
+/// can pin `SOURCE_DATE_EPOCH` to one value for every release (nixpkgs does), so
+/// Last-Modified alone would let a browser keep the old index.html after an upgrade.
+fn assets_hash(
     manifest_dir: &Path,
     files: &[&PathBuf],
 ) -> Result<String, Box<dyn std::error::Error>> {
@@ -119,7 +122,7 @@ fn assets_etag(
         crc.update(&u64::try_from(bytes.len())?.to_le_bytes());
         crc.update(&bytes);
     }
-    Ok(format!("\"{:08x}\"", crc.sum()))
+    Ok(format!("{:08x}", crc.sum()))
 }
 
 /// Every file under `dir`, at any depth. Empty when `dir` does not exist, as in a

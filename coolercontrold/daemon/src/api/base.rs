@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::api::last_modified::LastModified;
+use crate::api::last_modified::{LastModified, ASSETS_ETAG_GZIP};
 use crate::api::{handle_error, AppState, CCError};
 use crate::logger::LogLevelSource;
 use aide::axum::IntoApiResponse;
@@ -10,7 +10,7 @@ use anyhow::Result;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::header::{
-    ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, VARY,
+    ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, ETAG, VARY,
 };
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -64,15 +64,17 @@ fn static_files(
 
 const VARY_ACCEPT_ENCODING: HeaderValue = HeaderValue::from_static("accept-encoding");
 const ENCODING_GZIP: HeaderValue = HeaderValue::from_static("gzip");
+const ETAG_GZIP: HeaderValue = HeaderValue::from_static(ASSETS_ETAG_GZIP);
 /// Longest gzip lookup key built on the stack. Vite's hashed names run to about 40 bytes.
 const VARIANT_PATH_MAX_BYTES: usize = 256;
 
 /// Swaps in the build-time gzip of a file for clients that accept it.
 ///
-/// Everything else stays as served: the lookup, redirects, 404s, 304s, the content type and
+/// Everything else stays as served: the lookup, redirects, 404s, the content type and
 /// `Last-Modified`, all of which describe the original file. Only a 200 has its body
 /// replaced, and only when a gzip copy exists, so the daemon never compresses a static file
-/// per request.
+/// per request. A strong `ETag` names one coding (RFC 9110 8.8.3), so a 200 or 304 for a
+/// client that accepts the copy carries the gzip tag.
 #[derive(Clone)]
 struct Precompressed<S> {
     inner: S,
@@ -151,10 +153,18 @@ fn swap_in_gzip(
     // A file with two representations must say so on every response for it, so no cache
     // hands the gzip to a client that never asked for it.
     response.headers_mut().append(VARY, VARY_ACCEPT_ENCODING);
-    if response.status() != StatusCode::OK {
+    if accepts_gzip.not() {
         return response;
     }
-    if accepts_gzip.not() {
+    let status = response.status();
+    if matches!(status, StatusCode::OK | StatusCode::NOT_MODIFIED).not() {
+        return response;
+    }
+    // The client gets, or already holds, the gzip copy. Replaced in place, so no allocation.
+    if let Some(etag) = response.headers_mut().get_mut(ETAG) {
+        *etag = ETAG_GZIP;
+    }
+    if status == StatusCode::NOT_MODIFIED {
         return response;
     }
     let headers = response.headers_mut();
@@ -810,7 +820,6 @@ mod tests {
     }
 
     /// The originals of `TEST_VARIANTS`.
-    #[cfg(feature = "gated-tests")]
     static TEST_FILES: Dir<'static> = Dir::new(
         "",
         &[
@@ -911,7 +920,8 @@ mod tests {
         status: http::StatusCode,
     ) -> axum::response::Response {
         let files = Router::new().fallback(move || async move {
-            (status, [(CONTENT_TYPE, "text/javascript")], "original")
+            let headers = [(CONTENT_TYPE, "text/javascript"), (ETAG, STAND_IN_ETAG)];
+            (status, headers, "original")
         });
         let app = Precompressed::new(files, &TEST_VARIANTS);
         let mut builder = http::Request::builder().uri(path);
@@ -922,6 +932,9 @@ mod tests {
             .await
             .unwrap()
     }
+
+    /// The `ETag` the stand-in for ServeDir sends.
+    const STAND_IN_ETAG: &str = "\"original\"";
 
     async fn body_bytes(response: axum::response::Response) -> Vec<u8> {
         axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -939,6 +952,7 @@ mod tests {
         assert_eq!(response.headers()[CONTENT_ENCODING], "gzip");
         assert_eq!(response.headers()[CONTENT_TYPE], "text/javascript");
         assert_eq!(response.headers()[VARY], "accept-encoding");
+        assert_eq!(response.headers()[ETAG], ASSETS_ETAG_GZIP);
         assert_eq!(body_bytes(response).await, b"GZ-APP");
     }
 
@@ -950,6 +964,7 @@ mod tests {
                 serve_precompressed("/assets/app.js", accept_encoding, http::StatusCode::OK).await;
             assert!(response.headers().get(CONTENT_ENCODING).is_none());
             assert_eq!(response.headers()[VARY], "accept-encoding");
+            assert_eq!(response.headers()[ETAG], STAND_IN_ETAG);
             assert_eq!(body_bytes(response).await, b"original");
         }
     }
@@ -961,11 +976,12 @@ mod tests {
             serve_precompressed("/assets/other.js", Some("gzip"), http::StatusCode::OK).await;
         assert!(response.headers().get(CONTENT_ENCODING).is_none());
         assert!(response.headers().get(VARY).is_none());
+        assert_eq!(response.headers()[ETAG], STAND_IN_ETAG);
         assert_eq!(body_bytes(response).await, b"original");
     }
 
     // Goal: only a 200 is swapped. A 304 keeps its empty meaning, though it still carries
-    // Vary, which a 304 must repeat from the 200 it stands for.
+    // Vary and the gzip tag, which a 304 must repeat from the 200 it stands for.
     #[tokio::test]
     async fn test_not_modified_is_not_swapped() {
         let response = serve_precompressed(
@@ -977,6 +993,53 @@ mod tests {
         assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED);
         assert!(response.headers().get(CONTENT_ENCODING).is_none());
         assert_eq!(response.headers()[VARY], "accept-encoding");
+        assert_eq!(response.headers()[ETAG], ASSETS_ETAG_GZIP);
+    }
+
+    /// `path` through the production stack over the test files, accepting gzip or not, and
+    /// holding `if_none_match` when given.
+    async fn serve_stack(
+        path: &str,
+        accept_gzip: bool,
+        if_none_match: Option<&str>,
+    ) -> axum::response::Response {
+        let app = static_files(&TEST_FILES, &TEST_VARIANTS, default_csp());
+        let mut builder = http::Request::builder().uri(path);
+        if accept_gzip {
+            builder = builder.header(ACCEPT_ENCODING, "gzip");
+        }
+        if let Some(tags) = if_none_match {
+            builder = builder.header(http::header::IF_NONE_MATCH, tags);
+        }
+        app.oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    // Goal: the gzip and identity copies carry different strong ETags, so no cache can
+    // confirm one with the other's 304. Method: the production stack over the test files, for
+    // a 200 of each coding and a gzip revalidation by its own tag.
+    #[tokio::test]
+    async fn test_each_coding_carries_its_own_etag() {
+        let response = serve_stack("/assets/app.js", true, None).await;
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.headers()[CONTENT_ENCODING], "gzip");
+        assert_eq!(response.headers()[ETAG], ASSETS_ETAG_GZIP);
+
+        let response = serve_stack("/assets/app.js", false, None).await;
+        assert_eq!(response.status(), http::StatusCode::OK);
+        let identity_etag = response.headers()[ETAG].clone();
+        assert_ne!(identity_etag, ASSETS_ETAG_GZIP);
+
+        let response = serve_stack("/assets/app.js", true, Some(ASSETS_ETAG_GZIP)).await;
+        assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[ETAG], ASSETS_ETAG_GZIP);
+        assert!(response.headers().get(CONTENT_ENCODING).is_none());
+
+        let tags = identity_etag.to_str().unwrap();
+        let response = serve_stack("/assets/app.js", false, Some(tags)).await;
+        assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[ETAG], identity_etag);
     }
 
     // Goal: every gzip copy the build embedded decompresses to exactly the file it stands
