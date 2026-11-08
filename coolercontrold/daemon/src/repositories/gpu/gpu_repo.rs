@@ -273,7 +273,6 @@ impl GpuRepo {
 
     /// Counts the GPUs `nvidia-smi` reports. Only called once NVML is unavailable or disabled, so
     /// zero means no NVIDIA path works.
-    #[allow(clippy::cast_possible_truncation)]
     async fn nvidia_smi_gpu_count(&self) -> u8 {
         let gpu_count = self
             .gpus_nvidia
@@ -287,7 +286,9 @@ impl GpuRepo {
                  are installed and accessible. GPUs on nouveau show as hwmon devices instead."
             );
         }
-        gpu_count as u8
+        let gpu_count = u8::try_from(gpu_count);
+        debug_assert!(gpu_count.is_ok());
+        gpu_count.unwrap_or(u8::MAX)
     }
 
     pub async fn load_amd_statuses(&self) {
