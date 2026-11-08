@@ -51,6 +51,7 @@ pub async fn get_plugins(
 }
 
 pub async fn get_cc_plugin_lib(request: Request) -> Result<impl IntoApiResponse, CCError> {
+    // Moves together with build.rs PLUGIN_LIB, which feeds this file to the validators.
     let library =
         tower_serve_static::ServeFile::new(include_file!("/resources/lib/cc-plugin-lib.js"));
     let mut response =

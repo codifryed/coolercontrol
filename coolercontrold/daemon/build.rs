@@ -13,7 +13,7 @@ use std::time::UNIX_EPOCH;
 const GZIP_EXTENSIONS: [&str; 6] = ["js", "css", "html", "webmanifest", "svg", "json"];
 /// Below this, the saving is not worth a second copy in the binary.
 const GZIP_MIN_BYTES: usize = 1024;
-/// Embedded by api/plugins.rs, outside the UI dir.
+/// Embedded by api/plugins.rs, outside the UI dir. Moves together with its `include_file!`.
 const PLUGIN_LIB: &str = "resources/lib/cc-plugin-lib.js";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
