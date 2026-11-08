@@ -1975,7 +1975,7 @@ impl Repository for LiquidctlRepo {
         self.unreadable_locations = drop_unreadable_devices(
             &mut self.devices,
             &mut self.liqctld_devices,
-            unreadable_devices,
+            &unreadable_devices,
         );
         // Every kept device answered, so each has a status to report, empty for lighting only.
         let preloaded_statuses = self.preloaded_statuses.borrow();
@@ -2338,11 +2338,11 @@ fn claimed_driver_locations(
 fn drop_unreadable_devices(
     devices: &mut HashMap<UID, DeviceLock>,
     liqctld_devices: &mut HashMap<TypeIndex, LiqctldIo>,
-    unreadable_devices: Vec<DeviceUID>,
+    unreadable_devices: &[DeviceUID],
 ) -> Vec<String> {
     let locations = driver_locations_of(devices, unreadable_devices.iter());
-    remove_failed_devices(devices, liqctld_devices, unreadable_devices.clone());
-    for device_uid in &unreadable_devices {
+    remove_failed_devices(devices, liqctld_devices, unreadable_devices.to_vec());
+    for device_uid in unreadable_devices {
         assert!(devices.contains_key(device_uid).not());
     }
     locations
@@ -2818,7 +2818,7 @@ mod tests {
         let mut workers: HashMap<TypeIndex, LiqctldIo> =
             [(1, unused_worker(1)), (2, unused_worker(2))].into();
 
-        let locations = drop_unreadable_devices(&mut devices, &mut workers, vec![unreadable_uid]);
+        let locations = drop_unreadable_devices(&mut devices, &mut workers, &[unreadable_uid]);
 
         assert_eq!(locations, vec!["/dev/hidraw4"]);
         assert_eq!(devices.keys().collect::<Vec<_>>(), vec![&kept_uid]);
