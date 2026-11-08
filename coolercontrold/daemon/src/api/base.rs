@@ -10,15 +10,16 @@ use axum::body::Body;
 use axum::extract::Request;
 use axum::extract::State;
 use axum::http::header::{
-    ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, VARY,
+    ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
+    IF_MODIFIED_SINCE, LAST_MODIFIED, VARY,
 };
-use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
 #[cfg(debug_assertions)]
 use axum::Extension;
 use axum::Json;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Utc};
 use include_dir::{include_dir, Dir};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
@@ -36,6 +37,15 @@ static ASSETS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/resources/ap
 /// Gzip copies of the compressible files in `ASSETS_DIR`, made by build.rs, each at its
 /// original's path plus `.gz`.
 static GZIP_ASSETS: Dir<'static> = include_dir!("$OUT_DIR/app-gzip");
+/// When the embedded UI was last modified, from build.rs.
+const ASSETS_MODIFIED_UNIX_SECS: u64 =
+    match u64::from_str_radix(env!("CC_ASSETS_MODIFIED_UNIX_SECS"), 10) {
+        Ok(unix_secs) => unix_secs,
+        Err(_) => panic!("build.rs emits a decimal Unix time"),
+    };
+/// 9999-12-31T23:59:59Z, the last time an HTTP date's four-digit year can show.
+const HTTP_DATE_MAX_UNIX_SECS: u64 = 253_402_300_799;
+const _: () = assert!(ASSETS_MODIFIED_UNIX_SECS <= HTTP_DATE_MAX_UNIX_SECS);
 
 pub async fn handshake() -> impl IntoApiResponse {
     Json(json!({"shake": true})).into_response()
@@ -44,6 +54,10 @@ pub async fn handshake() -> impl IntoApiResponse {
 /// `document_csp` is the document's whole `Content-Security-Policy`, composed at startup.
 pub fn web_app_service(document_csp: HeaderValue) -> axum::routing::MethodRouter {
     axum::routing::get_service(ServeDir::new(&ASSETS_DIR))
+        .layer(middleware::from_fn_with_state(
+            http_date(ASSETS_MODIFIED_UNIX_SECS),
+            last_modified_middleware,
+        ))
         .layer(middleware::from_fn(|request, next| {
             precompressed_middleware(&GZIP_ASSETS, request, next)
         }))
@@ -53,15 +67,69 @@ pub fn web_app_service(document_csp: HeaderValue) -> axum::routing::MethodRouter
         ))
 }
 
+/// Gives every served file the build's one validator, and answers a request that already
+/// holds it with a 304.
+///
+/// One timestamp for every file means any UI change revalidates all of them, which is
+/// cheap: the hashed bundles are pinned and only a few unhashed files remain. The match is
+/// exact, as nginx does by default, so after a downgrade a newer cached copy is replaced
+/// rather than kept. `ServeDir` still runs first, so only a path that names a file gets a
+/// 304, and its static body is dropped unread.
+async fn last_modified_middleware(
+    State(last_modified): State<HeaderValue>,
+    request: Request,
+    next: Next,
+) -> axum::response::Response {
+    let holds_current = holds_validator(&request, &last_modified);
+    let mut response = next.run(request).await;
+    if response.status() != StatusCode::OK {
+        return response;
+    }
+    debug_assert!(
+        response.headers().contains_key(LAST_MODIFIED).not(),
+        "ServeDir runs without its metadata feature, so this is the only validator"
+    );
+    if holds_current {
+        return (StatusCode::NOT_MODIFIED, [(LAST_MODIFIED, last_modified)]).into_response();
+    }
+    response.headers_mut().insert(LAST_MODIFIED, last_modified);
+    response
+}
+
+/// Whether `request` is a conditional GET or HEAD whose `If-Modified-Since` is exactly
+/// `last_modified`. Other methods ignore the condition, as RFC 9110 specifies.
+fn holds_validator(request: &Request, last_modified: &HeaderValue) -> bool {
+    match *request.method() {
+        Method::GET | Method::HEAD => {
+            request.headers().get(IF_MODIFIED_SINCE) == Some(last_modified)
+        }
+        _ => false,
+    }
+}
+
+/// `unix_secs` as an HTTP date (IMF-fixdate), such as `Sun, 06 Nov 1994 08:49:37 GMT`.
+fn http_date(unix_secs: u64) -> HeaderValue {
+    assert!(
+        unix_secs <= HTTP_DATE_MAX_UNIX_SECS,
+        "four-digit years only"
+    );
+    // Neither can fail: the bound above keeps the value well inside i64 and chrono's range.
+    let unix_secs = i64::try_from(unix_secs).expect("bounded above");
+    let date = DateTime::<Utc>::from_timestamp(unix_secs, 0).expect("bounded above");
+    let formatted = date.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+    assert_eq!(formatted.len(), 29, "IMF-fixdate is fixed width");
+    HeaderValue::try_from(formatted).expect("ASCII from a fixed format")
+}
+
 const VARY_ACCEPT_ENCODING: HeaderValue = HeaderValue::from_static("accept-encoding");
 const ENCODING_GZIP: HeaderValue = HeaderValue::from_static("gzip");
 
 /// Swaps in the build-time gzip of a file for clients that accept it.
 ///
-/// Everything else stays with `ServeDir`: the lookup, redirects, 404s, `If-Modified-Since`,
-/// the content type and `Last-Modified`, all of which describe the original file. Only a
-/// 200 has its body replaced, and only when a gzip copy exists, so the daemon never
-/// compresses a static file per request.
+/// Everything else stays as served: the lookup, redirects, 404s, 304s, the content type and
+/// `Last-Modified`, all of which describe the original file. Only a 200 has its body
+/// replaced, and only when a gzip copy exists, so the daemon never compresses a static file
+/// per request.
 async fn precompressed_middleware(
     variants: &'static Dir<'static>,
     request: Request,
@@ -200,8 +268,8 @@ impl CachePolicy {
             "/" | "/index.html" => Self::Document,
             // Everything else comes from public/ under a name that never changes, so
             // pinning it would strand clients on the build that first cached it. The
-            // static service answers If-Modified-Since with a 304, so revalidating
-            // costs a conditional request rather than the body.
+            // fallback answers If-Modified-Since with a 304, so revalidating costs a
+            // conditional request rather than the body.
             _ => Self::Revalidate,
         }
     }
@@ -510,11 +578,9 @@ mod tests {
         }
     }
 
-    // Goal: prove the metadata feature is actually on. Without it the static service sends
-    // no validator, so `no-cache` on an unhashed asset means the whole body every load
-    // rather than a 304 - the opposite of what the revalidate policy is for, and nothing
-    // else in this suite would notice. Method: drive the real fallback service, which is
-    // the only place `include_dir` metadata reaches, and require the header.
+    // Goal: an unhashed asset revalidates for the cost of a 304, not the whole body every
+    // load, on every libc. Method: drive the real fallback stack, take the validator it
+    // sends, send it back, and require a 304 that still carries the cache headers.
     #[tokio::test]
     #[cfg(feature = "gated-tests")]
     async fn test_unhashed_assets_carry_a_validator() {
@@ -525,21 +591,141 @@ mod tests {
             return;
         }
         let app = Router::new().fallback_service(web_app_service(default_csp()));
+        let request = http::Request::builder().uri("/index.html");
         let response = app
-            .oneshot(
-                http::Request::builder()
-                    .uri("/index.html")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
             .await
             .unwrap();
-
         assert_eq!(response.status(), http::StatusCode::OK);
-        assert!(
-            response.headers().contains_key("last-modified"),
-            "the metadata feature must stay enabled, or revalidation costs a full body"
+        let last_modified = response.headers()[LAST_MODIFIED].clone();
+        assert_eq!(last_modified, http_date(ASSETS_MODIFIED_UNIX_SECS));
+
+        let revalidation = http::Request::builder()
+            .uri("/index.html")
+            .header(IF_MODIFIED_SINCE, last_modified)
+            .header(ACCEPT_ENCODING, "gzip");
+        let response = app
+            .oneshot(revalidation.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[CACHE_CONTROL], "no-cache");
+        assert!(response.headers().get(CONTENT_ENCODING).is_none());
+        assert!(body_bytes(response).await.is_empty());
+    }
+
+    // Goal: the header is a valid IMF-fixdate at both ends of its range. Method: the
+    // example date from RFC 9110, the epoch, and the last representable second.
+    #[test]
+    fn test_http_date() {
+        assert_eq!(http_date(784_111_777), "Sun, 06 Nov 1994 08:49:37 GMT");
+        assert_eq!(http_date(0), "Thu, 01 Jan 1970 00:00:00 GMT");
+        assert_eq!(
+            http_date(HTTP_DATE_MAX_UNIX_SECS),
+            "Fri, 31 Dec 9999 23:59:59 GMT"
         );
+    }
+
+    // Goal: negative space for the bound. A year past 9999 cannot fit the format.
+    #[test]
+    #[should_panic(expected = "four-digit years only")]
+    fn test_http_date_rejects_five_digit_years() {
+        http_date(HTTP_DATE_MAX_UNIX_SECS + 1);
+    }
+
+    const TEST_LAST_MODIFIED: &str = "Sun, 06 Nov 1994 08:49:37 GMT";
+
+    /// The validator layer in front of a stand-in for ServeDir that answers every path with
+    /// the given status and a plain body.
+    async fn serve_validated(
+        method: http::Method,
+        if_modified_since: Option<&str>,
+        status: http::StatusCode,
+    ) -> axum::response::Response {
+        let app = Router::new()
+            .fallback(move || async move { (status, "original") })
+            .layer(middleware::from_fn_with_state(
+                HeaderValue::from_static(TEST_LAST_MODIFIED),
+                last_modified_middleware,
+            ));
+        let mut builder = http::Request::builder().method(method).uri("/index.html");
+        if let Some(value) = if_modified_since {
+            builder = builder.header(IF_MODIFIED_SINCE, value);
+        }
+        app.oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    // Goal: a plain request gets the full body plus the validator to revalidate with.
+    #[tokio::test]
+    async fn test_served_file_carries_last_modified() {
+        let response = serve_validated(http::Method::GET, None, http::StatusCode::OK).await;
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.headers()[LAST_MODIFIED], TEST_LAST_MODIFIED);
+        assert_eq!(body_bytes(response).await, b"original");
+    }
+
+    // Goal: a GET or HEAD that holds the current validator gets an empty 304 that repeats it.
+    #[tokio::test]
+    async fn test_matching_validator_is_not_modified() {
+        for method in [http::Method::GET, http::Method::HEAD] {
+            let response = serve_validated(
+                method.clone(),
+                Some(TEST_LAST_MODIFIED),
+                http::StatusCode::OK,
+            )
+            .await;
+            assert_eq!(
+                response.status(),
+                http::StatusCode::NOT_MODIFIED,
+                "{method}"
+            );
+            assert_eq!(response.headers()[LAST_MODIFIED], TEST_LAST_MODIFIED);
+            assert!(body_bytes(response).await.is_empty(), "{method}");
+        }
+    }
+
+    // Goal: anything but an exact match gets the full body. Method: an older date (an
+    // upgrade), a newer one (a downgrade, which a date comparison would wrongly 304), and
+    // garbage.
+    #[tokio::test]
+    async fn test_other_validators_get_the_body() {
+        for since in [
+            "Sat, 05 Nov 1994 08:49:37 GMT",
+            "Mon, 07 Nov 1994 08:49:37 GMT",
+            "not a date",
+        ] {
+            let response =
+                serve_validated(http::Method::GET, Some(since), http::StatusCode::OK).await;
+            assert_eq!(response.status(), http::StatusCode::OK, "{since}");
+            assert_eq!(response.headers()[LAST_MODIFIED], TEST_LAST_MODIFIED);
+            assert_eq!(body_bytes(response).await, b"original", "{since}");
+        }
+    }
+
+    // Goal: only a served file is validated. A 404 or redirect keeps its status and gains no
+    // validator, and a method the condition does not apply to is answered in full.
+    #[tokio::test]
+    async fn test_validator_skips_non_files_and_other_methods() {
+        for status in [
+            http::StatusCode::NOT_FOUND,
+            http::StatusCode::TEMPORARY_REDIRECT,
+        ] {
+            let response =
+                serve_validated(http::Method::GET, Some(TEST_LAST_MODIFIED), status).await;
+            assert_eq!(response.status(), status);
+            assert!(response.headers().get(LAST_MODIFIED).is_none(), "{status}");
+        }
+        let response = serve_validated(
+            http::Method::POST,
+            Some(TEST_LAST_MODIFIED),
+            http::StatusCode::OK,
+        )
+        .await;
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(body_bytes(response).await, b"original");
     }
 
     fn accept(values: &[&str]) -> HeaderMap {

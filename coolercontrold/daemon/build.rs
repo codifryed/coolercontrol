@@ -7,6 +7,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 /// File types worth gzipping. Images and fonts are compressed formats already.
 const GZIP_EXTENSIONS: [&str; 6] = ["js", "css", "html", "webmanifest", "svg", "json"];
@@ -21,6 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=resources/proto");
     // The hwdata lookup below asks pkg-config, which reads this.
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
+    println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
 
     // Guard: the web UI is embedded into the binary from resources/app via
     // include_dir! (see api/base.rs). Building the daemon without first building
@@ -43,10 +45,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
     let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
-    precompress_app(
-        &manifest_dir.join("resources/app"),
-        &out_dir.join("app-gzip"),
-    )?;
+    let app_dir = manifest_dir.join("resources/app");
+    let app_files = list_files(&app_dir)?;
+    precompress_app(&app_dir, &app_files, &out_dir.join("app-gzip"))?;
+    // api/base.rs serves this as every embedded file's Last-Modified. include_dir's own
+    // metadata is all or nothing, and musl cannot read the creation time it also asks for.
+    let assets_modified_unix_secs = assets_modified_unix_secs(&app_files)?;
+    println!("cargo:rustc-env=CC_ASSETS_MODIFIED_UNIX_SECS={assets_modified_unix_secs}");
 
     // Query pkg-config for hwdata's pkgdatadir at build time (e.g., NixOS).
     if let Ok(output) = std::process::Command::new("pkg-config")
@@ -78,6 +83,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Every file under `dir`, at any depth. Empty when `dir` does not exist, as in a
+/// daemon-only build.
+fn list_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    if dir.is_dir().not() {
+        return Ok(files);
+    }
+    // Iterative rather than recursive: a stack of directories still to visit.
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in fs::read_dir(&dir)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    Ok(files)
+}
+
+/// The embedded UI's modification time: `SOURCE_DATE_EPOCH` when set, so reproducible
+/// builds stay reproducible, else the newest file's mtime. Zero with no files, when
+/// nothing is served.
+fn assets_modified_unix_secs(app_files: &[PathBuf]) -> Result<u64, Box<dyn std::error::Error>> {
+    if let Ok(epoch) = std::env::var("SOURCE_DATE_EPOCH") {
+        return epoch.trim().parse::<u64>().map_err(|err| {
+            format!("SOURCE_DATE_EPOCH {epoch:?} is not a Unix time: {err}").into()
+        });
+    }
+    let mut newest_unix_secs = 0;
+    for path in app_files {
+        let modified = fs::metadata(path)?.modified()?;
+        let unix_secs = modified.duration_since(UNIX_EPOCH)?.as_secs();
+        newest_unix_secs = newest_unix_secs.max(unix_secs);
+    }
+    Ok(newest_unix_secs)
+}
+
 /// Writes a gzip copy of each compressible UI file to `target`, mirroring its path with a
 /// `.gz` suffix. `api/base.rs` embeds `target` and serves these to clients that accept gzip,
 /// so the daemon never compresses a static file per request.
@@ -85,35 +130,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Built from the exact bytes being embedded, the copies cannot go stale, and vendored builds
 /// that ship a prebuilt `resources/app` get them too. `target` is rebuilt from scratch, since
 /// a leftover copy of a file the UI no longer has would still be served.
-fn precompress_app(app_dir: &Path, target: &Path) -> io::Result<()> {
+fn precompress_app(app_dir: &Path, app_files: &[PathBuf], target: &Path) -> io::Result<()> {
     if target.exists() {
         fs::remove_dir_all(target)?;
     }
     fs::create_dir_all(target)?;
-    if app_dir.is_dir().not() {
-        return Ok(());
-    }
-    // Iterative rather than recursive: a stack of directories still to visit.
-    let mut pending = vec![app_dir.to_path_buf()];
-    while let Some(dir) = pending.pop() {
-        for entry in fs::read_dir(&dir)? {
-            let path = entry?.path();
-            if path.is_dir() {
-                pending.push(path);
-                continue;
+    for path in app_files {
+        let Ok(relative) = path.strip_prefix(app_dir) else {
+            continue;
+        };
+        if let Some(gzipped) = gzip_if_worthwhile(path)? {
+            let mut name = relative.as_os_str().to_owned();
+            name.push(".gz");
+            let destination = target.join(name);
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)?;
             }
-            let Ok(relative) = path.strip_prefix(app_dir) else {
-                continue;
-            };
-            if let Some(gzipped) = gzip_if_worthwhile(&path)? {
-                let mut name = relative.as_os_str().to_owned();
-                name.push(".gz");
-                let destination = target.join(name);
-                if let Some(parent) = destination.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::write(destination, gzipped)?;
-            }
+            fs::write(destination, gzipped)?;
         }
     }
     Ok(())
