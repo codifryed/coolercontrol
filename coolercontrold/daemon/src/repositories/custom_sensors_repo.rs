@@ -5183,6 +5183,28 @@ mod tests {
         });
     }
 
+    /// A from-scratch rescan of the window ending at `index`: the placeholder zero over init
+    /// padding (before `first_reading`), else the TimeAverage or EMA of its readings.
+    fn rescan_expected(
+        readings: &[Option<f64>],
+        first_reading: usize,
+        index: usize,
+        sample_count: usize,
+        is_ema: bool,
+    ) -> f64 {
+        if index < first_reading {
+            return 0.0;
+        }
+        let start = (index + 1).saturating_sub(sample_count).max(first_reading);
+        let samples: Vec<f64> = readings[start..=index].iter().flatten().copied().collect();
+        if is_ema {
+            CustomSensorsRepo::compute_ema(&samples, sample_count)
+        } else {
+            CustomSensorsRepo::compute_time_average(&samples)
+        }
+        .unwrap()
+    }
+
     // A new windowed sensor's backfill slides one window down the history, so every entry
     // must match a fresh rescan of the window ending there: the placeholder zero over init
     // padding, then the TimeAverage or EMA of the readings in the window. Pushes a varied
@@ -5249,19 +5271,8 @@ mod tests {
                 let backfilled = backfilled_temps(&repo, id);
                 assert_eq!(backfilled.len(), readings.len());
                 for (index, value) in backfilled.iter().enumerate() {
-                    let expected = if index < first_reading {
-                        0.0
-                    } else {
-                        let start = (index + 1).saturating_sub(sample_count).max(first_reading);
-                        let samples: Vec<f64> =
-                            readings[start..=index].iter().flatten().copied().collect();
-                        if is_ema {
-                            CustomSensorsRepo::compute_ema(&samples, sample_count)
-                        } else {
-                            CustomSensorsRepo::compute_time_average(&samples)
-                        }
-                        .unwrap()
-                    };
+                    let expected =
+                        rescan_expected(&readings, first_reading, index, sample_count, is_ema);
                     assert_eq!(value.to_bits(), expected.to_bits(), "{id} at {index}");
                 }
             }
