@@ -13,6 +13,7 @@ use axum::http::header::{CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, L
 use axum::http::{HeaderValue, Method, Request, Response, StatusCode};
 use axum::BoxError;
 use chrono::{DateTime, Utc};
+use pin_project_lite::pin_project;
 use std::future::Future;
 use std::ops::Not;
 use std::pin::Pin;
@@ -72,7 +73,6 @@ impl<S> LastModified<S> {
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for LastModified<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    S::Future: Unpin,
     ResBody: HttpBody<Data = Bytes> + Send + 'static,
     ResBody::Error: Into<BoxError>,
 {
@@ -95,28 +95,30 @@ where
     }
 }
 
-/// The inner service's future, finished by [`validate`].
-pub struct LastModifiedFuture<F> {
-    inner: F,
-    last_modified: HeaderValue,
-    etag: HeaderValue,
-    holds_current: bool,
+pin_project! {
+    /// The inner service's future, finished by [`validate`].
+    pub struct LastModifiedFuture<F> {
+        #[pin]
+        inner: F,
+        last_modified: HeaderValue,
+        etag: HeaderValue,
+        holds_current: bool,
+    }
 }
 
 impl<F, ResBody, E> Future for LastModifiedFuture<F>
 where
-    F: Future<Output = Result<Response<ResBody>, E>> + Unpin,
+    F: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: HttpBody<Data = Bytes> + Send + 'static,
     ResBody::Error: Into<BoxError>,
 {
     type Output = Result<Response<Body>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // Every field is Unpin, so the future needs no pin projection.
-        let this = self.get_mut();
-        let response = ready!(Pin::new(&mut this.inner).poll(cx))?;
+        let this = self.project();
+        let response = ready!(this.inner.poll(cx))?;
         let validators = (this.last_modified.clone(), this.etag.clone());
-        Poll::Ready(Ok(validate(response, validators, this.holds_current)))
+        Poll::Ready(Ok(validate(response, validators, *this.holds_current)))
     }
 }
 
