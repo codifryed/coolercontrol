@@ -893,9 +893,9 @@ impl LiquidctlRepo {
         let overrides = &self.overrides;
         let unreadable = join_all(self.devices.iter().map(|(uid, device_lock)| async move {
             let device_id = device_lock.borrow().type_index;
-            let delay = self.device_delay(uid);
+            let delay_millis = self.device_delay(uid);
             let device_name = || overrides.log_device_name(uid, &device_lock.borrow().name);
-            let read = || self.call_status(&device_id, delay);
+            let read = || self.call_status(&device_id, delay_millis);
             match read_with_retries(&device_name, &self.run_token, retry_interval, read).await {
                 Ok(status) => {
                     self.store_status(device_id, status, device_name);
