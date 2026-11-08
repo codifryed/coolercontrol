@@ -1342,8 +1342,8 @@ impl GpuNVidia {
         if self.xauthority_path.borrow().is_none() {
             warn!(
                 "NVIDIA fan control is disabled: nvidia-settings needs an Xauthority cookie, and \
-                 none was found within {XAUTHORITY_SEARCH_TIMEOUT:?}. This is expected without an \
-                 X server. NVML controls fans without one."
+                 none was found within {XAUTHORITY_SEARCH_TIMEOUT:?}. Enable NVML to control fans \
+                 without X: install it, and drop --nvidia-cli and CC_NVML=off."
             );
             return Ok(HashMap::new());
         }
