@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use flate2::write::GzEncoder;
-use flate2::Compression;
+use flate2::{Compression, Crc};
 use std::fs;
 use std::io::{self, Write};
 use std::ops::Not;
@@ -80,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Gzips the UI for api/base.rs and records the embedded assets' validator.
+/// Gzips the UI for api/base.rs and records the embedded assets' validators.
 fn embed_app_assets(manifest_dir: &Path, out_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let app_dir = manifest_dir.join("resources/app");
     let app_files = list_files(&app_dir)?;
@@ -88,10 +88,38 @@ fn embed_app_assets(manifest_dir: &Path, out_dir: &Path) -> Result<(), Box<dyn s
     // api/last_modified.rs serves this as every embedded file's Last-Modified. include_dir's
     // own metadata is all or nothing, and musl cannot read the creation time it also asks for.
     let plugin_lib = manifest_dir.join(PLUGIN_LIB);
-    let assets_modified_unix_secs =
-        assets_modified_unix_secs(app_files.iter().chain([&plugin_lib]))?;
+    let embedded: Vec<&PathBuf> = app_files.iter().chain([&plugin_lib]).collect();
+    let assets_modified_unix_secs = assets_modified_unix_secs(embedded.iter().copied())?;
     println!("cargo:rustc-env=CC_ASSETS_MODIFIED_UNIX_SECS={assets_modified_unix_secs}");
+    let assets_etag = assets_etag(manifest_dir, &embedded)?;
+    println!("cargo:rustc-env=CC_ASSETS_ETAG={assets_etag}");
     Ok(())
+}
+
+/// A strong ETag over every embedded file's path and bytes. Packagers can pin
+/// `SOURCE_DATE_EPOCH` to one value for every release (nixpkgs does), so Last-Modified alone
+/// would let a browser keep the old index.html after an upgrade.
+fn assets_etag(
+    manifest_dir: &Path,
+    files: &[&PathBuf],
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut relative = files
+        .iter()
+        .map(|path| path.strip_prefix(manifest_dir))
+        .collect::<Result<Vec<_>, _>>()?;
+    // Directory listing order is not stable across filesystems.
+    relative.sort_unstable();
+    let mut crc = Crc::new();
+    for path in relative {
+        let name = path.as_os_str().as_encoded_bytes();
+        let bytes = fs::read(manifest_dir.join(path))?;
+        // Length prefixes keep a byte moved between a name and its content from cancelling out.
+        crc.update(&u64::try_from(name.len())?.to_le_bytes());
+        crc.update(name);
+        crc.update(&u64::try_from(bytes.len())?.to_le_bytes());
+        crc.update(&bytes);
+    }
+    Ok(format!("\"{:08x}\"", crc.sum()))
 }
 
 /// Every file under `dir`, at any depth. Empty when `dir` does not exist, as in a

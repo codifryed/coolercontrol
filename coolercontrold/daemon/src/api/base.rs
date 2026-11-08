@@ -815,16 +815,17 @@ mod tests {
     }
 
     // Goal: the fallback's stages cost no more than the `StaticAsset` marker over serving the
-    // file bare, a 304 no more than a 200, and a gzip copy only its swapped body and the
-    // length axum then sets. Method: count one hashed bundle request through a router over a
+    // file bare, a 304 no more than a 200, and a gzip copy only its swapped body, the length
+    // axum then sets, and its one extra header. Method: count one hashed bundle request through a router over a
     // bare `ServeDir` and over the production stack, both over the same test files.
     #[tokio::test]
     #[cfg(feature = "gated-tests")]
     async fn test_static_stack_allocations() {
         // The extension map's box and its table, until the router stops needing the marker.
         const MARKER_ALLOCATIONS: u64 = 2;
-        // The boxed gzip body and the `Content-Length` value axum formats for it.
-        const GZIP_ALLOCATIONS: u64 = 2;
+        // The boxed gzip body and the `Content-Length` value axum formats for it, plus the
+        // header map outgrowing its first six slots once `Content-Encoding` joins the ETag.
+        const GZIP_ALLOCATIONS: u64 = 4;
         let bare =
             Router::new().fallback_service(axum::routing::get_service(ServeDir::new(&TEST_FILES)));
         let stack = Router::new().fallback_service(axum::routing::get_service(static_files(
