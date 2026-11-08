@@ -319,8 +319,9 @@ test_daemon_musl:
     - apk add --no-cache build-base pkgconfig perl util-linux-misc
     - rustc --version
   script:
-    - cargo test --locked --no-fail-fast --manifest-path coolercontrold/Cargo.toml --workspace
-      --features gated-tests
+    # Gated tests can hang, as in ci-test.
+    - timeout -k 30s 15m cargo test --locked --no-fail-fast
+      --manifest-path coolercontrold/Cargo.toml --workspace --features gated-tests
 
 ####################################### Newest Rust toolchain
 # Arch and AUR users build with the newest stable Rust as soon as it ships, so its new warnings
