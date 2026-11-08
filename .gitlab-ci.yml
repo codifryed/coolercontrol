@@ -304,10 +304,7 @@ test_msrv:
       --all-targets
 
 ####################################### musl
-# The Alpine image builds the daemon against musl, whose libc types and behaviour differ from
-# glibc's, and nothing else builds it there before a release rehearsal. Linked dynamically, like
-# the image. util-linux's setsid: the detached-run tests need its --fork --wait, which BusyBox's
-# lacks. CI embeds no UI, as in test_all.
+# Tests the daemon on musl, as built for the Alpine image.
 test_daemon_musl:
   stage: test
   image: rust:alpine
