@@ -17,6 +17,7 @@ mod dual_protocol;
 mod frame_policy;
 mod functions;
 mod hardware_report;
+mod last_modified;
 mod metrics;
 pub mod modes;
 pub mod peer;
