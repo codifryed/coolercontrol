@@ -281,7 +281,8 @@ impl CustomSensorsRepo {
         self.verify_sensor_relationships(&custom_sensor)?;
         // Before the backfill, which would leave a second entry in every history slot.
         self.verify_sensor_id_is_new(&custom_sensor.id)?;
-        self.fill_status_history_for_new_sensor(&custom_sensor)
+        let window = self
+            .fill_status_history_for_new_sensor(&custom_sensor)
             .await
             .inspect_err(|err| {
                 error!(
@@ -290,6 +291,16 @@ impl CustomSensorsRepo {
                 );
             })?;
         self.config.set_custom_sensor(custom_sensor.clone())?;
+        // After the config write, so a failed one leaves no window behind.
+        if let Some(window) = window {
+            debug_assert!(window.samples.len() <= window.sample_count);
+            let replaced = self
+                .sample_windows
+                .borrow_mut()
+                .insert(custom_sensor.id.clone(), window);
+            // verify_sensor_id_is_new leaves no window to replace.
+            debug_assert!(replaced.is_none());
+        }
         self.sensors.borrow_mut().push(custom_sensor);
         self.update_device_info();
         self.reconstruct_relationships();
@@ -495,7 +506,13 @@ impl CustomSensorsRepo {
     /// `MISSING_STATUS_THRESHOLD` such entries in a row, then reports the metric's failsafe,
     /// and reports the failsafe at once when there is nothing to hold. Unlike a live Mix or
     /// Offset tick, one missing source does not fail safe at once.
-    async fn fill_status_history_for_new_sensor(&self, sensor: &CustomSensor) -> Result<()> {
+    ///
+    /// Returns a windowed sensor's window, which then ends at the newest entry: it is the live
+    /// window the first tick pushes onto, so that tick need not reseed one.
+    async fn fill_status_history_for_new_sensor(
+        &self,
+        sensor: &CustomSensor,
+    ) -> Result<Option<SampleWindow>> {
         // A File sensor is read once: that checks the file and gives the newest entry its
         // value. Older entries are placeholder zeros, as a file has no history (not a
         // failsafe substitution).
@@ -518,11 +535,13 @@ impl CustomSensorsRepo {
         let mut values = Vec::with_capacity(history_len);
         let mut held: Option<f64> = None;
         let mut misses: usize = 0;
+        // A windowed sensor's samples, oldest index first.
+        let mut window: Option<SampleWindow> = None;
         for index in 0..history_len {
             let raw = match file_value {
                 Some(value) if index == newest_index => Some(value),
                 Some(_) => Some(0.),
-                None => self.backfill_value(sensor, index),
+                None => self.backfill_value(sensor, index, &mut window),
             };
             let value = if let Some(raw) = raw {
                 let value = Self::reported_value(sensor.metric, raw).unwrap_or(0.);
@@ -538,6 +557,7 @@ impl CustomSensorsRepo {
             };
             values.push(value);
         }
+        let window = window.filter(|_| self.backfill_window_is_live(sensor, history_len));
         let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
         if sensor.metric.is_temp() {
             device.add_temp_column(&sensor.id, &values);
@@ -554,7 +574,7 @@ impl CustomSensorsRepo {
         if let Some(raw) = file_value {
             self.seed_file_read(&sensor.id, sensor.metric, raw);
         }
-        Ok(())
+        Ok(window)
     }
 
     /// A Mix or Scale & Offset sensor's present source devices must report its value now:
@@ -587,6 +607,17 @@ impl CustomSensorsRepo {
             }
         }
         Ok(())
+    }
+
+    /// The backfill's window ends at the source's newest entry only when the source's history
+    /// is as long as this device's, as lockstep polling keeps it. Otherwise the first tick
+    /// reseeds.
+    fn backfill_window_is_live(&self, sensor: &CustomSensor, history_len: usize) -> bool {
+        sensor
+            .sources()
+            .first()
+            .and_then(|source| self.backfill_source_device(source))
+            .is_some_and(|source_device| source_device.borrow().history_len() == history_len)
     }
 
     /// The device a new sensor's source is read from: the Custom Sensors device itself for a
@@ -626,7 +657,13 @@ impl CustomSensorsRepo {
 
     /// A new sensor's computed value at history `index`, from its sources' values there.
     /// `None` when a present source has no value there.
-    fn backfill_value(&self, sensor: &CustomSensor, index: usize) -> Option<f64> {
+    /// `window` carries a windowed sensor's samples from one index to the next.
+    fn backfill_value(
+        &self,
+        sensor: &CustomSensor,
+        index: usize,
+        window: &mut Option<SampleWindow>,
+    ) -> Option<f64> {
         let metric = sensor.metric;
         match &sensor.kind {
             CustomSensorKind::Mix {
@@ -645,11 +682,25 @@ impl CustomSensorsRepo {
             CustomSensorKind::TimeAverage {
                 time_window_seconds,
                 sources,
-            } => self.backfill_windowed(metric, &sources[0], *time_window_seconds, index, false),
+            } => self.backfill_windowed(
+                metric,
+                &sources[0],
+                *time_window_seconds,
+                index,
+                false,
+                window,
+            ),
             CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
                 sources,
-            } => self.backfill_windowed(metric, &sources[0], *time_window_seconds, index, true),
+            } => self.backfill_windowed(
+                metric,
+                &sources[0],
+                *time_window_seconds,
+                index,
+                true,
+                window,
+            ),
             // Read once by the caller.
             CustomSensorKind::File { .. } => Some(0.),
         }
@@ -657,6 +708,8 @@ impl CustomSensorsRepo {
 
     /// A new `TimeAverage` or `ExponentialMovingAvg` sensor's value at history `index`, over
     /// the source readings in the window ending there. `None` when the window holds none.
+    /// Called for every index in order, with `window` sliding along: each entry reads one
+    /// new sample instead of rescanning its window.
     fn backfill_windowed(
         &self,
         metric: CustomSensorMetric,
@@ -664,6 +717,7 @@ impl CustomSensorsRepo {
         window_seconds: u16,
         index: usize,
         is_ema: bool,
+        window: &mut Option<SampleWindow>,
     ) -> Option<f64> {
         let Some(source_device) = self.backfill_source_device(source) else {
             // No such device: the placeholder zero, as for an absent Mix source.
@@ -679,10 +733,19 @@ impl CustomSensorsRepo {
             return Some(0.);
         }
         let sample_count = Self::window_sample_count(window_seconds, self.poll_rate);
-        let start = (index + 1).saturating_sub(sample_count).max(first_reading);
-        debug_assert!(start <= index);
-        debug_assert!(index + 1 - start <= sample_count);
-        let samples = Self::indexed_source_samples(metric, &device, &source.name, start, index);
+        let window = window.get_or_insert_with(|| SampleWindow {
+            samples: VecDeque::with_capacity(sample_count),
+            sample_count,
+        });
+        debug_assert_eq!(window.sample_count, sample_count);
+        // Past the source's history the slot is `None`, as the rescan skipped those entries.
+        window.push(metric.read_at(&device, index, &source.name));
+        // In-order calls keep the slots on the newest entries from `first_reading` to `index`.
+        debug_assert_eq!(
+            window.samples.len(),
+            (index + 1 - first_reading).min(sample_count)
+        );
+        let samples = window.samples.iter().flatten().copied();
         if is_ema {
             Self::compute_ema_iter(samples, sample_count)
         } else {
@@ -957,24 +1020,6 @@ impl CustomSensorsRepo {
             samples,
             sample_count,
         }
-    }
-
-    /// The values of `source_name`, oldest first, in `device`'s history entries `start`
-    /// through `end` (inclusive). Indices beyond the history's length are skipped. Used to
-    /// back-fill a newly-created windowed sensor, once per history entry, so it reads in place
-    /// rather than collecting. A child's device is the Custom Sensors device, whose history is
-    /// filled before its parents are created.
-    fn indexed_source_samples<'a>(
-        metric: CustomSensorMetric,
-        device: &'a Device,
-        source_name: &'a str,
-        start: usize,
-        end: usize,
-    ) -> impl Iterator<Item = f64> + 'a {
-        debug_assert!(start <= end);
-        let stop = end.saturating_add(1).min(device.history_len());
-        debug_assert!(stop.saturating_sub(start) <= SAMPLE_WINDOW_MAX_SLOTS);
-        (start..stop).filter_map(move |k| metric.read_at(device, k, source_name))
     }
 
     /// How many samples fit in `window_seconds` at the current `poll_rate`. Always at least
@@ -3766,8 +3811,13 @@ mod tests {
     /// given temps (matching `Device::initialize_status_history_with`'s semantics) and the
     /// most recent tick carries the real values. Returns `(uid, device_lock)` ready to pass
     /// into `CustomSensorsRepo::new`'s `all_other_devices` argument.
-    #[allow(clippy::cast_possible_truncation)]
     fn make_mock_source_device(temps: Vec<TempStatus>) -> (UID, DeviceLock) {
+        make_mock_source_device_at(temps, 1.0)
+    }
+
+    /// `make_mock_source_device` with a history sized for `poll_rate`.
+    #[allow(clippy::cast_possible_truncation)]
+    fn make_mock_source_device_at(temps: Vec<TempStatus>, poll_rate: f64) -> (UID, DeviceLock) {
         let temp_infos: HashMap<TempName, TempInfo> = temps
             .iter()
             .enumerate()
@@ -3793,16 +3843,16 @@ mod tests {
                 ..Default::default()
             },
             None,
-            1.0,
+            poll_rate,
         );
         let uid = device.uid.clone();
-        // Match the repo's history length so backfill can read every tick.
+        // At 1.0, match the repo's history length so backfill can read every tick.
         device.initialize_status_history_with(
             Status {
                 temps,
                 ..Default::default()
             },
-            1.0,
+            poll_rate,
         );
         (uid, Rc::new(RefCell::new(device)))
     }
@@ -3942,6 +3992,70 @@ mod tests {
             assert_eq!(allocations, 0);
             assert!((current_temp_for(&repo, "mix1") - 70.0).abs() < f64::EPSILON);
             assert!((current_temp_for(&repo, "mix2") - 70.0).abs() < f64::EPSILON);
+        });
+    }
+
+    /// Goal: the first tick after a windowed sensor is created pushes onto the handed-over
+    /// backfill window instead of reseeding one, so it allocates nothing. Method: windowed
+    /// sensors over an external and a child source created partway through a run, the tick's
+    /// value buffer and the device's stats keys warmed as a warm tick leaves them, then that
+    /// first tick counted.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn the_first_tick_after_a_windowed_backfill_allocates_nothing() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "cpu".to_string(),
+                temp: 70.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev.clone()], test_overrides())
+                    .unwrap();
+            repo.initialize_devices().await.unwrap();
+            let cs_uid = repo.get_device_uid();
+            repo.set_custom_sensor(mix_sensor("mix1", vec![temp_source(&source_uid, "cpu")]))
+                .await
+                .unwrap();
+            for temp in [71.5, 69.2, 75.0, 74.3, 73.1, 72.8] {
+                push_source_tick(&source_dev, "cpu", Some(temp));
+                repo.update_statuses(Local::now()).unwrap();
+            }
+            let external = temp_source(&source_uid, "cpu");
+            repo.set_custom_sensor(ema_sensor("ema", 4, external))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(time_average_sensor(
+                "avg_child",
+                4,
+                temp_source(&cs_uid, "mix1"),
+            ))
+            .await
+            .unwrap();
+            assert_eq!(repo.sample_windows.borrow().len(), 2);
+            // A new sensor's first tick also grows the value buffer and adds its stats key;
+            // warm, a tick only refills them.
+            let cs_device = repo.custom_sensor_device.as_ref().unwrap();
+            cs_device.borrow_mut().reset_stats();
+            let sensors = repo.sensors.borrow();
+            let mut values = repo.tick_values.borrow_mut();
+            let not_parents = sensors.iter().filter(|s| s.children.is_empty());
+            let parents = sensors.iter().filter(|s| s.children.is_empty().not());
+            for (index, sensor) in not_parents.chain(parents).enumerate() {
+                CustomSensorsRepo::refill_value(&mut values, index, sensor, 0.0);
+            }
+            drop(values);
+            drop(sensors);
+            push_source_tick(&source_dev, "cpu", Some(70.4));
+            let tick = Local::now();
+
+            let ((), allocations) = crate::alloc_count::count_allocations(|| repo.write_tick(tick));
+
+            assert_eq!(allocations, 0);
+            for id in ["ema", "avg_child"] {
+                assert_eq!(repo.sample_windows.borrow()[id].samples.len(), 4, "{id}");
+            }
         });
     }
 
@@ -5134,6 +5248,214 @@ mod tests {
             assert_eq!(device.temp_at(0, "ema"), Some(0.0));
             assert_eq!(device.temp_at(newest - 1, "ema"), Some(0.0));
             assert_eq!(device.temp_at(newest, "ema"), Some(40.0));
+        });
+    }
+
+    /// A from-scratch rescan of the window ending at `index`: the placeholder zero over init
+    /// padding (before `first_reading`), else the TimeAverage or EMA of its readings.
+    fn rescan_expected(
+        readings: &[Option<f64>],
+        first_reading: usize,
+        index: usize,
+        sample_count: usize,
+        is_ema: bool,
+    ) -> f64 {
+        if index < first_reading {
+            return 0.0;
+        }
+        let start = (index + 1).saturating_sub(sample_count).max(first_reading);
+        let samples: Vec<f64> = readings[start..=index].iter().flatten().copied().collect();
+        if is_ema {
+            CustomSensorsRepo::compute_ema(&samples, sample_count)
+        } else {
+            CustomSensorsRepo::compute_time_average(&samples)
+        }
+        .unwrap()
+    }
+
+    // A new windowed sensor's backfill slides one window down the history, so every entry
+    // must match a fresh rescan of the window ending there: the placeholder zero over init
+    // padding, then the TimeAverage or EMA of the readings in the window. Pushes a varied
+    // stream with gaps shorter than the window, creates both sensors, and compares each
+    // back-filled entry bit for bit with the rescan.
+    #[test]
+    #[serial]
+    fn windowed_backfill_matches_a_rescan_of_each_window() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "cpu".to_string(),
+                temp: 70.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev.clone()], test_overrides())
+                    .unwrap();
+            repo.initialize_devices().await.unwrap();
+            let stream = [
+                Some(71.5),
+                Some(69.2),
+                None,
+                Some(75.0),
+                Some(74.3),
+                None,
+                None,
+                Some(73.1),
+                Some(72.8),
+                Some(70.4),
+                Some(76.9),
+                None,
+                Some(74.2),
+                Some(68.0),
+            ];
+            for temp in stream {
+                push_source_tick(&source_dev, "cpu", temp);
+                repo.update_statuses(Local::now()).unwrap();
+            }
+            let window: u16 = 4;
+            let sample_count = usize::from(window);
+            let source = temp_source(&source_uid, "cpu");
+            repo.set_custom_sensor(time_average_sensor("avg", window, source.clone()))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(ema_sensor("ema", window, source))
+                .await
+                .unwrap();
+
+            let readings: Vec<Option<f64>> = source_dev
+                .borrow()
+                .history_statuses()
+                .iter()
+                .map(|status| {
+                    status
+                        .temps
+                        .iter()
+                        .find(|temp| temp.name == "cpu")
+                        .map(|temp| temp.temp)
+                })
+                .collect();
+            // The init reading plus the stream.
+            let first_reading = readings.len() - (stream.len() + 1);
+            for (id, is_ema) in [("avg", false), ("ema", true)] {
+                let backfilled = backfilled_temps(&repo, id);
+                assert_eq!(backfilled.len(), readings.len());
+                for (index, value) in backfilled.iter().enumerate() {
+                    let expected =
+                        rescan_expected(&readings, first_reading, index, sample_count, is_ema);
+                    assert_eq!(value.to_bits(), expected.to_bits(), "{id} at {index}");
+                }
+            }
+        });
+    }
+
+    // The backfill's window ends at the newest entry, so it becomes the live window instead
+    // of the first tick reseeding one. Creates windowed sensors over an external and a child
+    // source partway through a run, checks each window was handed over full, then ticks and
+    // compares the outputs bit for bit with the from-scratch rescan.
+    #[test]
+    #[serial]
+    fn new_windowed_sensor_hands_its_backfill_window_to_the_first_tick() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "cpu".to_string(),
+                temp: 70.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev.clone()], test_overrides())
+                    .unwrap();
+            repo.initialize_devices().await.unwrap();
+            let cs_uid = repo.get_device_uid();
+            repo.set_custom_sensor(mix_sensor("mix1", vec![temp_source(&source_uid, "cpu")]))
+                .await
+                .unwrap();
+            let stream = [71.5, 69.2, 75.0, 74.3, 73.1, 72.8];
+            for temp in stream {
+                push_source_tick(&source_dev, "cpu", Some(temp));
+                repo.update_statuses(Local::now()).unwrap();
+            }
+            let window: u16 = 4;
+            let sample_count = usize::from(window);
+            let external = temp_source(&source_uid, "cpu");
+            let child = temp_source(&cs_uid, "mix1");
+            repo.set_custom_sensor(time_average_sensor("avg", window, external.clone()))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(ema_sensor("ema", window, external))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(time_average_sensor("avg_child", window, child.clone()))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(ema_sensor("ema_child", window, child))
+                .await
+                .unwrap();
+            for id in ["avg", "ema", "avg_child", "ema_child"] {
+                let windows = repo.sample_windows.borrow();
+                let held = windows.get(id).expect("the backfill hands its window over");
+                assert_eq!(held.sample_count, sample_count);
+                assert_eq!(held.samples.len(), sample_count);
+            }
+
+            push_source_tick(&source_dev, "cpu", Some(70.4));
+            repo.update_statuses(Local::now()).unwrap();
+            // The init reading, the stream, and this tick.
+            let reading_count = stream.len() + 2;
+            let cs_device = repo.custom_sensor_device.as_ref().unwrap();
+            let cases = [
+                ("avg", &source_dev, "cpu", false),
+                ("ema", &source_dev, "cpu", true),
+                ("avg_child", cs_device, "mix1", false),
+                ("ema_child", cs_device, "mix1", true),
+            ];
+            for (id, device, name, is_ema) in cases {
+                let expected =
+                    reference_windowed(device, name, sample_count, reading_count, is_ema).unwrap();
+                assert_eq!(
+                    current_temp_for(&repo, id).to_bits(),
+                    expected.to_bits(),
+                    "{id}"
+                );
+            }
+        });
+    }
+
+    // A source whose history is not as long as the Custom Sensors device's does not end the
+    // backfill's window at its newest entry, so the window is not handed over and the first
+    // tick reseeds from the source's newest readings. Uses a source sized for a 2.0 poll rate.
+    #[test]
+    #[serial]
+    fn backfill_window_of_a_shorter_source_history_is_not_handed_over() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device_at(
+                vec![TempStatus {
+                    name: "cpu".to_string(),
+                    temp: 70.0,
+                }],
+                2.0,
+            );
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev.clone()], test_overrides())
+                    .unwrap();
+            repo.initialize_devices().await.unwrap();
+            let cs_len = repo
+                .custom_sensor_device
+                .as_ref()
+                .unwrap()
+                .borrow()
+                .history_len();
+            assert!(source_dev.borrow().history_len() < cs_len);
+
+            repo.set_custom_sensor(ema_sensor("ema", 4, temp_source(&source_uid, "cpu")))
+                .await
+                .unwrap();
+
+            assert!(repo.sample_windows.borrow().contains_key("ema").not());
+            push_source_tick(&source_dev, "cpu", Some(72.0));
+            repo.update_statuses(Local::now()).unwrap();
+            // The init reading and this tick.
+            let expected = reference_windowed(&source_dev, "cpu", 4, 2, true).unwrap();
+            assert_eq!(current_temp_for(&repo, "ema").to_bits(), expected.to_bits());
         });
     }
 
