@@ -9,4 +9,13 @@ set -e
 mkdir -p /run/openrc
 openrc default 2>/dev/null || true
 
+# D-Bus needs the host's system bus socket mounted, so follow the mount unless CC_DBUS is set.
+if [ -z "${CC_DBUS+x}" ]; then
+    if [ -S /run/dbus/system_bus_socket ]; then
+        export CC_DBUS=ON
+    else
+        export CC_DBUS=OFF
+    fi
+fi
+
 exec /usr/local/bin/coolercontrold "$@"
