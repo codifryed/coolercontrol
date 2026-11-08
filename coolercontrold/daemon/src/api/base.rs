@@ -405,8 +405,10 @@ fn apply_cache_headers(
         policy == CachePolicy::Document,
         "the CSP is carried for the document alone"
     );
+    let is_ok = response.status() == StatusCode::OK;
     let headers = response.headers_mut();
-    if let Some(content_type) = content_type {
+    // A 304 carries no representation metadata, as last_modified.rs leaves it.
+    if let Some(content_type) = content_type.filter(|_| is_ok) {
         headers.insert(CONTENT_TYPE, content_type);
     }
     if let Some(document_csp) = document_csp {
@@ -619,6 +621,29 @@ mod tests {
             response.headers().get("content-type").unwrap(),
             "text/javascript; charset=utf-8"
         );
+    }
+
+    // Goal: a 304 carries no Content-Type, as RFC 9110 asks, yet keeps its cache headers.
+    // Method: a stand-in for the validator that answers .js and .css paths with a bare 304.
+    #[tokio::test]
+    async fn test_not_modified_gains_no_content_type() {
+        let not_modified = || async { http::StatusCode::NOT_MODIFIED };
+        let app = with_document_csp(
+            Router::new()
+                .route("/notification-sw.js", get(not_modified))
+                .route("/assets/app.css", get(not_modified)),
+        );
+        for path in ["/notification-sw.js", "/assets/app.css"] {
+            let request = http::Request::builder().uri(path);
+            let response = app
+                .clone()
+                .oneshot(request.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED, "{path}");
+            assert!(response.headers().get(CONTENT_TYPE).is_none(), "{path}");
+            assert!(response.headers().get(CACHE_CONTROL).is_some(), "{path}");
+        }
     }
 
     // Goal: negative space for the widened revalidation list. A hashed bundle whose name
