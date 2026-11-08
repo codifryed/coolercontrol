@@ -22,30 +22,30 @@ afterAll(() => {
 })
 
 describe('localizeLogStamp', () => {
-    it('converts a seconds stamp to local journal form', () => {
+    it('converts a seconds stamp to local time', () => {
         expect(localizeLogStamp('[2026-11-08T17:21:40Z INFO  coolercontrold::logger] up')).toBe(
-            '[Nov 08 18:21:40 INFO  coolercontrold::logger] up',
+            '[2026-11-08 18:21:40 INFO  coolercontrold::logger] up',
         )
     })
 
     it('keeps milliseconds', () => {
         expect(localizeLogStamp('[2026-11-08T17:21:40.123Z DEBUG coolercontrold::x] m')).toBe(
-            '[Nov 08 18:21:40.123 DEBUG coolercontrold::x] m',
+            '[2026-11-08 18:21:40.123 DEBUG coolercontrold::x] m',
         )
     })
 
     it('rolls the date over at local midnight', () => {
         expect(localizeLogStamp('[2026-12-31T23:30:00Z WARN  x] m')).toBe(
-            '[Jan 01 00:30:00 WARN  x] m',
+            '[2027-01-01 00:30:00 WARN  x] m',
         )
     })
 
     it('follows the offset across a DST change', () => {
         expect(localizeLogStamp('[2026-10-25T00:59:59Z INFO  x] m')).toBe(
-            '[Oct 25 02:59:59 INFO  x] m',
+            '[2026-10-25 02:59:59 INFO  x] m',
         )
         expect(localizeLogStamp('[2026-10-25T01:00:00Z INFO  x] m')).toBe(
-            '[Oct 25 02:00:00 INFO  x] m',
+            '[2026-10-25 02:00:00 INFO  x] m',
         )
     })
 
@@ -56,7 +56,7 @@ describe('localizeLogStamp', () => {
 
     it('changes only the leading stamp', () => {
         expect(localizeLogStamp('[2026-11-08T17:21:40Z INFO  x] since 2026-11-08T10:00:00Z')).toBe(
-            '[Nov 08 18:21:40 INFO  x] since 2026-11-08T10:00:00Z',
+            '[2026-11-08 18:21:40 INFO  x] since 2026-11-08T10:00:00Z',
         )
         expect(localizeLogStamp('note [2026-11-08T17:21:40Z INFO  x]')).toBe(
             'note [2026-11-08T17:21:40Z INFO  x]',
@@ -97,10 +97,10 @@ describe('toLogLines', () => {
 
     it('localizes raw before highlighting so raw and html agree', () => {
         const [line] = toLogLines('[2026-11-08T17:21:40Z ERROR coolercontrold::x] bad\n')
-        expect(line.raw).toBe('[Nov 08 18:21:40 ERROR coolercontrold::x] bad')
+        expect(line.raw).toBe('[2026-11-08 18:21:40 ERROR coolercontrold::x] bad')
         expect(line.raw.includes('ERROR')).toBe(true)
         expect(line.html).toBe(
-            '[Nov 08 18:21:40 <span class="text-error">ERROR</span> coolercontrold::x] bad',
+            '[2026-11-08 18:21:40 <span class="text-error">ERROR</span> coolercontrold::x] bad',
         )
     })
 })

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Log lines are escaped and highlighted once on arrival; views render the
-// pre-built html per line. Leading UTC stamps are rewritten to local journal
-// form first. The cap mirrors the daemon's own log buffer so the
+// pre-built html per line. Leading UTC stamps are rewritten to local time
+// first. The cap mirrors the daemon's own log buffer so the
 // UI state always looks like a fresh /logs fetch.
 
 export const LOG_LINE_CAP = 500
@@ -31,12 +31,11 @@ export function highlightLogLine(raw: string): string {
 
 // The daemon stamps lines in UTC: `[2026-11-08T17:21:40Z` or `[...40.123Z`.
 const UTC_STAMP = /^\[(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?Z(?=[ \]])/
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const pad2 = (value: number): string => String(value).padStart(2, '0')
 
-// Rewrites a leading UTC stamp to journalctl's local `Nov 08 18:21:40` form,
-// so lines match the journal. Other lines are returned unchanged.
+// Rewrites a leading UTC stamp to local `2026-11-08 18:21:40`, so lines match
+// the journal's clock without depending on locale. Other lines are unchanged.
 export function localizeLogStamp(raw: string): string {
     const match = UTC_STAMP.exec(raw)
     if (match === null) return raw
@@ -47,7 +46,7 @@ export function localizeLogStamp(raw: string): string {
     if (roundTrip !== `${year}-${month}-${day}T${hour}:${minute}:${second}`) return raw
     // Offsets are whole minutes, so the fraction carries over verbatim.
     const local =
-        `${MONTHS[date.getMonth()]} ${pad2(date.getDate())} ` +
+        `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ` +
         `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
     return `[${local}${fraction}${raw.slice(stamp.length)}`
 }
