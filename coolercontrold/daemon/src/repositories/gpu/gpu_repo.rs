@@ -286,9 +286,8 @@ impl GpuRepo {
                  are installed and accessible. GPUs on nouveau show as hwmon devices instead."
             );
         }
-        let gpu_count = u8::try_from(gpu_count);
-        debug_assert!(gpu_count.is_ok());
-        gpu_count.unwrap_or(u8::MAX)
+        // nvidia-smi output is external input, so saturate instead of asserting.
+        u8::try_from(gpu_count).unwrap_or(u8::MAX)
     }
 
     pub async fn load_amd_statuses(&self) {
