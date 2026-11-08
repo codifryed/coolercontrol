@@ -1844,9 +1844,9 @@ pub enum NvidiaPresence {
 /// mapped for the daemon's lifetime, so a machine with only the NVIDIA userspace installed skips
 /// it. `MaybePresent` when the bus or any function on it cannot be read, so detection runs as
 /// before.
-pub async fn nvidia_gpu_may_be_present() -> NvidiaPresence {
+pub async fn nvidia_presence() -> NvidiaPresence {
     rt::spawn_blocking(|| {
-        nvidia_gpu_may_be_present_in(
+        nvidia_presence_in(
             Path::new(PCI_DEVICES_PATH),
             Path::new(NVIDIA_MODULE_PATH),
             PCI_DEVICES_MAX,
@@ -1856,7 +1856,7 @@ pub async fn nvidia_gpu_may_be_present() -> NvidiaPresence {
     .unwrap_or(NvidiaPresence::MaybePresent)
 }
 
-fn nvidia_gpu_may_be_present_in(
+fn nvidia_presence_in(
     pci_devices_path: &Path,
     nvidia_module_path: &Path,
     pci_devices_max: usize,
@@ -2154,7 +2154,7 @@ mod tests {
         add_pci_device(&pci_devices_path, "0000:03:00.0", "0x1002", "0x030000");
         add_pci_device(&pci_devices_path, "0000:03:00.1", "0x10de", "0x040300");
 
-        let present = nvidia_gpu_may_be_present_in(
+        let present = nvidia_presence_in(
             &pci_devices_path,
             &root.path().join("module/nvidia"),
             PCI_DEVICES_MAX,
@@ -2172,7 +2172,7 @@ mod tests {
             let pci_devices_path = root.path().join("devices");
             add_pci_device(&pci_devices_path, "0000:01:00.0", "0x10de", class);
 
-            let present = nvidia_gpu_may_be_present_in(
+            let present = nvidia_presence_in(
                 &pci_devices_path,
                 &root.path().join("module/nvidia"),
                 PCI_DEVICES_MAX,
@@ -2201,11 +2201,8 @@ mod tests {
                 add_pci_device(&pci_devices_path, "0000:01:00.0", "0x10de", "0x030000");
             }
 
-            let present = nvidia_gpu_may_be_present_in(
-                &pci_devices_path,
-                &nvidia_module_path,
-                PCI_DEVICES_MAX,
-            );
+            let present =
+                nvidia_presence_in(&pci_devices_path, &nvidia_module_path, PCI_DEVICES_MAX);
 
             assert_eq!(
                 present,
@@ -2220,7 +2217,7 @@ mod tests {
     fn an_unreadable_pci_bus_runs_detection() {
         let root = tempfile::tempdir().unwrap();
 
-        let present = nvidia_gpu_may_be_present_in(
+        let present = nvidia_presence_in(
             &root.path().join("devices"),
             &root.path().join("module/nvidia"),
             PCI_DEVICES_MAX,
@@ -2248,7 +2245,7 @@ mod tests {
         ] {
             let root = write_attributes(attributes);
 
-            let present = nvidia_gpu_may_be_present_in(
+            let present = nvidia_presence_in(
                 &root.path().join("devices"),
                 &root.path().join("module/nvidia"),
                 PCI_DEVICES_MAX,
@@ -2275,7 +2272,7 @@ mod tests {
                 add_pci_device(&pci_devices_path, &slot, "0x1002", "0x030000");
             }
 
-            let present = nvidia_gpu_may_be_present_in(
+            let present = nvidia_presence_in(
                 &pci_devices_path,
                 &root.path().join("module/nvidia"),
                 pci_devices_max,

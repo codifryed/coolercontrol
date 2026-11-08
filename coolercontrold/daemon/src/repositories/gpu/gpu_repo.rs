@@ -263,7 +263,7 @@ impl GpuRepo {
                     .or_else(|| Some(env_nvml.trim().to_lowercase() != "off"))
             })
             .unwrap_or(true);
-        let nvidia_presence = nvidia::nvidia_gpu_may_be_present().await;
+        let nvidia_presence = nvidia::nvidia_presence().await;
         let path = nvidia_path(nvidia_presence, self.force_nvidia_cli, nvml_enabled);
         let nvidia_dev_count = match path {
             NvidiaPath::Skip => {
