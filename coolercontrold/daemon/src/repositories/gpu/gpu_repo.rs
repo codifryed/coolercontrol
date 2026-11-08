@@ -26,7 +26,7 @@ use crate::device::{ChannelAttribute, DeviceType, Duty, MAX_CHANNEL_ATTRIBUTES, 
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{AMDDriverInfo, GpuAMD, TEMP_FOR_FAN_CURVE};
-use crate::repositories::gpu::nvidia::{self, GpuNVidia, NvmlInitResult};
+use crate::repositories::gpu::nvidia::{self, GpuNVidia, NvidiaPresence, NvmlInitResult};
 use crate::repositories::hwmon::attributes;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
@@ -231,16 +231,24 @@ impl GpuRepo {
                     .or_else(|| Some(env_nvml.trim().to_lowercase() != "off"))
             })
             .unwrap_or(true);
-        let nvidia_dev_count = if nvidia::nvidia_gpu_may_be_present().await.not() {
+        let nvidia_presence = nvidia::nvidia_gpu_may_be_present().await;
+        let nvidia_dev_count = if nvidia_presence == NvidiaPresence::Absent {
             info!("No NVIDIA GPU or driver found, skipping NVML and nvidia-smi.");
             0
         } else if cfg!(target_env = "musl") {
             // NVML is a glibc library and segfaults under musl. The CLI tools need glibc, and
             // fan control through them also needs X.
-            warn!(
-                "NVIDIA GPUs are not supported in musl builds, such as the Alpine Docker image. \
-                 Use a glibc build, such as the default Docker image."
-            );
+            if nvidia_presence == NvidiaPresence::DriverLoaded {
+                warn!(
+                    "NVIDIA GPUs are not supported in musl builds, such as the Alpine Docker \
+                     image. Use a glibc build, such as the default Docker image."
+                );
+            } else {
+                info!(
+                    "NVIDIA GPUs on the proprietary driver are not supported in musl builds. \
+                     GPUs on nouveau show as hwmon devices instead."
+                );
+            }
             0
         } else if self.force_nvidia_cli || nvml_enabled.not() {
             self.nvidia_smi_gpu_count().await

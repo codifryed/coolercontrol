@@ -1828,11 +1828,23 @@ struct NvmlProbe {
     device_uids: Vec<UID>,
 }
 
+/// Whether NVIDIA detection is worth running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NvidiaPresence {
+    /// No NVIDIA driver and no NVIDIA display controller.
+    Absent,
+    /// An NVIDIA display controller, which nouveau may drive, or an unreadable bus.
+    MaybePresent,
+    /// The proprietary NVIDIA kernel module is loaded.
+    DriverLoaded,
+}
+
 /// Whether NVIDIA detection is worth running: the NVIDIA driver is loaded, or an NVIDIA display
 /// controller is on the PCI bus. `nvmlInit` maps libcuda even when it then fails, and libcuda stays
 /// mapped for the daemon's lifetime, so a machine with only the NVIDIA userspace installed skips
-/// it. True when the bus or any function on it cannot be read, so detection runs as before.
-pub async fn nvidia_gpu_may_be_present() -> bool {
+/// it. `MaybePresent` when the bus or any function on it cannot be read, so detection runs as
+/// before.
+pub async fn nvidia_gpu_may_be_present() -> NvidiaPresence {
     rt::spawn_blocking(|| {
         nvidia_gpu_may_be_present_in(
             Path::new(PCI_DEVICES_PATH),
@@ -1841,34 +1853,38 @@ pub async fn nvidia_gpu_may_be_present() -> bool {
         )
     })
     .await
-    .unwrap_or(true)
+    .unwrap_or(NvidiaPresence::MaybePresent)
 }
 
 fn nvidia_gpu_may_be_present_in(
     pci_devices_path: &Path,
     nvidia_module_path: &Path,
     pci_devices_max: usize,
-) -> bool {
+) -> NvidiaPresence {
     assert!(pci_devices_max > 0);
     if nvidia_module_path.exists() {
-        return true;
+        return NvidiaPresence::DriverLoaded;
     }
     let Ok(entries) = std::fs::read_dir(pci_devices_path) else {
-        return true;
+        return NvidiaPresence::MaybePresent;
     };
     let mut device_count: usize = 0;
     for entry in entries.take(pci_devices_max) {
         device_count += 1;
         let Ok(entry) = entry else {
-            return true;
+            return NvidiaPresence::MaybePresent;
         };
         // An unreadable function may be an NVIDIA GPU.
         if is_nvidia_display_controller(&entry.path()).unwrap_or(true) {
-            return true;
+            return NvidiaPresence::MaybePresent;
         }
     }
     assert!(device_count <= pci_devices_max);
-    device_count == pci_devices_max
+    if device_count == pci_devices_max {
+        NvidiaPresence::MaybePresent
+    } else {
+        NvidiaPresence::Absent
+    }
 }
 
 /// Reads only `vendor` and `class`, which the kernel caches, so a GPU in D3cold stays asleep.
@@ -2144,7 +2160,7 @@ mod tests {
             PCI_DEVICES_MAX,
         );
 
-        assert!(present.not());
+        assert_eq!(present, NvidiaPresence::Absent);
     }
 
     /// Goal: an NVIDIA GPU is found whether it reports as VGA or as a 3D controller, before its
@@ -2162,25 +2178,41 @@ mod tests {
                 PCI_DEVICES_MAX,
             );
 
-            assert!(present, "class {class} is a display controller");
+            assert_eq!(
+                present,
+                NvidiaPresence::MaybePresent,
+                "class {class} is a display controller"
+            );
         }
     }
 
     /// Goal: a loaded NVIDIA driver runs detection even when no NVIDIA PCI GPU is listed, e.g. a
-    /// GPU off the PCI bus. Method: the module directory exists, the bus is empty.
+    /// GPU off the PCI bus, and is told apart from a GPU nouveau may drive. Method: the module
+    /// directory exists, with an empty bus and with an NVIDIA GPU on it.
     #[test]
     fn a_loaded_nvidia_driver_runs_detection() {
-        let root = tempfile::tempdir().unwrap();
-        let pci_devices_path = root.path().join("devices");
-        let nvidia_module_path = root.path().join("module/nvidia");
-        std::fs::create_dir_all(&pci_devices_path).unwrap();
-        std::fs::create_dir_all(&nvidia_module_path).unwrap();
+        for with_gpu in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let pci_devices_path = root.path().join("devices");
+            let nvidia_module_path = root.path().join("module/nvidia");
+            std::fs::create_dir_all(&pci_devices_path).unwrap();
+            std::fs::create_dir_all(&nvidia_module_path).unwrap();
+            if with_gpu {
+                add_pci_device(&pci_devices_path, "0000:01:00.0", "0x10de", "0x030000");
+            }
 
-        assert!(nvidia_gpu_may_be_present_in(
-            &pci_devices_path,
-            &nvidia_module_path,
-            PCI_DEVICES_MAX,
-        ));
+            let present = nvidia_gpu_may_be_present_in(
+                &pci_devices_path,
+                &nvidia_module_path,
+                PCI_DEVICES_MAX,
+            );
+
+            assert_eq!(
+                present,
+                NvidiaPresence::DriverLoaded,
+                "with GPU: {with_gpu}"
+            );
+        }
     }
 
     /// Goal: an unreadable bus never hides an NVIDIA GPU. Method: no PCI directory at all.
@@ -2194,7 +2226,7 @@ mod tests {
             PCI_DEVICES_MAX,
         );
 
-        assert!(present);
+        assert_eq!(present, NvidiaPresence::MaybePresent);
     }
 
     /// Goal: a function whose attributes cannot be read never hides an NVIDIA GPU. Method: an
@@ -2222,7 +2254,7 @@ mod tests {
                 PCI_DEVICES_MAX,
             );
 
-            assert!(present, "{attributes:?}");
+            assert_eq!(present, NvidiaPresence::MaybePresent, "{attributes:?}");
         }
     }
 
@@ -2232,7 +2264,10 @@ mod tests {
     #[test]
     fn a_bus_at_the_device_cap_runs_detection() {
         let pci_devices_max: usize = 4;
-        for (device_count, expected) in [(pci_devices_max, true), (pci_devices_max - 1, false)] {
+        for (device_count, expected) in [
+            (pci_devices_max, NvidiaPresence::MaybePresent),
+            (pci_devices_max - 1, NvidiaPresence::Absent),
+        ] {
             let root = tempfile::tempdir().unwrap();
             let pci_devices_path = root.path().join("devices");
             for function in 0..device_count {
