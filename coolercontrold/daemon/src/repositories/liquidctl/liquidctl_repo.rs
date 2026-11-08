@@ -913,7 +913,9 @@ impl LiquidctlRepo {
             }
         }))
         .await;
-        unreadable.into_iter().flatten().collect()
+        let unreadable: Vec<DeviceUID> = unreadable.into_iter().flatten().collect();
+        assert!(unreadable.len() <= self.devices.len());
+        unreadable
     }
 
     fn create_status_map(lc_statuses: &LCStatus) -> StatusMap {
@@ -1975,6 +1977,12 @@ impl Repository for LiquidctlRepo {
             &mut self.liqctld_devices,
             unreadable_devices,
         );
+        // Every kept device answered, so each has a status to report, empty for lighting only.
+        let preloaded_statuses = self.preloaded_statuses.borrow();
+        for device_lock in self.devices.values() {
+            assert!(preloaded_statuses.contains_key(&device_lock.borrow().type_index));
+        }
+        drop(preloaded_statuses);
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.borrow().clone());
@@ -2320,7 +2328,10 @@ fn drop_unreadable_devices(
     unreadable_devices: Vec<DeviceUID>,
 ) -> Vec<String> {
     let locations = driver_locations_of(devices, unreadable_devices.iter());
-    remove_failed_devices(devices, liqctld_devices, unreadable_devices);
+    remove_failed_devices(devices, liqctld_devices, unreadable_devices.clone());
+    for device_uid in &unreadable_devices {
+        assert!(devices.contains_key(device_uid).not());
+    }
     locations
 }
 
