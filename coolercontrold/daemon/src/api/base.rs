@@ -795,7 +795,8 @@ mod tests {
     }
 
     // Goal: negative space for the stack-built key. A path longer than the buffer finds no
-    // copy instead of panicking, right at the boundary and well past it.
+    // copy instead of panicking. Method: a path right at the boundary, one byte past it, and
+    // one well past it.
     #[test]
     fn test_gzip_variant_rejects_overlong_paths() {
         let at_limit = "a".repeat(VARIANT_PATH_MAX_BYTES - ".gz".len());

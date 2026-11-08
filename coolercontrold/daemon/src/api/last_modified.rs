@@ -264,7 +264,8 @@ mod tests {
         );
     }
 
-    // Goal: negative space for the bound. A year past 9999 cannot fit the format.
+    // Goal: negative space for the bound. A year past 9999 cannot fit the format. Method:
+    // format the second after the last representable one and expect the assertion.
     #[test]
     #[should_panic(expected = "four-digit years only")]
     fn test_http_date_rejects_five_digit_years() {
@@ -272,7 +273,8 @@ mod tests {
     }
 
     // Goal: the production values are the build's time, formatted as a header can carry it,
-    // and its content hash as a quoted strong ETag.
+    // and its content hash as a quoted strong ETag. Method: compare the build.rs values with
+    // what `LastModified::new` carries.
     #[test]
     fn test_assets_last_modified_is_the_build_time() {
         assert_eq!(*ASSETS_LAST_MODIFIED, http_date(ASSETS_MODIFIED_UNIX_SECS));
@@ -284,6 +286,7 @@ mod tests {
     }
 
     // Goal: a plain request gets the full body, its content type, and both validators.
+    // Method: an unconditional GET through a real `ServeDir`.
     #[tokio::test]
     async fn test_served_file_carries_last_modified() {
         let response = serve(request(Method::GET, "/index.html", None)).await;
@@ -295,7 +298,8 @@ mod tests {
     }
 
     // Goal: a GET or HEAD that holds the current validator gets an empty 304 that repeats
-    // it and carries no content type.
+    // it and carries no content type. Method: GET and HEAD with the exact date through a
+    // real `ServeDir`.
     #[tokio::test]
     async fn test_matching_validator_is_not_modified() {
         for method in [Method::GET, Method::HEAD] {
@@ -353,6 +357,7 @@ mod tests {
 
     // Goal: only a served file is validated. A 404 and a directory redirect keep their status
     // and gain no validator, and a method the condition does not apply to is not a 304.
+    // Method: the current date on a missing path, a directory, and a POST.
     #[tokio::test]
     async fn test_validator_skips_non_files_and_other_methods() {
         for (path, status) in [
