@@ -13,12 +13,15 @@ use std::time::UNIX_EPOCH;
 const GZIP_EXTENSIONS: [&str; 6] = ["js", "css", "html", "webmanifest", "svg", "json"];
 /// Below this, the saving is not worth a second copy in the binary.
 const GZIP_MIN_BYTES: usize = 1024;
+/// Embedded by api/plugins.rs, outside the UI dir.
+const PLUGIN_LIB: &str = "resources/lib/cc-plugin-lib.js";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Rerun only when these change. Without any rerun directive cargo reruns this script on
     // every edit anywhere in the package, and it now compresses the whole UI.
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=resources/app");
+    println!("cargo:rerun-if-changed={PLUGIN_LIB}");
     println!("cargo:rerun-if-changed=resources/proto");
     // The hwdata lookup below asks pkg-config, which reads this.
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
@@ -48,9 +51,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_dir = manifest_dir.join("resources/app");
     let app_files = list_files(&app_dir)?;
     precompress_app(&app_dir, &app_files, &out_dir.join("app-gzip"))?;
-    // api/base.rs serves this as every embedded file's Last-Modified. include_dir's own
-    // metadata is all or nothing, and musl cannot read the creation time it also asks for.
-    let assets_modified_unix_secs = assets_modified_unix_secs(&app_files)?;
+    // api/last_modified.rs serves this as every embedded file's Last-Modified. include_dir's
+    // own metadata is all or nothing, and musl cannot read the creation time it also asks for.
+    let plugin_lib = manifest_dir.join(PLUGIN_LIB);
+    let assets_modified_unix_secs =
+        assets_modified_unix_secs(app_files.iter().chain([&plugin_lib]))?;
     println!("cargo:rustc-env=CC_ASSETS_MODIFIED_UNIX_SECS={assets_modified_unix_secs}");
 
     // Query pkg-config for hwdata's pkgdatadir at build time (e.g., NixOS).
@@ -105,17 +110,18 @@ fn list_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-/// The embedded UI's modification time: `SOURCE_DATE_EPOCH` when set, so reproducible
-/// builds stay reproducible, else the newest file's mtime. Zero with no files, when
-/// nothing is served.
-fn assets_modified_unix_secs(app_files: &[PathBuf]) -> Result<u64, Box<dyn std::error::Error>> {
+/// The embedded assets' modification time: `SOURCE_DATE_EPOCH` when set, so reproducible
+/// builds stay reproducible, else the newest file's mtime.
+fn assets_modified_unix_secs<'a>(
+    files: impl IntoIterator<Item = &'a PathBuf>,
+) -> Result<u64, Box<dyn std::error::Error>> {
     if let Ok(epoch) = std::env::var("SOURCE_DATE_EPOCH") {
         return epoch.trim().parse::<u64>().map_err(|err| {
             format!("SOURCE_DATE_EPOCH {epoch:?} is not a Unix time: {err}").into()
         });
     }
     let mut newest_unix_secs = 0;
-    for path in app_files {
+    for path in files {
         let modified = fs::metadata(path)?.modified()?;
         let unix_secs = modified.duration_since(UNIX_EPOCH)?.as_secs();
         newest_unix_secs = newest_unix_secs.max(unix_secs);

@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::api::last_modified::LastModified;
 use crate::api::{handle_error, AppState, CCError};
 use crate::repositories::service_plugin::service_management::manager::ServiceStatus;
 use aide::axum::IntoApiResponse;
 use axum::body::Body;
 use axum::extract::{Path, Request, State};
+use axum::http::header::CACHE_CONTROL;
+use axum::http::HeaderValue;
 use axum::response::Response;
 use axum::Json;
 use http_body_util::{BodyExt, Full};
@@ -48,12 +51,21 @@ pub async fn get_plugins(
 }
 
 pub async fn get_cc_plugin_lib(request: Request) -> Result<impl IntoApiResponse, CCError> {
-    tower_serve_static::ServeFile::new(include_file!("/resources/lib/cc-plugin-lib.js"))
-        .oneshot(request)
-        .await
-        .map_err(|_infallible| CCError::InternalError {
-            msg: "Failed to serve file".to_string(),
-        })
+    let library =
+        tower_serve_static::ServeFile::new(include_file!("/resources/lib/cc-plugin-lib.js"));
+    let mut response =
+        LastModified::new(library)
+            .oneshot(request)
+            .await
+            .map_err(|_infallible| CCError::InternalError {
+                msg: "Failed to serve file".to_string(),
+            })?;
+    // A validator alone lets a browser guess a lifetime from the file's age and keep a
+    // stale copy for days after an upgrade. Revalidating costs a 304.
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    Ok(response)
 }
 
 pub async fn get_config(
@@ -844,5 +856,50 @@ mod tests {
             .await
             .unwrap();
         });
+    }
+
+    /// Goal: the plugin library revalidates for the cost of a 304 instead of being
+    /// heuristically cached across an upgrade. Method: fetch it, require the validator and
+    /// `no-cache`, then send the validator back and require an empty 304 that keeps both.
+    #[tokio::test]
+    async fn test_plugin_lib_revalidates() {
+        use axum::http::header::{IF_MODIFIED_SINCE, LAST_MODIFIED};
+        use axum::response::IntoResponse;
+        use std::ops::Not;
+
+        let fetch = Request::builder().uri("/plugins/lib/cc-plugin-lib.js");
+        let response = get_cc_plugin_lib(fetch.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(response.headers()[CACHE_CONTROL], "no-cache");
+        let last_modified = response.headers()[LAST_MODIFIED].clone();
+        assert!(response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .is_empty()
+            .not());
+
+        let revalidation = Request::builder()
+            .uri("/plugins/lib/cc-plugin-lib.js")
+            .header(IF_MODIFIED_SINCE, last_modified.clone());
+        let response = get_cc_plugin_lib(revalidation.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[CACHE_CONTROL], "no-cache");
+        assert_eq!(response.headers()[LAST_MODIFIED], last_modified);
+        assert!(response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .is_empty());
     }
 }
