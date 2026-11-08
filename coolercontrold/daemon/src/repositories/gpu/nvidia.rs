@@ -1316,6 +1316,7 @@ impl GpuNVidia {
     /// Often the cookie is not immediately available at boot time and extra time is needed to let
     /// the display-manager and Xorg to fully come up.
     /// See [issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/156)
+    /// `None` when none appears within `XAUTHORITY_SEARCH_TIMEOUT`. Callers log the effect.
     async fn search_for_xauthority_path() -> Option<String> {
         let search_timeout_time = Instant::now().add(XAUTHORITY_SEARCH_TIMEOUT);
         while Instant::now() < search_timeout_time {
@@ -1326,7 +1327,6 @@ impl GpuNVidia {
                 return Some(path);
             }
         }
-        error!("Xauthority not found within {XAUTHORITY_SEARCH_TIMEOUT:?}.");
         None
     }
 
@@ -1340,9 +1340,10 @@ impl GpuNVidia {
         &self,
     ) -> Result<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
         if self.xauthority_path.borrow().is_none() {
-            error!(
-                "Nvidia device detected but no xauthority cookie found which is needed \
-            for proper communication with nvidia-settings. Nvidia Fan Control disabled."
+            warn!(
+                "NVIDIA fan control is disabled: nvidia-settings needs an Xauthority cookie, and \
+                 none was found within {XAUTHORITY_SEARCH_TIMEOUT:?}. This is expected without an \
+                 X server. NVML controls fans without one."
             );
             return Ok(HashMap::new());
         }
@@ -1512,6 +1513,12 @@ impl GpuNVidia {
                         the Xauthority file. Xauthority file reset in progress."
                     );
                     let xauthority_path = Self::search_for_xauthority_path().await;
+                    if xauthority_path.is_none() {
+                        warn!(
+                            "No Xauthority cookie found within {XAUTHORITY_SEARCH_TIMEOUT:?}. \
+                             NVIDIA fan control is disabled until the daemon restarts."
+                        );
+                    }
                     self.xauthority_path.replace(xauthority_path);
                 }
                 Err(anyhow!(
