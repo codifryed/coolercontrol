@@ -682,12 +682,11 @@ impl CustomSensorsRepo {
         let start = (index + 1).saturating_sub(sample_count).max(first_reading);
         debug_assert!(start <= index);
         debug_assert!(index + 1 - start <= sample_count);
-        let samples =
-            Self::collect_indexed_source_samples(metric, &device, &source.name, start, index);
+        let samples = Self::indexed_source_samples(metric, &device, &source.name, start, index);
         if is_ema {
-            Self::compute_ema(&samples, sample_count)
+            Self::compute_ema_iter(samples, sample_count)
         } else {
-            Self::compute_time_average(&samples)
+            Self::compute_time_average_iter(samples)
         }
     }
 
@@ -960,27 +959,22 @@ impl CustomSensorsRepo {
         }
     }
 
-    /// Collects the values of `source_name`, oldest first, from `device`'s history entries
-    /// `start` through `end` (inclusive). Indices beyond the history's length are skipped.
-    /// Used to back-fill a newly-created windowed sensor. A child's device is the Custom
-    /// Sensors device, whose history is filled before its parents are created.
-    fn collect_indexed_source_samples(
+    /// The values of `source_name`, oldest first, in `device`'s history entries `start`
+    /// through `end` (inclusive). Indices beyond the history's length are skipped. Used to
+    /// back-fill a newly-created windowed sensor, once per history entry, so it reads in place
+    /// rather than collecting. A child's device is the Custom Sensors device, whose history is
+    /// filled before its parents are created.
+    fn indexed_source_samples<'a>(
         metric: CustomSensorMetric,
-        device: &Device,
-        source_name: &str,
+        device: &'a Device,
+        source_name: &'a str,
         start: usize,
         end: usize,
-    ) -> Vec<f64> {
+    ) -> impl Iterator<Item = f64> + 'a {
         debug_assert!(start <= end);
         let stop = end.saturating_add(1).min(device.history_len());
-        let mut samples: Vec<f64> = Vec::with_capacity(stop.saturating_sub(start));
-        for k in start..stop {
-            if let Some(sample) = metric.read_at(device, k, source_name) {
-                samples.push(sample);
-            }
-        }
-        debug_assert!(samples.len() <= SAMPLE_WINDOW_MAX_SLOTS);
-        samples
+        debug_assert!(stop.saturating_sub(start) <= SAMPLE_WINDOW_MAX_SLOTS);
+        (start..stop).filter_map(move |k| metric.read_at(device, k, source_name))
     }
 
     /// How many samples fit in `window_seconds` at the current `poll_rate`. Always at least
@@ -1015,7 +1009,8 @@ impl CustomSensorsRepo {
         Some(sum / count as f64)
     }
 
-    /// Slice form of `compute_time_average_iter`, kept for the back-fill path and tests.
+    /// Slice form of `compute_time_average_iter`, for tests.
+    #[cfg(test)]
     fn compute_time_average(samples: &[f64]) -> Option<f64> {
         Self::compute_time_average_iter(samples.iter().copied())
     }
@@ -1041,7 +1036,8 @@ impl CustomSensorsRepo {
         ema
     }
 
-    /// Slice form of `compute_ema_iter`, kept for the back-fill path and tests.
+    /// Slice form of `compute_ema_iter`, for tests.
+    #[cfg(test)]
     fn compute_ema(samples: &[f64], period: usize) -> Option<f64> {
         Self::compute_ema_iter(samples.iter().copied(), period)
     }
