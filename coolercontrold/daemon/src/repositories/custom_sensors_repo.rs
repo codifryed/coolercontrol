@@ -518,11 +518,13 @@ impl CustomSensorsRepo {
         let mut values = Vec::with_capacity(history_len);
         let mut held: Option<f64> = None;
         let mut misses: usize = 0;
+        // A windowed sensor's samples, oldest index first.
+        let mut window: Option<SampleWindow> = None;
         for index in 0..history_len {
             let raw = match file_value {
                 Some(value) if index == newest_index => Some(value),
                 Some(_) => Some(0.),
-                None => self.backfill_value(sensor, index),
+                None => self.backfill_value(sensor, index, &mut window),
             };
             let value = if let Some(raw) = raw {
                 let value = Self::reported_value(sensor.metric, raw).unwrap_or(0.);
@@ -626,7 +628,13 @@ impl CustomSensorsRepo {
 
     /// A new sensor's computed value at history `index`, from its sources' values there.
     /// `None` when a present source has no value there.
-    fn backfill_value(&self, sensor: &CustomSensor, index: usize) -> Option<f64> {
+    /// `window` carries a windowed sensor's samples from one index to the next.
+    fn backfill_value(
+        &self,
+        sensor: &CustomSensor,
+        index: usize,
+        window: &mut Option<SampleWindow>,
+    ) -> Option<f64> {
         let metric = sensor.metric;
         match &sensor.kind {
             CustomSensorKind::Mix {
@@ -645,11 +653,25 @@ impl CustomSensorsRepo {
             CustomSensorKind::TimeAverage {
                 time_window_seconds,
                 sources,
-            } => self.backfill_windowed(metric, &sources[0], *time_window_seconds, index, false),
+            } => self.backfill_windowed(
+                metric,
+                &sources[0],
+                *time_window_seconds,
+                index,
+                false,
+                window,
+            ),
             CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
                 sources,
-            } => self.backfill_windowed(metric, &sources[0], *time_window_seconds, index, true),
+            } => self.backfill_windowed(
+                metric,
+                &sources[0],
+                *time_window_seconds,
+                index,
+                true,
+                window,
+            ),
             // Read once by the caller.
             CustomSensorKind::File { .. } => Some(0.),
         }
@@ -657,6 +679,8 @@ impl CustomSensorsRepo {
 
     /// A new `TimeAverage` or `ExponentialMovingAvg` sensor's value at history `index`, over
     /// the source readings in the window ending there. `None` when the window holds none.
+    /// Called for every index in order, with `window` sliding along: each entry reads one
+    /// new sample instead of rescanning its window.
     fn backfill_windowed(
         &self,
         metric: CustomSensorMetric,
@@ -664,6 +688,7 @@ impl CustomSensorsRepo {
         window_seconds: u16,
         index: usize,
         is_ema: bool,
+        window: &mut Option<SampleWindow>,
     ) -> Option<f64> {
         let Some(source_device) = self.backfill_source_device(source) else {
             // No such device: the placeholder zero, as for an absent Mix source.
@@ -679,10 +704,19 @@ impl CustomSensorsRepo {
             return Some(0.);
         }
         let sample_count = Self::window_sample_count(window_seconds, self.poll_rate);
-        let start = (index + 1).saturating_sub(sample_count).max(first_reading);
-        debug_assert!(start <= index);
-        debug_assert!(index + 1 - start <= sample_count);
-        let samples = Self::indexed_source_samples(metric, &device, &source.name, start, index);
+        let window = window.get_or_insert_with(|| SampleWindow {
+            samples: VecDeque::with_capacity(sample_count),
+            sample_count,
+        });
+        debug_assert_eq!(window.sample_count, sample_count);
+        // Past the source's history the slot is `None`, as the rescan skipped those entries.
+        window.push(metric.read_at(&device, index, &source.name));
+        // In-order calls keep the slots on the newest entries from `first_reading` to `index`.
+        debug_assert_eq!(
+            window.samples.len(),
+            (index + 1 - first_reading).min(sample_count)
+        );
+        let samples = window.samples.iter().flatten().copied();
         if is_ema {
             Self::compute_ema_iter(samples, sample_count)
         } else {
@@ -957,24 +991,6 @@ impl CustomSensorsRepo {
             samples,
             sample_count,
         }
-    }
-
-    /// The values of `source_name`, oldest first, in `device`'s history entries `start`
-    /// through `end` (inclusive). Indices beyond the history's length are skipped. Used to
-    /// back-fill a newly-created windowed sensor, once per history entry, so it reads in place
-    /// rather than collecting. A child's device is the Custom Sensors device, whose history is
-    /// filled before its parents are created.
-    fn indexed_source_samples<'a>(
-        metric: CustomSensorMetric,
-        device: &'a Device,
-        source_name: &'a str,
-        start: usize,
-        end: usize,
-    ) -> impl Iterator<Item = f64> + 'a {
-        debug_assert!(start <= end);
-        let stop = end.saturating_add(1).min(device.history_len());
-        debug_assert!(stop.saturating_sub(start) <= SAMPLE_WINDOW_MAX_SLOTS);
-        (start..stop).filter_map(move |k| metric.read_at(device, k, source_name))
     }
 
     /// How many samples fit in `window_seconds` at the current `poll_rate`. Always at least
@@ -5134,6 +5150,91 @@ mod tests {
             assert_eq!(device.temp_at(0, "ema"), Some(0.0));
             assert_eq!(device.temp_at(newest - 1, "ema"), Some(0.0));
             assert_eq!(device.temp_at(newest, "ema"), Some(40.0));
+        });
+    }
+
+    // A new windowed sensor's backfill slides one window down the history, so every entry
+    // must match a fresh rescan of the window ending there: the placeholder zero over init
+    // padding, then the TimeAverage or EMA of the readings in the window. Pushes a varied
+    // stream with gaps shorter than the window, creates both sensors, and compares each
+    // back-filled entry bit for bit with the rescan.
+    #[test]
+    #[serial]
+    fn windowed_backfill_matches_a_rescan_of_each_window() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "cpu".to_string(),
+                temp: 70.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev.clone()], test_overrides())
+                    .unwrap();
+            repo.initialize_devices().await.unwrap();
+            let stream = [
+                Some(71.5),
+                Some(69.2),
+                None,
+                Some(75.0),
+                Some(74.3),
+                None,
+                None,
+                Some(73.1),
+                Some(72.8),
+                Some(70.4),
+                Some(76.9),
+                None,
+                Some(74.2),
+                Some(68.0),
+            ];
+            for temp in stream {
+                push_source_tick(&source_dev, "cpu", temp);
+                repo.update_statuses(Local::now()).unwrap();
+            }
+            let window: u16 = 4;
+            let sample_count = usize::from(window);
+            let source = temp_source(&source_uid, "cpu");
+            repo.set_custom_sensor(time_average_sensor("avg", window, source.clone()))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(ema_sensor("ema", window, source))
+                .await
+                .unwrap();
+
+            let readings: Vec<Option<f64>> = source_dev
+                .borrow()
+                .history_statuses()
+                .iter()
+                .map(|status| {
+                    status
+                        .temps
+                        .iter()
+                        .find(|temp| temp.name == "cpu")
+                        .map(|temp| temp.temp)
+                })
+                .collect();
+            // The init reading plus the stream.
+            let first_reading = readings.len() - (stream.len() + 1);
+            for (id, is_ema) in [("avg", false), ("ema", true)] {
+                let backfilled = backfilled_temps(&repo, id);
+                assert_eq!(backfilled.len(), readings.len());
+                for (index, value) in backfilled.iter().enumerate() {
+                    let expected = if index < first_reading {
+                        0.0
+                    } else {
+                        let start = (index + 1).saturating_sub(sample_count).max(first_reading);
+                        let samples: Vec<f64> =
+                            readings[start..=index].iter().flatten().copied().collect();
+                        if is_ema {
+                            CustomSensorsRepo::compute_ema(&samples, sample_count)
+                        } else {
+                            CustomSensorsRepo::compute_time_average(&samples)
+                        }
+                        .unwrap()
+                    };
+                    assert_eq!(value.to_bits(), expected.to_bits(), "{id} at {index}");
+                }
+            }
         });
     }
 
