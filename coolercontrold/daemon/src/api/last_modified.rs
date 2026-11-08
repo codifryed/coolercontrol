@@ -51,7 +51,7 @@ static ASSETS_LAST_MODIFIED: LazyLock<String> =
 pub struct LastModified<S> {
     inner: S,
     /// Backed by static bytes, so the clone per request copies a pointer.
-    last_modified: HeaderValue,
+    date: HeaderValue,
     /// Static too.
     etag: HeaderValue,
 }
@@ -64,7 +64,7 @@ impl<S> LastModified<S> {
     fn with_values(inner: S, last_modified: &'static str, etag: &'static str) -> Self {
         Self {
             inner,
-            last_modified: HeaderValue::from_static(last_modified),
+            date: HeaderValue::from_static(last_modified),
             etag: HeaderValue::from_static(etag),
         }
     }
@@ -85,10 +85,10 @@ where
     }
 
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
-        let holds_current = holds_validator(&request, &self.last_modified, &self.etag);
+        let holds_current = holds_validator(&request, &self.date, &self.etag);
         LastModifiedFuture {
             inner: self.inner.call(request),
-            last_modified: self.last_modified.clone(),
+            last_modified: self.date.clone(),
             etag: self.etag.clone(),
             holds_current,
         }
@@ -279,7 +279,7 @@ mod tests {
     fn test_assets_last_modified_is_the_build_time() {
         assert_eq!(*ASSETS_LAST_MODIFIED, http_date(ASSETS_MODIFIED_UNIX_SECS));
         let service = LastModified::new(());
-        assert_eq!(service.last_modified, ASSETS_LAST_MODIFIED.as_str());
+        assert_eq!(service.date, ASSETS_LAST_MODIFIED.as_str());
         assert_eq!(service.etag, ASSETS_ETAG);
         assert!(ASSETS_ETAG.len() > 2);
         assert!(ASSETS_ETAG.starts_with('"') && ASSETS_ETAG.ends_with('"'));

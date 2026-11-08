@@ -96,7 +96,7 @@ fn embed_app_assets(manifest_dir: &Path, out_dir: &Path) -> Result<(), Box<dyn s
     Ok(())
 }
 
-/// A strong ETag over every embedded file's path and bytes. Packagers can pin
+/// A strong `ETag` over every embedded file's path and bytes. Packagers can pin
 /// `SOURCE_DATE_EPOCH` to one value for every release (nixpkgs does), so Last-Modified alone
 /// would let a browser keep the old index.html after an upgrade.
 fn assets_etag(
