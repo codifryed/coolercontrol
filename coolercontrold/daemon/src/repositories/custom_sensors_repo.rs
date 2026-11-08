@@ -3995,6 +3995,70 @@ mod tests {
         });
     }
 
+    /// Goal: the first tick after a windowed sensor is created pushes onto the handed-over
+    /// backfill window instead of reseeding one, so it allocates nothing. Method: windowed
+    /// sensors over an external and a child source created partway through a run, the tick's
+    /// value buffer and the device's stats keys warmed as a warm tick leaves them, then that
+    /// first tick counted.
+    #[test]
+    #[serial]
+    #[cfg(feature = "gated-tests")]
+    fn the_first_tick_after_a_windowed_backfill_allocates_nothing() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "cpu".to_string(),
+                temp: 70.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev.clone()], test_overrides())
+                    .unwrap();
+            repo.initialize_devices().await.unwrap();
+            let cs_uid = repo.get_device_uid();
+            repo.set_custom_sensor(mix_sensor("mix1", vec![temp_source(&source_uid, "cpu")]))
+                .await
+                .unwrap();
+            for temp in [71.5, 69.2, 75.0, 74.3, 73.1, 72.8] {
+                push_source_tick(&source_dev, "cpu", Some(temp));
+                repo.update_statuses(Local::now()).unwrap();
+            }
+            let external = temp_source(&source_uid, "cpu");
+            repo.set_custom_sensor(ema_sensor("ema", 4, external))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(time_average_sensor(
+                "avg_child",
+                4,
+                temp_source(&cs_uid, "mix1"),
+            ))
+            .await
+            .unwrap();
+            assert_eq!(repo.sample_windows.borrow().len(), 2);
+            // A new sensor's first tick also grows the value buffer and adds its stats key;
+            // warm, a tick only refills them.
+            let cs_device = repo.custom_sensor_device.as_ref().unwrap();
+            cs_device.borrow_mut().reset_stats();
+            let sensors = repo.sensors.borrow();
+            let mut values = repo.tick_values.borrow_mut();
+            let not_parents = sensors.iter().filter(|s| s.children.is_empty());
+            let parents = sensors.iter().filter(|s| s.children.is_empty().not());
+            for (index, sensor) in not_parents.chain(parents).enumerate() {
+                CustomSensorsRepo::refill_value(&mut values, index, sensor, 0.0);
+            }
+            drop(values);
+            drop(sensors);
+            push_source_tick(&source_dev, "cpu", Some(70.4));
+            let tick = Local::now();
+
+            let ((), allocations) = crate::alloc_count::count_allocations(|| repo.write_tick(tick));
+
+            assert_eq!(allocations, 0);
+            for id in ["ema", "avg_child"] {
+                assert_eq!(repo.sample_windows.borrow()[id].samples.len(), 4, "{id}");
+            }
+        });
+    }
+
     /// Goal: a File sensor's read bookkeeping copies its id only when the sensor is first
     /// tracked. Method: record a good read, then count a second one and a tolerated failure.
     #[test]
