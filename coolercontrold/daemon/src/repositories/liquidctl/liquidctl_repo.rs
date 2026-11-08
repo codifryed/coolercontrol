@@ -811,9 +811,7 @@ impl LiquidctlRepo {
     /// * The function returns an empty vector if there are no devices or no driver locations.
     /// * Devices left out for returning no first status are included, so hwmon skips them too.
     pub fn get_all_driver_locations(&self) -> Vec<String> {
-        let mut driver_locations = self.unreadable_locations.clone();
-        driver_locations.extend(driver_locations_of(&self.devices, self.devices.keys()));
-        driver_locations
+        claimed_driver_locations(&self.unreadable_locations, &self.devices)
     }
 
     /// Completes each device's info from its first status, which is where liquidctl reveals
@@ -1972,8 +1970,7 @@ impl Repository for LiquidctlRepo {
         let unreadable_devices = self
             .read_first_statuses(Duration::from_secs_f64(poll_rate))
             .await;
-        self.unreadable_locations = driver_locations_of(&self.devices, unreadable_devices.iter());
-        remove_failed_devices(
+        self.unreadable_locations = drop_unreadable_devices(
             &mut self.devices,
             &mut self.liqctld_devices,
             unreadable_devices,
@@ -2303,6 +2300,28 @@ fn driver_locations_of<'u>(
         driver_locations.extend(device.info.driver_info.locations.iter().cloned());
     }
     driver_locations
+}
+
+/// The driver locations of every kept device, plus those of devices left out as unreadable.
+fn claimed_driver_locations(
+    unreadable_locations: &[String],
+    devices: &HashMap<UID, DeviceLock>,
+) -> Vec<String> {
+    let mut driver_locations = unreadable_locations.to_vec();
+    driver_locations.extend(driver_locations_of(devices, devices.keys()));
+    driver_locations
+}
+
+/// Drops the devices that returned no first status, with their workers, and returns their
+/// driver locations so they stay claimed from hwmon.
+fn drop_unreadable_devices(
+    devices: &mut HashMap<UID, DeviceLock>,
+    liqctld_devices: &mut HashMap<TypeIndex, LiqctldIo>,
+    unreadable_devices: Vec<DeviceUID>,
+) -> Vec<String> {
+    let locations = driver_locations_of(devices, unreadable_devices.iter());
+    remove_failed_devices(devices, liqctld_devices, unreadable_devices);
+    locations
 }
 
 /// Drops each failed device along with its worker. Dropping the handle closes the queue, and the
@@ -2725,6 +2744,46 @@ mod tests {
             ]
         );
         assert!(locations.contains(&"/dev/hidraw6".to_string()).not());
+    }
+
+    /// Goal: an unreadable device is dropped with its worker, and its locations come back to stay
+    /// claimed. Method: two devices with workers and locations, drop one, then check both maps
+    /// and the returned locations.
+    #[test]
+    fn an_unreadable_device_is_dropped_and_its_locations_kept() {
+        let (unreadable, kept) = (device_lock(1), device_lock(2));
+        unreadable.borrow_mut().info.driver_info.locations = vec!["/dev/hidraw4".to_string()];
+        kept.borrow_mut().info.driver_info.locations = vec!["/dev/hidraw6".to_string()];
+        let unreadable_uid = unreadable.borrow().uid.clone();
+        let kept_uid = kept.borrow().uid.clone();
+        let mut devices: HashMap<UID, DeviceLock> = [
+            (unreadable_uid.clone(), unreadable),
+            (kept_uid.clone(), kept),
+        ]
+        .into();
+        let mut workers: HashMap<TypeIndex, LiqctldIo> =
+            [(1, unused_worker(1)), (2, unused_worker(2))].into();
+
+        let locations = drop_unreadable_devices(&mut devices, &mut workers, vec![unreadable_uid]);
+
+        assert_eq!(locations, vec!["/dev/hidraw4"]);
+        assert_eq!(devices.keys().collect::<Vec<_>>(), vec![&kept_uid]);
+        assert_eq!(workers.keys().collect::<Vec<_>>(), vec![&2]);
+    }
+
+    /// Goal: hwmon is told to skip both kept and unreadable devices. Method: one kept device with
+    /// a location plus one unreadable location, then check both are claimed.
+    #[test]
+    fn claimed_locations_include_unreadable_devices() {
+        let kept = device_lock(2);
+        kept.borrow_mut().info.driver_info.locations = vec!["/dev/hidraw6".to_string()];
+        let kept_uid = kept.borrow().uid.clone();
+        let devices: HashMap<UID, DeviceLock> = [(kept_uid, kept)].into();
+        let unreadable_locations = vec!["/dev/hidraw4".to_string()];
+
+        let locations = claimed_driver_locations(&unreadable_locations, &devices);
+
+        assert_eq!(locations, vec!["/dev/hidraw4", "/dev/hidraw6"]);
     }
 
     /// Goal: a device that failed to initialize leaves no worker behind, and the others keep
