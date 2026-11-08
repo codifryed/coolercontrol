@@ -103,7 +103,9 @@ was logged at a given level.
 
 - Rust's ownership model prevents use-after-free. Lean on it. Avoid `unsafe` except in thin FFI
   wrappers (`liquidctl`, `nvml`, `libdrm`), and document every `unsafe` block with why it is sound.
-- Avoid unbounded dynamic allocation in hot paths (e.g. inside sensor polling loops). Prefer
+- Avoid unbounded dynamic allocation in hot paths. A hot path is code that runs every tick (sensor
+  polling, engine processors, status updates) and any loop whose length scales with data, such as
+  one pass per history entry, device, or channel, even on a cold path like creating a sensor. Prefer
   pre-allocated `Vec`s with `.clear()` + `.extend()` over creating new collections per iteration.
 - Avoid holding `Arc<Mutex<T>>` locks across `.await` points. Release locks before yielding to the
   executor.
@@ -137,6 +139,18 @@ was logged at a given level.
       process(&readings);
   }
   ```
+- **Fold iterators, do not collect to fold.** When a sequence is read once (a sum, an average, an
+  EMA, a max), pass an iterator to the consumer instead of collecting it into a `Vec`. A helper
+  whose caller only folds its result returns `impl Iterator`, not `Vec`. Collect only when the data
+  is read more than once, must outlive the borrow, or must be sorted.
+  ```rust
+  // Good: reads in place
+  let samples = (start..stop).filter_map(|k| metric.read_at(device, k, name));
+  compute_average(samples)
+  // Bad: one Vec per call, dropped right after the fold
+  let samples: Vec<f64> = (start..stop).filter_map(|k| metric.read_at(device, k, name)).collect();
+  compute_average(&samples)
+  ```
 - **Use `OnceLock` / `LazyLock` for shared static state.** For read-mostly data initialized once
   (regex patterns, constant lookup tables, device capability maps), prefer `std::sync::OnceLock` or
   `std::sync::LazyLock` over allocating on every access.
@@ -147,8 +161,25 @@ was logged at a given level.
   tick. Use fixed-size arrays for fan duty tables and sensor snapshots so the compiler can reason
   about size and eliminate bounds checks.
 - **Distinguish init-time and runtime allocation in code review.** A `Vec::new()` in `fn new()` or
-  startup code is fine. The same call inside `async fn poll()` or a `loop {}` body is a red flag.
-  Comment or pre-allocate.
+  startup code is fine. The same call inside `async fn poll()`, a `loop {}` body, or a loop over
+  history entries is a red flag. Comment or pre-allocate.
+- **Pin allocation counts in tests.** New or changed per-tick code gets a test that asserts its warm
+  allocation count (usually 0) with `crate::alloc_count::count_allocations` or
+  `count_allocations_async`. A loop over data gets a test that its count does not grow with the
+  data, such as the same call over two history lengths. These tests are gated (see Gated Tests).
+
+### Clones
+
+- **Clone to own, not to read.** Borrow (`&T`, `&str`, `&[T]`) when the callee only reads. Cloning a
+  `String`, `Vec`, map, or a struct holding one allocates, so in a hot path the rules above apply.
+- **Look up with borrowed keys.** Query maps with `&str` or a borrowed key type
+  (`indexmap::Equivalent`, as `ChannelRef` does), and check with `get` before `entry` or `insert`
+  when the key is usually present, so the key is cloned only when inserted.
+- **Overwrite in place.** `dst.clone_from(&src)` reuses `dst`'s buffer where `dst = src.clone()`
+  allocates a new one. Better still, skip the write when the value has not changed.
+- **`Rc::clone` bumps a count and does not allocate.** Use it where ownership is needed, but borrow
+  `&T` when the callee does not keep the value.
+- A clone that stays in a hot path gets a comment saying why it needs ownership.
 
 ### Variable Scope
 
@@ -176,6 +207,9 @@ was logged at a given level.
   catches order-of-magnitude mistakes that profiling cannot fix cheaply.
 - Optimize in resource order: **network, disk, memory, CPU.** The hardware polling loop and SSE
   fan-out are the hottest paths; measure before micro-optimizing Tokio task overhead.
+- **Count nested work.** A loop that rescans a window for every item reads `items * window` entries:
+  7,200 history entries over a 600-slot window is over 4 million. Slide the window or carry state
+  forward instead.
 - **Batch work.** Amortize sensor reads, config writes, and SSE broadcasts. One syscall for 20
   channels beats 20 syscalls for one channel each.
 - Be explicit. Do not rely on the compiler or Tokio runtime to do the right thing invisibly. If you
