@@ -94,6 +94,11 @@ fn nvidia_path(presence: NvidiaPresence, force_cli: bool, nvml_enabled: bool) ->
     }
 }
 
+/// nvidia-smi output is external input, so the count saturates instead of asserting.
+fn nvidia_smi_gpu_count_u8(len: usize) -> u8 {
+    u8::try_from(len).unwrap_or(u8::MAX)
+}
+
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum GpuType {
@@ -313,8 +318,7 @@ impl GpuRepo {
                  are installed and accessible. GPUs on nouveau show as hwmon devices instead."
             );
         }
-        // nvidia-smi output is external input, so saturate instead of asserting.
-        u8::try_from(gpu_count).unwrap_or(u8::MAX)
+        nvidia_smi_gpu_count_u8(gpu_count)
     }
 
     pub async fn load_amd_statuses(&self) {
@@ -763,6 +767,15 @@ mod nvidia_path_tests {
             assert_eq!(nvidia_path(presence, false, false), NvidiaPath::Cli);
             assert_eq!(nvidia_path(presence, true, false), NvidiaPath::Cli);
         }
+    }
+
+    /// Goal: an nvidia-smi GPU count past `u8::MAX` saturates instead of panicking or wrapping.
+    /// Method: convert counts at zero, the `u8` limit, and one past it.
+    #[test]
+    fn nvidia_smi_gpu_count_saturates() {
+        assert_eq!(nvidia_smi_gpu_count_u8(0), 0);
+        assert_eq!(nvidia_smi_gpu_count_u8(255), 255);
+        assert_eq!(nvidia_smi_gpu_count_u8(256), u8::MAX);
     }
 }
 
