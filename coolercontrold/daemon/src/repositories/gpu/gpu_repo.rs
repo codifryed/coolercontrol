@@ -243,10 +243,7 @@ impl GpuRepo {
             );
             0
         } else if self.force_nvidia_cli || nvml_enabled.not() {
-            self.gpus_nvidia
-                .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
-                .await
-                .len() as u8
+            self.nvidia_smi_gpu_count().await
         } else {
             match self
                 .gpus_nvidia
@@ -258,16 +255,31 @@ impl GpuRepo {
                     num_nvml_devices
                 }
                 NvmlInitResult::Released => 0,
-                NvmlInitResult::Unavailable => self
-                    .gpus_nvidia
-                    .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
-                    .await
-                    .len() as u8,
+                NvmlInitResult::Unavailable => self.nvidia_smi_gpu_count().await,
             }
         };
         self.gpu_type_count
             .insert(GpuType::Nvidia, nvidia_dev_count);
         amd_drivers
+    }
+
+    /// Counts the GPUs `nvidia-smi` reports. Only called once NVML is unavailable or disabled, so
+    /// zero means no NVIDIA path works.
+    #[allow(clippy::cast_possible_truncation)]
+    async fn nvidia_smi_gpu_count(&self) -> u8 {
+        let gpu_count = self
+            .gpus_nvidia
+            .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
+            .await
+            .len();
+        if gpu_count == 0 {
+            info!(
+                "An NVIDIA GPU or driver was found, but neither NVML nor nvidia-smi can reach it, \
+                 so it is not shown. With the proprietary driver, check that NVML and nvidia-smi \
+                 are installed and accessible. GPUs on nouveau show as hwmon devices instead."
+            );
+        }
+        gpu_count as u8
     }
 
     pub async fn load_amd_statuses(&self) {
