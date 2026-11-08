@@ -231,9 +231,10 @@ impl GpuAMD {
         }
         if libdrm_unavailable {
             warn!(
-                "libdrm could not be loaded. AMD GPU detection is degraded: \
-                RDNA3/4 cards cannot be identified without the gpu_od interface. \
-                Install the libdrm package for full support."
+                "libdrm could not be loaded. It provides AMD GPU model names and \
+                identifies RDNA3/4 GPUs while AMD GPU Overdrive is disabled. Without it, \
+                those GPUs do not show the Overdrive setting, and their fans appear \
+                controllable but cannot be set. Install libdrm for full support."
             );
         }
         amd_infos
@@ -1670,7 +1671,7 @@ enum HwmonLoad {
 
 /// Outcome of probing libdrm for an amdgpu device.
 enum DrmProbe {
-    /// libdrm could not be dynamically loaded (package not installed).
+    /// libdrm could not be dynamically loaded (not installed, or a static build).
     LibUnavailable,
     /// libdrm loaded; carries whatever device info could be queried.
     Info(DrmGpuInfo),

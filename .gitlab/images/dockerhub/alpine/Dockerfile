@@ -2,6 +2,9 @@ FROM rust:alpine AS daemon-builder
 
 WORKDIR /usr/src/coolercontrol
 
+# A static musl binary cannot dlopen libdrm, so link dynamically.
+ENV RUSTFLAGS="-C target-feature=-crt-static"
+
 RUN apk add --update nodejs npm
 RUN apk add --update libc-dev openssl-dev build-base musl-dev pkgconfig perl
 
@@ -30,13 +33,12 @@ ENV PATH=/usr/local/bin:$PATH
 ENV CC_PORT=11987
 ENV CC_HOST_IP4=0.0.0.0
 ENV CC_HOST_IP6=::
-ENV CC_DBUS=OFF
 ENV CC_DEVICE_EVENTS=OFF
 ENV CC_SENSORS_DETECT=OFF
 ENV CC_TLS=OFF
 ENV CC_DATA_DIR=/etc/coolercontrol
 
-RUN apk add --update python3 libusb openrc && \
+RUN apk add --update python3 libusb libgcc libdrm openrc && \
     sed -i 's/#rc_sys=""/rc_sys="docker"/' /etc/rc.conf && \
     sed -i 's/#rc_depend_strict="YES"/rc_depend_strict="NO"/' /etc/rc.conf
 
