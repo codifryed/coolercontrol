@@ -34,6 +34,10 @@ class MainWindow final : public QMainWindow {
 
   void handleStartInTray();
 
+  // Every path that brings the window up goes through here, so a start-in-tray launch whose
+  // UI never finished loading can still be shown.
+  void showWindow();
+
   // Escape hatch for --no-discard, so a bad interaction on some desktop has a
   // workaround that does not require a rebuild.
   void setDiscardEnabled(bool enabled);
@@ -295,6 +299,8 @@ class MainWindow final : public QMainWindow {
   void discardPage() const;
 
   void restorePage() const;
+
+  void toggleWindow();
 
   void setTrayActionToShow() const;
 

@@ -231,10 +231,7 @@ MainWindow::MainWindow(QWidget* parent)
   connect(m_sensorPollTimer, &QTimer::timeout, this, &MainWindow::pollTraySensors);
   connect(m_ipc, &IPC::forceWindowShow, this, [this]() {
     // This is used so the UI Window will show when password input is required
-    setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
-    showNormal();
-    raise();
-    activateWindow();
+    showWindow();
     qInfo() << "Force UI Window to show.";
   });
 
@@ -302,18 +299,7 @@ void MainWindow::initSystemTray() {
   m_showAction = m_ipc->getStartInTray()
                      ? new QAction(showIcon(), uiString("tray.show", tr("&Show")), m_sysTrayIcon)
                      : new QAction(hideIcon(), uiString("tray.hide", tr("&Hide")), m_sysTrayIcon);
-  connect(
-      m_showAction, &QAction::triggered, this,
-      [this]() {
-        if (isVisible()) {
-          hide();
-        } else {
-          showNormal();
-          raise();
-          activateWindow();
-        }
-      },
-      Qt::QueuedConnection);
+  connect(m_showAction, &QAction::triggered, this, &MainWindow::toggleWindow, Qt::QueuedConnection);
 
   m_addressAction =
       new QAction(themeIcon({"network-server", "network-server-symbolic"}),
@@ -372,13 +358,7 @@ void MainWindow::initSystemTray() {
       m_sysTrayIcon, &QSystemTrayIcon::activated, this,
       [this](auto reason) {
         if (reason == QSystemTrayIcon::Trigger) {
-          if (isVisible()) {
-            hide();
-          } else {
-            showNormal();
-            raise();
-            activateWindow();
-          }
+          toggleWindow();
         }
       },
       Qt::QueuedConnection);
@@ -739,7 +719,6 @@ void MainWindow::openTraySensorPage(const QString& route) {
     return;
   }
   const auto fragment = route.startsWith('#') ? route : QStringLiteral("#") % route;
-  setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
   if (m_page->lifecycleState() == QWebEnginePage::LifecycleState::Active) {
     m_page->runJavaScript(QStringLiteral("location.hash = '%1'").arg(fragment));
   } else {
@@ -750,9 +729,7 @@ void MainWindow::openTraySensorPage(const QString& route) {
     m_uiLoadingStopped = false;
     m_view->load(QUrl(getDaemonUrl().toString() % "/" % fragment));
   }
-  showNormal();
-  raise();
-  activateWindow();
+  showWindow();
 }
 
 void MainWindow::buildTraySensorRows(const QJsonArray& sensors) {
@@ -992,18 +969,22 @@ void MainWindow::restorePage() const {
 }
 
 void MainWindow::hideEvent(QHideEvent* event) {
+  // Ahead of the startup guard: the window can be shown and hidden before startup ends.
+  setTrayActionToShow();
   if (m_startup && !m_webLoadFinished) {
     // opening/closing the window during initialization can cause issues.
     event->ignore();
     return;
   }
   delay(100);
-  setTrayActionToShow();
   m_discardTimer->start();
   event->accept();
 }
 
 void MainWindow::showEvent(QShowEvent* event) {
+  if (!testAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen)) {
+    setTrayActionToHide();
+  }
   if (m_startup) {
     // opening/closing the window during initialization can cause issues.
     event->ignore();
@@ -1012,7 +993,6 @@ void MainWindow::showEvent(QShowEvent* event) {
   m_discardTimer->stop();
   restorePage();
   delay(100);
-  setTrayActionToHide();
   event->accept();
 }
 
@@ -1112,17 +1092,12 @@ void MainWindow::applyDaemonConnection(const connections::Connection connection)
   delay(300);  // give signals a moment to process.
   m_changeAddress = false;
   resetPerDaemonState();
-  setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
   // Reactivating a discarded page reloads it at its old address, so it is blanked before
   // the new origin is installed. Otherwise the old daemon gets one request that the
   // origin filter then refuses, leaving an error page on screen.
   restorePage();
   m_view->load(QUrl(QStringLiteral("about:blank")));
-  showNormal();
-  raise();
-  activateWindow();
-  // showEvent skips its own work while m_startup is set, so the tray label is set here.
-  setTrayActionToHide();
+  showWindow();
   m_originFilter->setDaemonUrl(getDaemonUrl());  // the address just changed
   loadVerifiedDaemonUi();
   rebuildDaemonsTrayMenu();  // moves the checked row
@@ -1210,6 +1185,11 @@ void MainWindow::handleStartInTray() {
         [this]() {
           delay(300);  // small pause to let web engine breath before suspending.
           m_webLoadFinished = true;
+          // Shown before the load finished, by the user or a login prompt: leave it up.
+          if (!testAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen)) {
+            qInfo() << "Initialized open window.";
+            return;
+          }
           hide();
           setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
           qInfo() << "Initialized closed to system tray.";
@@ -1224,6 +1204,26 @@ void MainWindow::handleStartInTray() {
           qInfo() << "Initialized open window.";
         },
         Qt::SingleShotConnection);
+  }
+}
+
+void MainWindow::showWindow() {
+  // A start-in-tray window is already "visible" off-screen, and Qt applies this attribute
+  // only on show, so clearing it alone, or calling showNormal(), would change nothing.
+  if (testAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen)) {
+    hide();
+    setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
+  }
+  showNormal();
+  raise();
+  activateWindow();
+}
+
+void MainWindow::toggleWindow() {
+  if (isVisible() && !testAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen)) {
+    hide();
+  } else {
+    showWindow();
   }
 }
 
@@ -1784,9 +1784,8 @@ void MainWindow::tryDaemonConnection() {
       // The next successful connection provisions a fresh one.
       clearAccessToken();
       qDebug() << "Daemon connection returned 401 - waiting for authentication...";
-      setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
       if (!m_loginWindowShown) {
-        showNormal();  // show window once, if we have login credentials error
+        showWindow();  // show window once, if we have login credentials error
         m_loginWindowShown = true;
       }
       healthReply->deleteLater();
