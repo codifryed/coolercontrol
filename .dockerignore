@@ -1,0 +1,18 @@
+# The container builds use only `-f`: no image in this repository COPYs project
+# files at build time (everything is installed from distro repos, or
+# bind-mounted at run time). These rules only keep the build context itself
+# small: caches and build output that must never transit the daemon anyway, and
+# would otherwise make `make dev-container-build` push gigabytes to the engine.
+node_modules/
+coolercontrold/.cargo/
+coolercontrold/target/
+coolercontrold/vendor/
+.cargo/
+.npm/
+.pip/
+.cache/
+.trunk/
+.git/
+.assets/
+.prerelease/
+assets-built/

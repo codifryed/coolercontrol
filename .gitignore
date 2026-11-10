@@ -7,6 +7,9 @@
 .npm/
 .cache/
 
+# container-to-host run marker, written by the dev container's sudo shim
+.ccont-run
+
 coolercontrold/target/
 # make prerelease-local
 .prerelease/

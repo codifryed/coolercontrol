@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Guy Boldon and contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Runs `make <args>` in the CoolerControl dev container
+#
+# The daemon is built in the container then ran on the host with sudo. This is achieved by
+# a sudo wrapper in the container. Anything else that requires sudo will likely fail but are also
+# unnecessary to run in the container anyway (e.g. install).
+
+set -euo pipefail
+
+CONTAINER_TOOL="$(command -v podman)"
+# shellcheck disable=SC2312
+DELLOCATION="$(dirname "$(readlink -f "$0")")"
+REPO="$(git -C "${DELLOCATION}" rev-parse --show-toplevel)"
+
+IMAGE=coolercontrol-dev
+CACHE_VOLUMES="coolercontrol-dev-cargo coolercontrol-dev-npm coolercontrol-dev-trunk"
+
+PUBLISHED_PORTS="-p 127.0.0.1:5173:5173/tcp"
+
+# Marker file through which the container's `sudo` shim hands a host-run action
+# back to ccont.
+HOST_RUN_FILE="${REPO}/.ccont-run"
+
+# shellcheck disable=SC2312
+case "$(uname -m)" in
+x86_64) rust_triple=x86_64-unknown-linux-gnu ;;
+aarch64 | arm64) rust_triple=aarch64-unknown-linux-gnu ;;
+*)
+    echo "ccont: unsupported host architecture '$(uname -m)'; supported: x86_64, aarch64" >&2
+    exit 1
+    ;;
+esac
+daemon_path="coolercontrold/target/${rust_triple}/debug/coolercontrold"
+
+# list of known actions the container can write to `HOST_RUN_FILE` which are ran on the host by
+# ccont. Needs to be in sync with `ccont-sudo`.
+declare -A known_actions=(
+    ["debug-daemon"]="sudo ${daemon_path}"
+)
+
+display_args=""
+
+cd "${REPO}"
+
+run_container() {
+    exec_mode=""
+
+    # Check if file descriptor 0 (stdin) is connected to a terminal (i.e. interactive shell)
+    [[ -t 0 ]] && exec_mode="-it"
+
+    local glibc="${CC_GLIBC:-$(ldd --version 2>/dev/null | sed -n 1p | awk '{print $NF}')}"
+    case ${glibc} in
+    [0-9]*.[0-9]*) ;;
+    *)
+        echo "ccont: cannot determine the host glibc version (got '${glibc}'); set CC_GLIBC=x.y to override" >&2
+        exit 1
+        ;;
+    esac
+
+    # shellcheck disable=SC2086
+    ${CONTAINER_TOOL} run --rm --init "${exec_mode}" ${display_args} \
+        -v "${REPO}:/src" \
+        -v "${REPO}/.git:/src/.git:ro" \
+        --tmpfs /src/.git/info \
+        -e GIT_OPTIONAL_LOCKS=0 \
+        -e CC_CARGO_BUILD="cargo zigbuild --target ${rust_triple}.${glibc}" \
+        -e CC_TARGET_DIR="target/${rust_triple}" \
+        -e CC_GLIBC="${glibc}" \
+        -v coolercontrol-dev-cargo:/root/.cargo \
+        -v coolercontrol-dev-npm:/root/.npm \
+        -v coolercontrol-dev-trunk:/root/.cache/trunk \
+        --shm-size 1g \
+        --workdir /src \
+        "$@"
+}
+
+setup() {
+    mkdir -p "${HOME}/.local/bin" &&
+        ln -sfn "${REPO}/ccont" "${HOME}/.local/bin/ccont" &&
+        echo "ccont symlinked into ${HOME}/.local/bin make sure it's in the path" >&2
+
+    ${CONTAINER_TOOL} build --network host --pull -t "${IMAGE}" \
+        -f "${REPO}/Containerfile" "${REPO}"
+}
+
+purge() {
+    ${CONTAINER_TOOL} image rm -f "${IMAGE}" 2>/dev/null || true
+
+    for volume in ${CACHE_VOLUMES}; do
+        ${CONTAINER_TOOL} volume rm -f "${volume}" 2>/dev/null || true
+    done
+
+    rm -f "${HOME}/.local/bin/ccont"
+}
+
+# Auto-detect host display for the interactive shell: X11 via the socket mount or
+# Wayland via a ro-mount of XDG_RUNTIME_DIR (the socket lives there).
+if [[ -n ${WAYLAND_DISPLAY-} ]]; then
+    test_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    display_args="${display_args} -v ${test_dir}:${test_dir} -e WAYLAND_DISPLAY=${WAYLAND_DISPLAY} -e XDG_RUNTIME_DIR=${test_dir}"
+elif [[ -n ${DISPLAY-} ]]; then
+    display_args="${display_args} -v /tmp/.X11-unix:/tmp/.X11-unix -e DISPLAY=${DISPLAY}"
+fi
+
+gui() {
+    run_container "${IMAGE}" make build-qt
+    # Needs --network host to be able to reach the daemon on the host.
+    run_container --network host "${IMAGE}" ./coolercontrol/build/coolercontrol
+}
+
+run_make() {
+    rm -f "${HOST_RUN_FILE}"
+    # shellcheck disable=SC2086
+    run_container ${PUBLISHED_PORTS} "${IMAGE}" make "$@"
+    if [[ -f ${HOST_RUN_FILE} ]]; then
+        {
+            IFS= read -r action
+        } </"${HOST_RUN_FILE}"
+        rm -f "${HOST_RUN_FILE}"
+
+        host_cmd="${known_actions[${action}]-}"
+        if [[ -z ${host_cmd} ]]; then
+            echo "ccont: refusing an unknown action from the container: '${action}'" >&2
+            return 1
+        fi
+
+        echo "ccont: running on the host: ${host_cmd}" >&2
+        read -r -a host_args <<<"${host_cmd}"
+        (cd "${REPO}" && exec "${host_args[@]}")
+    fi
+}
+
+# shellcheck disable=SC2086
+case "${1-}" in
+setup) setup ;;
+purge) purge ;;
+shell) run_container ${PUBLISHED_PORTS} "${IMAGE}" bash ;;
+gui) gui ;;
+*)
+    [[ $# -gt 0 ]] || set -- help
+    run_make "$@"
+    ;;
+esac
