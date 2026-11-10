@@ -155,6 +155,8 @@ class MainWindow final : public QMainWindow {
   // Delays the discard so a quick hide/show toggle never pays a page reload.
   QTimer* m_discardTimer;
   QTimer* m_sensorPollTimer;
+  // Checks the bridge once after each daemon UI load; restarted per load.
+  QTimer* m_uiBridgeTimer;
   mutable int m_sensorPollTicks{0};
   bool m_discardEnabled{true};
   // Set when the daemon reconnects while hidden. A discarded page reloads on its own

@@ -151,7 +151,8 @@ MainWindow::MainWindow(QWidget* parent)
       m_originFilter(new OriginFilter(this)),
       m_retryTimer(new QTimer(parent)),
       m_discardTimer(new QTimer(parent)),
-      m_sensorPollTimer(new QTimer(parent)) {
+      m_sensorPollTimer(new QTimer(parent)),
+      m_uiBridgeTimer(new QTimer(parent)) {
   setCentralWidget(m_view);
   m_profile->settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
   m_profile->settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
@@ -232,6 +233,9 @@ MainWindow::MainWindow(QWidget* parent)
   connect(m_discardTimer, &QTimer::timeout, this, &MainWindow::discardPage);
   m_sensorPollTimer->setInterval(TRAY_SENSOR_POLL_MS);
   connect(m_sensorPollTimer, &QTimer::timeout, this, &MainWindow::pollTraySensors);
+  m_uiBridgeTimer->setSingleShot(true);
+  m_uiBridgeTimer->setInterval(UI_BRIDGE_CHECK_DELAY_MS);
+  connect(m_uiBridgeTimer, &QTimer::timeout, this, &MainWindow::checkUiBridge);
   connect(m_ipc, &IPC::forceWindowShow, this, [this]() {
     // This is used so the UI Window will show when password input is required
     showWindow();
@@ -389,6 +393,8 @@ void MainWindow::initWebUI() {
           });
   loadVerifiedDaemonUi();
   connect(m_view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
+    // Only a loaded daemon UI is checked: an error or blank page would warn falsely.
+    m_uiBridgeTimer->stop();
     if (!pageLoadedSuccessfully) {
       if (m_uiLoadRetryCount < MAX_UI_LOAD_RETRIES) {
         m_uiLoadRetryCount++;
@@ -412,7 +418,7 @@ void MainWindow::initWebUI() {
       m_uiLoadingStopped = false;
       m_uiLoadRetryCount = 0;
       qInfo() << "Successfully loaded UI at: " << getDaemonUrl().url();
-      QTimer::singleShot(UI_BRIDGE_CHECK_DELAY_MS, this, &MainWindow::checkUiBridge);
+      m_uiBridgeTimer->start();
       if (m_startup) {  // don't do this for Wizard retries
         m_retryTimer->start();
       }
@@ -1142,6 +1148,7 @@ void MainWindow::resetPerDaemonState() {
   m_uiLoadRetryCount = 0;
   m_lastConnectionError.clear();
   m_uiLoadingStopped = false;
+  m_uiBridgeTimer->stop();  // the old daemon's check must not judge the new page
   m_uiBridgeWarned = false;
   m_reloadOnShow = false;
   m_startup = true;
