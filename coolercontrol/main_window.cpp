@@ -3,6 +3,8 @@
 
 #include "main_window.h"
 
+#include <QtWebEngineCore/qtwebenginecoreglobal.h>
+
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
@@ -27,6 +29,7 @@
 #include <QSystemTrayIcon>
 #include <QThread>
 #include <QTimer>
+#include <QVersionNumber>
 #include <QWebEngineCookieStore>
 #include <QWebEngineDownloadRequest>
 #include <QWebEngineFullScreenRequest>
@@ -409,6 +412,7 @@ void MainWindow::initWebUI() {
       m_uiLoadingStopped = false;
       m_uiLoadRetryCount = 0;
       qInfo() << "Successfully loaded UI at: " << getDaemonUrl().url();
+      QTimer::singleShot(UI_BRIDGE_CHECK_DELAY_MS, this, &MainWindow::checkUiBridge);
       if (m_startup) {  // don't do this for Wizard retries
         m_retryTimer->start();
       }
@@ -1138,6 +1142,7 @@ void MainWindow::resetPerDaemonState() {
   m_uiLoadRetryCount = 0;
   m_lastConnectionError.clear();
   m_uiLoadingStopped = false;
+  m_uiBridgeWarned = false;
   m_reloadOnShow = false;
   m_startup = true;
   // Re-arming m_startup without this leaves the guards that pair the two dead for the new
@@ -1217,6 +1222,30 @@ void MainWindow::showWindow() {
   showNormal();
   raise();
   activateWindow();
+}
+
+void MainWindow::checkUiBridge() const {
+  if (m_uiBridgeWarned || m_page->lifecycleState() != QWebEnginePage::LifecycleState::Active) {
+    return;
+  }
+  m_page->runJavaScript(QStringLiteral("'ipc' in window"), [this](const QVariant& connected) {
+    // Invalid when the page navigated or was discarded meanwhile: only a definite no counts.
+    if (!connected.isValid() || connected.toBool() || m_uiBridgeWarned) {
+      return;
+    }
+    m_uiBridgeWarned = true;
+    const auto version = QString::fromLatin1(qWebEngineVersion());
+    auto message = QStringLiteral(
+                       "The daemon's UI loaded but never connected to this app (Qt WebEngine "
+                       "%1), so the tray and app settings will not work.")
+                       .arg(version);
+    // 6.140 stopped remote pages loading qrc, which older daemon UIs need for the bridge.
+    if (QVersionNumber::fromString(version) >= QVersionNumber(6, 140)) {
+      message +=
+          QStringLiteral(" Daemons older than this app cannot connect to it: update the daemon.");
+    }
+    qWarning().noquote() << message;
+  });
 }
 
 void MainWindow::toggleWindow() {

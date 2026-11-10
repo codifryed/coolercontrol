@@ -166,6 +166,7 @@ class MainWindow final : public QMainWindow {
   mutable bool m_webLoadFinished{false};
   mutable bool m_loginWindowShown{false};
   mutable bool m_uiLoadingStopped{false};
+  mutable bool m_uiBridgeWarned{false};
   // Whether the user has been told the connection dropped. Reconnection never depends
   // on this, only the notifications do, so they stay paired: no "restored" without a
   // "disconnected" first, and no second "disconnected" before a recovery.
@@ -301,6 +302,9 @@ class MainWindow final : public QMainWindow {
   void restorePage() const;
 
   void toggleWindow();
+
+  // Warns once per daemon when its UI loaded but never connected the WebChannel bridge.
+  void checkUiBridge() const;
 
   void setTrayActionToShow() const;
 
