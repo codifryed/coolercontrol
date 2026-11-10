@@ -347,6 +347,8 @@ mod tests {
         ))
     }
 
+    // Goal: the document CSP allows only same-origin scripts, with no qrc: source (#633).
+    // Method: request "/" through the CSP middleware and inspect the header.
     #[tokio::test]
     async fn test_csp_header_set_on_index() {
         let app = with_document_csp(Router::new().route("/", get(|| async { "index" })));
