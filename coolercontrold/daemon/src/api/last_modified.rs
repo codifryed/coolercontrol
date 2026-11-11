@@ -145,8 +145,9 @@ where
 /// methods ignore the condition, as RFC 9110 specifies.
 ///
 /// An `If-None-Match` decides alone (RFC 9110 13.2.2), so a pinned date cannot vouch for an
-/// outdated copy. It holds the build when it names any of `etags`. Without one,
-/// `If-Modified-Since` must be exactly `last_modified`.
+/// outdated copy. It holds the build when it names any of `etags`, or is `*`, which matches
+/// any current file (RFC 9110 13.1.2): only a 200 becomes a 304, so a missing path is not
+/// matched. Without one, `If-Modified-Since` must be exactly `last_modified`.
 fn holds_validator<B>(
     request: &Request<B>,
     last_modified: &HeaderValue,
@@ -163,8 +164,12 @@ fn holds_validator<B>(
     headers.get(IF_MODIFIED_SINCE) == Some(last_modified)
 }
 
-/// Whether the `If-None-Match` list `tags` names `etag`, compared weakly as RFC 9110 asks.
+/// Whether the `If-None-Match` value `tags` names `etag`, compared weakly as RFC 9110 asks.
+/// A lone `*` names every tag.
 fn lists_etag(tags: &HeaderValue, etag: &HeaderValue) -> bool {
+    if tags.as_bytes().trim_ascii() == b"*" {
+        return true;
+    }
     tags.as_bytes().split(|byte| *byte == b',').any(|tag| {
         let tag = tag.trim_ascii();
         tag.strip_prefix(b"W/").unwrap_or(tag) == etag.as_bytes()
@@ -346,8 +351,9 @@ mod tests {
         }
     }
 
-    // Goal: a client holding the current ETag, plain or gzip, gets a 304. Method: each tag
-    // alone, weak, and inside a list, each with no date.
+    // Goal: a client holding the current ETag, plain or gzip, gets a 304, and so does `*`.
+    // Method: each tag alone, weak, and inside a list, then `*` bare and padded, each with no
+    // date.
     #[tokio::test]
     async fn test_matching_etag_is_not_modified() {
         for tags in [
@@ -356,6 +362,8 @@ mod tests {
             "\"old\", \"0123abcd\"",
             TEST_ETAG_GZIP,
             "W/\"0123abcd-gzip\"",
+            "*",
+            " * ",
         ] {
             let response = serve(tagged_request(tags, None)).await;
             assert_eq!(response.status(), StatusCode::NOT_MODIFIED, "{tags}");
@@ -366,10 +374,11 @@ mod tests {
 
     // Goal: the upgrade under a pinned SOURCE_DATE_EPOCH. The date still matches but the
     // content changed, so the stale ETag must win and the body be sent. Method: a
-    // mismatching ETag and a prefix of the current one, each with the matching date.
+    // mismatching ETag, a prefix of the current one, another coding's tag, and a `*` that is
+    // only part of a tag, each with the matching date.
     #[tokio::test]
     async fn test_mismatching_etag_overrides_matching_date() {
-        for tags in ["\"old\"", "\"0123abc\"", "\"0123abcd-br\""] {
+        for tags in ["\"old\"", "\"0123abc\"", "\"0123abcd-br\"", "\"*\""] {
             let response = serve(tagged_request(tags, Some(TEST_LAST_MODIFIED))).await;
             assert_eq!(response.status(), StatusCode::OK, "{tags}");
             assert_eq!(response.headers()[ETAG], TEST_ETAG);
@@ -396,7 +405,8 @@ mod tests {
 
     // Goal: only a served file is validated. A 404 and a directory redirect keep their status
     // and gain no validator, and a method the condition does not apply to is not a 304.
-    // Method: the current date on a missing path, a directory, and a POST.
+    // Method: the current date on a missing path, a directory, and a POST, then `*` on the
+    // missing path.
     #[tokio::test]
     async fn test_validator_skips_non_files_and_other_methods() {
         for (path, status) in [
@@ -408,6 +418,16 @@ mod tests {
             assert!(response.headers().get(LAST_MODIFIED).is_none(), "{path}");
             assert!(response.headers().get(ETAG).is_none(), "{path}");
         }
+        let mut wildcard = request(Method::GET, "/missing.html", None);
+        wildcard
+            .headers_mut()
+            .insert(IF_NONE_MATCH, HeaderValue::from_static("*"));
+        let response = serve(wildcard).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "* names no missing file"
+        );
         let since = Some(TEST_LAST_MODIFIED);
         let response = serve(request(Method::POST, "/index.html", since)).await;
         assert_ne!(response.status(), StatusCode::NOT_MODIFIED);
