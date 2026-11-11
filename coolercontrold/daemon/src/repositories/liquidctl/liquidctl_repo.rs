@@ -1972,17 +1972,15 @@ impl Repository for LiquidctlRepo {
         let unreadable_devices = self
             .read_first_statuses(Duration::from_secs_f64(poll_rate))
             .await;
+        let devices_read = self.devices.len();
         self.unreadable_locations = drop_unreadable_devices(
             &mut self.devices,
             &mut self.liqctld_devices,
             &unreadable_devices,
         );
-        // Every kept device answered, so each has a status to report, empty for lighting only.
-        let preloaded_statuses = self.preloaded_statuses.borrow();
-        for device_lock in self.devices.values() {
-            assert!(preloaded_statuses.contains_key(&device_lock.borrow().type_index));
-        }
-        drop(preloaded_statuses);
+        // Exactly the unreadable devices were dropped, each with its worker.
+        assert_eq!(self.devices.len() + unreadable_devices.len(), devices_read);
+        assert_eq!(self.liqctld_devices.len(), self.devices.len());
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.borrow().clone());
