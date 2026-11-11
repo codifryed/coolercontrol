@@ -10,7 +10,7 @@ CARGO := $(shell command -v cargo || command -v cargo-1.91 || command -v cargo-1
 # Extra cargo feature flags for build/test/clippy, e.g. FEATURES=--features gated-tests
 FEATURES :=
 
-.PHONY: build sync-app test test-liqctld clippy clippy-tests ci-test dev-run openapi vendor clean clean-app install uninstall
+.PHONY: build sync-app test test-liqctld clippy clippy-tests ci-test ci-test-build ci-lint dev-run openapi vendor clean clean-app install uninstall
 
 # Mirror the UI build into the embedded asset dir: include_dir! compiles the whole
 # directory in, so stale hashed assets must go first (the glob keeps .gitignore).
@@ -81,17 +81,27 @@ clippy-tests:
 # Set for cargo, it reruns the build scripts that watch it (proc-macro2 and others) and rebuilds
 # some 150 crates in every step that lacks it, so no step could reuse another's artifacts. The JSON
 # flags would fail rustdoc's harness, so doctests run apart.
+# The tests compile while clippy runs in its own target dir, as two cargo runs block on one; the
+# tests then run alone, since the timing-sensitive ones flake on a busy runner. A shell job, not
+# make -j: cargo under a make jobserver either warns or shares its few slots.
 ci_test_runner := --config "target.'cfg(all())'.runner=[\"env\",\"RUSTC_BOOTSTRAP=1\"]"
 ci-test: test-liqctld
-	@$(CARGO) build --locked $(release)
-	@./target/debug/$(executable) --version
-	@$(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --no-run
+	@mkdir -p target
+	@$(MAKE) --no-print-directory ci-lint > target/ci-lint.log 2>&1 & lint=$$!; \
+		$(MAKE) --no-print-directory ci-test-build; s=$$?; \
+		wait $$lint || s=1; cat target/ci-lint.log; exit $$s
 	@timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --lib --bins --tests $(ci_test_runner) -- -Z unstable-options --format json > target/ci-test.json; s=$$?; gitlab-report -p test < target/ci-test.json > report.xml || true; exit $$s
 	@timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --doc
+
+ci-test-build:
+	@$(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --no-run
+
+ci-lint: export CARGO_TARGET_DIR := $(or $(CARGO_TARGET_DIR),target)/lint
+ci-lint:
 	@$(MAKE) clippy-tests
 	@$(MAKE) clippy-tests FEATURES="--features gated-tests"
 	@$(CARGO) clippy --locked $(release) --message-format=json -- -A unknown_lints | gitlab-report -p clippy > gl-code-quality-report.json
-    
+
 dev-run: sync-app
 	@$(CARGO) build
 	@sudo ./target/debug/coolercontrold
