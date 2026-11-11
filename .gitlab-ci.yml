@@ -139,6 +139,10 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
         - coolercontrold/target/debug/deps
         - coolercontrold/target/debug/.fingerprint
         - coolercontrold/target/debug/build
+        # ci-test lints in its own target dir
+        - coolercontrold/target/lint/debug/deps
+        - coolercontrold/target/lint/debug/.fingerprint
+        - coolercontrold/target/lint/debug/build
       policy: pull-push
 
 .main_image_template: &main_image_template
