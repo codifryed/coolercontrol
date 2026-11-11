@@ -981,10 +981,11 @@ mod tests {
         assert_eq!(body_bytes(response).await, b"original");
     }
 
-    // Goal: only a 200 is swapped. A 304 keeps its empty meaning, though it still carries
-    // Vary and the gzip tag, which a 304 must repeat from the 200 it stands for.
+    // Goal: a 304 keeps its own body and gains no Content-Encoding, yet takes Vary and the
+    // gzip tag, which it must repeat from the gzip 200 it stands for. Method: a stand-in 304
+    // with a marker body, requested with gzip accepted.
     #[tokio::test]
-    async fn test_not_modified_is_not_swapped() {
+    async fn test_not_modified_keeps_its_body_and_takes_the_gzip_tag() {
         let response = serve_precompressed(
             "/assets/app.js",
             Some("gzip"),
@@ -995,6 +996,7 @@ mod tests {
         assert!(response.headers().get(CONTENT_ENCODING).is_none());
         assert_eq!(response.headers()[VARY], "accept-encoding");
         assert_eq!(response.headers()[ETAG], ASSETS_ETAG_GZIP);
+        assert_eq!(body_bytes(response).await, b"original");
     }
 
     /// `path` through the production stack over the test files, accepting gzip or not, and
