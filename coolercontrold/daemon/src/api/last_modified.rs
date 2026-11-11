@@ -70,11 +70,16 @@ impl<S> LastModified<S> {
         )
     }
 
+    /// Checks the values once here, so the per-request matching can rely on them.
     fn with_values(
         inner: S,
         last_modified: &'static str,
         (etag, gzip_etag): (&'static str, &'static str),
     ) -> Self {
+        assert_eq!(last_modified.len(), 29, "Last-Modified is an IMF-fixdate");
+        assert_strong_etag(etag);
+        assert_strong_etag(gzip_etag);
+        assert_ne!(etag, gzip_etag, "each coding has its own ETag");
         Self {
             inner,
             date: HeaderValue::from_static(last_modified),
@@ -82,6 +87,16 @@ impl<S> LastModified<S> {
             gzip_etag: HeaderValue::from_static(gzip_etag),
         }
     }
+}
+
+/// A strong ETag is a quoted, non-empty opaque tag with no `W/` prefix (RFC 9110 8.8.3).
+fn assert_strong_etag(etag: &str) {
+    assert!(etag.len() > 2, "{etag} is a non-empty tag");
+    assert!(
+        etag.starts_with('"'),
+        "{etag} opens with a quote, so is not weak"
+    );
+    assert!(etag.ends_with('"'), "{etag} closes with a quote");
 }
 
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for LastModified<S>
@@ -153,6 +168,9 @@ fn holds_validator<B>(
     last_modified: &HeaderValue,
     etags: [&HeaderValue; 2],
 ) -> bool {
+    // `with_values` checked these in full. Per request, only that they are still the pair.
+    debug_assert_eq!(last_modified.len(), 29, "Last-Modified is an IMF-fixdate");
+    debug_assert_ne!(etags[0], etags[1], "each coding has its own ETag");
     if matches!(*request.method(), Method::GET | Method::HEAD).not() {
         return false;
     }
@@ -321,6 +339,28 @@ mod tests {
             ASSETS_ETAG.ends_with('"'),
             "{ASSETS_ETAG} closes with a quote"
         );
+    }
+
+    // Goal: negative space for the constructor. A weak, unquoted or empty tag, a shared tag,
+    // or a date that is not an IMF-fixdate is refused before any request. Method: each bad
+    // value through `with_values`, caught as a panic.
+    #[test]
+    fn test_with_values_rejects_malformed_validators() {
+        let cases = [
+            (TEST_LAST_MODIFIED, "W/\"0123abcd\"", TEST_ETAG_GZIP),
+            (TEST_LAST_MODIFIED, "0123abcd", TEST_ETAG_GZIP),
+            (TEST_LAST_MODIFIED, "\"0123abcd", TEST_ETAG_GZIP),
+            (TEST_LAST_MODIFIED, "\"\"", TEST_ETAG_GZIP),
+            (TEST_LAST_MODIFIED, TEST_ETAG, "W/\"0123abcd-gzip\""),
+            (TEST_LAST_MODIFIED, TEST_ETAG, TEST_ETAG),
+            ("06 Nov 1994", TEST_ETAG, TEST_ETAG_GZIP),
+        ];
+        for (date, etag, gzip_etag) in cases {
+            let built = std::panic::catch_unwind(|| {
+                LastModified::with_values((), date, (etag, gzip_etag));
+            });
+            assert!(built.is_err(), "{date} {etag} {gzip_etag}");
+        }
     }
 
     // Goal: a plain request gets the full body, its content type, and both validators.
