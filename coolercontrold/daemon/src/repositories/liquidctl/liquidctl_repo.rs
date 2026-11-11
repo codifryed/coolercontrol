@@ -2232,6 +2232,16 @@ impl Repository for LiquidctlRepo {
     }
 }
 
+/// Sleeps for `pause`, cut short by shutdown. Returns false when the daemon is shutting down.
+async fn pause_unless_cancelled(run_token: &CancellationToken, pause: Duration) -> bool {
+    tokio::select! {
+        // Biased, so a token already cancelled wins over a zero pause.
+        biased;
+        () = run_token.cancelled() => false,
+        () = sleep(pause) => true,
+    }
+}
+
 /// Runs `attempt` up to `LIQCTLD_INIT_ATTEMPTS_MAX` times, `pause` apart, until one succeeds.
 async fn initialize_with_retries<T, F, Fut>(
     device_index: TypeIndex,
@@ -2251,10 +2261,9 @@ where
         // Do not retry while shutting down: the device is already failing, and each retry
         // only adds a 1s delay plus log spam to the shutdown path (e.g. the LCD shutdown
         // image). One failed attempt is enough.
-        if run_token.is_cancelled() {
+        if pause_unless_cancelled(run_token, pause).await.not() {
             return response;
         }
-        sleep(pause).await;
         info!("Retrying liquidctl device #{device_index} initialization request.");
         response = attempt().await;
         if response.is_ok() {
@@ -2283,12 +2292,13 @@ where
 {
     let mut last_err = None;
     for attempt in 1..=FIRST_STATUS_ATTEMPTS {
-        if attempt > 1 {
-            // Shutting down: further reads only delay the exit.
-            if run_token.is_cancelled() {
-                break;
-            }
-            sleep(retry_interval).await;
+        // Shutting down: further reads only delay the exit.
+        if attempt > 1
+            && pause_unless_cancelled(run_token, retry_interval)
+                .await
+                .not()
+        {
+            break;
         }
         match read().await {
             Ok(value) => return Ok(value),
@@ -2666,6 +2676,39 @@ mod tests {
         assert_eq!(attempts, 1);
     }
 
+    /// Cancels `run_token` shortly after the retry pause begins.
+    async fn cancel_during_pause(run_token: &CancellationToken) {
+        sleep(Duration::from_millis(10)).await;
+        run_token.cancel();
+    }
+
+    /// A pause far longer than any test may wait, so only shutdown can end it.
+    const PAUSE_ONLY_SHUTDOWN_ENDS: Duration = Duration::from_secs(3600);
+    /// How long a pause cut short by shutdown may take to end.
+    const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
+
+    /// Goal: shutdown during an init retry pause ends the pause with no further attempt. Method:
+    /// an hour long pause cancelled after 10 ms, guarded by a timeout, then check the attempts.
+    #[tokio::test]
+    async fn init_retry_pause_ends_on_shutdown() {
+        let run_token = CancellationToken::new();
+        let attempts = Cell::new(0_usize);
+        let attempt = || {
+            attempts.set(attempts.get() + 1);
+            async { Err::<u8, _>(anyhow!("no answer")) }
+        };
+        let init = initialize_with_retries(1, &run_token, PAUSE_ONLY_SHUTDOWN_ENDS, attempt);
+
+        let (result, ()) = timeout(SHUTDOWN_GRACE, async {
+            tokio::join!(init, cancel_during_pause(&run_token))
+        })
+        .await
+        .expect("shutdown ends the retry pause");
+
+        assert!(result.is_err());
+        assert_eq!(attempts.get(), 1);
+    }
+
     fn device_lock(type_index: TypeIndex) -> DeviceLock {
         Rc::new(RefCell::new(Device::new(
             format!("Test Cooler {type_index}"),
@@ -2767,6 +2810,29 @@ mod tests {
 
         assert_eq!(calls.get(), 1);
         assert_eq!(err.to_string(), "no data");
+    }
+
+    /// Goal: shutdown during a first status retry pause ends the pause with no further read.
+    /// Method: an hour long pause cancelled after 10 ms, guarded by a timeout, then check the
+    /// read count and the error.
+    #[tokio::test]
+    async fn first_status_retry_pause_ends_on_shutdown() {
+        let run_token = CancellationToken::new();
+        let calls = Cell::new(0_usize);
+        let read = || {
+            calls.set(calls.get() + 1);
+            async { Err::<u8, _>(anyhow!("no data")) }
+        };
+        let reads = read_with_retries(test_name, &run_token, PAUSE_ONLY_SHUTDOWN_ENDS, read);
+
+        let (result, ()) = timeout(SHUTDOWN_GRACE, async {
+            tokio::join!(reads, cancel_during_pause(&run_token))
+        })
+        .await
+        .expect("shutdown ends the retry pause");
+
+        assert_eq!(calls.get(), 1);
+        assert_eq!(result.unwrap_err().to_string(), "no data");
     }
 
     /// Goal: an unreadable device's driver locations are collected so hwmon keeps skipping it,
