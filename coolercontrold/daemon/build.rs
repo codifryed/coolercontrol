@@ -106,12 +106,19 @@ fn assets_hash(
     manifest_dir: &Path,
     files: &[&PathBuf],
 ) -> Result<String, Box<dyn std::error::Error>> {
+    // The plugin lib is embedded in every build, even a daemon-only one.
+    assert!(files.is_empty().not(), "there is always an asset to hash");
     let mut relative = files
         .iter()
         .map(|path| path.strip_prefix(manifest_dir))
         .collect::<Result<Vec<_>, _>>()?;
     // Directory listing order is not stable across filesystems.
     relative.sort_unstable();
+    // A file listed twice would hash differently from the same assets listed once.
+    assert!(
+        relative.windows(2).all(|pair| pair[0] != pair[1]),
+        "each asset is hashed once"
+    );
     let mut crc = Crc::new();
     for path in relative {
         let name = path.as_os_str().as_encoded_bytes();
@@ -122,7 +129,14 @@ fn assets_hash(
         crc.update(&u64::try_from(bytes.len())?.to_le_bytes());
         crc.update(&bytes);
     }
-    Ok(format!("{:08x}", crc.sum()))
+    let hash = format!("{:08x}", crc.sum());
+    // api/last_modified.rs quotes it into a strong ETag, which allows no quote inside.
+    assert_eq!(hash.len(), 8, "a CRC32 is eight hex digits");
+    assert!(
+        hash.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "{hash} is hex"
+    );
+    Ok(hash)
 }
 
 /// Every file under `dir`, at any depth. Empty when `dir` does not exist, as in a
