@@ -83,8 +83,6 @@ clippy-tests:
 # flags would fail rustdoc's harness, so doctests run apart.
 ci_test_runner := --config "target.'cfg(all())'.runner=[\"env\",\"RUSTC_BOOTSTRAP=1\"]"
 ci-test: test-liqctld
-	@$(CARGO) build --locked $(release)
-	@./target/debug/$(executable) --version
 	@$(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --no-run
 	@timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --lib --bins --tests $(ci_test_runner) -- -Z unstable-options --format json > target/ci-test.json; s=$$?; gitlab-report -p test < target/ci-test.json > report.xml || true; exit $$s
 	@timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --doc

@@ -273,10 +273,6 @@ test_all:
     reports:
       junit: coolercontrold/report.xml
       codequality: coolercontrold/gl-code-quality-report.json
-    name: 'CoolerControl_test_binaries_${CI_COMMIT_SHORT_SHA}'
-    paths:
-      - coolercontrol/build/coolercontrol
-      - coolercontrold/target/debug/coolercontrold
     expire_in: 3 days
 
 ####################################### MSRV floor
