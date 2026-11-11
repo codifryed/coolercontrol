@@ -20,6 +20,17 @@ path = [
 SPDX-FileCopyrightText = "2017 IBM Corp."
 SPDX-License-Identifier = "OFL-1.1"
 
+# Qt's qwebchannel.js, kept byte-identical to upstream and taken under the GPL-3.0-only
+# option of its license.
+[[annotations]]
+path = "coolercontrol-ui/public/qwebchannel.js"
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "2016 The Qt Company Ltd.",
+  "2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>",
+]
+SPDX-License-Identifier = "GPL-3.0-only"
+
 # Roboto, embedded for LCD rendering.
 [[annotations]]
 path = "coolercontrold/cc-image/resources/Roboto**"

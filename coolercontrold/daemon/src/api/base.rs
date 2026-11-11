@@ -155,7 +155,7 @@ fn is_zero_quality(parameter: &str) -> bool {
 /// The document's policy when nothing may frame it. `FramePolicy` widens `frame-ancestors`
 /// for configured origins.
 pub const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
-    script-src 'self' qrc:; \
+    script-src 'self'; \
     style-src 'self' 'unsafe-inline'; \
     img-src 'self' blob: data:; \
     font-src 'self' data:; \
@@ -347,6 +347,8 @@ mod tests {
         ))
     }
 
+    // Goal: the document CSP allows only same-origin scripts, with no qrc: source (#633).
+    // Method: request "/" through the CSP middleware and inspect the header.
     #[tokio::test]
     async fn test_csp_header_set_on_index() {
         let app = with_document_csp(Router::new().route("/", get(|| async { "index" })));
@@ -367,7 +369,8 @@ mod tests {
             .expect("CSP header should be set on index");
         let csp_str = csp.to_str().unwrap();
         assert!(csp_str.contains("default-src 'self'"));
-        assert!(csp_str.contains("script-src 'self' qrc:"));
+        assert!(csp_str.contains("script-src 'self';"));
+        assert!(csp_str.contains("qrc:").not());
         assert!(csp_str.contains("frame-ancestors 'none'"));
     }
 

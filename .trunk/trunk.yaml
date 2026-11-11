@@ -75,6 +75,7 @@ lint:
         - .gitlab/images/**
         - .gitlab-ci.yml
         - openapi/openapi.json
+        - coolercontrol-ui/public/qwebchannel.js
 actions:
   disabled:
     - trunk-announce

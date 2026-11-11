@@ -82,6 +82,9 @@ constexpr int TRAY_SENSOR_POLL_MS = 1500;
 // Stops the poll if a tray host never tells us the menu closed. Without this a missed
 // aboutToHide would leave the timer running for the life of the process.
 constexpr int TRAY_SENSOR_POLL_MAX_TICKS = 80;
+// How long after a UI load the desktop bridge must be up. The UI connects it on mount,
+// before any login, so this only trips when the bridge failed outright.
+constexpr int UI_BRIDGE_CHECK_DELAY_MS = 15000;
 const std::string WEBENGINE_PROFILE_NAME = "coolercontrol";
 const std::string ENDPOINT_HEALTH = "/health";
 // Unauthenticated, and answers {"shake": true}. Used to confirm the configured address
