@@ -2354,17 +2354,21 @@ mod tests {
     }
 
     /// Goal: the production compression arm of `with_base_layers` compresses API responses
-    /// and leaves the embedded web app alone. Method: the real stack with the API
-    /// compression layer, a deflate offer to an authenticated `/health` and to the `/`
-    /// fallback document. Deflate, since the fallback serves its build-time gzip copies to
-    /// a gzip offer itself.
+    /// and leaves the embedded web app and the plugin lib alone. Method: the real stack with
+    /// the API compression layer, a deflate offer to an authenticated `/health`, to the `/`
+    /// fallback document, and to the plugin lib. Deflate, since the fallback serves its
+    /// build-time gzip copies to a gzip offer itself.
     #[test]
     #[serial_test::serial(modes_file)]
     #[cfg(feature = "gated-tests")]
     fn the_served_stack_compresses_api_responses_only() {
         let (raw_token, stored) = read_only_token();
-        let mut requests = Vec::with_capacity(2);
-        for (path, bearer) in [("/health", true), ("/", false)] {
+        let mut requests = Vec::with_capacity(3);
+        for (path, bearer) in [
+            ("/health", true),
+            ("/", false),
+            ("/plugins/lib/cc-plugin-lib.js", false),
+        ] {
             let mut builder = axum::http::Request::get(path)
                 .header(axum::http::header::ACCEPT_ENCODING, "deflate");
             if bearer {
@@ -2393,7 +2397,7 @@ mod tests {
                 // Stops the actors so the scope can finish.
                 cancel_token.cancel();
 
-                let (api, document) = (&heads[0], &heads[1]);
+                let (api, document, plugin_lib) = (&heads[0], &heads[1], &heads[2]);
                 assert!(api.status.is_success(), "{}", api.status);
                 assert_eq!(api.headers[axum::http::header::CONTENT_ENCODING], "deflate");
                 // Built with or without the UI, the fallback's answer stays uncompressed.
@@ -2401,6 +2405,13 @@ mod tests {
                     .headers
                     .get(axum::http::header::CONTENT_ENCODING)
                     .is_none());
+                // The daemon embeds the plugin lib itself, so it is served in every build.
+                assert_eq!(plugin_lib.status, StatusCode::OK);
+                assert!(plugin_lib
+                    .headers
+                    .get(axum::http::header::CONTENT_ENCODING)
+                    .is_none());
+                assert!(plugin_lib.headers.contains_key(axum::http::header::ETAG));
                 Ok(())
             })
             .await

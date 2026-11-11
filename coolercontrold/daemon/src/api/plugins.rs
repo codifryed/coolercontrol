@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::api::base::StaticAsset;
 use crate::api::last_modified::LastModified;
 use crate::api::{handle_error, AppState, CCError};
 use crate::repositories::service_plugin::service_management::manager::ServiceStatus;
@@ -66,6 +67,9 @@ pub async fn get_cc_plugin_lib(request: Request) -> Result<impl IntoApiResponse,
     response
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    // Public like the web app, and per-request compression would also keep the identity
+    // ETag on a gzip body. It only changes with an upgrade, so sending it whole is cheap.
+    response.extensions_mut().insert(StaticAsset);
     Ok(response)
 }
 

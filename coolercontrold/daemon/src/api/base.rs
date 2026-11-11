@@ -304,11 +304,13 @@ impl CachePolicy {
     }
 }
 
-/// Marks a response from the embedded web app, so the API's compression layer leaves it alone.
+/// Marks a response from the embedded web app or the plugin lib, so the API's compression
+/// layer leaves it alone.
 ///
-/// The fallback is reachable without credentials, and its bundles run to megabytes. Compressing
-/// them per request would let any client spend the sidecar thread's CPU at will, while hashed
-/// bundles are cached for a year and the rest revalidate for free.
+/// Both are reachable without credentials, and the bundles run to megabytes. Compressing them
+/// per request would let any client spend the sidecar thread's CPU at will, while hashed
+/// bundles are cached for a year and the rest revalidate for free. It would also keep the
+/// identity `ETag` on a gzip body, where a strong tag must differ by coding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StaticAsset;
 
