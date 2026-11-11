@@ -72,6 +72,11 @@ const LIQCTLD_REAP_TIMEOUT: Duration = Duration::from_secs(1);
 const LIQCTLD_INIT_ATTEMPTS_MAX: usize = 2;
 const _: () = assert!(LIQCTLD_INIT_ATTEMPTS_MAX >= 1);
 const LIQCTLD_INIT_PAUSE_MS: u64 = 1_000;
+/// Attempts at a device's first status read at startup, one poll interval apart. liquidctl reveals
+/// temps only in a status, so a device that never answers is left out rather than kept with no
+/// known temps or failsafe values. The retries keep one glitched read from dropping it.
+const FIRST_STATUS_ATTEMPTS: usize = 3;
+const _: () = assert!(FIRST_STATUS_ATTEMPTS >= 1);
 
 /// Delay before each restart after the first. The first failure escalates with no wait, so this is
 /// indexed by the number of attempts already made. Past the end, recovery stops until the next
@@ -276,6 +281,9 @@ pub struct LiquidctlRepo {
     /// post-restart device list has to be compared against; comparing against the current, flipped
     /// state would see every 690LC as a different device.
     initial_descriptors: HashMap<TypeIndex, InitialDescriptor>,
+    /// Driver locations of devices left out for returning no first status. They stay claimed so
+    /// hwmon does not pick the same unresponsive device up through its kernel driver.
+    unreadable_locations: Vec<String>,
     /// Drives liqctld restarts for devices that failed to re-initialize. See `RecoveryState`.
     recovery: RefCell<RecoveryState>,
     /// True while liqctld is being restarted, or while a catch-up re-applies driver choices.
@@ -444,6 +452,7 @@ impl LiquidctlRepo {
             device_delays: HashMap::new(),
             device_permits: HashMap::new(),
             initial_descriptors: HashMap::new(),
+            unreadable_locations: Vec::new(),
             recovery: RefCell::new(RecoveryState::default()),
             restart_in_progress: Cell::new(false),
             catch_up_active: Cell::new(false),
@@ -800,15 +809,9 @@ impl LiquidctlRepo {
     /// # Notes
     ///
     /// * The function returns an empty vector if there are no devices or no driver locations.
+    /// * Devices left out for returning no first status are included, so hwmon skips them too.
     pub fn get_all_driver_locations(&self) -> Vec<String> {
-        let mut driver_locations = Vec::new();
-        for device_lock in self.devices.values() {
-            let device = device_lock.borrow();
-            for location in &device.info.driver_info.locations {
-                driver_locations.push(location.to_owned());
-            }
-        }
-        driver_locations
+        claimed_driver_locations(&self.unreadable_locations, &self.devices)
     }
 
     /// Completes each device's info from its first status, which is where liquidctl reveals
@@ -882,6 +885,37 @@ impl LiquidctlRepo {
         // the device's next command).
         apply_device_command_delay(delay_millis).await;
         Ok(status_response?.status)
+    }
+
+    /// Reads each device's first status, retrying a failed read. Returns the devices that never
+    /// answered, for the caller to leave out.
+    async fn read_first_statuses(&self, retry_interval: Duration) -> Vec<DeviceUID> {
+        let overrides = &self.overrides;
+        let unreadable = join_all(self.devices.iter().map(|(uid, device_lock)| async move {
+            let device_id = device_lock.borrow().type_index;
+            let delay_millis = self.device_delay(uid);
+            let device_name = || overrides.log_device_name(uid, &device_lock.borrow().name);
+            let read = || self.call_status(&device_id, delay_millis);
+            match read_with_retries(&device_name, &self.run_token, retry_interval, read).await {
+                Ok(status) => {
+                    self.store_status(device_id, status, device_name);
+                    None
+                }
+                Err(err) => {
+                    error!(
+                        "Liquidctl device {} returned no status after {FIRST_STATUS_ATTEMPTS} \
+                         attempts and is left out until the daemon restarts. Check its power and \
+                         USB connection; a frozen device may need a full power cycle. - {err}",
+                        device_name()
+                    );
+                    Some(uid.clone())
+                }
+            }
+        }))
+        .await;
+        let unreadable: Vec<DeviceUID> = unreadable.into_iter().flatten().collect();
+        assert!(unreadable.len() <= self.devices.len());
+        unreadable
     }
 
     fn create_status_map(lc_statuses: &LCStatus) -> StatusMap {
@@ -1932,6 +1966,21 @@ impl Repository for LiquidctlRepo {
             &mut self.liqctld_devices,
             failed_init_devices,
         );
+        // Loaded before the first reads, which honor each device's delay.
+        self.load_device_delays();
+        let poll_rate = self.config.get_settings()?.poll_rate;
+        let unreadable_devices = self
+            .read_first_statuses(Duration::from_secs_f64(poll_rate))
+            .await;
+        let devices_read = self.devices.len();
+        self.unreadable_locations = drop_unreadable_devices(
+            &mut self.devices,
+            &mut self.liqctld_devices,
+            &unreadable_devices,
+        );
+        // Exactly the unreadable devices were dropped, each with its worker.
+        assert_eq!(self.devices.len() + unreadable_devices.len(), devices_read);
+        assert_eq!(self.liqctld_devices.len(), self.devices.len());
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.borrow().clone());
@@ -1948,7 +1997,6 @@ impl Repository for LiquidctlRepo {
             "Time taken to initialize all LIQUIDCTL devices: {:?}",
             start_initialization.elapsed()
         );
-        self.load_device_delays();
         self.publish_channel_drivability();
         debug!("LIQUIDCTL Repository initialized");
         Ok(())
@@ -2184,6 +2232,16 @@ impl Repository for LiquidctlRepo {
     }
 }
 
+/// Sleeps for `pause`, cut short by shutdown. Returns false when the daemon is shutting down.
+async fn pause_unless_cancelled(run_token: &CancellationToken, pause: Duration) -> bool {
+    tokio::select! {
+        // Biased, so a token already cancelled wins over a zero pause.
+        biased;
+        () = run_token.cancelled() => false,
+        () = sleep(pause) => true,
+    }
+}
+
 /// Runs `attempt` up to `LIQCTLD_INIT_ATTEMPTS_MAX` times, `pause` apart, until one succeeds.
 async fn initialize_with_retries<T, F, Fut>(
     device_index: TypeIndex,
@@ -2203,10 +2261,9 @@ where
         // Do not retry while shutting down: the device is already failing, and each retry
         // only adds a 1s delay plus log spam to the shutdown path (e.g. the LCD shutdown
         // image). One failed attempt is enough.
-        if run_token.is_cancelled() {
+        if pause_unless_cancelled(run_token, pause).await.not() {
             return response;
         }
-        sleep(pause).await;
         info!("Retrying liquidctl device #{device_index} initialization request.");
         response = attempt().await;
         if response.is_ok() {
@@ -2218,6 +2275,85 @@ where
          tries."
     );
     response
+}
+
+/// Runs `read` until it succeeds, at most `FIRST_STATUS_ATTEMPTS` times, pausing `retry_interval`
+/// between tries. Returns the last error when every attempt fails, or once `run_token` is
+/// cancelled.
+async fn read_with_retries<T, F, Fut>(
+    device_name: impl Fn() -> String,
+    run_token: &CancellationToken,
+    retry_interval: Duration,
+    mut read: F,
+) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    let mut last_err = None;
+    for attempt in 1..=FIRST_STATUS_ATTEMPTS {
+        // Shutting down: further reads only delay the exit.
+        if attempt > 1
+            && pause_unless_cancelled(run_token, retry_interval)
+                .await
+                .not()
+        {
+            break;
+        }
+        match read().await {
+            Ok(value) => return Ok(value),
+            Err(err) => {
+                debug!(
+                    "First status read attempt {attempt} failed for liquidctl device {}: {err}",
+                    device_name()
+                );
+                last_err = Some(err);
+            }
+        }
+    }
+    // FIRST_STATUS_ATTEMPTS >= 1, so the first pass ran and every pass set an error.
+    Err(last_err.expect("at least one attempt was made"))
+}
+
+/// The driver locations of the given devices, skipping any not in `devices`.
+fn driver_locations_of<'u>(
+    devices: &HashMap<UID, DeviceLock>,
+    device_uids: impl Iterator<Item = &'u DeviceUID>,
+) -> Vec<String> {
+    let mut driver_locations = Vec::new();
+    for device_uid in device_uids {
+        let Some(device_lock) = devices.get(device_uid) else {
+            continue;
+        };
+        let device = device_lock.borrow();
+        driver_locations.extend(device.info.driver_info.locations.iter().cloned());
+    }
+    driver_locations
+}
+
+/// The driver locations of every kept device, plus those of devices left out as unreadable.
+fn claimed_driver_locations(
+    unreadable_locations: &[String],
+    devices: &HashMap<UID, DeviceLock>,
+) -> Vec<String> {
+    let mut driver_locations = unreadable_locations.to_vec();
+    driver_locations.extend(driver_locations_of(devices, devices.keys()));
+    driver_locations
+}
+
+/// Drops the devices that returned no first status, with their workers, and returns their
+/// driver locations so they stay claimed from hwmon.
+fn drop_unreadable_devices(
+    devices: &mut HashMap<UID, DeviceLock>,
+    liqctld_devices: &mut HashMap<TypeIndex, LiqctldIo>,
+    unreadable_devices: &[DeviceUID],
+) -> Vec<String> {
+    let locations = driver_locations_of(devices, unreadable_devices.iter());
+    remove_failed_devices(devices, liqctld_devices, unreadable_devices.to_vec());
+    for device_uid in unreadable_devices {
+        assert!(devices.contains_key(device_uid).not());
+    }
+    locations
 }
 
 /// Drops each failed device along with its worker. Dropping the handle closes the queue, and the
@@ -2540,6 +2676,39 @@ mod tests {
         assert_eq!(attempts, 1);
     }
 
+    /// Cancels `run_token` shortly after the retry pause begins.
+    async fn cancel_during_pause(run_token: &CancellationToken) {
+        sleep(Duration::from_millis(10)).await;
+        run_token.cancel();
+    }
+
+    /// A pause far longer than any test may wait, so only shutdown can end it.
+    const PAUSE_ONLY_SHUTDOWN_ENDS: Duration = Duration::from_secs(3600);
+    /// How long a pause cut short by shutdown may take to end.
+    const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
+
+    /// Goal: shutdown during an init retry pause ends the pause with no further attempt. Method:
+    /// an hour long pause cancelled after 10 ms, guarded by a timeout, then check the attempts.
+    #[tokio::test]
+    async fn init_retry_pause_ends_on_shutdown() {
+        let run_token = CancellationToken::new();
+        let attempts = Cell::new(0_usize);
+        let attempt = || {
+            attempts.set(attempts.get() + 1);
+            async { Err::<u8, _>(anyhow!("no answer")) }
+        };
+        let init = initialize_with_retries(1, &run_token, PAUSE_ONLY_SHUTDOWN_ENDS, attempt);
+
+        let (result, ()) = timeout(SHUTDOWN_GRACE, async {
+            tokio::join!(init, cancel_during_pause(&run_token))
+        })
+        .await
+        .expect("shutdown ends the retry pause");
+
+        assert!(result.is_err());
+        assert_eq!(attempts.get(), 1);
+    }
+
     fn device_lock(type_index: TypeIndex) -> DeviceLock {
         Rc::new(RefCell::new(Device::new(
             format!("Test Cooler {type_index}"),
@@ -2550,6 +2719,189 @@ mod tests {
             None,
             1.0,
         )))
+    }
+
+    fn test_name() -> String {
+        "Test Cooler".to_string()
+    }
+
+    /// Goal: a first read that succeeds is not repeated. Method: count the calls of a read that
+    /// always succeeds.
+    #[tokio::test]
+    async fn first_status_read_that_succeeds_is_not_retried() {
+        let calls = Cell::new(0_usize);
+        let read = || {
+            calls.set(calls.get() + 1);
+            async { Ok::<_, anyhow::Error>(7) }
+        };
+
+        let value = read_with_retries(test_name, &CancellationToken::new(), Duration::ZERO, read)
+            .await
+            .unwrap();
+
+        assert_eq!(value, 7);
+        assert_eq!(calls.get(), 1);
+    }
+
+    /// Goal: a device that answers on its last allowed attempt is kept. Method: fail every read
+    /// but the last, then check the value and the call count.
+    #[tokio::test]
+    async fn first_status_read_recovers_on_the_last_attempt() {
+        let calls = Cell::new(0_usize);
+        let read = || {
+            calls.set(calls.get() + 1);
+            let answered = calls.get() == FIRST_STATUS_ATTEMPTS;
+            async move {
+                if answered {
+                    Ok(7)
+                } else {
+                    Err(anyhow!("no data"))
+                }
+            }
+        };
+
+        let value = read_with_retries(test_name, &CancellationToken::new(), Duration::ZERO, read)
+            .await
+            .unwrap();
+
+        assert_eq!(value, 7);
+        assert_eq!(calls.get(), FIRST_STATUS_ATTEMPTS);
+    }
+
+    /// Goal: a device that never answers is given up on after exactly the allowed attempts, with
+    /// a pause between each, and the last error is kept. Method: fail every read with a numbered
+    /// error, then check the count, the error, and a lower bound on the elapsed time.
+    #[tokio::test]
+    async fn first_status_read_gives_up_after_every_attempt_fails() {
+        let retry_interval = Duration::from_millis(5);
+        let calls = Cell::new(0_usize);
+        let read = || {
+            calls.set(calls.get() + 1);
+            let attempt = calls.get();
+            async move { Err::<u8, _>(anyhow!("no data {attempt}")) }
+        };
+        let start = Instant::now();
+
+        let err = read_with_retries(test_name, &CancellationToken::new(), retry_interval, read)
+            .await
+            .unwrap_err();
+
+        assert_eq!(calls.get(), FIRST_STATUS_ATTEMPTS);
+        assert_eq!(err.to_string(), format!("no data {FIRST_STATUS_ATTEMPTS}"));
+        let pauses = u32::try_from(FIRST_STATUS_ATTEMPTS - 1).unwrap();
+        assert!(start.elapsed() >= retry_interval * pauses);
+    }
+
+    /// Goal: shutdown stops the first status retries after one failed read. Method: a cancelled
+    /// token and a read that always fails, then check the call count and the error.
+    #[tokio::test]
+    async fn first_status_read_stops_retrying_once_cancelled() {
+        let run_token = CancellationToken::new();
+        run_token.cancel();
+        let calls = Cell::new(0_usize);
+        let read = || {
+            calls.set(calls.get() + 1);
+            async { Err::<u8, _>(anyhow!("no data")) }
+        };
+
+        let err = read_with_retries(test_name, &run_token, Duration::ZERO, read)
+            .await
+            .unwrap_err();
+
+        assert_eq!(calls.get(), 1);
+        assert_eq!(err.to_string(), "no data");
+    }
+
+    /// Goal: shutdown during a first status retry pause ends the pause with no further read.
+    /// Method: an hour long pause cancelled after 10 ms, guarded by a timeout, then check the
+    /// read count and the error.
+    #[tokio::test]
+    async fn first_status_retry_pause_ends_on_shutdown() {
+        let run_token = CancellationToken::new();
+        let calls = Cell::new(0_usize);
+        let read = || {
+            calls.set(calls.get() + 1);
+            async { Err::<u8, _>(anyhow!("no data")) }
+        };
+        let reads = read_with_retries(test_name, &run_token, PAUSE_ONLY_SHUTDOWN_ENDS, read);
+
+        let (result, ()) = timeout(SHUTDOWN_GRACE, async {
+            tokio::join!(reads, cancel_during_pause(&run_token))
+        })
+        .await
+        .expect("shutdown ends the retry pause");
+
+        assert_eq!(calls.get(), 1);
+        assert_eq!(result.unwrap_err().to_string(), "no data");
+    }
+
+    /// Goal: an unreadable device's driver locations are collected so hwmon keeps skipping it,
+    /// and only for the devices asked about. Method: two devices with locations, collect for one
+    /// plus an unknown UID, then check only the first device's locations come back.
+    #[test]
+    fn driver_locations_cover_only_the_given_devices() {
+        let (unreadable, kept) = (device_lock(1), device_lock(2));
+        unreadable.borrow_mut().info.driver_info.locations = vec![
+            "/dev/hidraw4".to_string(),
+            "/sys/class/hidraw/hidraw4/device/hwmon/hwmon12".to_string(),
+        ];
+        kept.borrow_mut().info.driver_info.locations = vec!["/dev/hidraw6".to_string()];
+        let unreadable_uid = unreadable.borrow().uid.clone();
+        let kept_uid = kept.borrow().uid.clone();
+        let devices: HashMap<UID, DeviceLock> =
+            [(unreadable_uid.clone(), unreadable), (kept_uid, kept)].into();
+        let unknown_uid = "not-a-device".to_string();
+
+        let locations = driver_locations_of(&devices, [&unreadable_uid, &unknown_uid].into_iter());
+
+        assert_eq!(
+            locations,
+            vec![
+                "/dev/hidraw4",
+                "/sys/class/hidraw/hidraw4/device/hwmon/hwmon12"
+            ]
+        );
+        assert!(locations.contains(&"/dev/hidraw6".to_string()).not());
+    }
+
+    /// Goal: an unreadable device is dropped with its worker, and its locations come back to stay
+    /// claimed. Method: two devices with workers and locations, drop one, then check both maps
+    /// and the returned locations.
+    #[test]
+    fn an_unreadable_device_is_dropped_and_its_locations_kept() {
+        let (unreadable, kept) = (device_lock(1), device_lock(2));
+        unreadable.borrow_mut().info.driver_info.locations = vec!["/dev/hidraw4".to_string()];
+        kept.borrow_mut().info.driver_info.locations = vec!["/dev/hidraw6".to_string()];
+        let unreadable_uid = unreadable.borrow().uid.clone();
+        let kept_uid = kept.borrow().uid.clone();
+        let mut devices: HashMap<UID, DeviceLock> = [
+            (unreadable_uid.clone(), unreadable),
+            (kept_uid.clone(), kept),
+        ]
+        .into();
+        let mut workers: HashMap<TypeIndex, LiqctldIo> =
+            [(1, unused_worker(1)), (2, unused_worker(2))].into();
+
+        let locations = drop_unreadable_devices(&mut devices, &mut workers, &[unreadable_uid]);
+
+        assert_eq!(locations, vec!["/dev/hidraw4"]);
+        assert_eq!(devices.keys().collect::<Vec<_>>(), vec![&kept_uid]);
+        assert_eq!(workers.keys().collect::<Vec<_>>(), vec![&2]);
+    }
+
+    /// Goal: hwmon is told to skip both kept and unreadable devices. Method: one kept device with
+    /// a location plus one unreadable location, then check both are claimed.
+    #[test]
+    fn claimed_locations_include_unreadable_devices() {
+        let kept = device_lock(2);
+        kept.borrow_mut().info.driver_info.locations = vec!["/dev/hidraw6".to_string()];
+        let kept_uid = kept.borrow().uid.clone();
+        let devices: HashMap<UID, DeviceLock> = [(kept_uid, kept)].into();
+        let unreadable_locations = vec!["/dev/hidraw4".to_string()];
+
+        let locations = claimed_driver_locations(&unreadable_locations, &devices);
+
+        assert_eq!(locations, vec!["/dev/hidraw4", "/dev/hidraw6"]);
     }
 
     /// Goal: a device that failed to initialize leaves no worker behind, and the others keep
