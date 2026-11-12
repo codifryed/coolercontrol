@@ -4283,7 +4283,6 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
- "httpdate",
  "include_dir",
  "mime",
  "mime_guess",

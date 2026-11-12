@@ -77,10 +77,8 @@ tower-sessions-core = { version = "0.15.0", features = ["deletion-task"] }
 # 0.23; move when those three do.
 base64 = "=0.22"
 time = "0.3"
-# The `metadata` feature bakes each embedded file's mtime in at compile time and
-# answers If-Modified-Since with a 304, so unhashed assets can revalidate cheaply
-# instead of being pinned for a year with no way to ever update.
-tower-serve-static = { version = "0.1.2", features = ["metadata"] }
+# No `metadata`: include_dir drops it on musl; api/last_modified.rs sends Last-Modified.
+tower-serve-static = "0.1.2"
 include_dir = "0.7.4"
 aide = { version = "0.15.1", features = [
   "axum",

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::api::last_modified::{LastModified, ASSETS_ETAG_GZIP};
 use crate::api::{handle_error, AppState, CCError};
 use crate::logger::LogLevelSource;
 use aide::axum::IntoApiResponse;
@@ -7,14 +8,12 @@ use aide::axum::IntoApiResponse;
 use aide::openapi::OpenApi;
 use anyhow::Result;
 use axum::body::Body;
-use axum::extract::Request;
 use axum::extract::State;
 use axum::http::header::{
-    ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, VARY,
+    ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, ETAG, VARY,
 };
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
-use axum::middleware::{self, Next};
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Response};
 #[cfg(debug_assertions)]
 use axum::Extension;
 use axum::Json;
@@ -23,13 +22,18 @@ use include_dir::{include_dir, Dir};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
+use pin_project_lite::pin_project;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use std::future::Future;
 use std::ops::Not;
+use std::pin::Pin;
 #[cfg(debug_assertions)]
 use std::sync::Arc;
+use std::task::{ready, Context, Poll};
+use tower::Service;
 use tower_serve_static::ServeDir;
 
 static ASSETS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/resources/app");
@@ -43,43 +47,124 @@ pub async fn handshake() -> impl IntoApiResponse {
 
 /// `document_csp` is the document's whole `Content-Security-Policy`, composed at startup.
 pub fn web_app_service(document_csp: HeaderValue) -> axum::routing::MethodRouter {
-    axum::routing::get_service(ServeDir::new(&ASSETS_DIR))
-        .layer(middleware::from_fn(|request, next| {
-            precompressed_middleware(&GZIP_ASSETS, request, next)
-        }))
-        .layer(middleware::from_fn_with_state(
-            document_csp,
-            cache_control_middleware,
-        ))
+    axum::routing::get_service(static_files(&ASSETS_DIR, &GZIP_ASSETS, document_csp))
+}
+
+/// The fallback's stack over `files` and their gzip `variants`. Each stage is a plain service
+/// rather than `middleware::from_fn`, which boxes a future and the next service on every
+/// request.
+fn static_files(
+    files: &'static Dir<'static>,
+    variants: &'static Dir<'static>,
+    document_csp: HeaderValue,
+) -> CacheHeaders<Precompressed<LastModified<ServeDir>>> {
+    let validated = LastModified::new(ServeDir::new(files));
+    CacheHeaders::new(Precompressed::new(validated, variants), document_csp)
 }
 
 const VARY_ACCEPT_ENCODING: HeaderValue = HeaderValue::from_static("accept-encoding");
 const ENCODING_GZIP: HeaderValue = HeaderValue::from_static("gzip");
+const ETAG_GZIP: HeaderValue = HeaderValue::from_static(ASSETS_ETAG_GZIP);
+/// Longest gzip lookup key built on the stack. Vite's hashed names run to about 40 bytes.
+const VARIANT_PATH_MAX_BYTES: usize = 256;
 
 /// Swaps in the build-time gzip of a file for clients that accept it.
 ///
-/// Everything else stays with `ServeDir`: the lookup, redirects, 404s, `If-Modified-Since`,
-/// the content type and `Last-Modified`, all of which describe the original file. Only a
-/// 200 has its body replaced, and only when a gzip copy exists, so the daemon never
-/// compresses a static file per request.
-async fn precompressed_middleware(
+/// Everything else stays as served: the lookup, redirects, 404s, the content type and
+/// `Last-Modified`, all of which describe the original file. Only a 200 has its body
+/// replaced, and only when a gzip copy exists, so the daemon never compresses a static file
+/// per request. A strong `ETag` names one coding (RFC 9110 8.8.3), so a 200 or 304 for a
+/// client that accepts the copy carries the gzip tag.
+#[derive(Clone)]
+struct Precompressed<S> {
+    inner: S,
     variants: &'static Dir<'static>,
-    request: Request,
-    next: Next,
-) -> axum::response::Response {
-    let gzipped = gzip_variant(variants, request.uri().path());
-    let accepts_gzip = accepts_gzip(request.headers());
-    let mut response = next.run(request).await;
+}
+
+impl<S> Precompressed<S> {
+    fn new(inner: S, variants: &'static Dir<'static>) -> Self {
+        Self { inner, variants }
+    }
+}
+
+impl<S, ReqBody> Service<axum::http::Request<ReqBody>> for Precompressed<S>
+where
+    S: Service<axum::http::Request<ReqBody>, Response = Response>,
+{
+    type Response = Response;
+    type Error = S::Error;
+    type Future = PrecompressedFuture<S::Future>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, request: axum::http::Request<ReqBody>) -> Self::Future {
+        let gzipped = gzip_variant(self.variants, request.uri().path());
+        // Only a file with a copy needs the header parsed.
+        let accepts_gzip = gzipped.is_some() && accepts_gzip(request.headers());
+        PrecompressedFuture {
+            inner: self.inner.call(request),
+            gzipped,
+            accepts_gzip,
+        }
+    }
+}
+
+pin_project! {
+    /// The inner service's future, finished by [`swap_in_gzip`].
+    struct PrecompressedFuture<F> {
+        #[pin]
+        inner: F,
+        gzipped: Option<&'static [u8]>,
+        accepts_gzip: bool,
+    }
+}
+
+impl<F, E> Future for PrecompressedFuture<F>
+where
+    F: Future<Output = Result<Response, E>>,
+{
+    type Output = Result<Response, E>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        let response = ready!(this.inner.poll(cx))?;
+        Poll::Ready(Ok(swap_in_gzip(
+            response,
+            *this.gzipped,
+            *this.accepts_gzip,
+        )))
+    }
+}
+
+fn swap_in_gzip(
+    mut response: Response,
+    gzipped: Option<&'static [u8]>,
+    accepts_gzip: bool,
+) -> Response {
     let Some(gzipped) = gzipped else {
+        debug_assert!(
+            accepts_gzip.not(),
+            "acceptance is only parsed for a file with a copy"
+        );
         return response;
     };
     // A file with two representations must say so on every response for it, so no cache
     // hands the gzip to a client that never asked for it.
     response.headers_mut().append(VARY, VARY_ACCEPT_ENCODING);
-    if response.status() != StatusCode::OK {
+    if accepts_gzip.not() {
         return response;
     }
-    if accepts_gzip.not() {
+    let status = response.status();
+    if matches!(status, StatusCode::OK | StatusCode::NOT_MODIFIED).not() {
+        return response;
+    }
+    // The client gets, or already holds, the gzip copy. Replaced in place, so no allocation.
+    if let Some(etag) = response.headers_mut().get_mut(ETAG) {
+        *etag = ETAG_GZIP;
+    }
+    if status == StatusCode::NOT_MODIFIED {
         return response;
     }
     let headers = response.headers_mut();
@@ -93,16 +178,28 @@ async fn precompressed_middleware(
 ///
 /// `ServeDir` percent-decodes the path. Bundle names are plain ASCII, so an encoded path is
 /// simply served uncompressed rather than decoded twice.
+///
+/// The lookup key is joined on the stack: a path too long for the buffer is longer than any
+/// embedded one, which `test_embedded_gzip_copies_match_their_originals` checks.
 fn gzip_variant(variants: &'static Dir<'static>, request_path: &str) -> Option<&'static [u8]> {
     let relative = request_path.trim_start_matches('/');
     if relative.contains('%') {
         return None;
     }
-    let variant_path = if relative.is_empty() || relative.ends_with('/') {
-        format!("{relative}index.html.gz")
+    let suffix = if relative.is_empty() || relative.ends_with('/') {
+        "index.html.gz"
     } else {
-        format!("{relative}.gz")
+        ".gz"
     };
+    let length = relative.len() + suffix.len();
+    if length > VARIANT_PATH_MAX_BYTES {
+        return None;
+    }
+    let mut buffer = [0u8; VARIANT_PATH_MAX_BYTES];
+    buffer[..relative.len()].copy_from_slice(relative.as_bytes());
+    buffer[relative.len()..length].copy_from_slice(suffix.as_bytes());
+    // Two strs joined whole, so still UTF-8.
+    let variant_path = std::str::from_utf8(&buffer[..length]).expect("joined from two strs");
     debug_assert!(
         variant_path.starts_with('/').not(),
         "variants are keyed relative"
@@ -200,56 +297,141 @@ impl CachePolicy {
             "/" | "/index.html" => Self::Document,
             // Everything else comes from public/ under a name that never changes, so
             // pinning it would strand clients on the build that first cached it. The
-            // static service answers If-Modified-Since with a 304, so revalidating
-            // costs a conditional request rather than the body.
+            // fallback answers If-Modified-Since with a 304, so revalidating costs a
+            // conditional request rather than the body.
             _ => Self::Revalidate,
         }
     }
 }
 
-/// Marks a response from the embedded web app, so the API's compression layer leaves it alone.
+/// Marks a response from the embedded web app or the plugin lib, so the API's compression
+/// layer leaves it alone.
 ///
-/// The fallback is reachable without credentials, and its bundles run to megabytes. Compressing
-/// them per request would let any client spend the sidecar thread's CPU at will, while hashed
-/// bundles are cached for a year and the rest revalidate for free.
+/// Both are reachable without credentials, and the bundles run to megabytes. Compressing them
+/// per request would let any client spend the sidecar thread's CPU at will, while hashed
+/// bundles are cached for a year and the rest revalidate for free. It would also keep the
+/// identity `ETag` on a gzip body, where a strong tag must differ by coding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StaticAsset;
 
-/// Only the fallback service is layered with this, so API and SSE requests never reach it.
-/// Everything is classified up front: `path` borrows `request`, which the next layer consumes.
-async fn cache_control_middleware(
-    State(document_csp): State<HeaderValue>,
-    request: Request,
-    next: Next,
-) -> axum::response::Response {
-    let path = request.uri().path();
-    debug_assert!(path.starts_with('/'), "an axum request path is absolute");
-    let policy = CachePolicy::for_path(path);
-    // Ensure text-based assets declare UTF-8 encoding explicitly.
-    // lightningcss converts CSS escapes (e.g. \e909) to raw UTF-8 bytes,
-    // which requires correct charset to render in sandboxed plugin iframes.
-    // Keyed off the extension rather than the policy so a future unhashed .css keeps it.
-    let extension = std::path::Path::new(path).extension();
-    let is_css = extension.is_some_and(|ext| ext.eq_ignore_ascii_case("css"));
-    let is_js = extension.is_some_and(|ext| ext.eq_ignore_ascii_case("js"));
-    let mut response = next.run(request).await;
+/// Sets the content type, cache policy and CSP of every file the fallback serves, and marks
+/// it a `StaticAsset`. Only the fallback is wrapped in this, so API and SSE requests never
+/// reach it.
+#[derive(Clone)]
+struct CacheHeaders<S> {
+    inner: S,
+    document_csp: HeaderValue,
+}
+
+impl<S> CacheHeaders<S> {
+    fn new(inner: S, document_csp: HeaderValue) -> Self {
+        Self {
+            inner,
+            document_csp,
+        }
+    }
+}
+
+impl<S, ReqBody> Service<axum::http::Request<ReqBody>> for CacheHeaders<S>
+where
+    S: Service<axum::http::Request<ReqBody>, Response = Response>,
+{
+    type Response = Response;
+    type Error = S::Error;
+    type Future = CacheHeadersFuture<S::Future>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    /// Everything is classified up front: the path borrows `request`, which the inner
+    /// service consumes.
+    fn call(&mut self, request: axum::http::Request<ReqBody>) -> Self::Future {
+        let path = request.uri().path();
+        debug_assert!(path.starts_with('/'), "an axum request path is absolute");
+        let policy = CachePolicy::for_path(path);
+        let content_type = text_content_type(path);
+        // Cloned for the document alone, the only response that carries it.
+        let document_csp = (policy == CachePolicy::Document).then(|| self.document_csp.clone());
+        CacheHeadersFuture {
+            inner: self.inner.call(request),
+            policy,
+            content_type,
+            document_csp,
+        }
+    }
+}
+
+pin_project! {
+    /// The inner service's future, finished by [`apply_cache_headers`].
+    struct CacheHeadersFuture<F> {
+        #[pin]
+        inner: F,
+        policy: CachePolicy,
+        content_type: Option<HeaderValue>,
+        document_csp: Option<HeaderValue>,
+    }
+}
+
+impl<F, E> Future for CacheHeadersFuture<F>
+where
+    F: Future<Output = Result<Response, E>>,
+{
+    type Output = Result<Response, E>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        let mut response = ready!(this.inner.poll(cx))?;
+        apply_cache_headers(
+            &mut response,
+            *this.policy,
+            this.content_type.take(),
+            this.document_csp.take(),
+        );
+        Poll::Ready(Ok(response))
+    }
+}
+
+/// The UTF-8 type for text assets, keyed off the extension rather than the policy so a
+/// future unhashed .css keeps it. lightningcss converts CSS escapes (e.g. \e909) to raw UTF-8
+/// bytes, which need the charset to render in sandboxed plugin iframes.
+fn text_content_type(path: &str) -> Option<HeaderValue> {
+    let extension = std::path::Path::new(path).extension()?;
+    if extension.eq_ignore_ascii_case("css") {
+        return Some(TYPE_CSS);
+    }
+    if extension.eq_ignore_ascii_case("js") {
+        return Some(TYPE_JS);
+    }
+    None
+}
+
+fn apply_cache_headers(
+    response: &mut Response,
+    policy: CachePolicy,
+    content_type: Option<HeaderValue>,
+    document_csp: Option<HeaderValue>,
+) {
+    debug_assert_eq!(
+        document_csp.is_some(),
+        policy == CachePolicy::Document,
+        "the CSP is carried for the document alone"
+    );
+    let is_ok = response.status() == StatusCode::OK;
     let headers = response.headers_mut();
-    if is_css {
-        headers.insert(CONTENT_TYPE, TYPE_CSS);
-    } else if is_js {
-        headers.insert(CONTENT_TYPE, TYPE_JS);
+    // A 304 carries no representation metadata, as last_modified.rs leaves it.
+    if let Some(content_type) = content_type.filter(|_| is_ok) {
+        headers.insert(CONTENT_TYPE, content_type);
+    }
+    if let Some(document_csp) = document_csp {
+        headers.insert(CSP_HEADER, document_csp);
     }
     let cache_value = match policy {
-        CachePolicy::Document => {
-            headers.insert(CSP_HEADER, document_csp);
-            CACHE_REVALIDATE
-        }
-        CachePolicy::Revalidate => CACHE_REVALIDATE,
+        CachePolicy::Document | CachePolicy::Revalidate => CACHE_REVALIDATE,
         CachePolicy::Pinned => CACHE_PINNED,
     };
     headers.insert(CACHE_CONTROL, cache_value);
     response.extensions_mut().insert(StaticAsset);
-    response
 }
 
 #[cfg(debug_assertions)]
@@ -339,12 +521,9 @@ mod tests {
         crate::api::frame_policy::FramePolicy::default().document_csp
     }
 
-    /// Puts `router` behind the middleware, with that policy.
+    /// Puts `router` behind the cache headers, with that policy.
     fn with_document_csp(router: Router) -> Router {
-        router.layer(middleware::from_fn_with_state(
-            default_csp(),
-            cache_control_middleware,
-        ))
+        Router::new().fallback_service(CacheHeaders::new(router, default_csp()))
     }
 
     // Goal: the document CSP allows only same-origin scripts, with no qrc: source (#633).
@@ -456,6 +635,29 @@ mod tests {
         );
     }
 
+    // Goal: a 304 carries no Content-Type, as RFC 9110 asks, yet keeps its cache headers.
+    // Method: a stand-in for the validator that answers .js and .css paths with a bare 304.
+    #[tokio::test]
+    async fn test_not_modified_gains_no_content_type() {
+        let not_modified = || async { http::StatusCode::NOT_MODIFIED };
+        let app = with_document_csp(
+            Router::new()
+                .route("/notification-sw.js", get(not_modified))
+                .route("/assets/app.css", get(not_modified)),
+        );
+        for path in ["/notification-sw.js", "/assets/app.css"] {
+            let request = http::Request::builder().uri(path);
+            let response = app
+                .clone()
+                .oneshot(request.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED, "{path}");
+            assert!(response.headers().get(CONTENT_TYPE).is_none(), "{path}");
+            assert!(response.headers().get(CACHE_CONTROL).is_some(), "{path}");
+        }
+    }
+
     // Goal: negative space for the widened revalidation list. A hashed bundle whose name
     // merely resembles one of those paths must stay pinned, or every load refetches the
     // whole app. Method: two near-miss paths that must not match.
@@ -510,11 +712,9 @@ mod tests {
         }
     }
 
-    // Goal: prove the metadata feature is actually on. Without it the static service sends
-    // no validator, so `no-cache` on an unhashed asset means the whole body every load
-    // rather than a 304 - the opposite of what the revalidate policy is for, and nothing
-    // else in this suite would notice. Method: drive the real fallback service, which is
-    // the only place `include_dir` metadata reaches, and require the header.
+    // Goal: an unhashed asset revalidates for the cost of a 304, not the whole body every
+    // load, on every libc. Method: drive the real fallback stack, take the validator it
+    // sends, send it back, and require a 304 that still carries the cache headers.
     #[tokio::test]
     #[cfg(feature = "gated-tests")]
     async fn test_unhashed_assets_carry_a_validator() {
@@ -525,21 +725,27 @@ mod tests {
             return;
         }
         let app = Router::new().fallback_service(web_app_service(default_csp()));
+        let request = http::Request::builder().uri("/index.html");
         let response = app
-            .oneshot(
-                http::Request::builder()
-                    .uri("/index.html")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
             .await
             .unwrap();
-
         assert_eq!(response.status(), http::StatusCode::OK);
-        assert!(
-            response.headers().contains_key("last-modified"),
-            "the metadata feature must stay enabled, or revalidation costs a full body"
-        );
+        let last_modified = response.headers()[http::header::LAST_MODIFIED].clone();
+
+        let revalidation = http::Request::builder()
+            .uri("/index.html")
+            .header(http::header::IF_MODIFIED_SINCE, last_modified)
+            .header(ACCEPT_ENCODING, "gzip");
+        let response = app
+            .oneshot(revalidation.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[CACHE_CONTROL], "no-cache");
+        assert!(response.headers().get(CONTENT_ENCODING).is_none());
+        assert!(body_bytes(response).await.is_empty());
     }
 
     fn accept(values: &[&str]) -> HeaderMap {
@@ -600,6 +806,115 @@ mod tests {
         assert_eq!(gzip_variant(&TEST_VARIANTS, "/assets/../index.html"), None);
     }
 
+    // Goal: negative space for the stack-built key. A path longer than the buffer finds no
+    // copy instead of panicking. Method: a path right at the boundary, one byte past it, and
+    // one well past it.
+    #[test]
+    fn test_gzip_variant_rejects_overlong_paths() {
+        let at_limit = "a".repeat(VARIANT_PATH_MAX_BYTES - ".gz".len());
+        assert_eq!(gzip_variant(&TEST_VARIANTS, &format!("/{at_limit}")), None);
+        for overlong in [
+            format!("/{at_limit}a"),
+            format!("/{}/", "a".repeat(VARIANT_PATH_MAX_BYTES)),
+        ] {
+            assert_eq!(gzip_variant(&TEST_VARIANTS, &overlong), None);
+        }
+    }
+
+    /// The originals of `TEST_VARIANTS`.
+    static TEST_FILES: Dir<'static> = Dir::new(
+        "",
+        &[
+            include_dir::DirEntry::File(include_dir::File::new("index.html", b"INDEX")),
+            include_dir::DirEntry::Dir(Dir::new(
+                "assets",
+                &[include_dir::DirEntry::File(include_dir::File::new(
+                    "assets/app.js",
+                    b"APP",
+                ))],
+            )),
+        ],
+    );
+
+    /// The status and allocations of serving `request()` through `app`. Served twice first,
+    /// so the counted one meets a warm stack, as in a client's steady loading.
+    #[cfg(feature = "gated-tests")]
+    async fn served_allocations(
+        app: &Router,
+        request: impl Fn() -> http::Request<Body>,
+    ) -> (http::StatusCode, u64) {
+        for _ in 0..2 {
+            app.clone().oneshot(request()).await.unwrap();
+        }
+        let counted = app.clone().oneshot(request());
+        let (response, allocations) = crate::alloc_count::count_allocations_async(counted).await;
+        (response.unwrap().status(), allocations)
+    }
+
+    // Goal: the fallback's stages cost no more than the `StaticAsset` marker over serving the
+    // file bare, a 304 no more than a 200, and a gzip copy only its swapped body, the length
+    // axum then sets, and its one extra header. Method: count one hashed bundle request
+    // through a router over a bare `ServeDir` and over the production stack, both over the
+    // same test files.
+    #[tokio::test]
+    #[cfg(feature = "gated-tests")]
+    async fn test_static_stack_allocations() {
+        // The extension map's box and its table, until the router stops needing the marker.
+        const MARKER_ALLOCATIONS: u64 = 2;
+        // The boxed gzip body and the `Content-Length` value axum formats for it, plus the
+        // header map outgrowing its first six slots once `Content-Encoding` joins the ETag.
+        const GZIP_ALLOCATIONS: u64 = 4;
+        let bare =
+            Router::new().fallback_service(axum::routing::get_service(ServeDir::new(&TEST_FILES)));
+        let stack = Router::new().fallback_service(axum::routing::get_service(static_files(
+            &TEST_FILES,
+            &TEST_VARIANTS,
+            default_csp(),
+        )));
+        let bundle = || {
+            http::Request::get("/assets/app.js")
+                .body(Body::empty())
+                .unwrap()
+        };
+
+        let (status, bare_allocations) = served_allocations(&bare, bundle).await;
+        assert_eq!(status, http::StatusCode::OK);
+        let (status, stack_allocations) = served_allocations(&stack, bundle).await;
+        assert_eq!(status, http::StatusCode::OK);
+        assert!(
+            stack_allocations <= bare_allocations + MARKER_ALLOCATIONS,
+            "the stack costs {stack_allocations}, bare {bare_allocations}"
+        );
+
+        let gzipped = || {
+            http::Request::get("/assets/app.js")
+                .header(ACCEPT_ENCODING, "gzip")
+                .body(Body::empty())
+                .unwrap()
+        };
+        let (status, gzip_allocations) = served_allocations(&stack, gzipped).await;
+        assert_eq!(status, http::StatusCode::OK);
+        assert!(
+            gzip_allocations <= stack_allocations + GZIP_ALLOCATIONS,
+            "a gzip copy costs {gzip_allocations}, the original {stack_allocations}"
+        );
+
+        let first = stack.clone().oneshot(bundle()).await.unwrap();
+        let last_modified = first.headers()[http::header::LAST_MODIFIED].clone();
+        let revalidation = || {
+            http::Request::get("/assets/app.js")
+                .header(http::header::IF_MODIFIED_SINCE, last_modified.clone())
+                .body(Body::empty())
+                .unwrap()
+        };
+        let (status, not_modified_allocations) = served_allocations(&stack, revalidation).await;
+        assert_eq!(status, http::StatusCode::NOT_MODIFIED);
+        assert!(
+            not_modified_allocations <= stack_allocations,
+            "a 304 costs {not_modified_allocations}, the 200 {stack_allocations}"
+        );
+    }
+
     /// The precompressed layer in front of a stand-in for ServeDir that answers every path
     /// with the given status and a plain body.
     async fn serve_precompressed(
@@ -607,13 +922,11 @@ mod tests {
         accept_encoding: Option<&str>,
         status: http::StatusCode,
     ) -> axum::response::Response {
-        let app = Router::new()
-            .fallback(
-                move || async move { (status, [(CONTENT_TYPE, "text/javascript")], "original") },
-            )
-            .layer(middleware::from_fn(|request, next| {
-                precompressed_middleware(&TEST_VARIANTS, request, next)
-            }));
+        let files = Router::new().fallback(move || async move {
+            let headers = [(CONTENT_TYPE, "text/javascript"), (ETAG, STAND_IN_ETAG)];
+            (status, headers, "original")
+        });
+        let app = Precompressed::new(files, &TEST_VARIANTS);
         let mut builder = http::Request::builder().uri(path);
         if let Some(value) = accept_encoding {
             builder = builder.header(ACCEPT_ENCODING, value);
@@ -622,6 +935,9 @@ mod tests {
             .await
             .unwrap()
     }
+
+    /// The `ETag` the stand-in for ServeDir sends.
+    const STAND_IN_ETAG: &str = "\"original\"";
 
     async fn body_bytes(response: axum::response::Response) -> Vec<u8> {
         axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -639,6 +955,7 @@ mod tests {
         assert_eq!(response.headers()[CONTENT_ENCODING], "gzip");
         assert_eq!(response.headers()[CONTENT_TYPE], "text/javascript");
         assert_eq!(response.headers()[VARY], "accept-encoding");
+        assert_eq!(response.headers()[ETAG], ASSETS_ETAG_GZIP);
         assert_eq!(body_bytes(response).await, b"GZ-APP");
     }
 
@@ -650,6 +967,7 @@ mod tests {
                 serve_precompressed("/assets/app.js", accept_encoding, http::StatusCode::OK).await;
             assert!(response.headers().get(CONTENT_ENCODING).is_none());
             assert_eq!(response.headers()[VARY], "accept-encoding");
+            assert_eq!(response.headers()[ETAG], STAND_IN_ETAG);
             assert_eq!(body_bytes(response).await, b"original");
         }
     }
@@ -661,13 +979,15 @@ mod tests {
             serve_precompressed("/assets/other.js", Some("gzip"), http::StatusCode::OK).await;
         assert!(response.headers().get(CONTENT_ENCODING).is_none());
         assert!(response.headers().get(VARY).is_none());
+        assert_eq!(response.headers()[ETAG], STAND_IN_ETAG);
         assert_eq!(body_bytes(response).await, b"original");
     }
 
-    // Goal: only a 200 is swapped. A 304 keeps its empty meaning, though it still carries
-    // Vary, which a 304 must repeat from the 200 it stands for.
+    // Goal: a 304 keeps its own body and gains no Content-Encoding, yet takes Vary and the
+    // gzip tag, which it must repeat from the gzip 200 it stands for. Method: a stand-in 304
+    // with a marker body, requested with gzip accepted.
     #[tokio::test]
-    async fn test_not_modified_is_not_swapped() {
+    async fn test_not_modified_keeps_its_body_and_takes_the_gzip_tag() {
         let response = serve_precompressed(
             "/assets/app.js",
             Some("gzip"),
@@ -677,6 +997,54 @@ mod tests {
         assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED);
         assert!(response.headers().get(CONTENT_ENCODING).is_none());
         assert_eq!(response.headers()[VARY], "accept-encoding");
+        assert_eq!(response.headers()[ETAG], ASSETS_ETAG_GZIP);
+        assert_eq!(body_bytes(response).await, b"original");
+    }
+
+    /// `path` through the production stack over the test files, accepting gzip or not, and
+    /// holding `if_none_match` when given.
+    async fn serve_stack(
+        path: &str,
+        accept_gzip: bool,
+        if_none_match: Option<&str>,
+    ) -> axum::response::Response {
+        let app = static_files(&TEST_FILES, &TEST_VARIANTS, default_csp());
+        let mut builder = http::Request::builder().uri(path);
+        if accept_gzip {
+            builder = builder.header(ACCEPT_ENCODING, "gzip");
+        }
+        if let Some(tags) = if_none_match {
+            builder = builder.header(http::header::IF_NONE_MATCH, tags);
+        }
+        app.oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    // Goal: the gzip and identity copies carry different strong ETags, so no cache can
+    // confirm one with the other's 304. Method: the production stack over the test files, for
+    // a 200 of each coding and a gzip revalidation by its own tag.
+    #[tokio::test]
+    async fn test_each_coding_carries_its_own_etag() {
+        let response = serve_stack("/assets/app.js", true, None).await;
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.headers()[CONTENT_ENCODING], "gzip");
+        assert_eq!(response.headers()[ETAG], ASSETS_ETAG_GZIP);
+
+        let response = serve_stack("/assets/app.js", false, None).await;
+        assert_eq!(response.status(), http::StatusCode::OK);
+        let identity_etag = response.headers()[ETAG].clone();
+        assert_ne!(identity_etag, ASSETS_ETAG_GZIP);
+
+        let response = serve_stack("/assets/app.js", true, Some(ASSETS_ETAG_GZIP)).await;
+        assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[ETAG], ASSETS_ETAG_GZIP);
+        assert!(response.headers().get(CONTENT_ENCODING).is_none());
+
+        let tags = identity_etag.to_str().unwrap();
+        let response = serve_stack("/assets/app.js", false, Some(tags)).await;
+        assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[ETAG], identity_etag);
     }
 
     // Goal: every gzip copy the build embedded decompresses to exactly the file it stands
@@ -690,6 +1058,10 @@ mod tests {
             pending.extend(dir.dirs());
             for copy in dir.files() {
                 let copy_path = copy.path().to_str().unwrap();
+                assert!(
+                    copy_path.len() <= VARIANT_PATH_MAX_BYTES,
+                    "{copy_path} outgrows the key"
+                );
                 let original_path = copy_path.strip_suffix(".gz").unwrap();
                 let original = ASSETS_DIR
                     .get_file(original_path)
