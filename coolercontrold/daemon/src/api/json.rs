@@ -119,6 +119,10 @@ pub fn serialize_subschema_for<T: JsonSchema>() -> (Schema, Option<String>) {
                 .and_then(|name| generator.definitions().get(name)),
             None => Some(schema.as_value()),
         };
+        assert!(
+            target.is_some(),
+            "a serialize ref resolves to its definition"
+        );
         let description = target
             .and_then(|target| target.get("description"))
             .and_then(Value::as_str)
@@ -184,6 +188,10 @@ fn merge_response_schemas(api: &mut OpenApi) {
         if let Some(object) = schema.as_object_mut() {
             rewrite_refs(object, &|reference| final_ref(reference, &split));
         }
+        assert!(
+            referenced_names(schema.as_value(), SERIALIZE_PATH).is_empty(),
+            "no ref is left on the serialize path"
+        );
     });
 }
 
@@ -210,7 +218,13 @@ fn prune_unreferenced_schemas(api: &mut OpenApi) {
         }
         reachable.insert(name);
     }
+    assert!(reachable.len() <= schemas.len());
     schemas.retain(|name, _| reachable.contains(name));
+    assert_eq!(
+        schemas.len(),
+        reachable.len(),
+        "every reachable ref resolves"
+    );
 }
 
 fn rename_request_variants(
@@ -283,6 +297,10 @@ fn shared_names(
             .cloned()
             .collect();
         if differing.is_empty() {
+            for name in &shared {
+                assert!(deserialized.contains_key(name));
+                assert!(serialized.contains_key(name));
+            }
             return shared;
         }
         for name in &differing {
