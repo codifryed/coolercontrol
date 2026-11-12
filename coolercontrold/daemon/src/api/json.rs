@@ -56,7 +56,10 @@ where
     type Rejection = JsonRejection;
 
     async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
-        #[allow(clippy::disallowed_types)]
+        #[expect(
+            clippy::disallowed_types,
+            reason = "the wrapper delegates to axum::Json"
+        )]
         let axum::Json(value) = axum::Json::<T>::from_request(request, state).await?;
         Ok(Self(value))
     }
@@ -64,14 +67,20 @@ where
 
 impl<T: Serialize> IntoResponse for Json<T> {
     fn into_response(self) -> axum::response::Response {
-        #[allow(clippy::disallowed_types)]
+        #[allow(
+            clippy::disallowed_types,
+            reason = "the wrapper delegates to axum::Json"
+        )]
         axum::Json(self.0).into_response()
     }
 }
 
 impl<T: JsonSchema> OperationInput for Json<T> {
     fn operation_input(ctx: &mut GenContext, operation: &mut Operation) {
-        #[allow(clippy::disallowed_types)]
+        #[expect(
+            clippy::disallowed_types,
+            reason = "the wrapper delegates to axum::Json"
+        )]
         axum::Json::<T>::operation_input(ctx, operation);
     }
 }
