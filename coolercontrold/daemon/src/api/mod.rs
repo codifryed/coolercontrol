@@ -466,8 +466,16 @@ fn finish_api(router: ApiRouter) -> Router {
 /// listener's copy holds about 3 MB.
 #[cfg(not(debug_assertions))]
 fn finish_api(router: ApiRouter) -> Router {
-    json::discard_response_schemas();
+    discard_doc_state();
     Router::from(router)
+}
+
+/// Declaring routes fills aide's thread-local schema state and ours. Only document builds
+/// drain it, so without this a release daemon keeps it for its whole life.
+#[cfg(any(test, not(debug_assertions)))]
+fn discard_doc_state() {
+    aide::generate::reset_context();
+    json::discard_response_schemas();
 }
 
 /// Outside the routes, so the client is known before its auth throttles read it.
@@ -1835,6 +1843,20 @@ mod tests {
                 "{name} is never referenced"
             );
         }
+    }
+
+    /// Goal: release builds keep no schema state once routes are declared, since nothing
+    /// builds a document from it.
+    /// Method: declare the routes, then check both generators are empty after the discard.
+    #[test]
+    fn discard_doc_state_frees_schema_definitions() {
+        let aide_count = || aide::generate::in_context(|ctx| ctx.schema.definitions().len());
+        let _routes = router::documented_routes();
+        assert!(aide_count() > 0);
+        assert!(json::response_schema_count() > 0);
+        discard_doc_state();
+        assert_eq!(aide_count(), 0);
+        assert_eq!(json::response_schema_count(), 0);
     }
 
     /// Goal: response schemas describe what the daemon sends. These fields were documented

@@ -128,9 +128,14 @@ pub fn serialize_subschema_for<T: JsonSchema>() -> (Schema, Option<String>) {
 }
 
 /// Drops the serialize-direction definitions. For builds that never produce a document.
-#[cfg(not(debug_assertions))]
+#[cfg(any(test, not(debug_assertions)))]
 pub fn discard_response_schemas() {
     SERIALIZE_GENERATOR.set(serialize_generator());
+}
+
+#[cfg(test)]
+pub fn response_schema_count() -> usize {
+    SERIALIZE_GENERATOR.with_borrow(|generator| generator.definitions().len())
 }
 
 /// Completes a document aide has built. Call after `finish_api_with`.
