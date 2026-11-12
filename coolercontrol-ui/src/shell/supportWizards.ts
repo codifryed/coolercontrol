@@ -12,7 +12,7 @@
 
 import { readonly, ref } from 'vue'
 
-const TAPS_REQUIRED = 7
+const TAPS_REQUIRED = 3
 // Taps only count as a run while they keep landing. Without the window the
 // counter would collect the ordinary logo clicks of a long session and fire
 // on its own, which would read as a bug rather than a secret.
