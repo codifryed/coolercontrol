@@ -1485,6 +1485,7 @@ impl FromRef<AppState> for DeviceHandle {
 mod tests {
     use super::*;
     use axum::Extension;
+    use std::collections::HashSet;
     use tower::ServiceExt as _;
 
     /// Goal: only debug builds build and keep the `OpenAPI` document. Release builds have no
@@ -1753,6 +1754,40 @@ mod tests {
              routes no longer served: {only_in_file:?}\n\
              (an empty diff here means only schemas or descriptions changed)"
         );
+    }
+
+    /// Goal: generated API clients name their methods after `operationId`, so every operation
+    /// needs one, unique and stable. A missing id makes some generators refuse the spec.
+    /// Method: walk every operation in the generated spec and check its id.
+    #[test]
+    fn every_operation_has_a_unique_camel_case_id() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let paths = spec["paths"].as_object().expect("the spec has paths");
+        let mut ids = HashSet::new();
+        for (path, item) in paths {
+            let item = item.as_object().expect("a path item is an object");
+            for method in [
+                "get", "put", "post", "delete", "options", "head", "patch", "trace",
+            ] {
+                let Some(operation) = item.get(method) else {
+                    continue;
+                };
+                let id = operation["operationId"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{method} {path} has no operationId"));
+                let mut chars = id.chars();
+                assert!(
+                    chars.next().is_some_and(|c| c.is_ascii_lowercase()),
+                    "{method} {path}: {id} must start with a lowercase letter"
+                );
+                assert!(
+                    chars.all(|c| c.is_ascii_alphanumeric()),
+                    "{method} {path}: {id} must be camelCase"
+                );
+                assert!(ids.insert(id.to_string()), "duplicate operationId {id}");
+            }
+        }
+        assert!(ids.is_empty().not());
     }
 
     /// An empty or blank address is the documented way to turn an address family off,

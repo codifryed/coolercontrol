@@ -21,7 +21,8 @@
           "base"
         ],
         "summary": "Handshake",
-        "description": "A simple endpoint to verify the connection"
+        "description": "A simple endpoint to verify the connection",
+        "operationId": "handshake"
       }
     },
     "/health": {
@@ -31,6 +32,7 @@
         ],
         "summary": "Health Check",
         "description": "Returns a Health Check Status.",
+        "operationId": "getHealth",
         "responses": {
           "200": {
             "description": "",
@@ -81,6 +83,7 @@
         ],
         "summary": "Daemon Logs",
         "description": "This returns all recent main daemon logs as raw text",
+        "operationId": "getLogs",
         "responses": {
           "200": {
             "description": "plain text",
@@ -106,6 +109,7 @@
         ],
         "summary": "Acknowledge Log Issues",
         "description": "This acknowledges existing log warnings and errors, and sets a timestamp of when this occurred",
+        "operationId": "acknowledgeLogIssues",
         "responses": {
           "200": {
             "description": "no content"
@@ -149,6 +153,7 @@
         ],
         "summary": "Shutdown Daemon",
         "description": "Sends a cancellation signal to shut the daemon down. When the daemon is running as a systemd or initrc service, it is automatically restarted.",
+        "operationId": "shutdownDaemon",
         "responses": {
           "200": {
             "description": "no content"
@@ -189,6 +194,7 @@
         ],
         "summary": "Login",
         "description": "The endpoint used to create a login session.",
+        "operationId": "login",
         "responses": {
           "200": {
             "description": "no content"
@@ -229,6 +235,7 @@
         ],
         "summary": "Verify Session Auth",
         "description": "Verifies that the current session is still authenticated",
+        "operationId": "verifySession",
         "responses": {
           "200": {
             "description": "no content"
@@ -269,6 +276,7 @@
         ],
         "summary": "Set Admin Password",
         "description": "Stores a new Admin password.",
+        "operationId": "setPassword",
         "requestBody": {
           "content": {
             "application/json": {
@@ -320,6 +328,7 @@
         ],
         "summary": "Logout",
         "description": "Logout and invalidate the current session.",
+        "operationId": "logout",
         "responses": {
           "200": {
             "description": "no content"
@@ -339,6 +348,7 @@
         ],
         "summary": "List Access Tokens",
         "description": "Returns a list of all access tokens (without hashes).",
+        "operationId": "listTokens",
         "responses": {
           "200": {
             "description": "",
@@ -384,6 +394,7 @@
         ],
         "summary": "Create Access Token",
         "description": "Creates a new access token for external service authentication. The raw token is only returned once.",
+        "operationId": "createToken",
         "requestBody": {
           "content": {
             "application/json": {
@@ -441,6 +452,7 @@
         ],
         "summary": "Delete Access Token",
         "description": "Deletes the access token with the given ID.",
+        "operationId": "deleteToken",
         "parameters": [
           {
             "in": "path",
@@ -492,6 +504,7 @@
         ],
         "summary": "ThinkPad Fan Control",
         "description": "Enables/Disabled Fan Control for ThinkPads, if acpi driver is present.",
+        "operationId": "setThinkPadFanControl",
         "requestBody": {
           "content": {
             "application/json": {
@@ -545,6 +558,7 @@
         ],
         "summary": "AMD GPU Overdrive State",
         "description": "Returns the AMD GPU overdrive setup state. Changes are also sent as the `amd-gpu-overdrive` SSE event.",
+        "operationId": "getAmdGpuOverdrive",
         "responses": {
           "200": {
             "description": "",
@@ -593,6 +607,7 @@
         ],
         "summary": "AMD GPU Overdrive Enable",
         "description": "Starts AMD GPU overdrive setup by configuring the ppfeaturemask kernel parameter, and returns at once with the new state. Requires a JSON body with `rebuild`: a request without one is refused and starts nothing. The boot image rebuild or kernel argument change runs in the background, and each state change is sent as the `amd-gpu-overdrive` SSE event. Returns the current state without a new run while a setup is running, or once the setting is staged or active. Requires a reboot to take effect.",
+        "operationId": "enableAmdGpuOverdrive",
         "requestBody": {
           "content": {
             "application/json": {
@@ -648,6 +663,7 @@
         ],
         "summary": "AMD GPU Overdrive Disable",
         "description": "Removes the modprobe conf CoolerControl writes and rebuilds the boot image. Returns at once, like the enable, with progress sent as the `amd-gpu-overdrive` SSE event. Does nothing when `removable` is false. A kernel argument is left to the user. A reboot turns overdrive off.",
+        "operationId": "disableAmdGpuOverdrive",
         "responses": {
           "200": {
             "description": "",
@@ -695,6 +711,7 @@
         ],
         "summary": "AMD GPU Overdrive Plan",
         "description": "Returns what enabling, or with `action=disable` disabling, AMD GPU overdrive would do on this system: the route, the exact command run as root, the files written or removed, or why it cannot run now. Clients show it for the user to confirm.",
+        "operationId": "getAmdGpuOverdrivePlan",
         "parameters": [
           {
             "in": "query",
@@ -762,6 +779,7 @@
         ],
         "summary": "All Devices",
         "description": "Returns a list of all detected devices and their associated information.",
+        "operationId": "listDevices",
         "responses": {
           "200": {
             "description": "",
@@ -812,6 +830,7 @@
         ],
         "summary": "Device Channel Attributes",
         "description": "Returns the extra attributes the driver reports for a temperature, fan or power channel, such as its max, critical and emergency limits, fan target or power cap, read from the hardware when requested. Each is named by its sysfs file, because the meaning varies by driver: on some chips min and max are the lowest and highest readings so far. Unset and unreadable values are left out. Channels without attribute files return an empty list.",
+        "operationId": "getChannelAttributes",
         "parameters": [
           {
             "in": "path",
@@ -882,6 +901,7 @@
         ],
         "summary": "All Device Settings",
         "description": "Returns all the currently applied settings for the given device. It returns the Config Settings model, which includes all possibilities for each channel.",
+        "operationId": "listChannelSettings",
         "parameters": [
           {
             "in": "path",
@@ -943,6 +963,7 @@
         ],
         "summary": "Device Channel Manual",
         "description": "Applies a fan duty to a specific device channel.",
+        "operationId": "setChannelManual",
         "parameters": [
           {
             "in": "path",
@@ -1016,6 +1037,7 @@
         ],
         "summary": "Device Channel Profile",
         "description": "Applies a Profile to a specific device channel.",
+        "operationId": "setChannelProfile",
         "parameters": [
           {
             "in": "path",
@@ -1089,6 +1111,7 @@
         ],
         "summary": "Device Channel LCD",
         "description": "Applies LCD Settings to a specific device channel.",
+        "operationId": "setChannelLcd",
         "parameters": [
           {
             "in": "path",
@@ -1177,6 +1200,7 @@
         ],
         "summary": "Retrieve Device Channel LCD",
         "description": "Retrieves the currently applied LCD Image file.",
+        "operationId": "getChannelLcdImage",
         "parameters": [
           {
             "in": "path",
@@ -1235,6 +1259,7 @@
         ],
         "summary": "Update Device Channel LCD Settings",
         "description": "Used to apply LCD settings that contain images.",
+        "operationId": "updateChannelLcdImage",
         "parameters": [
           {
             "in": "path",
@@ -1321,6 +1346,7 @@
         ],
         "summary": "Process Device Channel LCD Image",
         "description": "This takes and image file and processes it for optimal use by the specified device channel. This is useful for a UI Preview and is used internally before applying the image to the device.",
+        "operationId": "processChannelLcdImage",
         "parameters": [
           {
             "in": "path",
@@ -1392,6 +1418,7 @@
         ],
         "summary": "Set LCD Shutdown Image",
         "description": "Upload and save an LCD image that will be applied to the device when the daemon shuts down.",
+        "operationId": "setLcdShutdownImage",
         "parameters": [
           {
             "in": "path",
@@ -1464,6 +1491,7 @@
         ],
         "summary": "Clear LCD Shutdown Image",
         "description": "Remove the saved LCD shutdown image for the given device channel.",
+        "operationId": "clearLcdShutdownImage",
         "parameters": [
           {
             "in": "path",
@@ -1527,6 +1555,7 @@
         ],
         "summary": "Device Channel Lighting",
         "description": "Applies Lighting Settings (RGB) to a specific device channel.",
+        "operationId": "setChannelLighting",
         "parameters": [
           {
             "in": "path",
@@ -1600,6 +1629,7 @@
         ],
         "summary": "DEPRECATED: Device Channel PWM Mode",
         "description": "DEPRECATED: Applies PWM Mode to a specific device channel.",
+        "operationId": "setChannelPwmMode",
         "parameters": [
           {
             "in": "path",
@@ -1673,6 +1703,7 @@
         ],
         "summary": "Device Channel Reset",
         "description": "Resents the specific device channel settings to not-set/device default.",
+        "operationId": "resetChannel",
         "parameters": [
           {
             "in": "path",
@@ -1736,6 +1767,7 @@
         ],
         "summary": "Device AseTek690",
         "description": "Set the driver type for liquidctl AseTek cooler. This is needed to set Legacy690Lc or Modern690Lc device driver type.",
+        "operationId": "setAsetek690",
         "parameters": [
           {
             "in": "path",
@@ -1800,6 +1832,7 @@
         ],
         "summary": "Retrieve Device Health",
         "description": "Returns the failsafe channels and missing temp-source references currently tracked by the daemon.",
+        "operationId": "getDeviceHealth",
         "responses": {
           "200": {
             "description": "Full current health snapshot returned by `GET /devices/health`.\n\n Two sections with different meanings, deliberately not interleaved.\n `failsafe`, `missing`, `stale_source` and `firmware_overrides` are\n **current state**: conditions that can clear on their own.\n `channel_capabilities` and `system_findings` are **permanent**: facts about\n what this hardware can do, which will not change while the machine is\n running. Presenting a permanent capability as a fault would imply the user\n should wait for it to resolve; presenting a fault as a capability would\n imply the opposite.",
@@ -1829,6 +1862,7 @@
         ],
         "summary": "Retrieve Status",
         "description": "Returns the status of all devices and their channels, returning only the most recent status by default.",
+        "operationId": "getStatus",
         "parameters": [
           {
             "in": "query",
@@ -1891,6 +1925,7 @@
         ],
         "summary": "Retrieve Status",
         "description": "Returns the status of all devices and their channels,with the selected filters from the request body. This endpoint has the most options available for retrieving all statuses.",
+        "operationId": "queryStatus",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1951,6 +1986,7 @@
         ],
         "summary": "Retrieve Device Status",
         "description": "Returns the status of all channels for a specific device, returning only the most recent status by default.",
+        "operationId": "getDeviceStatus",
         "parameters": [
           {
             "in": "path",
@@ -2024,6 +2060,7 @@
         ],
         "summary": "Retrieve Device Channel Status",
         "description": "Returns the status of a specific channel for a specific device, returning only the most recent status by default.",
+        "operationId": "getChannelStatus",
         "parameters": [
           {
             "in": "path",
@@ -2106,6 +2143,7 @@
         ],
         "summary": "Retrieve Channel Stats",
         "description": "Returns running min/max/avg/count per channel and temp since daemon start. Entries are present once observed at least once.",
+        "operationId": "getChannelStats",
         "responses": {
           "200": {
             "description": "Top-level response for `GET /stats` and `DELETE /stats`. One entry per\n known device. Channels/temps are only present once they have been\n observed at least once since daemon start (or last reset).",
@@ -2133,6 +2171,7 @@
         ],
         "summary": "Reset Channel Stats",
         "description": "Clears all running stats and reseeds each from the most recent status with count=1. Channels absent from the most recent status are dropped and will reseed naturally on their next observation.",
+        "operationId": "resetChannelStats",
         "responses": {
           "200": {
             "description": "Top-level response for `GET /stats` and `DELETE /stats`. One entry per\n known device. Channels/temps are only present once they have been\n observed at least once since daemon start (or last reset).",
@@ -2162,6 +2201,7 @@
         ],
         "summary": "Retrieve Profile List",
         "description": "Returns a list of all the persisted Profiles.",
+        "operationId": "listProfiles",
         "responses": {
           "200": {
             "description": "",
@@ -2210,6 +2250,7 @@
         ],
         "summary": "Update Profile",
         "description": "Updates the Profile with the given properties. Dependent on the Profile UID.",
+        "operationId": "updateProfile",
         "requestBody": {
           "description": "Profile Settings",
           "content": {
@@ -2262,6 +2303,7 @@
         ],
         "summary": "Create Profile",
         "description": "Creates the given Profile",
+        "operationId": "createProfile",
         "requestBody": {
           "description": "Profile Settings",
           "content": {
@@ -2316,6 +2358,7 @@
         ],
         "summary": "Delete Profile",
         "description": "Deletes the Profile with the given Profile UID",
+        "operationId": "deleteProfile",
         "parameters": [
           {
             "in": "path",
@@ -2370,6 +2413,7 @@
         ],
         "summary": "Save Profile Order",
         "description": "Saves the order of Profiles as given.",
+        "operationId": "saveProfileOrder",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2423,6 +2467,7 @@
         ],
         "summary": "Generate Profiles",
         "description": "Proposes profiles, functions, and custom sensors for the given fan assignments and presets, without persisting them.",
+        "operationId": "generateProfiles",
         "requestBody": {
           "description": "The full input to one profile-generation run.",
           "content": {
@@ -2484,6 +2529,7 @@
         ],
         "summary": "Retrieve Function List",
         "description": "Returns a list of all the persisted Functions.",
+        "operationId": "listFunctions",
         "responses": {
           "200": {
             "description": "",
@@ -2532,6 +2578,7 @@
         ],
         "summary": "Update Function",
         "description": "Updates the Function with the given properties. Dependent on the Function UID.",
+        "operationId": "updateFunction",
         "requestBody": {
           "description": "The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`\n fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on\n `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left\n to apply-time validation, keeping the input wire contract backward-compatible.",
           "content": {
@@ -2584,6 +2631,7 @@
         ],
         "summary": "Create Function",
         "description": "Creates the given Function",
+        "operationId": "createFunction",
         "requestBody": {
           "description": "The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`\n fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on\n `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left\n to apply-time validation, keeping the input wire contract backward-compatible.",
           "content": {
@@ -2638,6 +2686,7 @@
         ],
         "summary": "Delete Function",
         "description": "Deletes the Function with the given Function UID",
+        "operationId": "deleteFunction",
         "parameters": [
           {
             "in": "path",
@@ -2692,6 +2741,7 @@
         ],
         "summary": "Save Function Order",
         "description": "Saves the order of the Functions as given.",
+        "operationId": "saveFunctionOrder",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2745,6 +2795,7 @@
         ],
         "summary": "Retrieve Custom Sensor List",
         "description": "Returns a list of all the persisted Custom Sensors.",
+        "operationId": "listCustomSensors",
         "responses": {
           "200": {
             "description": "",
@@ -2793,6 +2844,7 @@
         ],
         "summary": "Update Custom Sensor",
         "description": "Updates the Custom Sensor with the given properties. Dependent on the Custom Sensor ID.",
+        "operationId": "updateCustomSensor",
         "requestBody": {
           "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
           "content": {
@@ -2845,6 +2897,7 @@
         ],
         "summary": "Create Custom Sensor",
         "description": "Creates the given Custom Sensor",
+        "operationId": "createCustomSensor",
         "requestBody": {
           "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
           "content": {
@@ -2899,6 +2952,7 @@
         ],
         "summary": "Retrieve Custom Sensor",
         "description": "Retrieves the Custom Sensor with the given Custom Sensor ID",
+        "operationId": "getCustomSensor",
         "parameters": [
           {
             "in": "path",
@@ -2958,6 +3012,7 @@
         ],
         "summary": "Delete Custom Sensor",
         "description": "Deletes the Custom Sensor with the given Custom Sensor UID",
+        "operationId": "deleteCustomSensor",
         "parameters": [
           {
             "in": "path",
@@ -3012,6 +3067,7 @@
         ],
         "summary": "Retrieve Mode List",
         "description": "Returns a list of all the persisted Modes.",
+        "operationId": "listModes",
         "responses": {
           "200": {
             "description": "",
@@ -3060,6 +3116,7 @@
         ],
         "summary": "Update Mode",
         "description": "Updates the Mode with the given properties.",
+        "operationId": "updateMode",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3111,6 +3168,7 @@
         ],
         "summary": "Create Mode",
         "description": "Creates a Mode with the given name, based on the currently applied settings.",
+        "operationId": "createMode",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3171,6 +3229,7 @@
         ],
         "summary": "Retrieve Mode",
         "description": "Retrieves the Mode with the given Mode UID",
+        "operationId": "getMode",
         "parameters": [
           {
             "in": "path",
@@ -3230,6 +3289,7 @@
         ],
         "summary": "Delete Mode",
         "description": "Deletes the Mode with the given Mode UID",
+        "operationId": "deleteMode",
         "parameters": [
           {
             "in": "path",
@@ -3284,6 +3344,7 @@
         ],
         "summary": "Duplicate Mode",
         "description": "Duplicates the Mode and it's settings from the given Mode UID and returns the new Mode.",
+        "operationId": "duplicateMode",
         "parameters": [
           {
             "in": "path",
@@ -3345,6 +3406,7 @@
         ],
         "summary": "Update Mode Device Settings",
         "description": "Updates the Mode with the given Mode UID device settings to what is currently applied, and returns the Mode with it's new settings.",
+        "operationId": "updateModeSettings",
         "parameters": [
           {
             "in": "path",
@@ -3406,6 +3468,7 @@
         ],
         "summary": "Retrieve Active Modes",
         "description": "Returns the active and previously active Mode UIDs.",
+        "operationId": "listActiveModes",
         "responses": {
           "200": {
             "description": "",
@@ -3456,6 +3519,7 @@
         ],
         "summary": "Activate Mode",
         "description": "Activates the Mode with the given Mode UID. This applies all of this Mode's device settings.",
+        "operationId": "activateMode",
         "parameters": [
           {
             "in": "path",
@@ -3510,6 +3574,7 @@
         ],
         "summary": "Save Mode Order",
         "description": "Saves the order of the Modes as given.",
+        "operationId": "saveModeOrder",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3563,6 +3628,7 @@
         ],
         "summary": "Retrieve Power Profile State",
         "description": "Returns the power profiles the system offers, the active one, and the profile to Mode mapping. An empty `available` list means no power profile daemon is reachable over D-Bus.",
+        "operationId": "getPowerProfiles",
         "responses": {
           "200": {
             "description": "A point-in-time view of the power profile integration, for API consumers.",
@@ -3592,6 +3658,7 @@
         ],
         "summary": "Set Power Profile Mode Mapping",
         "description": "Replaces the mapping of system power profile to Mode. Every referenced Mode must exist. Profiles left out are unmapped.",
+        "operationId": "setPowerProfileModes",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3645,6 +3712,7 @@
         ],
         "summary": "CoolerControl Settings",
         "description": "Returns the current CoolerControl settings.",
+        "operationId": "getSettings",
         "responses": {
           "200": {
             "description": "",
@@ -3693,6 +3761,7 @@
         ],
         "summary": "Update CoolerControl Settings",
         "description": "Applies only the given properties.",
+        "operationId": "updateSettings",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3746,6 +3815,7 @@
         ],
         "summary": "CoolerControl All Device Settings",
         "description": "Returns the current CoolerControl device settings for all devices.",
+        "operationId": "listDeviceSettings",
         "responses": {
           "200": {
             "description": "",
@@ -3796,6 +3866,7 @@
         ],
         "summary": "CoolerControl Device Settings",
         "description": "Returns the current CoolerControl device settings for the given device UID.",
+        "operationId": "getDeviceSettings",
         "parameters": [
           {
             "in": "path",
@@ -3855,6 +3926,7 @@
         ],
         "summary": "Update CoolerControl Device Settings",
         "description": "Updates the CoolerControl device settings for the given device UID.",
+        "operationId": "updateDeviceSettings",
         "parameters": [
           {
             "in": "path",
@@ -3920,6 +3992,7 @@
         ],
         "summary": "Name Overrides",
         "description": "Returns the raw, sparse user-defined name overrides document (overrides.toml). Devices and channels without an override are absent.",
+        "operationId": "getNameOverrides",
         "responses": {
           "200": {
             "description": "",
@@ -3970,6 +4043,7 @@
         ],
         "summary": "Update Device Name Override",
         "description": "Sets the user-defined display name for the device. A null or absent name removes the override.",
+        "operationId": "setDeviceNameOverride",
         "parameters": [
           {
             "in": "path",
@@ -4034,6 +4108,7 @@
         ],
         "summary": "Update Channel Label Override",
         "description": "Sets the user-defined display label for the channel. A null or absent label removes the override. The channel does not have to be present; only the device must be known.",
+        "operationId": "setChannelLabelOverride",
         "parameters": [
           {
             "in": "path",
@@ -4107,6 +4182,7 @@
         ],
         "summary": "CoolerControl UI Settings",
         "description": "Returns the current CoolerControl UI Settings.",
+        "operationId": "getUiSettings",
         "responses": {
           "200": {
             "description": "plain text",
@@ -4151,6 +4227,7 @@
         ],
         "summary": "Update CoolerControl UI Settings",
         "description": "Updates and persists the CoolerControl UI settings.",
+        "operationId": "updateUiSettings",
         "requestBody": {
           "content": {
             "text/plain; charset=utf-8": {}
@@ -4197,6 +4274,7 @@
         ],
         "summary": "CoolerControl Plugins",
         "description": "Returns the current list of active CoolerControl plugins.",
+        "operationId": "listPlugins",
         "responses": {
           "200": {
             "description": "",
@@ -4244,6 +4322,7 @@
         ],
         "summary": "CoolerControl Plugin UI Library",
         "description": "Returns the CoolerControl plugin UI library for plugins to use in their UI code.",
+        "operationId": "getPluginLib",
         "responses": {
           "400": {
             "description": "Bad Request. The request is invalid"
@@ -4276,6 +4355,7 @@
         ],
         "summary": "CoolerControl Plugin Config",
         "description": "Returns the current CoolerControl plugin config for the given plugin ID.",
+        "operationId": "getPluginConfig",
         "parameters": [
           {
             "in": "path",
@@ -4328,6 +4408,7 @@
         ],
         "summary": "Update CoolerControl Plugin Config",
         "description": "Updates the CoolerControl plugin config for the given plugin ID.",
+        "operationId": "updatePluginConfig",
         "parameters": [
           {
             "in": "path",
@@ -4385,6 +4466,7 @@
         ],
         "summary": "Start CoolerControl Plugin",
         "description": "Starts a managed integration plugin's service.",
+        "operationId": "startPlugin",
         "parameters": [
           {
             "in": "path",
@@ -4436,6 +4518,7 @@
         ],
         "summary": "Stop CoolerControl Plugin",
         "description": "Stops a managed integration plugin's service.",
+        "operationId": "stopPlugin",
         "parameters": [
           {
             "in": "path",
@@ -4487,6 +4570,7 @@
         ],
         "summary": "Restart CoolerControl Plugin",
         "description": "Restarts a managed integration plugin's service.",
+        "operationId": "restartPlugin",
         "parameters": [
           {
             "in": "path",
@@ -4538,6 +4622,7 @@
         ],
         "summary": "Reload CoolerControl Plugin Manifest",
         "description": "Re-reads the manifest of a plugin that has no service to restart. A device plugin's manifest is only checked: applying it takes a daemon restart. A managed integration plugin is refused, since restarting it re-reads its manifest.",
+        "operationId": "reloadPlugin",
         "parameters": [
           {
             "in": "path",
@@ -4589,6 +4674,7 @@
         ],
         "summary": "CoolerControl Plugin Status",
         "description": "Returns the status of a plugin's service.",
+        "operationId": "getPluginStatus",
         "parameters": [
           {
             "in": "path",
@@ -4647,6 +4733,7 @@
         ],
         "summary": "Disable CoolerControl Plugin",
         "description": "Disables a plugin persistently. Stops integration services immediately.",
+        "operationId": "disablePlugin",
         "parameters": [
           {
             "in": "path",
@@ -4698,6 +4785,7 @@
         ],
         "summary": "Enable CoolerControl Plugin",
         "description": "Re-enables a disabled plugin. Starts integration services immediately.",
+        "operationId": "enablePlugin",
         "parameters": [
           {
             "in": "path",
@@ -4749,6 +4837,7 @@
         ],
         "summary": "CoolerControl Plugin UI Check",
         "description": "Returns if the CoolerControl plugin has a UI or not.",
+        "operationId": "checkPluginUi",
         "parameters": [
           {
             "in": "path",
@@ -4786,6 +4875,7 @@
         ],
         "summary": "CoolerControl Plugin UI",
         "description": "Returns the CoolerControl plugin UI file for the given plugin ID. Supports nested paths.",
+        "operationId": "getPluginUiFile",
         "parameters": [
           {
             "in": "path",
@@ -4843,6 +4933,7 @@
         ],
         "summary": "CoolerControl Plugin Data Proxy",
         "description": "Reverse-proxies a request to the plugin's local HTTP server. The plugin must declare [proxy] in its manifest.",
+        "operationId": "getPluginData",
         "parameters": [
           {
             "in": "path",
@@ -4898,6 +4989,7 @@
         ],
         "summary": "CoolerControl Plugin Data Proxy (POST)",
         "description": "Reverse-proxies a POST request to the plugin's local HTTP server.",
+        "operationId": "postPluginData",
         "parameters": [
           {
             "in": "path",
@@ -4955,6 +5047,7 @@
         ],
         "summary": "Retrieve Alert List",
         "description": "Returns a list of all the persisted Alerts.",
+        "operationId": "listAlerts",
         "responses": {
           "200": {
             "description": "",
@@ -5003,6 +5096,7 @@
         ],
         "summary": "Update Alert",
         "description": "Updates the Alert with the given properties. Dependent on the Alert UID.",
+        "operationId": "updateAlert",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5054,6 +5148,7 @@
         ],
         "summary": "Create Alert",
         "description": "Creates the given Alert",
+        "operationId": "createAlert",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5107,6 +5202,7 @@
         ],
         "summary": "Delete Alert",
         "description": "Deletes the Alert with the given Alert UID",
+        "operationId": "deleteAlert",
         "parameters": [
           {
             "in": "path",
@@ -5161,6 +5257,7 @@
         ],
         "summary": "List every persisted calibration",
         "description": "Returns one entry per channel that has a stored calibration. Used by the UI at app load to mark calibrated channels in the tree menu without one request per channel. Always 200; an empty list signals that no channel has been calibrated yet.",
+        "operationId": "listCalibrations",
         "responses": {
           "200": {
             "description": "Snapshot of every persisted calibration. Empty list when nothing\n is stored. Matches the wrapper shape used by `/profiles` and\n `/alerts` so clients can iterate `dto.calibrations`.",
@@ -5190,6 +5287,7 @@
         ],
         "summary": "Start a calibration diagnosis",
         "description": "Queues a calibration diagnosis on the channel and returns 202. Poll GET .../status to track progress. Returns 409 when a diagnosis is already in flight for the channel.",
+        "operationId": "startCalibration",
         "parameters": [
           {
             "in": "path",
@@ -5250,6 +5348,7 @@
         ],
         "summary": "Cancel an in-flight calibration",
         "description": "Triggers cancellation of the in-flight calibration for the channel. Returns 404 when nothing is running.",
+        "operationId": "cancelCalibration",
         "parameters": [
           {
             "in": "path",
@@ -5313,6 +5412,7 @@
         ],
         "summary": "Get the calibration status",
         "description": "Returns the most recent calibration status for the channel (in_progress / completed / failed). 404 if no diagnosis has ever been observed. Intended for UI polling at ~1 Hz while a diagnosis is in flight.",
+        "operationId": "getCalibrationStatus",
         "parameters": [
           {
             "in": "path",
@@ -5383,6 +5483,7 @@
         ],
         "summary": "Get the stored calibration",
         "description": "Returns the persisted calibration JSON, or 404 if none.",
+        "operationId": "getCalibration",
         "parameters": [
           {
             "in": "path",
@@ -5451,6 +5552,7 @@
         ],
         "summary": "Delete the stored calibration",
         "description": "Removes the persisted calibration for the channel. Returns 404 when none was stored.",
+        "operationId": "deleteCalibration",
         "parameters": [
           {
             "in": "path",
@@ -5514,6 +5616,7 @@
         ],
         "summary": "Set per-fan calibration overrides",
         "description": "Replaces the kick-boost and kick-duration override fields on the stored calibration. Both fields in the body are applied unconditionally; `null` clears the override. Returns 404 when no calibration is stored for the channel.",
+        "operationId": "setCalibrationOverrides",
         "parameters": [
           {
             "in": "path",
@@ -5595,6 +5698,7 @@
         ],
         "summary": "Get the calibration batch status",
         "description": "Returns the active or most recent calibration batch, or null when no batch has run this session. The daemon owns the queue, so the UI polls this and re-attaches after a reload.",
+        "operationId": "getCalibrationBatch",
         "responses": {
           "200": {
             "description": "",
@@ -5631,6 +5735,7 @@
         ],
         "summary": "Start a calibration batch",
         "description": "Queues calibration of the given channels and returns 202. Returns 409 when a batch is already active or the request is invalid.",
+        "operationId": "startCalibrationBatch",
         "requestBody": {
           "description": "Body for `POST /calibrations/batch/start`. `concurrency` is how many\n sweeps run at once (1 = sequential); omitted or 0 is treated as 1, and\n the daemon clamps it to the channel count.",
           "content": {
@@ -5682,6 +5787,7 @@
         ],
         "summary": "Cancel the calibration batch",
         "description": "Cancels the active batch and stops its queue. Returns 404 when no batch is active.",
+        "operationId": "cancelCalibrationBatch",
         "responses": {
           "200": {
             "description": "no content"
@@ -5725,6 +5831,7 @@
         ],
         "summary": "Map device duties to true duties",
         "description": "Runs each device duty through the calibration's stable inverse and returns the true duties that reproduce it, in the same order. A calibrated channel reinterprets stored duties as true-duty, so a curve authored before calibration behaves differently; feeding its points through here yields values that restore the old behavior. Computes nothing else and stores nothing. Returns 404 when the channel has no stored calibration, and 409 for a stepped calibration, which is written through unmapped and so has nothing to convert. Rejects an empty list, more than 256 entries, or any duty over 100.",
+        "operationId": "mapCalibrationDuties",
         "parameters": [
           {
             "in": "path",
@@ -5806,6 +5913,7 @@
         ],
         "summary": "Detect Hardware",
         "description": "Return what the startup Super-I/O detection found, retained rather than re-probed. `probed` is false when no detection ran at all, so an empty chip list means \"not looked for\" rather than \"none present\".",
+        "operationId": "detectHardware",
         "responses": {
           "200": {
             "description": "Response for GET/POST /detect",
@@ -5854,6 +5962,7 @@
         ],
         "summary": "Detect Hardware and Load Modules",
         "description": "Run Super-I/O hardware detection and optionally load kernel modules.",
+        "operationId": "detectAndLoadModules",
         "requestBody": {
           "description": "Request body for POST /detect",
           "content": {
@@ -5915,6 +6024,7 @@
         ],
         "summary": "Hardware Support Report",
         "description": "Returns a paste-ready hardware support report as plain text. `full` adds the whole hwmon tree; the compact default is trimmed to stay pasteable. Includes liquidctl devices, which only the running daemon can enumerate without touching hardware.",
+        "operationId": "getHardwareReport",
         "parameters": [
           {
             "in": "query",
@@ -5978,6 +6088,7 @@
         ],
         "summary": "Start CPU Stress Test",
         "description": "Spawns a CPU stress subprocess with tight FMA loops on the requested number of threads.",
+        "operationId": "startCpuStressTest",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6033,6 +6144,7 @@
         ],
         "summary": "Stop CPU Stress Test",
         "description": "Stops the running CPU stress test.",
+        "operationId": "stopCpuStressTest",
         "responses": {
           "200": {
             "description": "",
@@ -6080,6 +6192,7 @@
         ],
         "summary": "Start GPU Stress Test",
         "description": "Spawns a GPU stress subprocess using wgpu compute shaders (Vulkan or OpenGL ES via ANGLE).",
+        "operationId": "startGpuStressTest",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6135,6 +6248,7 @@
         ],
         "summary": "Stop GPU Stress Test",
         "description": "Stops the running GPU stress test.",
+        "operationId": "stopGpuStressTest",
         "responses": {
           "200": {
             "description": "",
@@ -6182,6 +6296,7 @@
         ],
         "summary": "List Available GPUs",
         "description": "Returns the GPUs available for stress testing, discrete first. Enumerated out of process on first use, then cached.",
+        "operationId": "listStressTestGpus",
         "responses": {
           "200": {
             "description": "",
@@ -6211,6 +6326,7 @@
         ],
         "summary": "Start RAM Stress Test",
         "description": "Spawns a RAM stress subprocess that streams data through system memory to maximize bandwidth.",
+        "operationId": "startRamStressTest",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6266,6 +6382,7 @@
         ],
         "summary": "Stop RAM Stress Test",
         "description": "Stops the running RAM stress test.",
+        "operationId": "stopRamStressTest",
         "responses": {
           "200": {
             "description": "",
@@ -6313,6 +6430,7 @@
         ],
         "summary": "Start Drive Stress Test",
         "description": "Spawns a drive stress subprocess that performs random read-only I/O on the specified block device using O_DIRECT.",
+        "operationId": "startDriveStressTest",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6368,6 +6486,7 @@
         ],
         "summary": "Stop Drive Stress Test",
         "description": "Stops the running drive stress test.",
+        "operationId": "stopDriveStressTest",
         "responses": {
           "200": {
             "description": "",
@@ -6415,6 +6534,7 @@
         ],
         "summary": "List Available Drives",
         "description": "Returns block devices available for drive stress testing.",
+        "operationId": "listStressTestDrives",
         "responses": {
           "200": {
             "description": "",
@@ -6444,6 +6564,7 @@
         ],
         "summary": "Stress Test Status",
         "description": "Returns the current status of CPU, GPU, RAM, and Drive stress tests.",
+        "operationId": "getStressTestStatus",
         "responses": {
           "200": {
             "description": "",
@@ -6468,6 +6589,7 @@
         ],
         "summary": "Stop All Stress Tests",
         "description": "Stops all running stress tests (CPU, GPU, RAM, and Drive).",
+        "operationId": "stopAllStressTests",
         "responses": {
           "200": {
             "description": "",
@@ -6515,6 +6637,7 @@
         ],
         "summary": "Prometheus Metrics",
         "description": "Returns device sensor data in Prometheus text exposition format.",
+        "operationId": "getMetrics",
         "responses": {
           "400": {
             "description": "Bad Request. The request is invalid"
@@ -6555,6 +6678,7 @@
         ],
         "summary": "Server Sent Events",
         "description": "Subscribes to every event stream on one connection. Optional `events` query parameter narrows the subscription to a comma-separated subset of: status, health, logs, modes, alerts, notifications, system. Prefer this over the per-stream endpoints: browsers cap concurrent connections per origin over HTTP/1.1.",
+        "operationId": "streamEvents",
         "parameters": [
           {
             "in": "query",
@@ -6658,6 +6782,7 @@
         ],
         "summary": "Log Server Sent Events",
         "description": "Deprecated: use GET /sse?events=logs. Subscribes and returns the Server Sent Events for a Log stream",
+        "operationId": "streamLogs",
         "security": [
           {
             "CookieAuth": []
@@ -6675,6 +6800,7 @@
         ],
         "summary": "Recent Status Server Sent Events",
         "description": "Deprecated: use GET /sse?events=status,health. Subscribes and returns the Server Sent Events for a Status stream",
+        "operationId": "streamStatus",
         "security": [
           {
             "CookieAuth": []
@@ -6692,6 +6818,7 @@
         ],
         "summary": "Activated Mode Events",
         "description": "Deprecated: use GET /sse?events=modes. Subscribes and returns the Server Sent Events for a ModeActivated stream",
+        "operationId": "streamModes",
         "security": [
           {
             "CookieAuth": []
@@ -6709,6 +6836,7 @@
         ],
         "summary": "Alert Events",
         "description": "Deprecated: use GET /sse?events=alerts. Subscribes and returns Events for when an Alert State has changed",
+        "operationId": "streamAlerts",
         "security": [
           {
             "CookieAuth": []
@@ -6726,6 +6854,7 @@
         ],
         "summary": "Desktop Notification Events",
         "description": "Deprecated: use GET /sse?events=notifications. Subscribes and returns Events for desktop notifications that should be displayed to the user",
+        "operationId": "streamNotifications",
         "security": [
           {
             "CookieAuth": []
