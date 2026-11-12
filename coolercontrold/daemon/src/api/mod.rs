@@ -1871,8 +1871,11 @@ mod tests {
         assert!(device.get("type").is_some());
         assert!(device.get("d_type").is_none());
         let required = |name: &str| -> Vec<String> {
+            assert!(schemas[name].is_object(), "{name} is in the spec");
             serde_json::from_value(schemas[name]["required"].clone()).unwrap_or_default()
         };
+        // Always sent.
+        assert!(required("Status").contains(&"timestamp".to_string()));
         // Sent only when non-empty.
         assert!(required("Status").contains(&"temps".to_string()).not());
         assert!(required("Status").contains(&"channels".to_string()).not());
