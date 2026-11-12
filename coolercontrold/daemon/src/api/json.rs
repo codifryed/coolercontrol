@@ -624,4 +624,29 @@ mod tests {
             .expect("the parameters stay inlined");
         assert_eq!(parameters.len(), 2);
     }
+
+    /// Takes the name the split would give `Renamed`'s request variant.
+    #[derive(Deserialize, JsonSchema)]
+    struct RenamedInput {
+        #[allow(dead_code)]
+        value: u8,
+    }
+
+    #[allow(clippy::unused_async)]
+    async fn take_renamed_input(Json(_): Json<RenamedInput>) {}
+
+    /// Goal: a split whose `Input` name is already taken fails loudly rather than overwriting
+    /// a schema.
+    /// Method: route a split type both ways and a separate type named after its request
+    /// variant, then expect the merge to panic.
+    #[test]
+    #[should_panic(expected = "already exists")]
+    fn split_name_collision_panics() {
+        spec(
+            ApiRouter::new()
+                .api_route("/renamed", post(take_renamed))
+                .api_route("/renamed", get(give_renamed))
+                .api_route("/renamed-input", post(take_renamed_input)),
+        );
+    }
 }
