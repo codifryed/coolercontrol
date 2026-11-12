@@ -524,6 +524,8 @@ mod tests {
     }
 
     /// Goal: a type renamed on the way out documents each direction under its own name.
+    /// Method: route the type as both a request and a response body, then check each body's
+    /// ref and the field names of the two schemas.
     #[test]
     fn asymmetric_type_splits_into_response_and_input() {
         let spec = spec(
@@ -548,6 +550,7 @@ mod tests {
     }
 
     /// Goal: a type that is the same both ways is documented once, under its plain name.
+    /// Method: route the type both ways, then check the schema list and both body refs.
     #[test]
     fn symmetric_type_is_shared() {
         let spec = spec(
@@ -566,6 +569,8 @@ mod tests {
     }
 
     /// Goal: a type is split when anything it references is split, even if it matches itself.
+    /// Method: route a holder of a split type both ways, then check that each holder variant
+    /// refs the matching variant of the inner type.
     #[test]
     fn split_spreads_to_referencing_types() {
         let spec = spec(
@@ -593,6 +598,8 @@ mod tests {
     }
 
     /// Goal: a response-only type is documented by what is sent, with no `Input` twin.
+    /// Method: route the type only as a response, then check its field name and that no
+    /// `Input` schema exists.
     #[test]
     fn response_only_type_uses_serialize_contract() {
         let spec = spec(ApiRouter::new().api_route("/renamed", get(give_renamed)));
@@ -603,6 +610,8 @@ mod tests {
 
     /// Goal: path and query types, which aide inlines as parameters, leave no unused schema
     /// behind, while types reached only through another schema survive.
+    /// Method: route path, query and body extractors, then check the schema names left and
+    /// that the parameters stay inlined.
     #[test]
     fn unreferenced_schemas_are_pruned() {
         let spec = spec(ApiRouter::new().api_route("/items/{id}", post(take_params)));

@@ -1861,6 +1861,8 @@ mod tests {
 
     /// Goal: response schemas describe what the daemon sends. These fields were documented
     /// by their deserialize shape, which no client receives.
+    /// Method: build the full spec, then check field names and `required` lists of types
+    /// whose serialize and deserialize shapes differ.
     #[test]
     fn response_schemas_follow_the_serialize_contract() {
         let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
