@@ -458,7 +458,7 @@ async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxi
 fn finish_api(router: ApiRouter) -> Router {
     let mut open_api = OpenApi::default();
     let router = router.finish_api_with(&mut open_api, api_docs);
-    json::merge_response_schemas(&mut open_api);
+    json::finish_spec(&mut open_api);
     router.layer(axum::Extension(Arc::new(open_api)))
 }
 
@@ -561,7 +561,7 @@ fn with_base_layers(
 pub fn openapi_spec() -> OpenApi {
     let mut open_api = OpenApi::default();
     let _ = router::documented_routes().finish_api_with(&mut open_api, api_docs);
-    json::merge_response_schemas(&mut open_api);
+    json::finish_spec(&mut open_api);
     open_api
 }
 
@@ -1795,16 +1795,18 @@ mod tests {
     }
 
     /// Goal: merging the two schema directions leaves no ref dangling or still pointing at
-    /// the response generator's temporary path.
-    /// Method: collect every `$ref` in the generated spec and resolve it.
+    /// the response generator's temporary path, and pruning leaves no schema unused.
+    /// Method: collect every `$ref` in the generated spec and resolve it, then check that
+    /// every component schema was the target of one.
     #[test]
-    fn every_schema_ref_resolves() {
+    fn every_schema_ref_resolves_and_every_schema_is_used() {
         let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
         let schemas = spec["components"]["schemas"]
             .as_object()
             .expect("the spec has schemas");
         let mut stack = vec![&spec];
         let mut ref_count = 0_usize;
+        let mut referenced = HashSet::new();
         while let Some(node) = stack.pop() {
             match node {
                 serde_json::Value::Object(object) => {
@@ -1818,6 +1820,7 @@ mod tests {
                             .strip_prefix("#/components/schemas/")
                             .unwrap_or_else(|| panic!("{reference} is not a component ref"));
                         assert!(schemas.contains_key(name), "{reference} dangles");
+                        referenced.insert(name);
                         ref_count += 1;
                     }
                 }
@@ -1826,6 +1829,12 @@ mod tests {
             }
         }
         assert!(ref_count > 0);
+        for name in schemas.keys() {
+            assert!(
+                referenced.contains(name.as_str()),
+                "{name} is never referenced"
+            );
+        }
     }
 
     /// Goal: response schemas describe what the daemon sends. These fields were documented

@@ -7256,17 +7256,6 @@
           }
         ]
       },
-      "AlertPath": {
-        "type": "object",
-        "properties": {
-          "alert_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "alert_uid"
-        ]
-      },
       "AlertState": {
         "oneOf": [
           {
@@ -7394,23 +7383,6 @@
           "files",
           "problem"
         ]
-      },
-      "AmdGpuOverdrivePlanQuery": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "description": "What to plan: `enable` (the default) or `disable`.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OverdriveAction"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          }
-        }
       },
       "AmdGpuOverdriveStatus": {
         "type": "object",
@@ -7624,17 +7596,6 @@
           "name",
           "disable",
           "channel_settings"
-        ]
-      },
-      "CSPath": {
-        "type": "object",
-        "properties": {
-          "custom_sensor_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "custom_sensor_id"
         ]
       },
       "CalibrationBatchEntry": {
@@ -9589,21 +9550,6 @@
           "module_status"
         ]
       },
-      "DeviceChannelPath": {
-        "type": "object",
-        "properties": {
-          "channel_name": {
-            "type": "string"
-          },
-          "device_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "device_uid",
-          "channel_name"
-        ]
-      },
       "DeviceChannelStatusDto": {
         "type": "object",
         "properties": {
@@ -9908,17 +9854,6 @@
             ]
           }
         }
-      },
-      "DevicePath": {
-        "type": "object",
-        "properties": {
-          "device_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "device_uid"
-        ]
       },
       "DeviceStatsDto": {
         "type": "object",
@@ -10477,17 +10412,6 @@
           "threshold_hopping"
         ]
       },
-      "FunctionPath": {
-        "type": "object",
-        "properties": {
-          "function_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "function_uid"
-        ]
-      },
       "FunctionsDto": {
         "type": "object",
         "properties": {
@@ -10867,19 +10791,6 @@
         "required": [
           "interval"
         ]
-      },
-      "LcdImageUpdateQuery": {
-        "type": "object",
-        "properties": {
-          "log": {
-            "description": "Set to false to log a successful apply at debug level.",
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "default": null
-          }
-        }
       },
       "LcdInfo": {
         "description": "Specific LCD Screen info",
@@ -11263,19 +11174,6 @@
           }
         ]
       },
-      "LcdUpdateQuery": {
-        "type": "object",
-        "properties": {
-          "log": {
-            "description": "Set to false for frequent updates from an external program. The setting is applied\n to the device only: it is not saved and does not deactivate the active Mode. Success\n is logged at debug level.",
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "default": null
-          }
-        }
-      },
       "LightingMode": {
         "type": "object",
         "properties": {
@@ -11549,17 +11447,6 @@
           "mode_uids"
         ]
       },
-      "ModePath": {
-        "type": "object",
-        "properties": {
-          "mode_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "mode_uid"
-        ]
-      },
       "ModesDto": {
         "type": "object",
         "properties": {
@@ -11650,21 +11537,6 @@
           "devices"
         ]
       },
-      "PluginDataPath": {
-        "type": "object",
-        "properties": {
-          "data_path": {
-            "type": "string"
-          },
-          "plugin_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "plugin_id",
-          "data_path"
-        ]
-      },
       "PluginDto": {
         "type": "object",
         "properties": {
@@ -11717,17 +11589,6 @@
           "disabled"
         ]
       },
-      "PluginPath": {
-        "type": "object",
-        "properties": {
-          "plugin_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "plugin_id"
-        ]
-      },
       "PluginStatusDto": {
         "type": "object",
         "properties": {
@@ -11744,21 +11605,6 @@
         "required": [
           "status",
           "reason"
-        ]
-      },
-      "PluginUiPath": {
-        "type": "object",
-        "properties": {
-          "file_path": {
-            "type": "string"
-          },
-          "plugin_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "plugin_id",
-          "file_path"
         ]
       },
       "PluginsDto": {
@@ -12246,17 +12092,6 @@
           "Sum"
         ]
       },
-      "ProfilePath": {
-        "type": "object",
-        "properties": {
-          "profile_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "profile_uid"
-        ]
-      },
       "ProfilesDto": {
         "type": "object",
         "properties": {
@@ -12284,16 +12119,6 @@
         "required": [
           "profiles"
         ]
-      },
-      "ReportQuery": {
-        "type": "object",
-        "properties": {
-          "full": {
-            "description": "Include the whole hwmon tree instead of the compact summary.",
-            "type": "boolean",
-            "default": false
-          }
-        }
       },
       "ReportResponse": {
         "type": "object",
@@ -12809,18 +12634,6 @@
           }
         ]
       },
-      "SseQuery": {
-        "type": "object",
-        "properties": {
-          "events": {
-            "description": "Comma-separated substreams to subscribe to. All of them when absent.",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
       "StartCalibrationBatchRequest": {
         "description": "Body for `POST /calibrations/batch/start`. `concurrency` is how many\n sweeps run at once (1 = sequential); omitted or 0 is treated as 1, and\n the daemon clamps it to the channel count.",
         "type": "object",
@@ -13019,18 +12832,6 @@
         "required": [
           "timestamp"
         ]
-      },
-      "StatusQuery": {
-        "type": "object",
-        "properties": {
-          "all": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "default": null
-          }
-        }
       },
       "StatusRequest": {
         "type": "object",
@@ -13386,17 +13187,6 @@
         },
         "required": [
           "tokens"
-        ]
-      },
-      "TokenPath": {
-        "type": "object",
-        "properties": {
-          "token_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "token_id"
         ]
       },
       "UnreachableDelta": {

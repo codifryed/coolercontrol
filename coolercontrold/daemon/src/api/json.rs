@@ -133,12 +133,18 @@ pub fn discard_response_schemas() {
     SERIALIZE_GENERATOR.set(serialize_generator());
 }
 
-/// Folds the serialize-direction definitions into `api`. Call after `finish_api_with`, which
-/// has already put aide's request-direction definitions there.
+/// Completes a document aide has built. Call after `finish_api_with`.
+pub fn finish_spec(api: &mut OpenApi) {
+    merge_response_schemas(api);
+    prune_unreferenced_schemas(api);
+}
+
+/// Folds the serialize-direction definitions into `api`, after aide's request-direction
+/// definitions.
 ///
 /// A type that is the same in both directions keeps one entry. A type that differs keeps its
 /// name for the response, and the request variant gets `INPUT_SUFFIX`.
-pub fn merge_response_schemas(api: &mut OpenApi) {
+fn merge_response_schemas(api: &mut OpenApi) {
     let serialized = SERIALIZE_GENERATOR
         .replace(serialize_generator())
         .take_definitions(true);
@@ -174,6 +180,32 @@ pub fn merge_response_schemas(api: &mut OpenApi) {
             rewrite_refs(object, &|reference| final_ref(reference, &split));
         }
     });
+}
+
+/// Drops component schemas that nothing in the document refs. aide records a schema for
+/// every `Path` and `Query` type, then copies its fields into the parameter list, leaving the
+/// definition unused.
+fn prune_unreferenced_schemas(api: &mut OpenApi) {
+    let mut pending = Vec::new();
+    for_each_path_schema(api, &mut |schema| {
+        pending.extend(referenced_names(schema.as_value(), SCHEMAS_PATH));
+    });
+    let Some(components) = api.components.as_mut() else {
+        return;
+    };
+    let schemas = &mut components.schemas;
+    // Each name expands once, so this ends within `schemas.len()` expansions.
+    let mut reachable = HashSet::with_capacity(schemas.len());
+    while let Some(name) = pending.pop() {
+        if reachable.contains(&name) {
+            continue;
+        }
+        if let Some(entry) = schemas.get(&name) {
+            pending.extend(referenced_names(entry.json_schema.as_value(), SCHEMAS_PATH));
+        }
+        reachable.insert(name);
+    }
+    schemas.retain(|name, _| reachable.contains(name));
 }
 
 fn rename_request_variants(
@@ -239,7 +271,7 @@ fn shared_names(
         let differing: Vec<String> = shared
             .iter()
             .filter(|name| {
-                referenced_names(&serialized[name.as_str()])
+                referenced_names(&serialized[name.as_str()], SERIALIZE_PATH)
                     .iter()
                     .any(|referenced| shared.contains(referenced).not())
             })
@@ -255,7 +287,8 @@ fn shared_names(
     unreachable!("the shared set shrinks on every pass");
 }
 
-fn referenced_names(value: &Value) -> Vec<String> {
+/// Names of the definitions that `value` refs under `prefix`.
+fn referenced_names(value: &Value, prefix: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut stack = vec![value];
     while let Some(node) = stack.pop() {
@@ -263,7 +296,7 @@ fn referenced_names(value: &Value) -> Vec<String> {
             Value::Object(object) => {
                 for (key, child) in object {
                     if key == "$ref" {
-                        let name = child.as_str().and_then(|r| r.strip_prefix(SERIALIZE_PATH));
+                        let name = child.as_str().and_then(|r| r.strip_prefix(prefix));
                         names.extend(name.map(String::from));
                     } else {
                         stack.push(child);
@@ -316,6 +349,11 @@ fn for_each_schema(api: &mut OpenApi, visit: &mut impl FnMut(&mut Schema)) {
             visit(&mut entry.json_schema);
         }
     }
+    for_each_path_schema(api, visit);
+}
+
+/// Visits the schemas of every operation's parameters, request body and responses.
+fn for_each_path_schema(api: &mut OpenApi, visit: &mut impl FnMut(&mut Schema)) {
     let Some(paths) = api.paths.as_mut() else {
         return;
     };
@@ -399,6 +437,26 @@ mod tests {
         inner: Renamed,
     }
 
+    #[derive(Deserialize, JsonSchema)]
+    struct ItemPath {
+        #[allow(dead_code)]
+        id: String,
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    struct ItemQuery {
+        #[allow(dead_code)]
+        verbose: bool,
+    }
+
+    #[allow(clippy::unused_async)]
+    async fn take_params(
+        _: axum::extract::Path<ItemPath>,
+        _: axum::extract::Query<ItemQuery>,
+        Json(_): Json<Holder>,
+    ) {
+    }
+
     #[allow(clippy::unused_async)]
     async fn take_renamed(Json(_): Json<Renamed>) {}
     #[allow(clippy::unused_async)]
@@ -423,7 +481,7 @@ mod tests {
     fn spec(router: ApiRouter) -> Value {
         let mut api = OpenApi::default();
         let _ = router.finish_api(&mut api);
-        merge_response_schemas(&mut api);
+        finish_spec(&mut api);
         serde_json::to_value(api).expect("the spec serializes")
     }
 
@@ -518,5 +576,20 @@ mod tests {
         let schemas = spec["components"]["schemas"].as_object().expect("schemas");
         assert!(schemas["Renamed"]["properties"].get("type").is_some());
         assert!(schemas.contains_key("RenamedInput").not());
+    }
+
+    /// Goal: path and query types, which aide inlines as parameters, leave no unused schema
+    /// behind, while types reached only through another schema survive.
+    #[test]
+    fn unreferenced_schemas_are_pruned() {
+        let spec = spec(ApiRouter::new().api_route("/items/{id}", post(take_params)));
+        let schemas = spec["components"]["schemas"].as_object().expect("schemas");
+        let mut names: Vec<_> = schemas.keys().map(String::as_str).collect();
+        names.sort_unstable();
+        assert_eq!(names, vec!["Holder", "Renamed"]);
+        let parameters = spec["paths"]["/items/{id}"]["post"]["parameters"]
+            .as_array()
+            .expect("the parameters stay inlined");
+        assert_eq!(parameters.len(), 2);
     }
 }
