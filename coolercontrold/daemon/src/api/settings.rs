@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::devices::{DeviceChannelPath, DevicePath};
+use crate::api::Json;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, UID};
 use crate::overrides::OverridesDocument;
@@ -10,7 +11,6 @@ use crate::setting::{
     STARTUP_DELAY_SECONDS_MAX,
 };
 use axum::extract::{Path, State};
-use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -5,7 +5,7 @@ use crate::alerts::AlertLog;
 use crate::api::actor::{AlertHandle, DeviceHealthHandle, ModeHandle, StatusHandle};
 use crate::api::modes::ActiveMode;
 use crate::api::status::{DeviceStatusDto, SharedStatusResponse, StatusResponse};
-use crate::api::{AppState, CCError};
+use crate::api::{json, AppState, CCError};
 use crate::device::health::{
     DeviceHealthDto, FailsafeDelta, HealthEvent, SourceDelta, UnreachableDelta,
 };
@@ -128,8 +128,9 @@ pub struct SseStream;
 impl OperationOutput for SseStream {
     type Inner = SseEvent;
 
-    fn operation_response(ctx: &mut GenContext, _operation: &mut Operation) -> Option<Response> {
-        let json_schema = ctx.schema.subschema_for::<SseEvent>();
+    fn operation_response(_ctx: &mut GenContext, _operation: &mut Operation) -> Option<Response> {
+        // Events are only ever sent, so they follow the serialize contract.
+        let (json_schema, _) = json::serialize_subschema_for::<SseEvent>();
         Some(Response {
             description: "A stream of Server Sent Events. Each frame is `event: <name>` \
                           followed by `data: <payload>` and a blank line. Dispatch on the \

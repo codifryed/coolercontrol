@@ -7,8 +7,8 @@
 //! touching hardware, and it already holds the device list in memory, so the
 //! liquidctl section costs no extra hardware access.
 
+use crate::api::Json;
 use axum::extract::{Query, State};
-use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

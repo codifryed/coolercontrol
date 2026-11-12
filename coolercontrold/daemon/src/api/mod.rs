@@ -17,6 +17,7 @@ mod dual_protocol;
 mod frame_policy;
 mod functions;
 mod hardware_report;
+mod json;
 mod last_modified;
 mod metrics;
 pub mod modes;
@@ -75,9 +76,10 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::{Json, Router, ServiceExt};
+use axum::{Router, ServiceExt};
 use axum_server::accept::DefaultAcceptor;
 use axum_server::tls_rustls::RustlsConfig;
+pub use json::Json;
 use log::{debug, info, warn, Level};
 use moro_local::Scope;
 use schemars::JsonSchema;
@@ -455,15 +457,16 @@ async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxi
 #[cfg(debug_assertions)]
 fn finish_api(router: ApiRouter) -> Router {
     let mut open_api = OpenApi::default();
-    router
-        .finish_api_with(&mut open_api, api_docs)
-        .layer(axum::Extension(Arc::new(open_api)))
+    let router = router.finish_api_with(&mut open_api, api_docs);
+    json::merge_response_schemas(&mut open_api);
+    router.layer(axum::Extension(Arc::new(open_api)))
 }
 
 /// Release builds have no `/api.json` route, so nothing would read the document. Each
 /// listener's copy holds about 3 MB.
 #[cfg(not(debug_assertions))]
 fn finish_api(router: ApiRouter) -> Router {
+    json::discard_response_schemas();
     Router::from(router)
 }
 
@@ -558,6 +561,7 @@ fn with_base_layers(
 pub fn openapi_spec() -> OpenApi {
     let mut open_api = OpenApi::default();
     let _ = router::documented_routes().finish_api_with(&mut open_api, api_docs);
+    json::merge_response_schemas(&mut open_api);
     open_api
 }
 
@@ -1788,6 +1792,61 @@ mod tests {
             }
         }
         assert!(ids.is_empty().not());
+    }
+
+    /// Goal: merging the two schema directions leaves no ref dangling or still pointing at
+    /// the response generator's temporary path.
+    /// Method: collect every `$ref` in the generated spec and resolve it.
+    #[test]
+    fn every_schema_ref_resolves() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let schemas = spec["components"]["schemas"]
+            .as_object()
+            .expect("the spec has schemas");
+        let mut stack = vec![&spec];
+        let mut ref_count = 0_usize;
+        while let Some(node) = stack.pop() {
+            match node {
+                serde_json::Value::Object(object) => {
+                    for (key, child) in object {
+                        if key != "$ref" {
+                            stack.push(child);
+                            continue;
+                        }
+                        let reference = child.as_str().expect("a ref is a string");
+                        let name = reference
+                            .strip_prefix("#/components/schemas/")
+                            .unwrap_or_else(|| panic!("{reference} is not a component ref"));
+                        assert!(schemas.contains_key(name), "{reference} dangles");
+                        ref_count += 1;
+                    }
+                }
+                serde_json::Value::Array(items) => stack.extend(items),
+                _ => {}
+            }
+        }
+        assert!(ref_count > 0);
+    }
+
+    /// Goal: response schemas describe what the daemon sends. These fields were documented
+    /// by their deserialize shape, which no client receives.
+    #[test]
+    fn response_schemas_follow_the_serialize_contract() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let schemas = &spec["components"]["schemas"];
+        let device = &schemas["DeviceDto"]["properties"];
+        assert!(device.get("type").is_some());
+        assert!(device.get("d_type").is_none());
+        let required = |name: &str| -> Vec<String> {
+            serde_json::from_value(schemas[name]["required"].clone()).unwrap_or_default()
+        };
+        // Sent only when non-empty.
+        assert!(required("Status").contains(&"temps".to_string()).not());
+        assert!(required("Status").contains(&"channels".to_string()).not());
+        // Always sent, but optional in a PATCH body.
+        assert!(required("CoolerControlSettingsDto").contains(&"poll_rate".to_string()));
+        let input = required("CoolerControlSettingsDtoInput");
+        assert!(input.contains(&"poll_rate".to_string()).not());
     }
 
     /// An empty or blank address is the documented way to turn an address family off,

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::api::last_modified::{LastModified, ASSETS_ETAG_GZIP};
+use crate::api::Json;
 use crate::api::{handle_error, AppState, CCError};
 use crate::logger::LogLevelSource;
 use aide::axum::IntoApiResponse;
@@ -16,7 +17,6 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 #[cfg(debug_assertions)]
 use axum::Extension;
-use axum::Json;
 use chrono::{DateTime, Local};
 use include_dir::{include_dir, Dir};
 use nix::sys::signal;
