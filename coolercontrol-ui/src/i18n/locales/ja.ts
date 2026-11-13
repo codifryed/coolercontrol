@@ -505,6 +505,7 @@ export default {
                 '新しく追加したプラグインは、このページを開くとここに表示されます。デバイスプラグインの場合は、デバイスを読み込むために CoolerControl デーモンの再起動も必要です。',
             restartRequiredBanner:
                 '新しく追加したプラグインのデバイスを読み込むには、デーモンを再起動してください: {plugins}',
+            rescan: '再スキャン',
             containerNote:
                 'コンテナでCoolerControlを実行する場合、プラグインはコンテナの再起動後も保持されるよう、永続化された仮想共有フォルダに配置する必要があります。',
             installedPlugins: 'インストール済みプラグイン',

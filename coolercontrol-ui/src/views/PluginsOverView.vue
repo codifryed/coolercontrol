@@ -11,6 +11,7 @@ import {
     mdiAlertCircleOutline,
     mdiLinkVariant,
     mdiPowerPlugOutline,
+    mdiRefresh,
     mdiRestart,
 } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
@@ -22,7 +23,7 @@ import { usePluginActions } from '@/composables/usePluginActions.ts'
 import { useSystemActions } from '@/composables/useSystemActions.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getPluginStatusTag, PluginStatus } from '@/models/Plugins.ts'
 
 const STATUS_POLL_INTERVAL_MS = 30_000
@@ -34,6 +35,7 @@ const { statuses, refreshStatuses } = usePluginActions()
 const { restartDaemonAndUI } = useSystemActions()
 
 let statusPollTimer: ReturnType<typeof setInterval> | undefined
+const rescanning = ref(false)
 
 const pluginsList = computed(() => {
     return deviceStore.plugins.map((plugin) => ({
@@ -49,6 +51,17 @@ const pluginsList = computed(() => {
 const restartRequiredIds = computed((): string[] =>
     deviceStore.plugins.filter((plugin) => plugin.restart_required).map((plugin) => plugin.id),
 )
+
+// The daemon scans the plugins directory on each plugin list request.
+const rescan = async (): Promise<void> => {
+    rescanning.value = true
+    try {
+        await deviceStore.loadAllPlugins()
+        await refreshStatuses()
+    } finally {
+        rescanning.value = false
+    }
+}
 
 const onRowSelect = (plugin: { id: string }) => {
     router.push({ name: 'plugin-page', params: { pluginId: plugin.id } })
@@ -69,10 +82,19 @@ onUnmounted(() => {
 
 <template>
     <div class="flex h-full flex-col">
-        <div class="flex shrink-0 flex-wrap items-center gap-3 px-4 pt-4">
+        <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 pt-4">
             <h1 class="text-xl font-semibold text-text-color">
                 {{ t('layout.plugins.overview') }}
             </h1>
+            <UiButton variant="outline" size="sm" :disabled="rescanning" @click="rescan">
+                <svg-icon
+                    type="mdi"
+                    :class="{ 'animate-spin': rescanning }"
+                    :path="mdiRefresh"
+                    :size="deviceStore.getREMSize(1)"
+                />
+                {{ t('layout.plugins.rescan') }}
+            </UiButton>
         </div>
         <ScrollAreaRoot class="min-h-0 flex-1" style="--scrollbar-size: 10px">
             <ScrollAreaViewport class="p-4 h-full w-full whitespace-normal">

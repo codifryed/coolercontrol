@@ -481,6 +481,7 @@ export default {
             restartNote:
                 '開啟此頁面時，新增的外掛會顯示在此處。裝置外掛還需要重新啟動 CoolerControl 守護程式，才會載入其裝置。',
             restartRequiredBanner: '重新啟動守護程式以載入新增外掛的裝置：{plugins}',
+            rescan: '重新掃描',
             containerNote:
                 '在容器中執行 CoolerControl 時，外掛必須放置在持久化的虛擬共享資料夾中，以便在容器重新啟動後保留。',
             installedPlugins: '已安裝的外掛',

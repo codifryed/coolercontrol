@@ -500,6 +500,7 @@ export default {
                 '새로 추가한 플러그인은 이 페이지를 열면 여기에 표시됩니다. 장치 플러그인은 장치가 로드되기 전에 CoolerControl 데몬도 재시작해야 합니다.',
             restartRequiredBanner:
                 '새로 추가한 플러그인의 장치를 로드하려면 데몬을 재시작하세요: {plugins}',
+            rescan: '다시 검색',
             containerNote:
                 '컨테이너에서 CoolerControl을 실행할 때 플러그인은 컨테이너 재시작 후에도 유지되도록 영구 가상 공유 폴더에 배치해야 합니다.',
             installedPlugins: '설치된 플러그인',

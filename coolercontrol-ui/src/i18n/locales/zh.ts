@@ -481,6 +481,7 @@ export default {
             restartNote:
                 '打开此页面时，新添加的插件会显示在此处。设备插件还需要重启 CoolerControl 守护进程，才会加载其设备。',
             restartRequiredBanner: '重启守护进程以加载新添加插件的设备：{plugins}',
+            rescan: '重新扫描',
             containerNote:
                 '在容器中运行 CoolerControl 时，插件必须放置在持久化的虚拟共享文件夹中，以便在容器重启后保留。',
             installedPlugins: '已安装的插件',

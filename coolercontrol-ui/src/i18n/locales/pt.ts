@@ -509,6 +509,7 @@ export default {
                 'Um plugin recém-adicionado aparece aqui quando esta página é aberta. Um plugin de dispositivo também precisa que o daemon do CoolerControl seja reiniciado antes de seus dispositivos serem carregados.',
             restartRequiredBanner:
                 'Reinicie o daemon para carregar os dispositivos dos plugins recém-adicionados: {plugins}',
+            rescan: 'Procurar novamente',
             containerNote:
                 'Ao executar o CoolerControl em um contêiner, os plugins devem ser colocados na pasta compartilhada virtual persistente para que sobrevivam a reinicializações do contêiner.',
             installedPlugins: 'Plugins Instalados',

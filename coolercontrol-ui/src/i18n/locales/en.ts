@@ -501,6 +501,7 @@ export default {
                 'A newly added plugin appears here when this page is opened. A device plugin also needs a restart of the CoolerControl daemon before its devices are loaded.',
             restartRequiredBanner:
                 'Restart the daemon to load the devices of newly added plugins: {plugins}',
+            rescan: 'Rescan',
             containerNote:
                 'When running CoolerControl in a container, plugins must be placed in the persisted virtual shared folder so they survive container restarts.',
             installedPlugins: 'Installed Plugins',
