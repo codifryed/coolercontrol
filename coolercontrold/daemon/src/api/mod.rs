@@ -604,7 +604,7 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             "BasicAuth",
             SecurityScheme::Http {
                 scheme: "basic".to_string(),
-                bearer_format: Some(String::new()),
+                bearer_format: None,
                 description: Some(
                     "HTTP Basic authentication, mostly used to generate a secure authentication cookie."
                         .to_string(),
@@ -1766,6 +1766,18 @@ mod tests {
              routes no longer served: {only_in_file:?}\n\
              (an empty diff here means only schemas or descriptions changed)"
         );
+    }
+
+    /// Goal: `OpenAPI` 3.1 allows `bearerFormat` only on the bearer scheme, so a validator
+    /// rejected the whole spec over the basic one.
+    /// Method: check which schemes carry it.
+    #[test]
+    fn only_bearer_scheme_has_bearer_format() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let schemes = &spec["components"]["securitySchemes"];
+        assert!(schemes["BasicAuth"].is_object());
+        assert!(schemes["BasicAuth"].get("bearerFormat").is_none());
+        assert_eq!(schemes["BearerAuth"]["bearerFormat"], "cc_<uuid>");
     }
 
     /// Goal: generated API clients name their methods after `operationId`, so every operation

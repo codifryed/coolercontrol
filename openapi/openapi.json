@@ -4868,7 +4868,7 @@
         ]
       }
     },
-    "/plugins/{plugin_id}/ui/{*file_path}": {
+    "/plugins/{plugin_id}/ui/{file_path}": {
       "get": {
         "tags": [
           "plugins"
@@ -4926,7 +4926,7 @@
         ]
       }
     },
-    "/plugins/{plugin_id}/data/{*data_path}": {
+    "/plugins/{plugin_id}/data/{data_path}": {
       "get": {
         "tags": [
           "plugins"
@@ -6877,7 +6877,6 @@
       "BasicAuth": {
         "type": "http",
         "scheme": "basic",
-        "bearerFormat": "",
         "description": "HTTP Basic authentication, mostly used to generate a secure authentication cookie."
       },
       "BearerAuth": {
@@ -10896,7 +10895,9 @@
             "default": [],
             "items": {
               "type": "array",
-              "items": [
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
                 {
                   "type": "integer",
                   "format": "uint8",
@@ -10915,9 +10916,7 @@
                   "maximum": 255,
                   "minimum": 0
                 }
-              ],
-              "maxItems": 3,
-              "minItems": 3
+              ]
             }
           },
           "orientation": {
@@ -11041,7 +11040,9 @@
             "default": [],
             "items": {
               "type": "array",
-              "items": [
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
                 {
                   "type": "integer",
                   "format": "uint8",
@@ -11060,9 +11061,7 @@
                   "maximum": 255,
                   "minimum": 0
                 }
-              ],
-              "maxItems": 3,
-              "minItems": 3
+              ]
             }
           },
           "orientation": {
@@ -11238,7 +11237,9 @@
             "type": "array",
             "items": {
               "type": "array",
-              "items": [
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
                 {
                   "type": "integer",
                   "format": "uint8",
@@ -11257,9 +11258,7 @@
                   "maximum": 255,
                   "minimum": 0
                 }
-              ],
-              "maxItems": 3,
-              "minItems": 3
+              ]
             }
           },
           "mode": {
@@ -11294,7 +11293,9 @@
             "type": "array",
             "items": {
               "type": "array",
-              "items": [
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
                 {
                   "type": "integer",
                   "format": "uint8",
@@ -11313,9 +11314,7 @@
                   "maximum": 255,
                   "minimum": 0
                 }
-              ],
-              "maxItems": 3,
-              "minItems": 3
+              ]
             }
           },
           "mode": {
@@ -11405,7 +11404,9 @@
             "type": "array",
             "items": {
               "type": "array",
-              "items": [
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
                 {
                   "type": "string"
                 },
@@ -11415,9 +11416,7 @@
                     "$ref": "#/components/schemas/Setting"
                   }
                 }
-              ],
-              "maxItems": 2,
-              "minItems": 2
+              ]
             }
           },
           "name": {
@@ -11758,7 +11757,9 @@
                 ],
                 "items": {
                   "type": "array",
-                  "items": [
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
                     {
                       "type": "number",
                       "format": "double"
@@ -11769,9 +11770,7 @@
                       "maximum": 255,
                       "minimum": 0
                     }
-                  ],
-                  "maxItems": 2,
-                  "minItems": 2
+                  ]
                 }
               },
               "temp_max": {
@@ -11849,7 +11848,9 @@
                 ],
                 "items": {
                   "type": "array",
-                  "items": [
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
                     {
                       "type": "integer",
                       "format": "uint8",
@@ -11862,9 +11863,7 @@
                       "maximum": 127,
                       "minimum": -128
                     }
-                  ],
-                  "maxItems": 2,
-                  "minItems": 2
+                  ]
                 }
               },
               "p_type": {
@@ -11950,7 +11949,9 @@
                 ],
                 "items": {
                   "type": "array",
-                  "items": [
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
                     {
                       "type": "number",
                       "format": "double"
@@ -11961,9 +11962,7 @@
                       "maximum": 255,
                       "minimum": 0
                     }
-                  ],
-                  "maxItems": 2,
-                  "minItems": 2
+                  ]
                 }
               },
               "temp_max": {
@@ -12046,7 +12045,9 @@
                 ],
                 "items": {
                   "type": "array",
-                  "items": [
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
                     {
                       "type": "integer",
                       "format": "uint8",
@@ -12059,9 +12060,7 @@
                       "maximum": 127,
                       "minimum": -128
                     }
-                  ],
-                  "maxItems": 2,
-                  "minItems": 2
+                  ]
                 }
               },
               "p_type": {

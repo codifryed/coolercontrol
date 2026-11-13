@@ -233,6 +233,29 @@ test_copyright:
   script:
     - make copyright-check
 
+############################################## OpenAPI
+# The checked-in spec must be valid OpenAPI 3.1, since generated API clients read it.
+test_openapi:
+  stage: test
+  image: python:3-slim
+  tags:
+    - saas-linux-small-amd64
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $RELEASE_REHEARSAL == "true"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends make
+    # Same pin as the Makefile's openapi_validator_version.
+    - pip install --quiet "openapi-spec-validator==0.9.0"
+    - openapi-spec-validator --version
+  script:
+    - make openapi-check
+
 ############################################## Tests
 # The development gate: lint, the gated suite, UI and Qt tests. A release rehearsal needs it.
 test_all:

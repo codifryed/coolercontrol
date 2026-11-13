@@ -154,6 +154,12 @@ pub fn response_schema_count() -> usize {
 pub fn finish_spec(api: &mut OpenApi) {
     merge_response_schemas(api);
     prune_unreferenced_schemas(api);
+    strip_wildcard_markers(api);
+    for_each_schema(api, &mut |schema| {
+        if let Some(object) = schema.as_object_mut() {
+            restore_prefix_items(object);
+        }
+    });
 }
 
 /// Folds the serialize-direction definitions into `api`, after aide's request-direction
@@ -242,6 +248,77 @@ fn prune_unreferenced_schemas(api: &mut OpenApi) {
         reachable.len(),
         "every reachable ref resolves"
     );
+}
+
+/// Turns axum's catch-all `{*name}` into the `{name}` template `OpenAPI` expects. aide keeps
+/// the marker, so the template never matched its `name` parameter.
+fn strip_wildcard_markers(api: &mut OpenApi) {
+    let Some(paths) = api.paths.as_mut() else {
+        return;
+    };
+    let count = paths.paths.len();
+    paths.paths = std::mem::take(&mut paths.paths)
+        .into_iter()
+        .map(|(path, item)| (path.replace("{*", "{"), item))
+        .collect();
+    assert_eq!(
+        paths.paths.len(),
+        count,
+        "no two routes differ only by a marker"
+    );
+    assert!(paths.paths.keys().all(|path| path.contains("{*").not()));
+}
+
+/// Keywords whose values are instance data, never subschemas.
+const DATA_KEYWORDS: [&str; 5] = ["const", "default", "enum", "example", "examples"];
+/// Keywords whose values map names to subschemas, so their keys are never keywords.
+const NAMED_SCHEMA_KEYWORDS: [&str; 5] = [
+    "properties",
+    "patternProperties",
+    "dependentSchemas",
+    "$defs",
+    "definitions",
+];
+
+/// Writes tuples back as `prefixItems`. Both generators use schemars' draft-07 settings, whose
+/// `ReplacePrefixItems` transform emits a tuple as `items: [..]`. `OpenAPI` 3.1 schemas are
+/// JSON Schema 2020-12, where an `items` array is invalid.
+fn restore_prefix_items(root: &mut Map<String, Value>) {
+    let mut stack = vec![root];
+    // Each node is popped once and pushes only its own children, so this ends.
+    while let Some(object) = stack.pop() {
+        if object.get("items").is_some_and(Value::is_array) {
+            assert!(object.contains_key("prefixItems").not());
+            let Some(tuple @ Value::Array(_)) = object.remove("items") else {
+                unreachable!("items was checked to be an array");
+            };
+            object.insert("prefixItems".into(), tuple);
+            // draft-07 holds the schema for items past the tuple here.
+            if let Some(rest) = object.remove("additionalItems") {
+                object.insert("items".into(), rest);
+            }
+        }
+        assert!(object.contains_key("additionalItems").not());
+        for (keyword, value) in object.iter_mut() {
+            if DATA_KEYWORDS.contains(&keyword.as_str()) {
+                continue;
+            }
+            let names_subschemas = NAMED_SCHEMA_KEYWORDS.contains(&keyword.as_str());
+            match value {
+                Value::Object(map) => {
+                    if names_subschemas {
+                        stack.extend(map.values_mut().filter_map(Value::as_object_mut));
+                    } else {
+                        stack.push(map);
+                    }
+                }
+                Value::Array(subschemas) => {
+                    stack.extend(subschemas.iter_mut().filter_map(Value::as_object_mut));
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Fails on a name schemars numbered because two types share a base name. Each generator
@@ -860,5 +937,102 @@ mod tests {
                 "{site} keeps its definition"
             );
         }
+    }
+
+    /// Holds tuples, like `Profile::speed_profile` and `LightingSettings::colors`.
+    #[derive(Serialize, Deserialize, JsonSchema)]
+    struct Tuples {
+        points: Vec<(f64, u8)>,
+        color: (u8, u8, u8),
+    }
+
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn take_tuples(Json(_): Json<Tuples>) {}
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn give_tuples() -> Json<Tuples> {
+        Json(Tuples {
+            points: Vec::new(),
+            color: (0, 0, 0),
+        })
+    }
+
+    /// Goal: tuples are valid JSON Schema 2020-12, which `OpenAPI` 3.1 uses. Generated
+    /// clients reject the draft-07 `items: [..]` form.
+    /// Method: route a tuple-holding type both ways, then check its tuple fields.
+    #[test]
+    fn tuples_use_prefix_items() {
+        let spec = spec(
+            ApiRouter::new()
+                .api_route("/tuples", post(take_tuples))
+                .api_route("/tuples", get(give_tuples)),
+        );
+        let properties = &spec["components"]["schemas"]["Tuples"]["properties"];
+        let points = &properties["points"]["items"];
+        assert_eq!(points["prefixItems"][0]["type"], "number");
+        assert_eq!(points["prefixItems"][1]["type"], "integer");
+        assert!(points.get("items").is_none());
+        let color = &properties["color"];
+        assert_eq!(color["prefixItems"].as_array().map(Vec::len), Some(3));
+        assert!(color.get("items").is_none());
+    }
+
+    /// Goal: only subschemas change. Instance data may hold an `items` array, and a property
+    /// may be named after a data keyword.
+    /// Method: restore a hand-built schema with both, plus a draft-07 tail schema.
+    #[test]
+    fn restore_prefix_items_skips_data_and_moves_tail() {
+        let mut schema = serde_json::json!({
+            "default": {"items": [1, 2]},
+            "properties": {
+                "default": {"items": [{"type": "string"}], "additionalItems": {"type": "integer"}},
+            },
+        });
+        let object = schema.as_object_mut().expect("an object");
+        restore_prefix_items(object);
+        assert_eq!(schema["default"], serde_json::json!({"items": [1, 2]}));
+        let field = &schema["properties"]["default"];
+        assert_eq!(
+            field["prefixItems"],
+            serde_json::json!([{"type": "string"}])
+        );
+        assert_eq!(field["items"], serde_json::json!({"type": "integer"}));
+        assert!(field.get("additionalItems").is_none());
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    struct RestPath {
+        #[expect(dead_code, reason = "only the schema is read")]
+        rest: String,
+    }
+
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn take_rest(_: axum::extract::Path<RestPath>) {}
+
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn take_id(_: axum::extract::Path<ItemPath>) {}
+
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn take_nothing() {}
+
+    /// Goal: a catch-all route's template names its parameter, like the plugin UI route, and
+    /// other templates pass through unchanged.
+    /// Method: document a `{*rest}` route beside plain and untemplated routes, then check the
+    /// path keys and the catch-all parameter.
+    #[test]
+    fn catch_all_route_template_matches_its_parameter() {
+        let spec = spec(
+            ApiRouter::new()
+                .api_route("/files/{*rest}", get(take_rest))
+                .api_route("/plain/{id}", get(take_id))
+                .api_route("/static", get(take_nothing)),
+        );
+        let paths = spec["paths"].as_object().expect("paths");
+        let mut keys = paths.keys().collect::<Vec<_>>();
+        keys.sort();
+        assert_eq!(keys, vec!["/files/{rest}", "/plain/{id}", "/static"]);
+        assert_eq!(
+            paths["/files/{rest}"]["get"]["parameters"][0]["name"],
+            "rest"
+        );
     }
 }

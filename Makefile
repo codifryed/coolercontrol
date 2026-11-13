@@ -19,7 +19,8 @@ CARGO := $(shell command -v cargo || command -v cargo-1.91 || command -v cargo-1
 	ci-install ci-test ci-test-ui ci-test-daemon ci-test-qt \
 	ci-check ci-fmt ci-local pr-check validate-metadata \
 	copyright-check copyright-fix \
-	clean clean-ui install install-data install-source uninstall dev-run dev-install openapi
+	clean clean-ui install install-data install-source uninstall dev-run dev-install openapi \
+	openapi-check
 
 # Run `make help` for the common developer targets.
 help:
@@ -39,6 +40,7 @@ help:
 	@printf '    make ci-fmt           Auto-format all files (trunk)\n'
 	@printf '    make ci-check         Run formatting/lint checks (trunk)\n'
 	@printf '    make openapi          Regenerate openapi/openapi.json (no daemon needed)\n'
+	@printf '    make openapi-check    Validate openapi/openapi.json as OpenAPI 3.1, as CI does\n'
 	@printf '    make copyright-check  Verify SPDX headers (REUSE), as CI does\n'
 	@printf '    make copyright-fix    Add missing SPDX headers, then re-check\n\n'
 	@printf '  \033[1mRun & install\033[0m\n'
@@ -81,6 +83,20 @@ test-daemon:
 # built from the daemon's route table. A test fails when the checked-in file is stale.
 openapi:
 	@$(MAKE) -C $(daemon_dir) openapi
+
+# Pinned so a validator release cannot fail an unchanged spec. Keep test_openapi's pin equal.
+openapi_validator_version = 0.9.0
+openapi_validator = $(shell command -v openapi-spec-validator || { command -v uvx >/dev/null && \
+	echo uvx --quiet --from openapi-spec-validator==$(openapi_validator_version) openapi-spec-validator; })
+
+# Validate the checked-in spec as OpenAPI 3.1; generated API clients read it. The daemon's
+# freshness test keeps it equal to what the daemon generates. This is what the openapi CI job runs.
+openapi-check:
+	@test -n "$(openapi_validator)" || { \
+		echo 'openapi-spec-validator not found. Install it with:'; \
+		echo '    pipx install openapi-spec-validator==$(openapi_validator_version)'; \
+		echo '(or install uv, and it runs through uvx)'; exit 1; }
+	@$(openapi_validator) --schema 3.1 openapi/openapi.json
 
 test-ui:
 	@$(MAKE) -C $(ui_dir) test
@@ -227,6 +243,8 @@ ci-local: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon 
 # usage: make pr-check [base=<ref>]
 base ?= main
 pr-check: validate-metadata
+	@if [ -n "$(openapi_validator)" ]; then $(MAKE) -s openapi-check; \
+	else echo 'Skipping openapi-check: openapi-spec-validator not installed (CI runs it).'; fi
 	@./trunk install --ci
 	@git merge-base $(base) HEAD > /dev/null
 	@git diff -z --name-only --diff-filter=d $(base)...HEAD | xargs -0 -r ./trunk check --ci
