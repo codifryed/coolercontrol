@@ -1759,10 +1759,10 @@ mod tests {
     }
 
     /// Goal: a plugin folder added under a running daemon has to show up without a restart,
-    /// while a plugin that is already registered keeps the manifest it was started with.
+    /// while a managed plugin keeps the manifest it was started with until it restarts.
     /// Method: one known and one new plugin on disk, scanned twice.
     #[test]
-    fn discovery_registers_new_plugins_and_leaves_known_ones_alone() {
+    fn discovery_registers_new_plugins_and_leaves_managed_ones_alone() {
         crate::rt::test_runtime(async {
             let plugins_dir = tempfile::tempdir().unwrap();
             write_manifest(plugins_dir.path(), "known", "integration", "edited on disk");
