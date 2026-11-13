@@ -24,7 +24,10 @@ use std::ops::Not;
 /// throttle and every other shared layer.
 pub async fn init(app_state: AppState) -> ApiRouter {
     let document_csp = app_state.frame_policy.document_csp.clone();
-    let router = documented_routes().merge(grpc_routes(&app_state).await);
+    // Declaring documented routes fills thread-local schema state that `finish_api` drains.
+    // No await may sit between the two, or another listener could declare in the gap.
+    let grpc = grpc_routes(&app_state).await;
+    let router = documented_routes().merge(grpc);
     // Only add API doc route for debug builds (safer for production)
     #[cfg(debug_assertions)]
     let router = router.route("/api.json", get(base::serve_api_doc));
