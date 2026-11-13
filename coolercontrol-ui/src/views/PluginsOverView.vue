@@ -70,8 +70,7 @@ const onRowSelect = (plugin: { id: string }) => {
 }
 
 onMounted(async () => {
-    await deviceStore.loadAllPlugins()
-    await refreshStatuses()
+    await rescan()
     statusPollTimer = setInterval(refreshStatuses, STATUS_POLL_INTERVAL_MS)
 })
 
