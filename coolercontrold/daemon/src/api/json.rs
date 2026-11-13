@@ -154,6 +154,11 @@ pub fn response_schema_count() -> usize {
 pub fn finish_spec(api: &mut OpenApi) {
     merge_response_schemas(api);
     prune_unreferenced_schemas(api);
+    for_each_schema(api, &mut |schema| {
+        if let Some(object) = schema.as_object_mut() {
+            restore_prefix_items(object);
+        }
+    });
 }
 
 /// Folds the serialize-direction definitions into `api`, after aide's request-direction
@@ -242,6 +247,57 @@ fn prune_unreferenced_schemas(api: &mut OpenApi) {
         reachable.len(),
         "every reachable ref resolves"
     );
+}
+
+/// Keywords whose values are instance data, never subschemas.
+const DATA_KEYWORDS: [&str; 5] = ["const", "default", "enum", "example", "examples"];
+/// Keywords whose values map names to subschemas, so their keys are never keywords.
+const NAMED_SCHEMA_KEYWORDS: [&str; 5] = [
+    "properties",
+    "patternProperties",
+    "dependentSchemas",
+    "$defs",
+    "definitions",
+];
+
+/// Writes tuples back as `prefixItems`. Both generators use schemars' draft-07 settings, whose
+/// `ReplacePrefixItems` transform emits a tuple as `items: [..]`. `OpenAPI` 3.1 schemas are
+/// JSON Schema 2020-12, where an `items` array is invalid.
+fn restore_prefix_items(root: &mut Map<String, Value>) {
+    let mut stack = vec![root];
+    // Each node is popped once and pushes only its own children, so this ends.
+    while let Some(object) = stack.pop() {
+        if object.get("items").is_some_and(Value::is_array) {
+            assert!(object.contains_key("prefixItems").not());
+            if let Some(tuple) = object.remove("items") {
+                object.insert("prefixItems".into(), tuple);
+            }
+            // draft-07 holds the schema for items past the tuple here.
+            if let Some(rest) = object.remove("additionalItems") {
+                object.insert("items".into(), rest);
+            }
+        }
+        assert!(object.contains_key("additionalItems").not());
+        for (keyword, value) in object.iter_mut() {
+            if DATA_KEYWORDS.contains(&keyword.as_str()) {
+                continue;
+            }
+            let names_subschemas = NAMED_SCHEMA_KEYWORDS.contains(&keyword.as_str());
+            match value {
+                Value::Object(map) => {
+                    if names_subschemas {
+                        stack.extend(map.values_mut().filter_map(Value::as_object_mut));
+                    } else {
+                        stack.push(map);
+                    }
+                }
+                Value::Array(subschemas) => {
+                    stack.extend(subschemas.iter_mut().filter_map(Value::as_object_mut));
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Fails on a name schemars numbered because two types share a base name. Each generator
@@ -860,5 +916,65 @@ mod tests {
                 "{site} keeps its definition"
             );
         }
+    }
+
+    /// Holds tuples, like `Profile::speed_profile` and `LightingSettings::colors`.
+    #[derive(Serialize, Deserialize, JsonSchema)]
+    struct Tuples {
+        points: Vec<(f64, u8)>,
+        color: (u8, u8, u8),
+    }
+
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn take_tuples(Json(_): Json<Tuples>) {}
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn give_tuples() -> Json<Tuples> {
+        Json(Tuples {
+            points: Vec::new(),
+            color: (0, 0, 0),
+        })
+    }
+
+    /// Goal: tuples are valid JSON Schema 2020-12, which `OpenAPI` 3.1 uses. Generated
+    /// clients reject the draft-07 `items: [..]` form.
+    /// Method: route a tuple-holding type both ways, then check its tuple fields.
+    #[test]
+    fn tuples_use_prefix_items() {
+        let spec = spec(
+            ApiRouter::new()
+                .api_route("/tuples", post(take_tuples))
+                .api_route("/tuples", get(give_tuples)),
+        );
+        let properties = &spec["components"]["schemas"]["Tuples"]["properties"];
+        let points = &properties["points"]["items"];
+        assert_eq!(points["prefixItems"][0]["type"], "number");
+        assert_eq!(points["prefixItems"][1]["type"], "integer");
+        assert!(points.get("items").is_none());
+        let color = &properties["color"];
+        assert_eq!(color["prefixItems"].as_array().map(Vec::len), Some(3));
+        assert!(color.get("items").is_none());
+    }
+
+    /// Goal: only subschemas change. Instance data may hold an `items` array, and a property
+    /// may be named after a data keyword.
+    /// Method: restore a hand-built schema with both, plus a draft-07 tail schema.
+    #[test]
+    fn restore_prefix_items_skips_data_and_moves_tail() {
+        let mut schema = serde_json::json!({
+            "default": {"items": [1, 2]},
+            "properties": {
+                "default": {"items": [{"type": "string"}], "additionalItems": {"type": "integer"}},
+            },
+        });
+        let object = schema.as_object_mut().expect("an object");
+        restore_prefix_items(object);
+        assert_eq!(schema["default"], serde_json::json!({"items": [1, 2]}));
+        let field = &schema["properties"]["default"];
+        assert_eq!(
+            field["prefixItems"],
+            serde_json::json!([{"type": "string"}])
+        );
+        assert_eq!(field["items"], serde_json::json!({"type": "integer"}));
+        assert!(field.get("additionalItems").is_none());
     }
 }
