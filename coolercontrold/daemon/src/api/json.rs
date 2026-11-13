@@ -645,7 +645,7 @@ mod tests {
     /// Method: route a split type both ways and a separate type named after its request
     /// variant, then expect the merge to panic.
     #[test]
-    #[should_panic(expected = "already exists")]
+    #[should_panic(expected = "RenamedInput already exists")]
     fn split_name_collision_panics() {
         spec(
             ApiRouter::new()
