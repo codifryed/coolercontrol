@@ -6877,7 +6877,6 @@
       "BasicAuth": {
         "type": "http",
         "scheme": "basic",
-        "bearerFormat": "",
         "description": "HTTP Basic authentication, mostly used to generate a secure authentication cookie."
       },
       "BearerAuth": {
