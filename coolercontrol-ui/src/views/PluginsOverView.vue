@@ -13,6 +13,7 @@ import {
     mdiPowerPlugOutline,
     mdiRefresh,
     mdiRestart,
+    mdiViewListOutline,
 } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
 import UiButton from '@/shell/ui/UiButton.vue'
@@ -83,22 +84,39 @@ onUnmounted(() => {
 
 <template>
     <div class="flex h-full flex-col">
-        <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 pt-4">
-            <h1 class="text-xl font-semibold text-text-color">
-                {{ t('layout.plugins.overview') }}
-            </h1>
-            <UiButton variant="outline" size="sm" :disabled="rescanning" @click="rescan">
+        <!-- Header toolbar, styled as a plugin page's -->
+        <div class="flex shrink-0 items-center justify-between p-4">
+            <div class="flex items-center gap-3">
                 <svg-icon
                     type="mdi"
-                    :class="{ 'animate-spin': rescanning }"
-                    :path="mdiRefresh"
-                    :size="deviceStore.getREMSize(1)"
+                    :path="mdiViewListOutline"
+                    :size="deviceStore.getREMSize(1.75)"
                 />
-                {{ t('layout.plugins.rescan') }}
-            </UiButton>
+                <h1 class="text-xl font-semibold text-text-color">
+                    {{ t('layout.plugins.overview') }}
+                </h1>
+            </div>
+            <div class="flex items-center gap-2">
+                <UiButton
+                    v-tooltip.top="t('layout.plugins.rescan')"
+                    :aria-label="t('layout.plugins.rescan')"
+                    variant="outline"
+                    size="icon"
+                    class="!bg-accent/80 hover:!bg-accent"
+                    :disabled="rescanning"
+                    @click="rescan"
+                >
+                    <svg-icon
+                        type="mdi"
+                        :class="{ 'animate-spin': rescanning }"
+                        :path="mdiRefresh"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
+                </UiButton>
+            </div>
         </div>
         <ScrollAreaRoot class="min-h-0 flex-1" style="--scrollbar-size: 10px">
-            <ScrollAreaViewport class="p-4 h-full w-full whitespace-normal">
+            <ScrollAreaViewport class="px-4 pb-4 h-full w-full whitespace-normal">
                 <div
                     v-if="restartRequiredIds.length > 0"
                     class="flex flex-row flex-wrap items-center gap-3 rounded-lg border border-warning bg-warning/10 p-3 max-w-3xl"
