@@ -10,7 +10,8 @@
 
 use aide::generate::GenContext;
 use aide::openapi::{
-    MediaType, OpenApi, Operation, ParameterSchemaOrContent, ReferenceOr, Response, SchemaObject,
+    Callback, Header, MediaType, OpenApi, Operation, Parameter, ParameterSchemaOrContent, PathItem,
+    ReferenceOr, RequestBody, Response, SchemaObject,
 };
 use aide::operation::{OperationInput, OperationOutput};
 use axum::extract::rejection::JsonRejection;
@@ -205,7 +206,7 @@ fn merge_response_schemas(api: &mut OpenApi) {
 /// definition unused.
 fn prune_unreferenced_schemas(api: &mut OpenApi) {
     let mut pending = Vec::new();
-    for_each_path_schema(api, &mut |schema| {
+    for_each_root_schema(api, &mut |schema| {
         pending.extend(referenced_names(schema.as_value(), SCHEMAS_PATH));
     });
     let Some(components) = api.components.as_mut() else {
@@ -369,75 +370,110 @@ fn rewrite_object_refs<'a>(
     }
 }
 
-/// Visits every schema in the document that can hold a ref: components, parameters,
-/// request bodies and response bodies.
+/// Visits every schema in the document.
 fn for_each_schema(api: &mut OpenApi, visit: &mut impl FnMut(&mut Schema)) {
     if let Some(components) = api.components.as_mut() {
         for entry in components.schemas.values_mut() {
             visit(&mut entry.json_schema);
         }
     }
-    for_each_path_schema(api, visit);
+    for_each_root_schema(api, visit);
 }
 
-/// Visits the schemas of every operation's parameters, request body and responses.
-fn for_each_path_schema(api: &mut OpenApi, visit: &mut impl FnMut(&mut Schema)) {
-    let Some(paths) = api.paths.as_mut() else {
-        return;
-    };
-    for item in paths
-        .paths
-        .values_mut()
-        .filter_map(ReferenceOr::as_item_mut)
-    {
-        let operations = [
-            &mut item.get,
-            &mut item.put,
-            &mut item.post,
-            &mut item.delete,
-            &mut item.options,
-            &mut item.head,
-            &mut item.patch,
-            &mut item.trace,
-        ];
-        for operation in operations.into_iter().flatten() {
-            for_each_operation_schema(operation, visit);
+/// A part of the document that holds schemas, directly or through other parts.
+enum Node<'a> {
+    PathItem(&'a mut PathItem),
+    Operation(&'a mut Operation),
+    Callback(&'a mut Callback),
+    Parameter(&'a mut Parameter),
+    RequestBody(&'a mut RequestBody),
+    Response(&'a mut Response),
+    Header(&'a mut Header),
+    Format(&'a mut ParameterSchemaOrContent),
+    Media(&'a mut MediaType),
+}
+
+/// Visits every schema outside `components.schemas`. A component schema is in use when one
+/// of these refs it, directly or through other component schemas.
+fn for_each_root_schema(api: &mut OpenApi, visit: &mut impl FnMut(&mut Schema)) {
+    let mut stack = Vec::new();
+    if let Some(paths) = api.paths.as_mut() {
+        stack.extend(items(paths.paths.values_mut()).map(Node::PathItem));
+    }
+    stack.extend(items(api.webhooks.values_mut()).map(Node::PathItem));
+    if let Some(components) = api.components.as_mut() {
+        stack.extend(items(components.path_items.values_mut()).map(Node::PathItem));
+        stack.extend(items(components.callbacks.values_mut()).map(Node::Callback));
+        stack.extend(items(components.parameters.values_mut()).map(Node::Parameter));
+        stack.extend(items(components.request_bodies.values_mut()).map(Node::RequestBody));
+        stack.extend(items(components.responses.values_mut()).map(Node::Response));
+        stack.extend(items(components.headers.values_mut()).map(Node::Header));
+    }
+    // Each node is popped once and pushes only its own children, so this ends.
+    while let Some(node) = stack.pop() {
+        match node {
+            Node::PathItem(item) => {
+                stack.extend(items(item.parameters.iter_mut()).map(Node::Parameter));
+                let operations = [
+                    &mut item.get,
+                    &mut item.put,
+                    &mut item.post,
+                    &mut item.delete,
+                    &mut item.options,
+                    &mut item.head,
+                    &mut item.patch,
+                    &mut item.trace,
+                ];
+                stack.extend(operations.into_iter().flatten().map(Node::Operation));
+            }
+            Node::Operation(operation) => {
+                stack.extend(items(operation.parameters.iter_mut()).map(Node::Parameter));
+                stack.extend(items(operation.request_body.as_mut()).map(Node::RequestBody));
+                if let Some(responses) = operation.responses.as_mut() {
+                    let all = responses
+                        .default
+                        .iter_mut()
+                        .chain(responses.responses.values_mut());
+                    stack.extend(items(all).map(Node::Response));
+                }
+                stack.extend(items(operation.callbacks.values_mut()).map(Node::Callback));
+            }
+            Node::Callback(callback) => {
+                stack.extend(items(callback.values_mut()).map(Node::PathItem));
+            }
+            Node::Parameter(parameter) => {
+                stack.push(Node::Format(&mut parameter.parameter_data_mut().format));
+            }
+            Node::Header(header) => stack.push(Node::Format(&mut header.format)),
+            Node::Format(ParameterSchemaOrContent::Schema(object)) => {
+                visit(&mut object.json_schema);
+            }
+            Node::Format(ParameterSchemaOrContent::Content(content)) => {
+                stack.extend(content.values_mut().map(Node::Media));
+            }
+            Node::RequestBody(body) => stack.extend(body.content.values_mut().map(Node::Media)),
+            Node::Response(response) => {
+                stack.extend(items(response.headers.values_mut()).map(Node::Header));
+                stack.extend(response.content.values_mut().map(Node::Media));
+            }
+            Node::Media(media) => {
+                if let Some(object) = media.schema.as_mut() {
+                    visit(&mut object.json_schema);
+                }
+                for encoding in media.encoding.values_mut() {
+                    stack.extend(items(encoding.headers.values_mut()).map(Node::Header));
+                }
+            }
         }
     }
 }
 
-fn for_each_operation_schema(operation: &mut Operation, visit: &mut impl FnMut(&mut Schema)) {
-    let parameters = operation.parameters.iter_mut();
-    for parameter in parameters.filter_map(ReferenceOr::as_item_mut) {
-        match &mut parameter.parameter_data_mut().format {
-            ParameterSchemaOrContent::Schema(object) => visit(&mut object.json_schema),
-            ParameterSchemaOrContent::Content(content) => for_each_media_schema(content, visit),
-        }
-    }
-    let body = operation.request_body.as_mut();
-    if let Some(body) = body.and_then(ReferenceOr::as_item_mut) {
-        for_each_media_schema(&mut body.content, visit);
-    }
-    if let Some(responses) = operation.responses.as_mut() {
-        let all = responses
-            .default
-            .iter_mut()
-            .chain(responses.responses.values_mut());
-        for response in all.filter_map(ReferenceOr::as_item_mut) {
-            for_each_media_schema(&mut response.content, visit);
-        }
-    }
-}
-
-fn for_each_media_schema(
-    content: &mut IndexMap<String, MediaType>,
-    visit: &mut impl FnMut(&mut Schema),
-) {
-    for media in content.values_mut() {
-        if let Some(object) = media.schema.as_mut() {
-            visit(&mut object.json_schema);
-        }
-    }
+/// The inline items among `refs`. A `$ref` to a non-schema component is reached through
+/// that component instead.
+fn items<'a, T: 'a>(
+    refs: impl IntoIterator<Item = &'a mut ReferenceOr<T>>,
+) -> impl Iterator<Item = &'a mut T> {
+    refs.into_iter().filter_map(ReferenceOr::as_item_mut)
 }
 
 #[cfg(test)]
@@ -653,5 +689,87 @@ mod tests {
                 .api_route("/renamed", get(give_renamed))
                 .api_route("/renamed-input", post(take_renamed_input)),
         );
+    }
+
+    /// Every place outside `components.schemas` that can hold a schema.
+    const SCHEMA_SITES: [&str; 13] = [
+        "/paths/~1a/parameters/0/schema",
+        "/paths/~1a/get/responses/200/headers/X-H/schema",
+        "/paths/~1a/get/responses/200/content/application~1json/schema",
+        "/paths/~1a/get/responses/200/content/application~1json/encoding/part/headers/X-E/schema",
+        "/paths/~1a/get/callbacks/cb/{$url}/parameters/0/schema",
+        "/webhooks/w/parameters/0/schema",
+        "/components/responses/r/content/application~1json/schema",
+        "/components/parameters/p/schema",
+        "/components/requestBodies/b/content/application~1json/schema",
+        "/components/headers/h/schema",
+        "/components/headers/hc/content/application~1json/schema",
+        "/components/callbacks/c/{$url}/parameters/0/schema",
+        "/components/pathItems/i/parameters/0/schema",
+    ];
+
+    /// A document with an empty schema at every one of `SCHEMA_SITES`.
+    fn document_with_every_site() -> Value {
+        let parameter =
+            |name: &str| serde_json::json!({"name": name, "in": "header", "schema": {}});
+        let json_body = serde_json::json!({"application/json": {"schema": {}}});
+        serde_json::json!({
+            "paths": {"/a": {
+                "parameters": [parameter("p")],
+                "get": {
+                    "responses": {"200": {
+                        "description": "",
+                        "headers": {"X-H": {"schema": {}}},
+                        "content": {"application/json": {
+                            "schema": {},
+                            "encoding": {"part": {"headers": {"X-E": {"schema": {}}}}},
+                        }},
+                    }},
+                    "callbacks": {"cb": {"{$url}": {"parameters": [parameter("c")]}}},
+                },
+            }},
+            "webhooks": {"w": {"parameters": [parameter("w")]}},
+            "components": {
+                "responses": {"r": {"description": "", "content": json_body}},
+                "parameters": {"p": parameter("p")},
+                "requestBodies": {"b": {"content": json_body}},
+                "headers": {"h": {"schema": {}}, "hc": {"content": json_body}},
+                "callbacks": {"c": {"{$url}": {"parameters": [parameter("c")]}}},
+                "pathItems": {"i": {"parameters": [parameter("i")]}},
+            },
+        })
+    }
+
+    /// Goal: a response schema anywhere in the document gets its final ref and keeps its
+    /// definition, not just in operation bodies and parameters.
+    /// Method: for each site, place only there a ref to a response-direction type, finish the
+    /// document, then check the ref and the definition. The document round trip proves each
+    /// site parses into aide's types rather than vanishing.
+    #[test]
+    fn refs_at_every_schema_site_are_merged_and_kept() {
+        for site in SCHEMA_SITES {
+            let mut document = document_with_every_site();
+            let (schema, _) = serialize_subschema_for::<Same>();
+            *document.pointer_mut(site).expect("the site exists") = schema.to_value();
+            // `OpenApi` itself borrows its version string, so it parses only part by part.
+            let part = |key: &str| document[key].clone();
+            let mut api = OpenApi {
+                paths: serde_json::from_value(part("paths")).expect("paths parse"),
+                webhooks: serde_json::from_value(part("webhooks")).expect("webhooks parse"),
+                components: serde_json::from_value(part("components")).expect("components parse"),
+                ..OpenApi::default()
+            };
+            finish_spec(&mut api);
+            let spec = serde_json::to_value(api).expect("the spec serializes");
+            assert_eq!(
+                spec.pointer(site).expect("the site survives")["$ref"],
+                "#/components/schemas/Same",
+                "{site}"
+            );
+            assert!(
+                spec["components"]["schemas"].get("Same").is_some(),
+                "{site} keeps its definition"
+            );
+        }
     }
 }
