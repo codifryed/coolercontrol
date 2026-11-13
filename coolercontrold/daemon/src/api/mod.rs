@@ -1881,8 +1881,8 @@ mod tests {
         assert!(required("Status").contains(&"temps".to_string()).not());
         assert!(required("Status").contains(&"channels".to_string()).not());
         // Always sent, but optional in a PATCH body.
-        assert!(required("CoolerControlSettingsDto").contains(&"poll_rate".to_string()));
-        let input = required("CoolerControlSettingsDtoInput");
+        assert!(required("CoolerControlSettingsDto-Output").contains(&"poll_rate".to_string()));
+        let input = required("CoolerControlSettingsDto-Input");
         assert!(input.contains(&"poll_rate".to_string()).not());
     }
 

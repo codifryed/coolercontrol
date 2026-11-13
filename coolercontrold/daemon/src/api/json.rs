@@ -30,8 +30,10 @@ use std::ops::Not;
 const SCHEMAS_PATH: &str = "#/components/schemas/";
 /// Response refs point here until the merge moves them under `SCHEMAS_PATH`.
 const SERIALIZE_PATH: &str = "#/x-serialize/";
-/// Suffix for the request variant of a type whose two directions differ.
-const INPUT_SUFFIX: &str = "Input";
+/// Suffixes for the two variants of a type whose directions differ. aide's pending fix
+/// (tamasfe/aide#303) and `FastAPI` name them the same way.
+const INPUT_SUFFIX: &str = "-Input";
+const OUTPUT_SUFFIX: &str = "-Output";
 
 thread_local! {
     // Thread-local like aide's own context, which route declaration fills.
@@ -157,8 +159,8 @@ pub fn finish_spec(api: &mut OpenApi) {
 /// Folds the serialize-direction definitions into `api`, after aide's request-direction
 /// definitions.
 ///
-/// A type that is the same in both directions keeps one entry. A type that differs keeps its
-/// name for the response, and the request variant gets `INPUT_SUFFIX`.
+/// A type that is the same in both directions keeps one entry under its name. A type that
+/// differs splits into `INPUT_SUFFIX` and `OUTPUT_SUFFIX` variants.
 fn merge_response_schemas(api: &mut OpenApi) {
     let serialized = SERIALIZE_GENERATOR
         .replace(serialize_generator())
@@ -178,6 +180,7 @@ fn merge_response_schemas(api: &mut OpenApi) {
         if shared.contains(&name) {
             continue;
         }
+        let name = output_name(name, &split);
         let json_schema = match value {
             Value::Object(object) => Schema::from(object),
             Value::Bool(flag) => Schema::from(flag),
@@ -191,6 +194,12 @@ fn merge_response_schemas(api: &mut OpenApi) {
         assert!(schemas.insert(name, entry).is_none());
     }
     schemas.sort_keys();
+    for name in &split {
+        assert!(
+            schemas.contains_key(name).not(),
+            "{name} is split, not kept"
+        );
+    }
     // One pass, so a ref is never mapped twice.
     for_each_schema(api, &mut |schema| {
         if let Some(object) = schema.as_object_mut() {
@@ -259,14 +268,13 @@ fn rename_request_variants(
 ) {
     for name in split {
         let renamed = format!("{name}{INPUT_SUFFIX}");
-        assert!(
-            schemas.contains_key(&renamed).not(),
-            "{renamed} already exists"
-        );
-        assert!(
-            serialized.contains_key(&renamed).not(),
-            "{renamed} already exists"
-        );
+        for taken in [&renamed, &format!("{name}{OUTPUT_SUFFIX}")] {
+            assert!(schemas.contains_key(taken).not(), "{taken} already exists");
+            assert!(
+                serialized.contains_key(taken).not(),
+                "{taken} already exists"
+            );
+        }
         let entry = schemas
             .shift_remove(name)
             .expect("split names are in both maps");
@@ -274,9 +282,19 @@ fn rename_request_variants(
     }
 }
 
+/// The name a serialize-direction definition takes in the merged document.
+fn output_name(name: String, split: &HashSet<String>) -> String {
+    if split.contains(&name) {
+        format!("{name}{OUTPUT_SUFFIX}")
+    } else {
+        name
+    }
+}
+
 /// Where a ref points once both generators' definitions share `SCHEMAS_PATH`.
 fn final_ref(reference: &str, split: &HashSet<String>) -> Option<String> {
     if let Some(name) = reference.strip_prefix(SERIALIZE_PATH) {
+        let name = output_name(name.to_string(), split);
         return Some(format!("{SCHEMAS_PATH}{name}"));
     }
     let name = reference.strip_prefix(SCHEMAS_PATH)?;
@@ -594,25 +612,30 @@ mod tests {
     /// Method: route the type as both a request and a response body, then check each body's
     /// ref and the field names of the two schemas.
     #[test]
-    fn asymmetric_type_splits_into_response_and_input() {
+    fn asymmetric_type_splits_into_input_and_output() {
         let spec = spec(
             ApiRouter::new()
                 .api_route("/renamed", post(take_renamed))
                 .api_route("/renamed", get(give_renamed)),
         );
         let schemas = &spec["components"]["schemas"];
-        assert!(schemas["Renamed"]["properties"].get("type").is_some());
-        assert!(schemas["Renamed"]["properties"].get("d_type").is_none());
-        assert!(schemas["RenamedInput"]["properties"]
+        assert!(schemas["Renamed-Output"]["properties"]
+            .get("type")
+            .is_some());
+        assert!(schemas["Renamed-Output"]["properties"]
+            .get("d_type")
+            .is_none());
+        assert!(schemas.get("Renamed").is_none());
+        assert!(schemas["Renamed-Input"]["properties"]
             .get("d_type")
             .is_some());
         assert_eq!(
             request_ref(&spec, "/renamed"),
-            "#/components/schemas/RenamedInput"
+            "#/components/schemas/Renamed-Input"
         );
         assert_eq!(
             response_ref(&spec, "/renamed"),
-            "#/components/schemas/Renamed"
+            "#/components/schemas/Renamed-Output"
         );
     }
 
@@ -646,33 +669,35 @@ mod tests {
                 .api_route("/holder", get(give_holder)),
         );
         let schemas = &spec["components"]["schemas"];
+        assert!(schemas.get("Holder").is_none());
         assert_eq!(
-            schemas["Holder"]["properties"]["inner"]["$ref"],
-            "#/components/schemas/Renamed"
+            schemas["Holder-Output"]["properties"]["inner"]["$ref"],
+            "#/components/schemas/Renamed-Output"
         );
         assert_eq!(
-            schemas["HolderInput"]["properties"]["inner"]["$ref"],
-            "#/components/schemas/RenamedInput"
+            schemas["Holder-Input"]["properties"]["inner"]["$ref"],
+            "#/components/schemas/Renamed-Input"
         );
         assert_eq!(
             request_ref(&spec, "/holder"),
-            "#/components/schemas/HolderInput"
+            "#/components/schemas/Holder-Input"
         );
         assert_eq!(
             response_ref(&spec, "/holder"),
-            "#/components/schemas/Holder"
+            "#/components/schemas/Holder-Output"
         );
     }
 
-    /// Goal: a response-only type is documented by what is sent, with no `Input` twin.
+    /// Goal: a response-only type is documented by what is sent, under its plain name.
     /// Method: route the type only as a response, then check its field name and that no
-    /// `Input` schema exists.
+    /// split variant exists.
     #[test]
     fn response_only_type_uses_serialize_contract() {
         let spec = spec(ApiRouter::new().api_route("/renamed", get(give_renamed)));
         let schemas = spec["components"]["schemas"].as_object().expect("schemas");
         assert!(schemas["Renamed"]["properties"].get("type").is_some());
-        assert!(schemas.contains_key("RenamedInput").not());
+        assert!(schemas.contains_key("Renamed-Input").not());
+        assert!(schemas.contains_key("Renamed-Output").not());
     }
 
     /// Goal: path and query types, which aide inlines as parameters, leave no unused schema
@@ -694,20 +719,21 @@ mod tests {
 
     /// Takes the name the split would give `Renamed`'s request variant.
     #[derive(Deserialize, JsonSchema)]
-    struct RenamedInput {
+    #[schemars(rename = "Renamed-Input")]
+    struct TakesSplitName {
         #[expect(dead_code, reason = "only the schema is read")]
         value: u8,
     }
 
     #[allow(clippy::unused_async, reason = "axum handlers must be async")]
-    async fn take_renamed_input(Json(_): Json<RenamedInput>) {}
+    async fn take_renamed_input(Json(_): Json<TakesSplitName>) {}
 
-    /// Goal: a split whose `Input` name is already taken fails loudly rather than overwriting
+    /// Goal: a split whose variant name is already taken fails loudly rather than overwriting
     /// a schema.
     /// Method: route a split type both ways and a separate type named after its request
     /// variant, then expect the merge to panic.
     #[test]
-    #[should_panic(expected = "RenamedInput already exists")]
+    #[should_panic(expected = "Renamed-Input already exists")]
     fn split_name_collision_panics() {
         spec(
             ApiRouter::new()

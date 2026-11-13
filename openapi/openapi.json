@@ -1151,7 +1151,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LcdSettingsInput"
+                "$ref": "#/components/schemas/LcdSettings-Input"
               }
             }
           },
@@ -1580,7 +1580,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LightingSettingsInput"
+                "$ref": "#/components/schemas/LightingSettings-Input"
               }
             }
           },
@@ -2208,7 +2208,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProfilesDto"
+                  "$ref": "#/components/schemas/ProfilesDto-Output"
                 }
               }
             }
@@ -2256,7 +2256,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ProfileInput"
+                "$ref": "#/components/schemas/Profile-Input"
               }
             }
           },
@@ -2309,7 +2309,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ProfileInput"
+                "$ref": "#/components/schemas/Profile-Input"
               }
             }
           },
@@ -2418,7 +2418,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ProfilesDtoInput"
+                "$ref": "#/components/schemas/ProfilesDto-Input"
               }
             }
           },
@@ -2536,7 +2536,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FunctionsDto"
+                  "$ref": "#/components/schemas/FunctionsDto-Output"
                 }
               }
             }
@@ -2584,7 +2584,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FunctionInput"
+                "$ref": "#/components/schemas/Function-Input"
               }
             }
           },
@@ -2637,7 +2637,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FunctionInput"
+                "$ref": "#/components/schemas/Function-Input"
               }
             }
           },
@@ -2746,7 +2746,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FunctionsDtoInput"
+                "$ref": "#/components/schemas/FunctionsDto-Input"
               }
             }
           },
@@ -2850,7 +2850,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CustomSensorInput"
+                "$ref": "#/components/schemas/CustomSensor-Input"
               }
             }
           },
@@ -2903,7 +2903,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CustomSensorInput"
+                "$ref": "#/components/schemas/CustomSensor-Input"
               }
             }
           },
@@ -2970,7 +2970,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomSensor"
+                  "$ref": "#/components/schemas/CustomSensor-Output"
                 }
               }
             }
@@ -3719,7 +3719,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CoolerControlSettingsDto"
+                  "$ref": "#/components/schemas/CoolerControlSettingsDto-Output"
                 }
               }
             }
@@ -3766,7 +3766,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CoolerControlSettingsDtoInput"
+                "$ref": "#/components/schemas/CoolerControlSettingsDto-Input"
               }
             }
           },
@@ -5101,7 +5101,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AlertDtoInput"
+                "$ref": "#/components/schemas/AlertDto-Input"
               }
             }
           },
@@ -5153,7 +5153,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AlertDtoInput"
+                "$ref": "#/components/schemas/AlertDto-Input"
               }
             }
           },
@@ -6937,7 +6937,123 @@
           "previous_mode_uid"
         ]
       },
-      "AlertDto": {
+      "AlertDto-Input": {
+        "type": "object",
+        "properties": {
+          "channel_source": {
+            "description": "Legacy single source; still accepted on input when `channel_sources`\n is empty and always populated on output for older API clients.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelSource"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "channel_sources": {
+            "description": "All watched sources; entries must share one `ChannelMetric`.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ChannelSource"
+            }
+          },
+          "cooldown_duration": {
+            "description": "Time in seconds the value must stay back in range before an Active alert clears.",
+            "type": "number",
+            "format": "double",
+            "default": 0.0
+          },
+          "desktop_notify": {
+            "description": "Toggle a desktop notification when this alert enters an `Active` state. (true by default)",
+            "type": "boolean",
+            "default": true
+          },
+          "desktop_notify_audio": {
+            "description": "Toggle whether the desktop notification attempts to play an audio sound\n when this alert enters an `Active` state.\n Note: only applies when `desktop_notify` is enabled.",
+            "type": "boolean",
+            "default": false
+          },
+          "desktop_notify_recovery": {
+            "description": "Toggle a desktop notification when this alert enters an `Inactive` state.",
+            "type": "boolean",
+            "default": true
+          },
+          "enabled": {
+            "description": "A disabled alert is not evaluated at all.",
+            "type": "boolean",
+            "default": true
+          },
+          "max": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "number",
+            "format": "double"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repeat_interval": {
+            "description": "Seconds between repeated notifications while Active; 0 disables, minimum 60 otherwise.",
+            "type": "number",
+            "format": "double",
+            "default": 0.0
+          },
+          "shutdown_on_activation": {
+            "description": "Toggle whether to issue a system shutdown when this Alert enters an `Active` state.",
+            "type": "boolean",
+            "default": false
+          },
+          "silenced_until": {
+            "description": "While set to a future time, notifications and shutdown are suppressed.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null
+          },
+          "source_states": {
+            "description": "Per-source states, parallel to `channel_sources`. Output-only.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceStateDto"
+            }
+          },
+          "state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "uid": {
+            "type": "string"
+          },
+          "warmup_duration": {
+            "description": "Time in seconds throughout which the alert condition must hold before the alert is activated",
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "required": [
+          "uid",
+          "name",
+          "min",
+          "max",
+          "warmup_duration"
+        ]
+      },
+      "AlertDto-Output": {
         "type": "object",
         "properties": {
           "channel_source": {
@@ -7065,122 +7181,6 @@
           "shutdown_on_activation"
         ]
       },
-      "AlertDtoInput": {
-        "type": "object",
-        "properties": {
-          "channel_source": {
-            "description": "Legacy single source; still accepted on input when `channel_sources`\n is empty and always populated on output for older API clients.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ChannelSource"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "channel_sources": {
-            "description": "All watched sources; entries must share one `ChannelMetric`.",
-            "type": "array",
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/ChannelSource"
-            }
-          },
-          "cooldown_duration": {
-            "description": "Time in seconds the value must stay back in range before an Active alert clears.",
-            "type": "number",
-            "format": "double",
-            "default": 0.0
-          },
-          "desktop_notify": {
-            "description": "Toggle a desktop notification when this alert enters an `Active` state. (true by default)",
-            "type": "boolean",
-            "default": true
-          },
-          "desktop_notify_audio": {
-            "description": "Toggle whether the desktop notification attempts to play an audio sound\n when this alert enters an `Active` state.\n Note: only applies when `desktop_notify` is enabled.",
-            "type": "boolean",
-            "default": false
-          },
-          "desktop_notify_recovery": {
-            "description": "Toggle a desktop notification when this alert enters an `Inactive` state.",
-            "type": "boolean",
-            "default": true
-          },
-          "enabled": {
-            "description": "A disabled alert is not evaluated at all.",
-            "type": "boolean",
-            "default": true
-          },
-          "max": {
-            "type": "number",
-            "format": "double"
-          },
-          "min": {
-            "type": "number",
-            "format": "double"
-          },
-          "name": {
-            "type": "string"
-          },
-          "repeat_interval": {
-            "description": "Seconds between repeated notifications while Active; 0 disables, minimum 60 otherwise.",
-            "type": "number",
-            "format": "double",
-            "default": 0.0
-          },
-          "shutdown_on_activation": {
-            "description": "Toggle whether to issue a system shutdown when this Alert enters an `Active` state.",
-            "type": "boolean",
-            "default": false
-          },
-          "silenced_until": {
-            "description": "While set to a future time, notifications and shutdown are suppressed.",
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "default": null
-          },
-          "source_states": {
-            "description": "Per-source states, parallel to `channel_sources`. Output-only.",
-            "type": "array",
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/SourceStateDto"
-            }
-          },
-          "state": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AlertState"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "uid": {
-            "type": "string"
-          },
-          "warmup_duration": {
-            "description": "Time in seconds throughout which the alert condition must hold before the alert is activated",
-            "type": "number",
-            "format": "double"
-          }
-        },
-        "required": [
-          "uid",
-          "name",
-          "min",
-          "max",
-          "warmup_duration"
-        ]
-      },
       "AlertLog": {
         "type": "object",
         "properties": {
@@ -7306,7 +7306,7 @@
           "alerts": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/AlertDto"
+              "$ref": "#/components/schemas/AlertDto-Output"
             }
           },
           "logs": {
@@ -7504,7 +7504,36 @@
           "channel_name"
         ]
       },
-      "CCChannelSettings": {
+      "CCChannelSettings-Input": {
+        "type": "object",
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "extension": {
+            "description": "Specialized settings (extensions) that apply to a specific device channel.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelExtensions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "description": "The last-detected channel label, stamped by the daemon. Names disabled\n channels. Deprecated as a writable field: client-supplied values are\n ignored. User-defined labels belong in the name overrides\n (overrides.toml). On read it carries the resolved display label.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "disabled"
+        ]
+      },
+      "CCChannelSettings-Output": {
         "type": "object",
         "properties": {
           "disabled": {
@@ -7535,35 +7564,6 @@
           "extension"
         ]
       },
-      "CCChannelSettingsInput": {
-        "type": "object",
-        "properties": {
-          "disabled": {
-            "type": "boolean"
-          },
-          "extension": {
-            "description": "Specialized settings (extensions) that apply to a specific device channel.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ChannelExtensions"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "label": {
-            "description": "The last-detected channel label, stamped by the daemon. Names disabled\n channels. Deprecated as a writable field: client-supplied values are\n ignored. User-defined labels belong in the name overrides\n (overrides.toml). On read it carries the resolved display label.",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "disabled"
-        ]
-      },
       "CCDeviceSettingsUpdate": {
         "description": "A save of `CoolerControl` settings for a specific Device. Extensions it leaves out keep their\n saved values, so a client that predates one does not reset it.",
         "type": "object",
@@ -7572,7 +7572,7 @@
             "description": "A list of channels specific settings, including disable and extension settings.",
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/CCChannelSettingsInput"
+              "$ref": "#/components/schemas/CCChannelSettings-Input"
             }
           },
           "disable": {
@@ -8664,7 +8664,7 @@
           "channel_settings": {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/CCChannelSettings"
+              "$ref": "#/components/schemas/CCChannelSettings-Output"
             }
           },
           "disable": {
@@ -8688,7 +8688,125 @@
           "channel_settings"
         ]
       },
-      "CoolerControlSettingsDto": {
+      "CoolerControlSettingsDto-Input": {
+        "type": "object",
+        "properties": {
+          "allow_unencrypted": {
+            "description": "Allow unencrypted HTTP connections from non-localhost addresses",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "apply_on_boot": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "compress": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "debug_logging": {
+            "description": "Whether to log at DEBUG level. Applies after a daemon restart.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "device_listener_enabled": {
+            "description": "Whether to listen for device add/remove events at startup",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "drivetemp_suspend": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "hide_duplicate_devices": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "liquidctl_integration": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "no_init": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "poll_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "protocol_header": {
+            "description": "Header to check for proxy client protocol (e.g., \"X-Forwarded-Proto\")",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sensors_auto_detect": {
+            "description": "Whether to auto-detect Super-I/O sensors at startup (`x86_64` only)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "sensors_conf_enabled": {
+            "description": "Whether to apply labels and ignores from the lm-sensors configuration",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "startup_delay": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0
+          },
+          "thinkpad_full_speed": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "tls_fingerprint": {
+            "description": "The SHA-256 fingerprint of the TLS certificate this daemon serves, or `None` when\n TLS is off. Report-only: it is derived from the certificate, so anything sent here\n is ignored.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_strict": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "CoolerControlSettingsDto-Output": {
         "type": "object",
         "properties": {
           "allow_unencrypted": {
@@ -8825,124 +8943,6 @@
           "debug_logging"
         ]
       },
-      "CoolerControlSettingsDtoInput": {
-        "type": "object",
-        "properties": {
-          "allow_unencrypted": {
-            "description": "Allow unencrypted HTTP connections from non-localhost addresses",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "apply_on_boot": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "compress": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "debug_logging": {
-            "description": "Whether to log at DEBUG level. Applies after a daemon restart.",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "device_listener_enabled": {
-            "description": "Whether to listen for device add/remove events at startup",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "drivetemp_suspend": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "hide_duplicate_devices": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "liquidctl_integration": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "no_init": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "poll_rate": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          },
-          "protocol_header": {
-            "description": "Header to check for proxy client protocol (e.g., \"X-Forwarded-Proto\")",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "sensors_auto_detect": {
-            "description": "Whether to auto-detect Super-I/O sensors at startup (`x86_64` only)",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "sensors_conf_enabled": {
-            "description": "Whether to apply labels and ignores from the lm-sensors configuration",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "startup_delay": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint16",
-            "maximum": 65535,
-            "minimum": 0
-          },
-          "thinkpad_full_speed": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "tls_fingerprint": {
-            "description": "The SHA-256 fingerprint of the TLS certificate this daemon serves, or `None` when\n TLS is off. Report-only: it is derived from the certificate, so anything sent here\n is ignored.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "tls_strict": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          }
-        }
-      },
       "CreateModeDto": {
         "type": "object",
         "properties": {
@@ -9019,7 +9019,169 @@
           "Stepped"
         ]
       },
-      "CustomSensor": {
+      "CustomSensor-Input": {
+        "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
+        "type": "object",
+        "properties": {
+          "children": {
+            "description": "The Custom Sensor's children, if any.\n\n Each Custom Sensor is either a child, parent, or standalone, not a combination of those.\n Custom Sensors are limited to 1 level of hierarchy. This removes the possibility\n of circular references.\n\n The children and parents vectors are managed and filled internally. For GET endpoints,\n they provide this information for clients. For POST or PUT endpoints,\n any values here are essentially ignored.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "description": "The ID MUST be unique: it names the sensor's temp or, for any other metric, its channel\n on the Custom Sensors device.",
+            "type": "string"
+          },
+          "metric": {
+            "description": "The channel metric the sensor reads and reports, `Temp` when absent. All sources\n share it: a `Temp` sensor's sources are `temp_source`, any other metric's are\n `channel_source`. It cannot change once the sensor exists.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomSensorMetric"
+              }
+            ],
+            "default": "Temp"
+          },
+          "parents": {
+            "description": "The Custom Sensor's parents, if any. See `children` for more details.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "Mix"
+              },
+              "mix_function": {
+                "$ref": "#/components/schemas/CustomSensorMixFunctionType"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CustomSensorSource"
+                }
+              }
+            },
+            "required": [
+              "cs_type",
+              "mix_function",
+              "sources"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "File"
+              },
+              "file_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cs_type",
+              "file_path"
+            ]
+          },
+          {
+            "description": "Scale & Offset: `source * scale + offset`.",
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "Offset"
+              },
+              "offset": {
+                "type": "number",
+                "format": "double"
+              },
+              "scale": {
+                "description": "1 when absent.",
+                "type": "number",
+                "format": "double",
+                "default": 1.0
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CustomSensorSource"
+                }
+              }
+            },
+            "required": [
+              "cs_type",
+              "offset",
+              "sources"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "TimeAverage"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CustomSensorSource"
+                }
+              },
+              "time_window_seconds": {
+                "type": "integer",
+                "format": "uint16",
+                "maximum": 65535,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "cs_type",
+              "time_window_seconds",
+              "sources"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "ExponentialMovingAvg"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CustomSensorSource"
+                }
+              },
+              "time_window_seconds": {
+                "type": "integer",
+                "format": "uint16",
+                "maximum": 65535,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "cs_type",
+              "time_window_seconds",
+              "sources"
+            ]
+          }
+        ],
+        "required": [
+          "id"
+        ]
+      },
+      "CustomSensor-Output": {
         "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
         "type": "object",
         "properties": {
@@ -9203,168 +9365,6 @@
           "channel_name"
         ]
       },
-      "CustomSensorInput": {
-        "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
-        "type": "object",
-        "properties": {
-          "children": {
-            "description": "The Custom Sensor's children, if any.\n\n Each Custom Sensor is either a child, parent, or standalone, not a combination of those.\n Custom Sensors are limited to 1 level of hierarchy. This removes the possibility\n of circular references.\n\n The children and parents vectors are managed and filled internally. For GET endpoints,\n they provide this information for clients. For POST or PUT endpoints,\n any values here are essentially ignored.",
-            "type": "array",
-            "default": [],
-            "items": {
-              "type": "string"
-            }
-          },
-          "id": {
-            "description": "The ID MUST be unique: it names the sensor's temp or, for any other metric, its channel\n on the Custom Sensors device.",
-            "type": "string"
-          },
-          "metric": {
-            "description": "The channel metric the sensor reads and reports, `Temp` when absent. All sources\n share it: a `Temp` sensor's sources are `temp_source`, any other metric's are\n `channel_source`. It cannot change once the sensor exists.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CustomSensorMetric"
-              }
-            ],
-            "default": "Temp"
-          },
-          "parents": {
-            "description": "The Custom Sensor's parents, if any. See `children` for more details.",
-            "type": "array",
-            "default": [],
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "cs_type": {
-                "type": "string",
-                "const": "Mix"
-              },
-              "mix_function": {
-                "$ref": "#/components/schemas/CustomSensorMixFunctionType"
-              },
-              "sources": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CustomSensorSource"
-                }
-              }
-            },
-            "required": [
-              "cs_type",
-              "mix_function",
-              "sources"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "cs_type": {
-                "type": "string",
-                "const": "File"
-              },
-              "file_path": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "cs_type",
-              "file_path"
-            ]
-          },
-          {
-            "description": "Scale & Offset: `source * scale + offset`.",
-            "type": "object",
-            "properties": {
-              "cs_type": {
-                "type": "string",
-                "const": "Offset"
-              },
-              "offset": {
-                "type": "number",
-                "format": "double"
-              },
-              "scale": {
-                "description": "1 when absent.",
-                "type": "number",
-                "format": "double",
-                "default": 1.0
-              },
-              "sources": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CustomSensorSource"
-                }
-              }
-            },
-            "required": [
-              "cs_type",
-              "offset",
-              "sources"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "cs_type": {
-                "type": "string",
-                "const": "TimeAverage"
-              },
-              "sources": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CustomSensorSource"
-                }
-              },
-              "time_window_seconds": {
-                "type": "integer",
-                "format": "uint16",
-                "maximum": 65535,
-                "minimum": 0
-              }
-            },
-            "required": [
-              "cs_type",
-              "time_window_seconds",
-              "sources"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "cs_type": {
-                "type": "string",
-                "const": "ExponentialMovingAvg"
-              },
-              "sources": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CustomSensorSource"
-                }
-              },
-              "time_window_seconds": {
-                "type": "integer",
-                "format": "uint16",
-                "maximum": 65535,
-                "minimum": 0
-              }
-            },
-            "required": [
-              "cs_type",
-              "time_window_seconds",
-              "sources"
-            ]
-          }
-        ],
-        "required": [
-          "id"
-        ]
-      },
       "CustomSensorMetric": {
         "description": "The channel metric a Custom Sensor reads and reports. All of its sources share it.",
         "type": "string",
@@ -9431,7 +9431,7 @@
           "custom_sensors": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/CustomSensor"
+              "$ref": "#/components/schemas/CustomSensor-Output"
             }
           }
         },
@@ -10186,7 +10186,118 @@
           "Bottom"
         ]
       },
-      "Function": {
+      "Function-Input": {
+        "description": "The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`\n fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on\n `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left\n to apply-time validation, keeping the input wire contract backward-compatible.",
+        "type": "object",
+        "properties": {
+          "bypass_min_at_extremes": {
+            "description": "Whether to bypass the minimum step size when the target duty is exactly 0% or 100%.\n Useful for ensuring fans fully stop or reach max RPM even when the change is below the\n minimum step size. The maximum step size is still respected. Disabled by default.",
+            "type": "boolean",
+            "default": false
+          },
+          "duty_maximum": {
+            "description": "The maximum duty change (step size) to apply\n A duty maximum of `0` indicates a fixed step size. Use `duty_minimum` to set the step size.\n Previously `duty_maximum`.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "duty_minimum": {
+            "description": "The minimum duty change (step size) to apply\n Previously `duty_minimum`.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "name": {
+            "description": "The user given name for this function",
+            "type": "string"
+          },
+          "step_size_max_decreasing": {
+            "description": "The maximum step size to apply when decreasing.\n A value of `0` indicates a fixed step size. Use `step_size_minimum_decreasing` to set the step size.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "step_size_min_decreasing": {
+            "description": "The minimum step size to apply when decreasing.\n A value of `0` indicates a symmetric step size. Use `duty_minimum` to set the step size.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "threshold_hopping": {
+            "description": "Whether to temporarily bypass thresholds when fan speed remains unchanged for 30+ seconds to meet curve target.",
+            "type": "boolean"
+          },
+          "uid": {
+            "description": "The Unique identifier for this function",
+            "type": "string"
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "f_type": {
+                "type": "string",
+                "const": "Identity"
+              }
+            },
+            "required": [
+              "f_type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "deviance": {
+                "description": "The temperature deviance threshold in degrees",
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "f_type": {
+                "type": "string",
+                "const": "Standard"
+              },
+              "only_downward": {
+                "description": "Whether to apply settings only on the way down",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "response_delay": {
+                "description": "The response delay in seconds",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "f_type"
+            ]
+          }
+        ],
+        "required": [
+          "uid",
+          "name",
+          "duty_minimum",
+          "duty_maximum",
+          "step_size_min_decreasing",
+          "step_size_max_decreasing",
+          "threshold_hopping"
+        ]
+      },
+      "Function-Output": {
         "description": "The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`\n fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on\n `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left\n to apply-time validation, keeping the input wire contract backward-compatible.",
         "type": "object",
         "properties": {
@@ -10301,124 +10412,13 @@
           "bypass_min_at_extremes"
         ]
       },
-      "FunctionInput": {
-        "description": "The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`\n fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on\n `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left\n to apply-time validation, keeping the input wire contract backward-compatible.",
-        "type": "object",
-        "properties": {
-          "bypass_min_at_extremes": {
-            "description": "Whether to bypass the minimum step size when the target duty is exactly 0% or 100%.\n Useful for ensuring fans fully stop or reach max RPM even when the change is below the\n minimum step size. The maximum step size is still respected. Disabled by default.",
-            "type": "boolean",
-            "default": false
-          },
-          "duty_maximum": {
-            "description": "The maximum duty change (step size) to apply\n A duty maximum of `0` indicates a fixed step size. Use `duty_minimum` to set the step size.\n Previously `duty_maximum`.",
-            "type": "integer",
-            "format": "uint8",
-            "maximum": 255,
-            "minimum": 0
-          },
-          "duty_minimum": {
-            "description": "The minimum duty change (step size) to apply\n Previously `duty_minimum`.",
-            "type": "integer",
-            "format": "uint8",
-            "maximum": 255,
-            "minimum": 0
-          },
-          "name": {
-            "description": "The user given name for this function",
-            "type": "string"
-          },
-          "step_size_max_decreasing": {
-            "description": "The maximum step size to apply when decreasing.\n A value of `0` indicates a fixed step size. Use `step_size_minimum_decreasing` to set the step size.",
-            "type": "integer",
-            "format": "uint8",
-            "maximum": 255,
-            "minimum": 0
-          },
-          "step_size_min_decreasing": {
-            "description": "The minimum step size to apply when decreasing.\n A value of `0` indicates a symmetric step size. Use `duty_minimum` to set the step size.",
-            "type": "integer",
-            "format": "uint8",
-            "maximum": 255,
-            "minimum": 0
-          },
-          "threshold_hopping": {
-            "description": "Whether to temporarily bypass thresholds when fan speed remains unchanged for 30+ seconds to meet curve target.",
-            "type": "boolean"
-          },
-          "uid": {
-            "description": "The Unique identifier for this function",
-            "type": "string"
-          }
-        },
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "f_type": {
-                "type": "string",
-                "const": "Identity"
-              }
-            },
-            "required": [
-              "f_type"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "deviance": {
-                "description": "The temperature deviance threshold in degrees",
-                "type": [
-                  "number",
-                  "null"
-                ],
-                "format": "double"
-              },
-              "f_type": {
-                "type": "string",
-                "const": "Standard"
-              },
-              "only_downward": {
-                "description": "Whether to apply settings only on the way down",
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "response_delay": {
-                "description": "The response delay in seconds",
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "format": "uint8",
-                "maximum": 255,
-                "minimum": 0
-              }
-            },
-            "required": [
-              "f_type"
-            ]
-          }
-        ],
-        "required": [
-          "uid",
-          "name",
-          "duty_minimum",
-          "duty_maximum",
-          "step_size_min_decreasing",
-          "step_size_max_decreasing",
-          "threshold_hopping"
-        ]
-      },
-      "FunctionsDto": {
+      "FunctionsDto-Input": {
         "type": "object",
         "properties": {
           "functions": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Function"
+              "$ref": "#/components/schemas/Function-Input"
             }
           }
         },
@@ -10426,13 +10426,13 @@
           "functions"
         ]
       },
-      "FunctionsDtoInput": {
+      "FunctionsDto-Output": {
         "type": "object",
         "properties": {
           "functions": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/FunctionInput"
+              "$ref": "#/components/schemas/Function-Output"
             }
           }
         },
@@ -10483,19 +10483,19 @@
           "custom_sensors": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/CustomSensor"
+              "$ref": "#/components/schemas/CustomSensor-Output"
             }
           },
           "functions": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Function"
+              "$ref": "#/components/schemas/Function-Output"
             }
           },
           "profiles": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Profile"
+              "$ref": "#/components/schemas/Profile-Output"
             }
           }
         },
@@ -10747,7 +10747,29 @@
           "unknown_asetek"
         ]
       },
-      "LcdCarouselSettings": {
+      "LcdCarouselSettings-Input": {
+        "description": "Settings for the LCD Carousel.\n\n This can be used to have a carousel of images (static or gif), of sensor data,\n or a combination of both.",
+        "type": "object",
+        "properties": {
+          "images_path": {
+            "description": "The absolute path directory location for images for the carousel. All applicable images\n present are processed when the setting is applied.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "interval": {
+            "description": "The interval in seconds (2-900) in which to change images in the carousel.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "interval"
+        ]
+      },
+      "LcdCarouselSettings-Output": {
         "description": "Settings for the LCD Carousel.\n\n This can be used to have a carousel of images (static or gif), of sensor data,\n or a combination of both.",
         "type": "object",
         "properties": {
@@ -10767,28 +10789,6 @@
         },
         "required": [
           "images_path",
-          "interval"
-        ]
-      },
-      "LcdCarouselSettingsInput": {
-        "description": "Settings for the LCD Carousel.\n\n This can be used to have a carousel of images (static or gif), of sensor data,\n or a combination of both.",
-        "type": "object",
-        "properties": {
-          "images_path": {
-            "description": "The absolute path directory location for images for the carousel. All applicable images\n present are processed when the setting is applied.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "interval": {
-            "description": "The interval in seconds (2-900) in which to change images in the carousel.",
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          }
-        },
-        "required": [
           "interval"
         ]
       },
@@ -10876,7 +10876,152 @@
           "Custom"
         ]
       },
-      "LcdSettings": {
+      "LcdSettings-Input": {
+        "description": "LCD mode and its mode-specific fields, internally tagged on the `mode` discriminator\n (lowercase, as before). Named `LcdModeKind` to avoid colliding with `device::LcdMode`, the\n device-capability struct. The per-mode fields stay `Option` for now: the enum already makes\n a mode structurally unable to carry another mode's field; requiredness is still enforced by\n the existing apply-time validation.",
+        "type": "object",
+        "properties": {
+          "brightness": {
+            "description": "The LCD brightness (0-100%).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "colors": {
+            "description": "Unused; kept for downgrade compatibility.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "array",
+              "items": [
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                },
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                },
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                }
+              ],
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "orientation": {
+            "description": "The LCD orientation (0, 90, 180, 270). Applies across modes, so it stays shared.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "none"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "liquid"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "image_file_processed": {
+                "description": "Processed (preprocessed) image file path location.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mode": {
+                "type": "string",
+                "const": "image"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "temp"
+              },
+              "temp_source": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TempSource"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "carousel": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LcdCarouselSettings-Input"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mode": {
+                "type": "string",
+                "const": "carousel"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        ]
+      },
+      "LcdSettings-Output": {
         "description": "LCD mode and its mode-specific fields, internally tagged on the `mode` discriminator\n (lowercase, as before). Named `LcdModeKind` to avoid colliding with `device::LcdMode`, the\n device-capability struct. The per-mode fields stay `Option` for now: the enum already makes\n a mode structurally unable to carry another mode's field; requiredness is still enforced by\n the existing apply-time validation.",
         "type": "object",
         "properties": {
@@ -11005,7 +11150,7 @@
               "carousel": {
                 "anyOf": [
                   {
-                    "$ref": "#/components/schemas/LcdCarouselSettings"
+                    "$ref": "#/components/schemas/LcdCarouselSettings-Output"
                   },
                   {
                     "type": "null"
@@ -11027,151 +11172,6 @@
           "brightness",
           "orientation",
           "colors"
-        ]
-      },
-      "LcdSettingsInput": {
-        "description": "LCD mode and its mode-specific fields, internally tagged on the `mode` discriminator\n (lowercase, as before). Named `LcdModeKind` to avoid colliding with `device::LcdMode`, the\n device-capability struct. The per-mode fields stay `Option` for now: the enum already makes\n a mode structurally unable to carry another mode's field; requiredness is still enforced by\n the existing apply-time validation.",
-        "type": "object",
-        "properties": {
-          "brightness": {
-            "description": "The LCD brightness (0-100%).",
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint8",
-            "maximum": 255,
-            "minimum": 0
-          },
-          "colors": {
-            "description": "Unused; kept for downgrade compatibility.",
-            "type": "array",
-            "default": [],
-            "items": {
-              "type": "array",
-              "items": [
-                {
-                  "type": "integer",
-                  "format": "uint8",
-                  "maximum": 255,
-                  "minimum": 0
-                },
-                {
-                  "type": "integer",
-                  "format": "uint8",
-                  "maximum": 255,
-                  "minimum": 0
-                },
-                {
-                  "type": "integer",
-                  "format": "uint8",
-                  "maximum": 255,
-                  "minimum": 0
-                }
-              ],
-              "maxItems": 3,
-              "minItems": 3
-            }
-          },
-          "orientation": {
-            "description": "The LCD orientation (0, 90, 180, 270). Applies across modes, so it stays shared.",
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint16",
-            "maximum": 65535,
-            "minimum": 0
-          }
-        },
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "none"
-              }
-            },
-            "required": [
-              "mode"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "liquid"
-              }
-            },
-            "required": [
-              "mode"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "image_file_processed": {
-                "description": "Processed (preprocessed) image file path location.",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "mode": {
-                "type": "string",
-                "const": "image"
-              }
-            },
-            "required": [
-              "mode"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "temp"
-              },
-              "temp_source": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/TempSource"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "mode"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "carousel": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/LcdCarouselSettingsInput"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "mode": {
-                "type": "string",
-                "const": "carousel"
-              }
-            },
-            "required": [
-              "mode"
-            ]
-          }
         ]
       },
       "LightingMode": {
@@ -11223,7 +11223,63 @@
           "Custom"
         ]
       },
-      "LightingSettings": {
+      "LightingSettings-Input": {
+        "type": "object",
+        "properties": {
+          "backward": {
+            "description": "run backwards or not",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "colors": {
+            "description": "a list of RGB tuple values, eg [(20,20,120), (0,0,255)]",
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": [
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                },
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                },
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                }
+              ],
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "mode": {
+            "description": "The lighting mode name",
+            "type": "string"
+          },
+          "speed": {
+            "description": "The speed to set",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "colors"
+        ]
+      },
+      "LightingSettings-Output": {
         "type": "object",
         "properties": {
           "backward": {
@@ -11278,62 +11334,6 @@
           "mode",
           "speed",
           "backward",
-          "colors"
-        ]
-      },
-      "LightingSettingsInput": {
-        "type": "object",
-        "properties": {
-          "backward": {
-            "description": "run backwards or not",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "colors": {
-            "description": "a list of RGB tuple values, eg [(20,20,120), (0,0,255)]",
-            "type": "array",
-            "items": {
-              "type": "array",
-              "items": [
-                {
-                  "type": "integer",
-                  "format": "uint8",
-                  "maximum": 255,
-                  "minimum": 0
-                },
-                {
-                  "type": "integer",
-                  "format": "uint8",
-                  "maximum": 255,
-                  "minimum": 0
-                },
-                {
-                  "type": "integer",
-                  "format": "uint8",
-                  "maximum": 255,
-                  "minimum": 0
-                }
-              ],
-              "maxItems": 3,
-              "minItems": 3
-            }
-          },
-          "mode": {
-            "description": "The lighting mode name",
-            "type": "string"
-          },
-          "speed": {
-            "description": "The speed to set",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "mode",
           "colors"
         ]
       },
@@ -11693,7 +11693,198 @@
           "preset"
         ]
       },
-      "Profile": {
+      "Profile-Input": {
+        "description": "Profile Settings",
+        "type": "object",
+        "properties": {
+          "function_uid": {
+            "description": "The function uid to apply to this profile.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "p_type": {
+                "type": "string",
+                "const": "Default"
+              }
+            },
+            "required": [
+              "p_type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "p_type": {
+                "type": "string",
+                "const": "Fixed"
+              },
+              "speed_fixed": {
+                "description": "The fixed duty speed to set. eg: 20 (%)",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "p_type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "p_type": {
+                "type": "string",
+                "const": "Graph"
+              },
+              "speed_profile": {
+                "description": "The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]",
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "format": "double"
+                    },
+                    {
+                      "type": "integer",
+                      "format": "uint8",
+                      "maximum": 255,
+                      "minimum": 0
+                    }
+                  ],
+                  "maxItems": 2,
+                  "minItems": 2
+                }
+              },
+              "temp_max": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "temp_min": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "temp_source": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TempSource"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "p_type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "member_profile_uids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "mix_function_type": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ProfileMixFunctionType"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "p_type": {
+                "type": "string",
+                "const": "Mix"
+              }
+            },
+            "required": [
+              "p_type",
+              "member_profile_uids"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "member_profile_uids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "offset_profile": {
+                "description": "The graph offset to apply to the associated member profile. Can also be a static\n offset when there is only one duty/offset pair.",
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "integer",
+                      "format": "uint8",
+                      "maximum": 255,
+                      "minimum": 0
+                    },
+                    {
+                      "type": "integer",
+                      "format": "int8",
+                      "maximum": 127,
+                      "minimum": -128
+                    }
+                  ],
+                  "maxItems": 2,
+                  "minItems": 2
+                }
+              },
+              "p_type": {
+                "type": "string",
+                "const": "Overlay"
+              }
+            },
+            "required": [
+              "p_type",
+              "member_profile_uids"
+            ]
+          }
+        ],
+        "required": [
+          "uid",
+          "name",
+          "function_uid"
+        ]
+      },
+      "Profile-Output": {
         "description": "Profile Settings",
         "type": "object",
         "properties": {
@@ -11891,197 +12082,6 @@
           "function_uid"
         ]
       },
-      "ProfileInput": {
-        "description": "Profile Settings",
-        "type": "object",
-        "properties": {
-          "function_uid": {
-            "description": "The function uid to apply to this profile.",
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "uid": {
-            "type": "string"
-          }
-        },
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "p_type": {
-                "type": "string",
-                "const": "Default"
-              }
-            },
-            "required": [
-              "p_type"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "p_type": {
-                "type": "string",
-                "const": "Fixed"
-              },
-              "speed_fixed": {
-                "description": "The fixed duty speed to set. eg: 20 (%)",
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "format": "uint8",
-                "maximum": 255,
-                "minimum": 0
-              }
-            },
-            "required": [
-              "p_type"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "p_type": {
-                "type": "string",
-                "const": "Graph"
-              },
-              "speed_profile": {
-                "description": "The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]",
-                "type": [
-                  "array",
-                  "null"
-                ],
-                "items": {
-                  "type": "array",
-                  "items": [
-                    {
-                      "type": "number",
-                      "format": "double"
-                    },
-                    {
-                      "type": "integer",
-                      "format": "uint8",
-                      "maximum": 255,
-                      "minimum": 0
-                    }
-                  ],
-                  "maxItems": 2,
-                  "minItems": 2
-                }
-              },
-              "temp_max": {
-                "type": [
-                  "number",
-                  "null"
-                ],
-                "format": "double"
-              },
-              "temp_min": {
-                "type": [
-                  "number",
-                  "null"
-                ],
-                "format": "double"
-              },
-              "temp_source": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/TempSource"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "p_type"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "member_profile_uids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "mix_function_type": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/ProfileMixFunctionType"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "p_type": {
-                "type": "string",
-                "const": "Mix"
-              }
-            },
-            "required": [
-              "p_type",
-              "member_profile_uids"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "member_profile_uids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "offset_profile": {
-                "description": "The graph offset to apply to the associated member profile. Can also be a static\n offset when there is only one duty/offset pair.",
-                "type": [
-                  "array",
-                  "null"
-                ],
-                "items": {
-                  "type": "array",
-                  "items": [
-                    {
-                      "type": "integer",
-                      "format": "uint8",
-                      "maximum": 255,
-                      "minimum": 0
-                    },
-                    {
-                      "type": "integer",
-                      "format": "int8",
-                      "maximum": 127,
-                      "minimum": -128
-                    }
-                  ],
-                  "maxItems": 2,
-                  "minItems": 2
-                }
-              },
-              "p_type": {
-                "type": "string",
-                "const": "Overlay"
-              }
-            },
-            "required": [
-              "p_type",
-              "member_profile_uids"
-            ]
-          }
-        ],
-        "required": [
-          "uid",
-          "name",
-          "function_uid"
-        ]
-      },
       "ProfileMixFunctionType": {
         "type": "string",
         "enum": [
@@ -12092,13 +12092,13 @@
           "Sum"
         ]
       },
-      "ProfilesDto": {
+      "ProfilesDto-Input": {
         "type": "object",
         "properties": {
           "profiles": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Profile"
+              "$ref": "#/components/schemas/Profile-Input"
             }
           }
         },
@@ -12106,13 +12106,13 @@
           "profiles"
         ]
       },
-      "ProfilesDtoInput": {
+      "ProfilesDto-Output": {
         "type": "object",
         "properties": {
           "profiles": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ProfileInput"
+              "$ref": "#/components/schemas/Profile-Output"
             }
           }
         },
@@ -12196,7 +12196,7 @@
             "type": "object",
             "properties": {
               "lighting": {
-                "$ref": "#/components/schemas/LightingSettings"
+                "$ref": "#/components/schemas/LightingSettings-Output"
               }
             },
             "required": [
@@ -12208,7 +12208,7 @@
             "type": "object",
             "properties": {
               "lcd": {
-                "$ref": "#/components/schemas/LcdSettings"
+                "$ref": "#/components/schemas/LcdSettings-Output"
               }
             },
             "required": [
