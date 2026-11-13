@@ -100,9 +100,8 @@ onUnmounted(() => {
                 <UiButton
                     v-tooltip.top="t('layout.plugins.rescan')"
                     :aria-label="t('layout.plugins.rescan')"
-                    variant="outline"
+                    variant="solid"
                     size="icon"
-                    class="!bg-accent/80 hover:!bg-accent"
                     :disabled="rescanning"
                     @click="rescan"
                 >
