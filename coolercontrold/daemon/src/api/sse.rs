@@ -55,32 +55,45 @@ type SseResponse = NoApi<Sse<KeepAliveStream<SelectAll<EventStream>>>>;
 /// The wire form is SSE framing (`event: status\ndata: {...}`), not that envelope:
 /// `OpenAPI` 3.1 has no way to describe a stream of tagged frames, so the envelope is the
 /// closest honest description. `sse_event_names_match_serde_tags` pins the two together.
+/// Each variant has a title so client generators name its type instead of numbering it.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(tag = "event", content = "data", rename_all = "kebab-case")]
 pub enum SseEvent {
     /// One poll tick of every device's most recent status.
+    #[schemars(title = "SseStatusEvent")]
     Status(#[schemars(with = "StatusResponse")] SharedStatusResponse),
     /// Temp sources that appeared or disappeared this tick.
+    #[schemars(title = "SseMissingEvent")]
     Missing(Vec<SourceDelta>),
     /// Temp sources that went stale or recovered this tick.
+    #[schemars(title = "SseStaleSourceEvent")]
     StaleSource(Vec<SourceDelta>),
     /// Channels that entered or left failsafe this tick.
+    #[schemars(title = "SseFailsafeEvent")]
     Failsafe(Vec<FailsafeDelta>),
     /// Devices that stopped or resumed answering this tick.
+    #[schemars(title = "SseUnreachableEvent")]
     Unreachable(Vec<UnreachableDelta>),
     /// Full device-health snapshot, sent to a consumer that lagged the transitions.
+    #[schemars(title = "SseHealthEvent")]
     Health(DeviceHealthDto),
     /// One or more daemon log lines, pre-coalesced. Raw text, not JSON.
+    #[schemars(title = "SseLogEvent")]
     Log(String),
     /// The mode that just became active.
+    #[schemars(title = "SseModeEvent")]
     Mode(ActiveMode),
     /// An alert whose state changed.
+    #[schemars(title = "SseAlertEvent")]
     Alert(AlertLog),
     /// A desktop notification for the client to display.
+    #[schemars(title = "SseNotificationEvent")]
     Notification(DesktopNotification),
     /// A change in observed system state, discriminated by its `kind`.
+    #[schemars(title = "SseSystemEvent")]
     System(SystemEvent),
     /// The AMD GPU overdrive setup state changed.
+    #[schemars(title = "SseAmdGpuOverdriveEvent")]
     AmdGpuOverdrive(AmdGpuOverdriveStatus),
 }
 
@@ -885,5 +898,26 @@ mod tests {
         assert_eq!(one_device, twenty_devices);
         // All of them are axum growing the frame's own buffer, which it cannot be given.
         assert!(twenty_devices <= 5, "{twenty_devices} allocations");
+    }
+
+    // Goal: every variant carries a unique title, so client generators name each event type
+    // (`SseStatusEvent`) rather than numbering them by position.
+    // Methodology: read the `SseEvent` branches from the generated spec and compare their
+    // count with the variant count.
+    #[test]
+    fn every_sse_event_variant_has_a_unique_title() {
+        let spec = serde_json::to_value(crate::api::openapi_spec()).expect("the spec serializes");
+        let branches = spec["components"]["schemas"]["SseEvent"]["oneOf"]
+            .as_array()
+            .expect("SseEvent is a oneOf")
+            .clone();
+        assert_eq!(branches.len(), sample_of_every_variant().len());
+        let mut titles = std::collections::HashSet::new();
+        for branch in &branches {
+            let title = branch["title"].as_str().expect("every branch has a title");
+            assert!(title.starts_with("Sse"), "{title}");
+            assert!(title.ends_with("Event"), "{title}");
+            assert!(titles.insert(title.to_string()), "duplicate title {title}");
+        }
     }
 }
