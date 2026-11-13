@@ -289,9 +289,10 @@ fn restore_prefix_items(root: &mut Map<String, Value>) {
     while let Some(object) = stack.pop() {
         if object.get("items").is_some_and(Value::is_array) {
             assert!(object.contains_key("prefixItems").not());
-            if let Some(tuple) = object.remove("items") {
-                object.insert("prefixItems".into(), tuple);
-            }
+            let Some(tuple @ Value::Array(_)) = object.remove("items") else {
+                unreachable!("items was checked to be an array");
+            };
+            object.insert("prefixItems".into(), tuple);
             // draft-07 holds the schema for items past the tuple here.
             if let Some(rest) = object.remove("additionalItems") {
                 object.insert("items".into(), rest);
