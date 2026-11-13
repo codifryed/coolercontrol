@@ -21,15 +21,11 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { usePluginIframe } from '@/composables/usePluginIframe.ts'
 import { usePluginActions } from '@/composables/usePluginActions.ts'
+import { useSystemActions } from '@/composables/useSystemActions.ts'
 import { useDialog } from '@/shell/dialog'
 import { useToast } from '@/shell/toast'
 import { useI18n } from 'vue-i18n'
-import {
-    getPluginStatusDisplayName,
-    PluginDto,
-    PluginStatus,
-    ServiceType,
-} from '@/models/Plugins.ts'
+import { getPluginStatusTag, PluginDto, PluginStatus, ServiceType } from '@/models/Plugins.ts'
 import pluginMetadataModal from '@/layout/PluginUi.vue'
 import { validatePluginLinkForUi } from '@/composables/pluginLinkValidation.ts'
 import { usePluginLinks } from '@/composables/usePluginLinks.ts'
@@ -46,6 +42,7 @@ const dialog = useDialog()
 const toast = useToast()
 const { t } = useI18n()
 const pluginActions = usePluginActions()
+const { restartDaemonAndUI } = useSystemActions()
 
 // From the store, so a manifest re-read by a start or restart shows up here.
 const plugin = computed(
@@ -69,22 +66,13 @@ const isDisabled = computed(() => plugin.value?.disabled ?? false)
 const isManaged = computed(() => !isDisabled.value && pluginStatus.value !== PluginStatus.Unmanaged)
 const isIntegration = computed(() => plugin.value?.service_type === ServiceType.Integration)
 
-const statusSeverity = computed((): 'success' | 'danger' | 'secondary' | 'warn' => {
-    if (isDisabled.value) return 'warn'
-    switch (pluginStatus.value) {
-        case PluginStatus.Running:
-            return 'success'
-        case PluginStatus.Stopped:
-            return 'danger'
-        default:
-            return 'secondary'
-    }
-})
-
-const statusDisplayName = computed(() => {
-    if (isDisabled.value) return t('models.pluginStatus.disabled')
-    return getPluginStatusDisplayName(pluginStatus.value)
-})
+const restartRequired = computed(() => plugin.value?.restart_required ?? false)
+const statusTag = computed(() =>
+    getPluginStatusTag(
+        { disabled: isDisabled.value, restart_required: restartRequired.value },
+        pluginStatus.value,
+    ),
+)
 
 const loadPluginData = async (): Promise<void> => {
     await deviceStore.loadAllPlugins()
@@ -180,13 +168,19 @@ onUnmounted(() => {
                 <span v-if="plugin.version" class="text-text-color-secondary text-sm">
                     v{{ plugin.version }}
                 </span>
-                <UiTag :value="statusDisplayName" :severity="statusSeverity" class="ml-2" />
+                <UiTag :value="statusTag.label" :severity="statusTag.severity" class="ml-2" />
                 <span v-if="pluginStatusReason" class="text-text-color-secondary text-sm italic">
                     {{ pluginStatusReason }}
                 </span>
             </div>
 
             <div class="flex items-center gap-2">
+                <!-- Only a daemon restart loads the devices of a device plugin added while running. -->
+                <UiButton v-if="restartRequired" size="sm" @click="restartDaemonAndUI">
+                    <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1)" />
+                    {{ t('layout.topbar.restartDaemonAndUI') }}
+                </UiButton>
+
                 <!-- Enable/disable toggle -->
                 <UiSwitch
                     v-tooltip.top="

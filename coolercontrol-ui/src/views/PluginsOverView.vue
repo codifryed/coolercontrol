@@ -6,16 +6,24 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiAlertCircleOutline, mdiLinkVariant, mdiPowerPlugOutline } from '@mdi/js'
+import {
+    mdiAlertCircle,
+    mdiAlertCircleOutline,
+    mdiLinkVariant,
+    mdiPowerPlugOutline,
+    mdiRestart,
+} from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
+import UiButton from '@/shell/ui/UiButton.vue'
 import UiTable from '@/shell/ui/UiTable.vue'
 import UiTag from '@/shell/ui/UiTag.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { usePluginActions } from '@/composables/usePluginActions.ts'
+import { useSystemActions } from '@/composables/useSystemActions.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { computed, onMounted, onUnmounted } from 'vue'
-import { getPluginStatusDisplayName, PluginStatus } from '@/models/Plugins.ts'
+import { getPluginStatusTag, PluginStatus } from '@/models/Plugins.ts'
 
 const STATUS_POLL_INTERVAL_MS = 30_000
 
@@ -23,35 +31,24 @@ const deviceStore = useDeviceStore()
 const router = useRouter()
 const { t } = useI18n()
 const { statuses, refreshStatuses } = usePluginActions()
+const { restartDaemonAndUI } = useSystemActions()
 
 let statusPollTimer: ReturnType<typeof setInterval> | undefined
 
 const pluginsList = computed(() => {
     return deviceStore.plugins.map((plugin) => ({
         ...plugin,
-        status: statuses.value.get(plugin.id)?.status ?? PluginStatus.Unmanaged,
+        tag: getPluginStatusTag(
+            plugin,
+            statuses.value.get(plugin.id)?.status ?? PluginStatus.Unmanaged,
+        ),
     }))
 })
 
-const statusSeverity = (
-    status: PluginStatus,
-    disabled: boolean,
-): 'success' | 'danger' | 'secondary' | 'warn' => {
-    if (disabled) return 'warn'
-    switch (status) {
-        case PluginStatus.Running:
-            return 'success'
-        case PluginStatus.Stopped:
-            return 'danger'
-        default:
-            return 'secondary'
-    }
-}
-
-const statusDisplayName = (status: PluginStatus, disabled: boolean): string => {
-    if (disabled) return t('models.pluginStatus.disabled')
-    return getPluginStatusDisplayName(status)
-}
+// Device plugins added while running, whose devices only a daemon restart loads.
+const restartRequiredIds = computed((): string[] =>
+    deviceStore.plugins.filter((plugin) => plugin.restart_required).map((plugin) => plugin.id),
+)
 
 const onRowSelect = (plugin: { id: string }) => {
     router.push({ name: 'plugin-page', params: { pluginId: plugin.id } })
@@ -79,6 +76,28 @@ onUnmounted(() => {
         </div>
         <ScrollAreaRoot class="min-h-0 flex-1" style="--scrollbar-size: 10px">
             <ScrollAreaViewport class="p-4 h-full w-full whitespace-normal">
+                <div
+                    v-if="restartRequiredIds.length > 0"
+                    class="flex flex-row flex-wrap items-center gap-3 rounded-lg border border-warning bg-warning/10 p-3 max-w-3xl"
+                >
+                    <svg-icon
+                        type="mdi"
+                        class="text-warning min-w-6"
+                        :path="mdiAlertCircle"
+                        :size="deviceStore.getREMSize(1.25)"
+                    />
+                    <span class="flex-1 min-w-48">
+                        {{
+                            t('layout.plugins.restartRequiredBanner', {
+                                plugins: restartRequiredIds.join(', '),
+                            })
+                        }}
+                    </span>
+                    <UiButton size="sm" @click="restartDaemonAndUI">
+                        <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1)" />
+                        {{ t('layout.topbar.restartDaemonAndUI') }}
+                    </UiButton>
+                </div>
                 <!-- Getting Started -->
                 <div class="mt-8 flex flex-col max-w-3xl">
                     <span class="pb-3 ml-1 font-semibold text-xl text-text-color">
@@ -166,10 +185,7 @@ onUnmounted(() => {
                             <td class="underline">{{ plugin.id }}</td>
                             <td>{{ plugin.service_type }}</td>
                             <td>
-                                <UiTag
-                                    :value="statusDisplayName(plugin.status, plugin.disabled)"
-                                    :severity="statusSeverity(plugin.status, plugin.disabled)"
-                                />
+                                <UiTag :value="plugin.tag.label" :severity="plugin.tag.severity" />
                             </td>
                             <td>{{ plugin.version ?? '-' }}</td>
                             <td>

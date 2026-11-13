@@ -516,6 +516,8 @@ export default {
             findPlugins: 'Trouver et installer des Plugins',
             restartNote:
                 "Un plugin récemment ajouté apparaît ici à l'ouverture de cette page. Un plugin d'appareil nécessite aussi un redémarrage du démon CoolerControl avant que ses appareils soient chargés.",
+            restartRequiredBanner:
+                'Redémarrez le démon pour charger les appareils des plugins récemment ajoutés : {plugins}',
             containerNote:
                 "Lorsque CoolerControl s'exécute dans un conteneur, les plugins doivent être placés dans le dossier partagé virtuel persistant afin qu'ils survivent aux redémarrages du conteneur.",
             installedPlugins: 'Plugins Installés',
@@ -1802,6 +1804,7 @@ export default {
             stopped: 'Arrêté',
             unmanaged: 'Non géré',
             disabled: 'Désactivé',
+            restartRequired: 'Redémarrage requis',
         },
         deviceType: {
             customSensors: 'Capteurs Personnalisés',

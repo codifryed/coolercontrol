@@ -499,6 +499,8 @@ export default {
             findPlugins: 'Find and install Plugins',
             restartNote:
                 'A newly added plugin appears here when this page is opened. A device plugin also needs a restart of the CoolerControl daemon before its devices are loaded.',
+            restartRequiredBanner:
+                'Restart the daemon to load the devices of newly added plugins: {plugins}',
             containerNote:
                 'When running CoolerControl in a container, plugins must be placed in the persisted virtual shared folder so they survive container restarts.',
             installedPlugins: 'Installed Plugins',
@@ -1757,6 +1759,7 @@ export default {
             stopped: 'Stopped',
             unmanaged: 'Unmanaged',
             disabled: 'Disabled',
+            restartRequired: 'Restart Required',
         },
         deviceType: {
             customSensors: 'Custom Sensors',

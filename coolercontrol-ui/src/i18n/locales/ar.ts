@@ -497,6 +497,8 @@ export default {
             findPlugins: 'البحث عن الإضافات وتثبيتها',
             restartNote:
                 'تظهر الإضافة المضافة حديثًا هنا عند فتح هذه الصفحة. تحتاج إضافة الأجهزة أيضًا إلى إعادة تشغيل خدمة CoolerControl قبل تحميل أجهزتها.',
+            restartRequiredBanner:
+                'أعد تشغيل الخدمة لتحميل أجهزة الإضافات المضافة حديثًا: {plugins}',
             containerNote:
                 'عند تشغيل CoolerControl في حاوية، يجب وضع الإضافات في المجلد المشترك الافتراضي المستمر حتى تبقى بعد إعادة تشغيل الحاوية.',
             installedPlugins: 'الإضافات المثبتة',
@@ -1742,6 +1744,7 @@ export default {
             stopped: 'متوقف',
             unmanaged: 'غير مُدار',
             disabled: 'معطّل',
+            restartRequired: 'يلزم إعادة التشغيل',
         },
         deviceType: {
             customSensors: 'مستشعرات مخصصة',

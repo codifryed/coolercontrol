@@ -503,6 +503,8 @@ export default {
             findPlugins: 'プラグインを探してインストール',
             restartNote:
                 '新しく追加したプラグインは、このページを開くとここに表示されます。デバイスプラグインの場合は、デバイスを読み込むために CoolerControl デーモンの再起動も必要です。',
+            restartRequiredBanner:
+                '新しく追加したプラグインのデバイスを読み込むには、デーモンを再起動してください: {plugins}',
             containerNote:
                 'コンテナでCoolerControlを実行する場合、プラグインはコンテナの再起動後も保持されるよう、永続化された仮想共有フォルダに配置する必要があります。',
             installedPlugins: 'インストール済みプラグイン',
@@ -1768,6 +1770,7 @@ export default {
             stopped: '停止',
             unmanaged: '非管理',
             disabled: '無効',
+            restartRequired: '再起動が必要',
         },
         deviceType: {
             customSensors: 'カスタムセンサー',

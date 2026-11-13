@@ -501,6 +501,8 @@ export default {
             findPlugins: 'प्लगइन्स खोजें और इंस्टॉल करें',
             restartNote:
                 'नया जोड़ा गया प्लगइन इस पेज को खोलने पर यहाँ दिखाई देता है। डिवाइस प्लगइन के उपकरण लोड होने से पहले CoolerControl डेमॉन को पुनः आरंभ करना भी आवश्यक है।',
+            restartRequiredBanner:
+                'नए जोड़े गए प्लगइन्स के उपकरण लोड करने के लिए डेमॉन को पुनः आरंभ करें: {plugins}',
             containerNote:
                 'कंटेनर में CoolerControl चलाते समय, प्लगइन्स को स्थायी वर्चुअल साझा फ़ोल्डर में रखना होगा ताकि वे कंटेनर पुनः आरंभ के बाद भी बने रहें।',
             installedPlugins: 'इंस्टॉल किए गए प्लगइन्स',
@@ -1761,6 +1763,7 @@ export default {
             stopped: 'रुका हुआ',
             unmanaged: 'अप्रबंधित',
             disabled: 'अक्षम',
+            restartRequired: 'पुनः आरंभ आवश्यक',
         },
         deviceType: {
             customSensors: 'कस्टम सेंसर',

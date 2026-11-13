@@ -511,6 +511,8 @@ export default {
             findPlugins: 'Plugins finden und installieren',
             restartNote:
                 'Ein neu hinzugefügtes Plugin erscheint hier, sobald diese Seite geöffnet wird. Ein Geräte-Plugin benötigt zusätzlich einen Neustart des CoolerControl-Daemons, bevor seine Geräte geladen werden.',
+            restartRequiredBanner:
+                'Starten Sie den Daemon neu, um die Geräte neu hinzugefügter Plugins zu laden: {plugins}',
             containerNote:
                 'Wenn CoolerControl in einem Container ausgeführt wird, müssen Plugins im persistierten virtuellen freigegebenen Ordner abgelegt werden, damit sie Container-Neustarts überstehen.',
             installedPlugins: 'Installierte Plugins',
@@ -1801,6 +1803,7 @@ export default {
             stopped: 'Gestoppt',
             unmanaged: 'Nicht verwaltet',
             disabled: 'Deaktiviert',
+            restartRequired: 'Neustart erforderlich',
         },
         deviceType: {
             customSensors: 'Benutzerdefinierte Sensoren',
