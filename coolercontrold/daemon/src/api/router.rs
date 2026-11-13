@@ -12,6 +12,7 @@ use crate::grpc_api;
 use aide::axum::routing::get;
 use aide::axum::routing::{delete_with, get_with, patch_with, post_with, put_with};
 use aide::axum::ApiRouter;
+use aide::transform::TransformOperation;
 use axum::extract::Request;
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::Next;
@@ -1838,6 +1839,7 @@ fn legacy_sse_routes() -> ApiRouter<AppState> {
                     .tag("sse")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
+                    .with(deprecated)
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
@@ -1853,6 +1855,7 @@ fn legacy_sse_routes() -> ApiRouter<AppState> {
                     .tag("sse")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
+                    .with(deprecated)
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
@@ -1868,6 +1871,7 @@ fn legacy_sse_routes() -> ApiRouter<AppState> {
                     .tag("sse")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
+                    .with(deprecated)
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
@@ -1891,6 +1895,7 @@ fn legacy_sse_event_routes() -> ApiRouter<AppState> {
                     .tag("sse")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
+                    .with(deprecated)
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
@@ -1906,9 +1911,16 @@ fn legacy_sse_event_routes() -> ApiRouter<AppState> {
                     .tag("sse")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
+                    .with(deprecated)
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
+}
+
+/// Marks an operation deprecated in the spec, so clients can skip it.
+fn deprecated(mut operation: TransformOperation) -> TransformOperation {
+    operation.inner_mut().deprecated = true;
+    operation
 }
 
 #[cfg(test)]

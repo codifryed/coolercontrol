@@ -6746,6 +6746,7 @@
         "summary": "Log Server Sent Events",
         "description": "Deprecated: use GET /sse?events=logs. Subscribes and returns the Server Sent Events for a Log stream",
         "operationId": "streamLogs",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []
@@ -6764,6 +6765,7 @@
         "summary": "Recent Status Server Sent Events",
         "description": "Deprecated: use GET /sse?events=status,health. Subscribes and returns the Server Sent Events for a Status stream",
         "operationId": "streamStatus",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []
@@ -6782,6 +6784,7 @@
         "summary": "Activated Mode Events",
         "description": "Deprecated: use GET /sse?events=modes. Subscribes and returns the Server Sent Events for a ModeActivated stream",
         "operationId": "streamModes",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []
@@ -6800,6 +6803,7 @@
         "summary": "Alert Events",
         "description": "Deprecated: use GET /sse?events=alerts. Subscribes and returns Events for when an Alert State has changed",
         "operationId": "streamAlerts",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []
@@ -6818,6 +6822,7 @@
         "summary": "Desktop Notification Events",
         "description": "Deprecated: use GET /sse?events=notifications. Subscribes and returns Events for desktop notifications that should be displayed to the user",
         "operationId": "streamNotifications",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []

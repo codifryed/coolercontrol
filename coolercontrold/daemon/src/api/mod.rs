@@ -1780,6 +1780,36 @@ mod tests {
         assert_eq!(schemes["BearerAuth"]["bearerFormat"], "cc_<uuid>");
     }
 
+    /// Goal: exactly the legacy per-stream SSE routes are marked deprecated, which is how
+    /// generated clients know to leave them out.
+    /// Method: collect every deprecated operation in the generated spec.
+    #[test]
+    fn only_legacy_sse_routes_are_deprecated() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let paths = spec["paths"].as_object().expect("the spec has paths");
+        let mut deprecated = Vec::new();
+        for (path, item) in paths {
+            let item = item.as_object().expect("a path item is an object");
+            for (method, operation) in item {
+                if operation["deprecated"] == serde_json::Value::Bool(true) {
+                    deprecated.push(format!("{method} {path}"));
+                }
+            }
+        }
+        deprecated.sort();
+        assert_eq!(
+            deprecated,
+            [
+                "get /sse/alerts",
+                "get /sse/logs",
+                "get /sse/modes",
+                "get /sse/notifications",
+                "get /sse/status",
+            ]
+        );
+        assert!(paths["/sse"]["get"].get("deprecated").is_none());
+    }
+
     /// Goal: generated API clients name their methods after `operationId`, so every operation
     /// needs one, unique and stable. A missing id makes some generators refuse the spec.
     /// Method: walk every operation in the generated spec and check its id.
