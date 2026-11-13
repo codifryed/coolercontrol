@@ -183,6 +183,23 @@ impl<M: ServiceManager> PluginController<M> {
             .any(|manifest| manifest.id == plugin_id)
     }
 
+    /// A device plugin found after startup has no devices until the daemon restarts.
+    fn is_unloaded_device_plugin(&self, manifest: &ServiceManifest) -> bool {
+        if manifest.service_type != ServiceType::Device {
+            return false;
+        }
+        self.is_runtime_plugin(&manifest.id)
+    }
+
+    /// Whether only a daemon restart would load this plugin. A disabled plugin stays
+    /// unloaded after one, so it is not asked for.
+    pub fn is_restart_required(&self, manifest: &ServiceManifest) -> bool {
+        if self.is_plugin_disabled(&manifest.id) {
+            return false;
+        }
+        self.is_unloaded_device_plugin(manifest)
+    }
+
     /// Re-reads an integration plugin's manifest, so that starting it applies what is on
     /// disk now rather than what was there when the daemon started.
     ///
@@ -365,7 +382,7 @@ impl<M: ServiceManager> PluginController<M> {
     /// Get the status of a plugin's service.
     pub async fn get_plugin_status(&self, plugin_id: &str) -> Result<ServiceStatus> {
         let manifest = self.manifest(plugin_id)?;
-        if manifest.service_type == ServiceType::Device && self.is_runtime_plugin(plugin_id) {
+        if self.is_unloaded_device_plugin(&manifest) {
             return Ok(ServiceStatus::Stopped(Some(
                 RESTART_TO_LOAD_DEVICES.to_string(),
             )));
@@ -1719,6 +1736,46 @@ mod tests {
                 controller.get_plugin_status("known").await.unwrap(),
                 ServiceStatus::Unmanaged
             );
+        });
+    }
+
+    /// Goal: the UI offers a daemon restart only where one would load a plugin's devices.
+    /// That is a device plugin found while running, unless it is disabled, which a restart
+    /// would not load either. A plugin from startup or a new integration needs none.
+    /// Method: discover one of each, then disable the device plugin.
+    #[test]
+    fn only_an_enabled_discovered_device_plugin_requires_a_restart() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            write_manifest(plugins_dir.path(), "added-device", "device", "new");
+            write_manifest(
+                plugins_dir.path(),
+                "added-integration",
+                "integration",
+                "new",
+            );
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let manager = FakeManager::new([ServiceStatus::Running]);
+            let controller = controller_with(Rc::clone(&config), manager);
+            let mut known = managed_manifest(plugins_dir.path().join("known"));
+            known.id = "known".to_string();
+            known.service_type = ServiceType::Device;
+            known.executable = None;
+            controller.register(known);
+
+            controller.discover_plugins_in(plugins_dir.path()).await;
+
+            let manifest_of = |plugin_id: &str| controller.manifest(plugin_id).unwrap();
+            assert!(controller.is_restart_required(&manifest_of("added-device")));
+            assert!(controller
+                .is_restart_required(&manifest_of("added-integration"))
+                .not());
+            assert!(controller.is_restart_required(&manifest_of("known")).not());
+
+            config.set_disabled_plugins(&["added-device".to_string()]);
+            assert!(controller
+                .is_restart_required(&manifest_of("added-device"))
+                .not());
         });
     }
 

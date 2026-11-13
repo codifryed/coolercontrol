@@ -11561,6 +11561,10 @@
           "privileged": {
             "type": "boolean"
           },
+          "restart_required": {
+            "description": "A device plugin added while the daemon runs: its devices load after a daemon restart.",
+            "type": "boolean"
+          },
           "service_type": {
             "type": "string"
           },
@@ -11586,7 +11590,8 @@
           "address",
           "privileged",
           "path",
-          "disabled"
+          "disabled",
+          "restart_required"
         ]
       },
       "PluginStatusDto": {

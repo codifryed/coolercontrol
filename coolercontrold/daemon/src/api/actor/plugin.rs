@@ -86,6 +86,7 @@ impl PluginActor {
         let manifests = self.plugin_controller.manifests();
         let mut plugins = Vec::with_capacity(manifests.len());
         for manifest in manifests {
+            let restart_required = self.plugin_controller.is_restart_required(&manifest);
             let address = match manifest.address {
                 ConnectionType::None => String::new(),
                 ConnectionType::Uds(uds_path) => uds_path.display().to_string(),
@@ -93,6 +94,7 @@ impl PluginActor {
             };
             plugins.push(PluginDto {
                 disabled: self.plugin_controller.is_plugin_disabled(&manifest.id),
+                restart_required,
                 id: manifest.id,
                 service_type: manifest.service_type.to_string(),
                 description: manifest.description,

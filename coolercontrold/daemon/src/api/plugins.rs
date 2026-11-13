@@ -453,6 +453,8 @@ pub struct PluginDto {
     pub privileged: bool,
     pub path: String,
     pub disabled: bool,
+    /// A device plugin added while the daemon runs: its devices load after a daemon restart.
+    pub restart_required: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
