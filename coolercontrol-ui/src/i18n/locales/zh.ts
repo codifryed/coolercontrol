@@ -43,7 +43,7 @@ export default {
         discard: '放弃',
         copy: '(副本)',
         minuteAbbr: '分钟',
-        rpmAbbr: '转/分',
+        rpmAbbr: 'RPM / 分',
         mhzAbbr: 'Mhz',
         ghzAbbr: 'Ghz',
         tempUnit: '°C',
