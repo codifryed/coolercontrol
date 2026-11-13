@@ -15,11 +15,20 @@ describe('getPluginStatusTag', () => {
         expect(tag).toEqual({ label: 'Restart Required', severity: 'warn' })
     })
 
-    // The daemon never asks a disabled plugin for a restart, but the tag must not depend on it.
-    it('shows Disabled over a pending restart', () => {
+    // A device plugin disabled while running keeps its devices until the daemon restarts.
+    it('shows a pending restart over Disabled', () => {
         const tag = getPluginStatusTag(
             { disabled: true, restart_required: true },
-            PluginStatus.Stopped,
+            PluginStatus.Running,
+        )
+
+        expect(tag).toEqual({ label: 'Restart Required', severity: 'warn' })
+    })
+
+    it('shows Disabled over the service status', () => {
+        const tag = getPluginStatusTag(
+            { disabled: true, restart_required: false },
+            PluginStatus.Running,
         )
 
         expect(tag).toEqual({ label: 'Disabled', severity: 'warn' })

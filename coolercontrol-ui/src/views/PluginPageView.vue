@@ -8,7 +8,6 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
     mdiContentCopy,
-    mdiFileRefreshOutline,
     mdiInformationOutline,
     mdiLinkVariant,
     mdiLoading,
@@ -84,8 +83,6 @@ const refreshStatus = (): Promise<void> => pluginActions.refreshStatus(props.plu
 const startPlugin = (): Promise<void> => pluginActions.startPlugin(props.pluginId)
 const stopPlugin = (): Promise<void> => pluginActions.stopPlugin(props.pluginId)
 const restartPlugin = (): Promise<void> => pluginActions.restartPlugin(props.pluginId)
-const reloadPlugin = (): Promise<void> =>
-    pluginActions.reloadPlugin(props.pluginId, !isIntegration.value)
 
 const togglePlugin = (): Promise<void> =>
     isDisabled.value
@@ -175,7 +172,7 @@ onUnmounted(() => {
             </div>
 
             <div class="flex items-center gap-2">
-                <!-- Only a daemon restart loads the devices of a device plugin added while running. -->
+                <!-- Only a daemon restart applies this plugin's changes. -->
                 <UiButton v-if="restartRequired" size="sm" @click="restartDaemonAndUI">
                     <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1)" />
                     {{ t('layout.topbar.restartDaemonAndUI') }}
@@ -225,21 +222,6 @@ onUnmounted(() => {
                         />
                     </UiButton>
                 </template>
-
-                <!-- A plugin with no service has no restart to re-read its manifest. -->
-                <UiButton
-                    v-else-if="!isDisabled"
-                    v-tooltip.top="t('layout.plugins.reloadManifest')"
-                    variant="ghost"
-                    size="icon"
-                    @click="reloadPlugin"
-                >
-                    <svg-icon
-                        type="mdi"
-                        :path="mdiFileRefreshOutline"
-                        :size="deviceStore.getREMSize(1.5)"
-                    />
-                </UiButton>
 
                 <!-- Plugin info button (visible for plugins with UI) -->
                 <UiButton

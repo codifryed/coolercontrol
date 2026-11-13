@@ -510,10 +510,10 @@ export default {
                 'Plugins erweitern CoolerControl um zusätzliche Geräteunterstützung, Integrationen und Automatisierung. Sie können neue Gerätesensoren und -steuerungen bereitstellen, sich mit externen Diensten verbinden oder benutzerdefinierte UI-Seiten hinzufügen.',
             findPlugins: 'Plugins finden und installieren',
             restartNote:
-                'Ein neu hinzugefügtes Plugin erscheint hier, sobald diese Seite geöffnet wird. Ein Geräte-Plugin benötigt zusätzlich einen Neustart des CoolerControl-Daemons, bevor seine Geräte geladen werden.',
+                'Erneutes Suchen oder das Öffnen dieser Seite erkennt neu hinzugefügte Plugins und Manifeständerungen. Änderungen an einem Geräte-Plugin werden erst nach einem Neustart des CoolerControl-Daemons wirksam.',
             restartRequiredBanner:
-                'Starten Sie den Daemon neu, um die Geräte neu hinzugefügter Plugins zu laden: {plugins}',
-            rescan: 'Erneut suchen',
+                'Starten Sie den Daemon neu, um die Änderungen dieser Plugins zu übernehmen: {plugins}',
+            rescan: 'Plugins erneut suchen',
             containerNote:
                 'Wenn CoolerControl in einem Container ausgeführt wird, müssen Plugins im persistierten virtuellen freigegebenen Ordner abgelegt werden, damit sie Container-Neustarts überstehen.',
             installedPlugins: 'Installierte Plugins',
@@ -528,10 +528,6 @@ export default {
             pluginEnabledRestart: 'Plugin aktiviert. Daemon neu starten, um anzuwenden.',
             disableFailed: 'Plugin konnte nicht deaktiviert werden',
             enableFailed: 'Plugin konnte nicht aktiviert werden',
-            reloadManifest: 'Manifest neu laden',
-            manifestReloaded: 'Manifest neu geladen.',
-            manifestValidRestart: 'Manifest ist gültig. Daemon neu starten, um anzuwenden.',
-            reloadFailed: 'Manifest konnte nicht neu geladen werden',
             serviceLogs: 'Dienst-Protokolle',
             commandCopied: 'Befehl in die Zwischenablage kopiert',
             openLinkHeader: 'Externen Link öffnen?',

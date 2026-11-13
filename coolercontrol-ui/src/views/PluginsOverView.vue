@@ -47,12 +47,13 @@ const pluginsList = computed(() => {
     }))
 })
 
-// Device plugins added while running, whose devices only a daemon restart loads.
+// Plugins whose changes only a daemon restart applies.
 const restartRequiredIds = computed((): string[] =>
     deviceStore.plugins.filter((plugin) => plugin.restart_required).map((plugin) => plugin.id),
 )
 
-// The daemon scans the plugins directory on each plugin list request.
+// The daemon rescans the plugins folder on each plugin list request: new plugins and
+// manifest edits.
 const rescan = async (): Promise<void> => {
     rescanning.value = true
     try {

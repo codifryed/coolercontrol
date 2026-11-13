@@ -17,7 +17,8 @@ export class PluginDto {
     privileged: boolean = false
     path: String = ''
     disabled: boolean = false
-    // A device plugin added while the daemon runs: its devices load after a daemon restart.
+    // Only a daemon restart applies this plugin's changes: found, enabled or disabled since
+    // startup, or a manifest edit.
     restart_required: boolean = false
 }
 
@@ -48,18 +49,19 @@ export function getPluginStatusDisplayName(status: PluginStatus): string {
 
 export type PluginTagSeverity = 'success' | 'danger' | 'secondary' | 'warn'
 
-// The plugin's state tag. Disabled and a pending restart outrank the service status:
-// a plugin awaiting a restart reports Stopped, which would read as a failure.
+// The plugin's state tag. A pending restart outranks Disabled, since a device plugin
+// disabled while running keeps its devices until then. Both outrank the service status:
+// a plugin awaiting a restart can report Stopped, which would read as a failure.
 export function getPluginStatusTag(
     plugin: Pick<PluginDto, 'disabled' | 'restart_required'>,
     status: PluginStatus,
 ): { label: string; severity: PluginTagSeverity } {
     const { t } = i18n.global
-    if (plugin.disabled) {
-        return { label: t('models.pluginStatus.disabled'), severity: 'warn' }
-    }
     if (plugin.restart_required) {
         return { label: t('models.pluginStatus.restartRequired'), severity: 'warn' }
+    }
+    if (plugin.disabled) {
+        return { label: t('models.pluginStatus.disabled'), severity: 'warn' }
     }
     switch (status) {
         case PluginStatus.Running:

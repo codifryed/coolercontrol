@@ -479,9 +479,9 @@ export default {
                 '外掛透過額外的裝置支援、整合和自動化來擴展 CoolerControl。它們可以提供新的裝置感測器和控制、連接外部服務或新增自訂 UI 頁面。',
             findPlugins: '尋找並安裝外掛',
             restartNote:
-                '開啟此頁面時，新增的外掛會顯示在此處。裝置外掛還需要重新啟動 CoolerControl 守護程式，才會載入其裝置。',
-            restartRequiredBanner: '重新啟動守護程式以載入新增外掛的裝置：{plugins}',
-            rescan: '重新掃描',
+                '重新掃描或開啟此頁面會偵測新增的外掛與資訊清單變更。裝置外掛的變更會在 CoolerControl 守護程式重新啟動後生效。',
+            restartRequiredBanner: '重新啟動守護程式以套用這些外掛的變更：{plugins}',
+            rescan: '重新掃描外掛',
             containerNote:
                 '在容器中執行 CoolerControl 時，外掛必須放置在持久化的虛擬共享資料夾中，以便在容器重新啟動後保留。',
             installedPlugins: '已安裝的外掛',
@@ -496,10 +496,6 @@ export default {
             pluginEnabledRestart: '外掛已啟用。請重新啟動守護程式以套用。',
             disableFailed: '停用外掛失敗',
             enableFailed: '啟用外掛失敗',
-            reloadManifest: '重新載入資訊清單',
-            manifestReloaded: '資訊清單已重新載入。',
-            manifestValidRestart: '資訊清單有效。請重新啟動守護程式以套用。',
-            reloadFailed: '重新載入資訊清單失敗',
             serviceLogs: '服務日誌',
             commandCopied: '命令已複製到剪貼簿',
             openLinkHeader: '開啟外部連結？',
