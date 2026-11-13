@@ -4868,7 +4868,7 @@
         ]
       }
     },
-    "/plugins/{plugin_id}/ui/{*file_path}": {
+    "/plugins/{plugin_id}/ui/{file_path}": {
       "get": {
         "tags": [
           "plugins"
@@ -4926,7 +4926,7 @@
         ]
       }
     },
-    "/plugins/{plugin_id}/data/{*data_path}": {
+    "/plugins/{plugin_id}/data/{data_path}": {
       "get": {
         "tags": [
           "plugins"

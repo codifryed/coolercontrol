@@ -154,6 +154,7 @@ pub fn response_schema_count() -> usize {
 pub fn finish_spec(api: &mut OpenApi) {
     merge_response_schemas(api);
     prune_unreferenced_schemas(api);
+    strip_wildcard_markers(api);
     for_each_schema(api, &mut |schema| {
         if let Some(object) = schema.as_object_mut() {
             restore_prefix_items(object);
@@ -247,6 +248,25 @@ fn prune_unreferenced_schemas(api: &mut OpenApi) {
         reachable.len(),
         "every reachable ref resolves"
     );
+}
+
+/// Turns axum's catch-all `{*name}` into the `{name}` template `OpenAPI` expects. aide keeps
+/// the marker, so the template never matched its `name` parameter.
+fn strip_wildcard_markers(api: &mut OpenApi) {
+    let Some(paths) = api.paths.as_mut() else {
+        return;
+    };
+    let count = paths.paths.len();
+    paths.paths = std::mem::take(&mut paths.paths)
+        .into_iter()
+        .map(|(path, item)| (path.replace("{*", "{"), item))
+        .collect();
+    assert_eq!(
+        paths.paths.len(),
+        count,
+        "no two routes differ only by a marker"
+    );
+    assert!(paths.paths.keys().all(|path| path.contains("{*").not()));
 }
 
 /// Keywords whose values are instance data, never subschemas.
@@ -976,5 +996,27 @@ mod tests {
         );
         assert_eq!(field["items"], serde_json::json!({"type": "integer"}));
         assert!(field.get("additionalItems").is_none());
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    struct RestPath {
+        #[expect(dead_code, reason = "only the schema is read")]
+        rest: String,
+    }
+
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn take_rest(_: axum::extract::Path<RestPath>) {}
+
+    /// Goal: a catch-all route's template names its parameter, like the plugin UI route.
+    /// Method: document a `{*rest}` route, then check the path key and its parameter.
+    #[test]
+    fn catch_all_route_template_matches_its_parameter() {
+        let spec = spec(ApiRouter::new().api_route("/files/{*rest}", get(take_rest)));
+        let paths = spec["paths"].as_object().expect("paths");
+        assert_eq!(paths.keys().collect::<Vec<_>>(), vec!["/files/{rest}"]);
+        assert_eq!(
+            paths["/files/{rest}"]["get"]["parameters"][0]["name"],
+            "rest"
+        );
     }
 }
