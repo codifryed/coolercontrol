@@ -344,7 +344,9 @@ fn referenced_names(value: &Value, prefix: &str) -> Vec<String> {
             Value::Object(object) => {
                 for (key, child) in object {
                     if key == "$ref" {
-                        let name = child.as_str().and_then(|r| r.strip_prefix(prefix));
+                        let name = child
+                            .as_str()
+                            .and_then(|reference| reference.strip_prefix(prefix));
                         names.extend(name.map(String::from));
                     } else {
                         stack.push(child);
@@ -377,14 +379,14 @@ fn rewrite_object_refs<'a>(
     stack: &mut Vec<&'a mut Value>,
 ) {
     for (key, value) in object.iter_mut() {
-        if key != "$ref" {
-            stack.push(value);
-            continue;
-        }
-        if let Value::String(reference) = value {
-            if let Some(replacement) = map(reference) {
-                *reference = replacement;
+        if key == "$ref" {
+            if let Value::String(reference) = value {
+                if let Some(replacement) = map(reference) {
+                    *reference = replacement;
+                }
             }
+        } else {
+            stack.push(value);
         }
     }
 }
@@ -527,17 +529,17 @@ mod tests {
 
     #[derive(Deserialize, JsonSchema)]
     struct ItemPath {
-        #[allow(dead_code)]
+        #[expect(dead_code, reason = "only the schema is read")]
         id: String,
     }
 
     #[derive(Deserialize, JsonSchema)]
     struct ItemQuery {
-        #[allow(dead_code)]
+        #[expect(dead_code, reason = "only the schema is read")]
         verbose: bool,
     }
 
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn take_params(
         _: axum::extract::Path<ItemPath>,
         _: axum::extract::Query<ItemQuery>,
@@ -545,21 +547,21 @@ mod tests {
     ) {
     }
 
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn take_renamed(Json(_): Json<Renamed>) {}
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn give_renamed() -> Json<Renamed> {
         Json(Renamed { d_type: 0 })
     }
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn take_same(Json(_): Json<Same>) {}
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn give_same() -> Json<Same> {
         Json(Same { value: 0 })
     }
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn take_holder(Json(_): Json<Holder>) {}
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn give_holder() -> Json<Holder> {
         Json(Holder {
             inner: Renamed { d_type: 0 },
@@ -693,11 +695,11 @@ mod tests {
     /// Takes the name the split would give `Renamed`'s request variant.
     #[derive(Deserialize, JsonSchema)]
     struct RenamedInput {
-        #[allow(dead_code)]
+        #[expect(dead_code, reason = "only the schema is read")]
         value: u8,
     }
 
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn take_renamed_input(Json(_): Json<RenamedInput>) {}
 
     /// Goal: a split whose `Input` name is already taken fails loudly rather than overwriting
@@ -733,9 +735,9 @@ mod tests {
         }
     }
 
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn take_first_twin(Json(_): Json<first::Twin>) {}
-    #[allow(clippy::unused_async)]
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn take_second_twin(Json(_): Json<second::Twin>) {}
 
     /// Goal: two types that share a name fail the build of the spec rather than reaching
