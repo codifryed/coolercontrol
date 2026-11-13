@@ -155,9 +155,9 @@ impl<M: ServiceManager> PluginController<M> {
         }
         for (service_id, manifest) in found {
             debug_assert_eq!(service_id, manifest.id, "a scan keys a plugin by its id");
-            let registered = self.plugins.borrow().get(&service_id).cloned();
-            if let Some(registered) = registered {
-                self.rescan_known(&registered, manifest);
+            let is_registered = self.plugins.borrow().contains_key(&service_id);
+            if is_registered {
+                self.rescan_known(manifest);
                 continue;
             }
             info!("Found new plugin: {service_id}");
@@ -167,25 +167,40 @@ impl<M: ServiceManager> PluginController<M> {
     }
 
     /// Notes or applies the manifest a rescan found for a registered plugin.
-    fn rescan_known(&self, registered: &ServiceManifest, found: ServiceManifest) {
+    fn rescan_known(&self, found: ServiceManifest) {
+        let plugins = self.plugins.borrow();
+        let registered = plugins
+            .get(&found.id)
+            .expect("only a registered plugin is rescanned");
+        assert_eq!(registered.id, found.id);
         let is_stale = match registered.service_type {
+            // A changed type moves the plugin into or out of the startup device registry.
+            _ if ensure_same_plugin(registered, &found).is_err() => true,
             // Its devices were registered with the manifest it started with.
             ServiceType::Device => found != *registered,
-            // A changed type moves the plugin into or out of the startup device registry.
-            ServiceType::Integration => found.service_type != registered.service_type,
+            ServiceType::Integration => false,
         };
+        let mut stale_manifests = self.stale_manifests.borrow_mut();
         if is_stale {
-            self.stale_manifests.borrow_mut().insert(found.id);
+            stale_manifests.insert(found.id);
+            // Only registered plugins are noted, and none is ever unregistered.
+            assert!(stale_manifests.len() <= plugins.len());
             return;
         }
-        self.stale_manifests.borrow_mut().remove(&found.id);
-        let is_applied_here =
-            registered.service_type == ServiceType::Integration && registered.is_managed().not();
-        if is_applied_here && found != *registered {
-            info!("Applied the edited manifest of plugin: {}", found.id);
-            self.track_service(registered, &found);
-            self.register(found);
+        stale_manifests.remove(&found.id);
+        drop(stale_manifests);
+        if found == *registered {
+            return;
         }
+        assert_eq!(registered.service_type, ServiceType::Integration);
+        if registered.is_managed() {
+            // Left for its restart, which applies it together with its service.
+            return;
+        }
+        info!("Applied the edited manifest of plugin: {}", found.id);
+        self.track_service(registered, &found);
+        drop(plugins);
+        self.register(found);
     }
 
     /// The problems of a rescan that the one before it did not have, which makes them news.
@@ -243,13 +258,19 @@ impl<M: ServiceManager> PluginController<M> {
     /// a device plugin found, enabled or disabled since startup, or an enabled plugin whose
     /// manifest has an edit only a restart applies.
     pub fn is_restart_required(&self, manifest: &ServiceManifest) -> bool {
+        assert!(self.plugins.borrow().contains_key(&manifest.id));
+        // Only registered plugins are noted, and none is ever unregistered.
+        assert!(self.stale_manifests.borrow().len() <= self.plugins.borrow().len());
         let is_enabled = self.is_plugin_disabled(&manifest.id).not();
-        if manifest.service_type == ServiceType::Device
-            && self.was_loaded_at_startup(&manifest.id) != is_enabled
-        {
-            return true;
+        if manifest.service_type == ServiceType::Device {
+            if self.was_loaded_at_startup(&manifest.id) != is_enabled {
+                return true;
+            }
         }
-        is_enabled && self.stale_manifests.borrow().contains(&manifest.id)
+        if is_enabled.not() {
+            return false;
+        }
+        self.stale_manifests.borrow().contains(&manifest.id)
     }
 
     /// Re-reads an integration plugin's manifest, so that starting it applies what is on
