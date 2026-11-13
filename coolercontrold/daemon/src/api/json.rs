@@ -411,58 +411,63 @@ fn for_each_root_schema(api: &mut OpenApi, visit: &mut impl FnMut(&mut Schema)) 
     }
     // Each node is popped once and pushes only its own children, so this ends.
     while let Some(node) = stack.pop() {
-        match node {
-            Node::PathItem(item) => {
-                stack.extend(items(item.parameters.iter_mut()).map(Node::Parameter));
-                let operations = [
-                    &mut item.get,
-                    &mut item.put,
-                    &mut item.post,
-                    &mut item.delete,
-                    &mut item.options,
-                    &mut item.head,
-                    &mut item.patch,
-                    &mut item.trace,
-                ];
-                stack.extend(operations.into_iter().flatten().map(Node::Operation));
+        expand(node, &mut stack, visit);
+    }
+}
+
+/// Visits the schemas `node` holds directly and pushes the parts that hold more.
+fn expand<'a>(node: Node<'a>, stack: &mut Vec<Node<'a>>, visit: &mut impl FnMut(&mut Schema)) {
+    match node {
+        Node::PathItem(item) => {
+            stack.extend(items(item.parameters.iter_mut()).map(Node::Parameter));
+            let operations = [
+                &mut item.get,
+                &mut item.put,
+                &mut item.post,
+                &mut item.delete,
+                &mut item.options,
+                &mut item.head,
+                &mut item.patch,
+                &mut item.trace,
+            ];
+            stack.extend(operations.into_iter().flatten().map(Node::Operation));
+        }
+        Node::Operation(operation) => {
+            stack.extend(items(operation.parameters.iter_mut()).map(Node::Parameter));
+            stack.extend(items(operation.request_body.as_mut()).map(Node::RequestBody));
+            if let Some(responses) = operation.responses.as_mut() {
+                let all = responses
+                    .default
+                    .iter_mut()
+                    .chain(responses.responses.values_mut());
+                stack.extend(items(all).map(Node::Response));
             }
-            Node::Operation(operation) => {
-                stack.extend(items(operation.parameters.iter_mut()).map(Node::Parameter));
-                stack.extend(items(operation.request_body.as_mut()).map(Node::RequestBody));
-                if let Some(responses) = operation.responses.as_mut() {
-                    let all = responses
-                        .default
-                        .iter_mut()
-                        .chain(responses.responses.values_mut());
-                    stack.extend(items(all).map(Node::Response));
-                }
-                stack.extend(items(operation.callbacks.values_mut()).map(Node::Callback));
-            }
-            Node::Callback(callback) => {
-                stack.extend(items(callback.values_mut()).map(Node::PathItem));
-            }
-            Node::Parameter(parameter) => {
-                stack.push(Node::Format(&mut parameter.parameter_data_mut().format));
-            }
-            Node::Header(header) => stack.push(Node::Format(&mut header.format)),
-            Node::Format(ParameterSchemaOrContent::Schema(object)) => {
+            stack.extend(items(operation.callbacks.values_mut()).map(Node::Callback));
+        }
+        Node::Callback(callback) => {
+            stack.extend(items(callback.values_mut()).map(Node::PathItem));
+        }
+        Node::Parameter(parameter) => {
+            stack.push(Node::Format(&mut parameter.parameter_data_mut().format));
+        }
+        Node::Header(header) => stack.push(Node::Format(&mut header.format)),
+        Node::Format(ParameterSchemaOrContent::Schema(object)) => {
+            visit(&mut object.json_schema);
+        }
+        Node::Format(ParameterSchemaOrContent::Content(content)) => {
+            stack.extend(content.values_mut().map(Node::Media));
+        }
+        Node::RequestBody(body) => stack.extend(body.content.values_mut().map(Node::Media)),
+        Node::Response(response) => {
+            stack.extend(items(response.headers.values_mut()).map(Node::Header));
+            stack.extend(response.content.values_mut().map(Node::Media));
+        }
+        Node::Media(media) => {
+            if let Some(object) = media.schema.as_mut() {
                 visit(&mut object.json_schema);
             }
-            Node::Format(ParameterSchemaOrContent::Content(content)) => {
-                stack.extend(content.values_mut().map(Node::Media));
-            }
-            Node::RequestBody(body) => stack.extend(body.content.values_mut().map(Node::Media)),
-            Node::Response(response) => {
-                stack.extend(items(response.headers.values_mut()).map(Node::Header));
-                stack.extend(response.content.values_mut().map(Node::Media));
-            }
-            Node::Media(media) => {
-                if let Some(object) = media.schema.as_mut() {
-                    visit(&mut object.json_schema);
-                }
-                for encoding in media.encoding.values_mut() {
-                    stack.extend(items(encoding.headers.values_mut()).map(Node::Header));
-                }
+            for encoding in media.encoding.values_mut() {
+                stack.extend(items(encoding.headers.values_mut()).map(Node::Header));
             }
         }
     }
