@@ -1008,13 +1008,28 @@ mod tests {
     #[allow(clippy::unused_async, reason = "axum handlers must be async")]
     async fn take_rest(_: axum::extract::Path<RestPath>) {}
 
-    /// Goal: a catch-all route's template names its parameter, like the plugin UI route.
-    /// Method: document a `{*rest}` route, then check the path key and its parameter.
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn take_id(_: axum::extract::Path<ItemPath>) {}
+
+    #[allow(clippy::unused_async, reason = "axum handlers must be async")]
+    async fn take_nothing() {}
+
+    /// Goal: a catch-all route's template names its parameter, like the plugin UI route, and
+    /// other templates pass through unchanged.
+    /// Method: document a `{*rest}` route beside plain and untemplated routes, then check the
+    /// path keys and the catch-all parameter.
     #[test]
     fn catch_all_route_template_matches_its_parameter() {
-        let spec = spec(ApiRouter::new().api_route("/files/{*rest}", get(take_rest)));
+        let spec = spec(
+            ApiRouter::new()
+                .api_route("/files/{*rest}", get(take_rest))
+                .api_route("/plain/{id}", get(take_id))
+                .api_route("/static", get(take_nothing)),
+        );
         let paths = spec["paths"].as_object().expect("paths");
-        assert_eq!(paths.keys().collect::<Vec<_>>(), vec!["/files/{rest}"]);
+        let mut keys = paths.keys().collect::<Vec<_>>();
+        keys.sort();
+        assert_eq!(keys, vec!["/files/{rest}", "/plain/{id}", "/static"]);
         assert_eq!(
             paths["/files/{rest}"]["get"]["parameters"][0]["name"],
             "rest"
