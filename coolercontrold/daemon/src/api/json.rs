@@ -67,10 +67,6 @@ where
 
 impl<T: Serialize> IntoResponse for Json<T> {
     fn into_response(self) -> axum::response::Response {
-        #[allow(
-            clippy::disallowed_types,
-            reason = "the wrapper delegates to axum::Json"
-        )]
         axum::Json(self.0).into_response()
     }
 }
