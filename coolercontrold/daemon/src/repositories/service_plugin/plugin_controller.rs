@@ -191,8 +191,8 @@ impl<M: ServiceManager> PluginController<M> {
         self.is_runtime_plugin(&manifest.id)
     }
 
-    /// Whether only a daemon restart would load this plugin. A disabled plugin stays
-    /// unloaded after one, so it is not asked for.
+    /// Whether this is an enabled device plugin found after startup, whose devices only a
+    /// daemon restart loads.
     pub fn is_restart_required(&self, manifest: &ServiceManifest) -> bool {
         if self.is_plugin_disabled(&manifest.id) {
             return false;

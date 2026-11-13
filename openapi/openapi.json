@@ -11562,7 +11562,7 @@
             "type": "boolean"
           },
           "restart_required": {
-            "description": "A device plugin added while the daemon runs: its devices load after a daemon restart.",
+            "description": "An enabled device plugin added while the daemon runs: a daemon restart loads its devices.",
             "type": "boolean"
           },
           "service_type": {
