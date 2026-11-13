@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::actor::{CalibrationHandle, DeviceHandle};
+use crate::api::Json;
 use crate::api::{handle_error, AppState, CCError};
 use crate::calibration::{effective_speed_options, Calibration, ChannelKey};
 use crate::device::{
@@ -17,7 +18,6 @@ use aide::axum::IntoApiResponse;
 use axum::extract::multipart::Field;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::header;
-use axum::Json;
 use mime::Mime;
 use schemars::JsonSchema;
 use serde::{de, Deserialize, Deserializer, Serialize};

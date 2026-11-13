@@ -24,7 +24,10 @@ use std::ops::Not;
 /// throttle and every other shared layer.
 pub async fn init(app_state: AppState) -> ApiRouter {
     let document_csp = app_state.frame_policy.document_csp.clone();
-    let router = documented_routes().merge(grpc_routes(&app_state).await);
+    // Declaring documented routes fills thread-local schema state that `finish_api` drains.
+    // No await may sit between the two, or another listener could declare in the gap.
+    let grpc = grpc_routes(&app_state).await;
+    let router = documented_routes().merge(grpc);
     // Only add API doc route for debug builds (safer for production)
     #[cfg(debug_assertions)]
     let router = router.route("/api.json", get(base::serve_api_doc));
@@ -154,7 +157,7 @@ fn base_routes() -> ApiRouter<AppState> {
         .api_route(
             "/handshake",
             get_with(base::handshake, |o| {
-                o.summary("Handshake")
+                o.id("handshake").summary("Handshake")
                     .description("A simple endpoint to verify the connection")
                     .tag("base")
             }),
@@ -162,7 +165,7 @@ fn base_routes() -> ApiRouter<AppState> {
         .api_route(
             "/health",
             get_with(base::health, |o| {
-                o.summary("Health Check")
+                o.id("getHealth").summary("Health Check")
                     .description("Returns a Health Check Status.")
                     .tag("base")
                     .security_requirement("CookieAuth")
@@ -173,7 +176,7 @@ fn base_routes() -> ApiRouter<AppState> {
         .api_route(
             "/logs",
             get_with(base::logs, |o| {
-                o.summary("Daemon Logs")
+                o.id("getLogs").summary("Daemon Logs")
                     .description("This returns all recent main daemon logs as raw text")
                     .tag("base")
                     .security_requirement("CookieAuth")
@@ -184,7 +187,7 @@ fn base_routes() -> ApiRouter<AppState> {
         .api_route(
             "/acknowledge",
             post_with(base::acknowledge_issues, |o| {
-                o.summary("Acknowledge Log Issues")
+                o.id("acknowledgeLogIssues").summary("Acknowledge Log Issues")
                     .description("This acknowledges existing log warnings and errors, and sets a timestamp of when this occurred")
                     .tag("base")
                 .security_requirement("CookieAuth")
@@ -194,7 +197,7 @@ fn base_routes() -> ApiRouter<AppState> {
         .api_route(
             "/shutdown",
             post_with(base::shutdown, |o| {
-                o.summary("Shutdown Daemon")
+                o.id("shutdownDaemon").summary("Shutdown Daemon")
                     .description(
                         "Sends a cancellation signal to shut the daemon down. \
                         When the daemon is running as a systemd or initrc service, \
@@ -211,7 +214,8 @@ fn auth_routes() -> ApiRouter<AppState> {
         .api_route(
             "/login",
             post_with(auth::login, |o| {
-                o.summary("Login")
+                o.id("login")
+                    .summary("Login")
                     .description("The endpoint used to create a login session.")
                     .tag("auth")
                     .security_requirement("BasicAuth")
@@ -227,7 +231,8 @@ fn auth_routes() -> ApiRouter<AppState> {
         .api_route(
             "/verify-session",
             post_with(auth::verify_session, |o| {
-                o.summary("Verify Session Auth")
+                o.id("verifySession")
+                    .summary("Verify Session Auth")
                     .description("Verifies that the current session is still authenticated")
                     .tag("auth")
                     .security_requirement("CookieAuth")
@@ -237,7 +242,8 @@ fn auth_routes() -> ApiRouter<AppState> {
         .api_route(
             "/set-passwd",
             post_with(auth::set_passwd, |o| {
-                o.summary("Set Admin Password")
+                o.id("setPassword")
+                    .summary("Set Admin Password")
                     .description("Stores a new Admin password.")
                     .tag("auth")
                     // both are required:
@@ -253,7 +259,8 @@ fn auth_routes() -> ApiRouter<AppState> {
         .api_route(
             "/logout",
             post_with(auth::logout, |o| {
-                o.summary("Logout")
+                o.id("logout")
+                    .summary("Logout")
                     .description("Logout and invalidate the current session.")
                     .tag("auth")
                     .security_requirement("CookieAuth")
@@ -267,7 +274,8 @@ fn token_routes() -> ApiRouter<AppState> {
         .api_route(
             "/tokens",
             post_with(tokens::create, |o| {
-                o.summary("Create Access Token")
+                o.id("createToken")
+                    .summary("Create Access Token")
                     .description(
                         "Creates a new access token for external service authentication. \
                         The raw token is only returned once.",
@@ -276,7 +284,8 @@ fn token_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
             })
             .get_with(tokens::list, |o| {
-                o.summary("List Access Tokens")
+                o.id("listTokens")
+                    .summary("List Access Tokens")
                     .description("Returns a list of all access tokens (without hashes).")
                     .tag("auth")
                     .security_requirement("CookieAuth")
@@ -286,7 +295,8 @@ fn token_routes() -> ApiRouter<AppState> {
         .api_route(
             "/tokens/{token_id}",
             delete_with(tokens::delete, |o| {
-                o.summary("Delete Access Token")
+                o.id("deleteToken")
+                    .summary("Delete Access Token")
                     .description("Deletes the access token with the given ID.")
                     .tag("auth")
                     .security_requirement("CookieAuth")
@@ -301,7 +311,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/thinkpad-fan-control",
             put_with(devices::thinkpad_fan_control_modify, |o| {
-                o.summary("ThinkPad Fan Control")
+                o.id("setThinkPadFanControl")
+                    .summary("ThinkPad Fan Control")
                     .description(
                         "Enables/Disabled Fan Control for ThinkPads, if acpi driver is present.",
                     )
@@ -314,7 +325,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/amd-gpu-overdrive",
             post_with(devices::amd_gpu_overdrive_enable, |o| {
-                o.summary("AMD GPU Overdrive Enable")
+                o.id("enableAmdGpuOverdrive")
+                    .summary("AMD GPU Overdrive Enable")
                     .description(
                         "Starts AMD GPU overdrive setup by configuring the ppfeaturemask \
                         kernel parameter, and returns at once with the new state. Requires \
@@ -334,7 +346,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/amd-gpu-overdrive/plan",
             get_with(devices::amd_gpu_overdrive_plan, |o| {
-                o.summary("AMD GPU Overdrive Plan")
+                o.id("getAmdGpuOverdrivePlan")
+                    .summary("AMD GPU Overdrive Plan")
                     .description(
                         "Returns what enabling, or with `action=disable` disabling, AMD GPU \
                         overdrive would do on this system: the route, the exact command run \
@@ -349,7 +362,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/amd-gpu-overdrive",
             delete_with(devices::amd_gpu_overdrive_disable, |o| {
-                o.summary("AMD GPU Overdrive Disable")
+                o.id("disableAmdGpuOverdrive")
+                    .summary("AMD GPU Overdrive Disable")
                     .description(
                         "Removes the modprobe conf CoolerControl writes and rebuilds the boot \
                         image. Returns at once, like the enable, with progress sent as the \
@@ -364,7 +378,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/amd-gpu-overdrive",
             get_with(devices::amd_gpu_overdrive_get, |o| {
-                o.summary("AMD GPU Overdrive State")
+                o.id("getAmdGpuOverdrive")
+                    .summary("AMD GPU Overdrive State")
                     .description(
                         "Returns the AMD GPU overdrive setup state. Changes are also sent as \
                         the `amd-gpu-overdrive` SSE event.",
@@ -378,7 +393,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices",
             get_with(devices::get, |o| {
-                o.summary("All Devices")
+                o.id("listDevices")
+                    .summary("All Devices")
                     .description(
                         "Returns a list of all detected devices and their associated information.",
                     )
@@ -391,7 +407,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/channels/{channel_name}/attributes",
             get_with(devices::device_channel_attributes_get, |o| {
-                o.summary("Device Channel Attributes")
+                o.id("getChannelAttributes")
+                    .summary("Device Channel Attributes")
                     .description(
                         "Returns the extra attributes the driver reports for a temperature, fan \
                         or power channel, such as its max, critical and emergency limits, fan \
@@ -410,7 +427,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings",
             get_with(devices::device_settings_get, |o| {
-                o.summary("All Device Settings")
+                o.id("listChannelSettings")
+                    .summary("All Device Settings")
                     .description(
                         "Returns all the currently applied settings for the given device. \
                     It returns the Config Settings model, which includes all possibilities \
@@ -425,7 +443,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/manual",
             put_with(devices::device_setting_manual_modify, |o| {
-                o.summary("Device Channel Manual")
+                o.id("setChannelManual")
+                    .summary("Device Channel Manual")
                     .description("Applies a fan duty to a specific device channel.")
                     .tag("device")
                     .security_requirement("CookieAuth")
@@ -436,7 +455,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/profile",
             put_with(devices::device_setting_profile_modify, |o| {
-                o.summary("Device Channel Profile")
+                o.id("setChannelProfile")
+                    .summary("Device Channel Profile")
                     .description("Applies a Profile to a specific device channel.")
                     .tag("device")
                     .security_requirement("CookieAuth")
@@ -447,7 +467,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lcd",
             put_with(devices::device_setting_lcd_modify, |o| {
-                o.summary("Device Channel LCD")
+                o.id("setChannelLcd")
+                    .summary("Device Channel LCD")
                     .description("Applies LCD Settings to a specific device channel.")
                     .tag("device")
                     .security_requirement("CookieAuth")
@@ -458,7 +479,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lcd/images",
             get_with(devices::get_device_lcd_image, |o| {
-                o.summary("Retrieve Device Channel LCD")
+                o.id("getChannelLcdImage")
+                    .summary("Retrieve Device Channel LCD")
                     .description("Retrieves the currently applied LCD Image file.")
                     .tag("device")
                     .security_requirement("CookieAuth")
@@ -469,7 +491,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lcd/images",
             post_with(devices::process_device_lcd_images, |o| {
-                o.summary("Process Device Channel LCD Image")
+                o.id("processChannelLcdImage")
+                    .summary("Process Device Channel LCD Image")
                     .description(
                         "This takes and image file and processes it for optimal \
                 use by the specified device channel. This is useful for a UI Preview \
@@ -480,7 +503,8 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("BearerAuth")
             })
             .put_with(devices::update_device_setting_lcd_image, |o| {
-                o.summary("Update Device Channel LCD Settings")
+                o.id("updateChannelLcdImage")
+                    .summary("Update Device Channel LCD Settings")
                     .description("Used to apply LCD settings that contain images.")
                     .tag("device")
                     .security_requirement("CookieAuth")
@@ -491,7 +515,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lcd/shutdown-image",
             put_with(devices::set_device_lcd_shutdown_image, |o| {
-                o.summary("Set LCD Shutdown Image")
+                o.id("setLcdShutdownImage")
+                    .summary("Set LCD Shutdown Image")
                     .description(
                         "Upload and save an LCD image that will be applied to the \
                         device when the daemon shuts down.",
@@ -501,7 +526,8 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("BearerAuth")
             })
             .delete_with(devices::delete_device_lcd_shutdown_image, |o| {
-                o.summary("Clear LCD Shutdown Image")
+                o.id("clearLcdShutdownImage")
+                    .summary("Clear LCD Shutdown Image")
                     .description(
                         "Remove the saved LCD shutdown image for the given device channel.",
                     )
@@ -514,7 +540,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lighting",
             put_with(devices::device_setting_lighting_modify, |o| {
-                o.summary("Device Channel Lighting")
+                o.id("setChannelLighting")
+                    .summary("Device Channel Lighting")
                     .description("Applies Lighting Settings (RGB) to a specific device channel.")
                     .tag("device")
                     .security_requirement("CookieAuth")
@@ -525,7 +552,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/pwm",
             put_with(devices::device_setting_pwm_mode_modify, |o| {
-                o.summary("DEPRECATED: Device Channel PWM Mode")
+                o.id("setChannelPwmMode")
+                    .summary("DEPRECATED: Device Channel PWM Mode")
                     .description("DEPRECATED: Applies PWM Mode to a specific device channel.")
                     .tag("device")
                     .security_requirement("CookieAuth")
@@ -536,7 +564,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/reset",
             put_with(devices::device_setting_reset, |o| {
-                o.summary("Device Channel Reset")
+                o.id("resetChannel")
+                    .summary("Device Channel Reset")
                     .description(
                         "Resents the specific device channel settings to not-set/device default.",
                     )
@@ -549,7 +578,8 @@ fn device_routes() -> ApiRouter<AppState> {
         .api_route(
             "/devices/{device_uid}/asetek690",
             patch_with(devices::asetek_type_update, |o| {
-                o.summary("Device AseTek690")
+                o.id("setAsetek690")
+                    .summary("Device AseTek690")
                     .description(
                         "Set the driver type for liquidctl AseTek cooler. This is needed \
                     to set Legacy690Lc or Modern690Lc device driver type.",
@@ -567,7 +597,8 @@ fn status_routes() -> ApiRouter<AppState> {
         .api_route(
             "/status",
             post_with(status::retrieve, |o| {
-                o.summary("Retrieve Status")
+                o.id("queryStatus")
+                    .summary("Retrieve Status")
                     .description(
                         "Returns the status of all devices and their channels,with the \
                         selected filters from the request body. This endpoint has the most \
@@ -578,7 +609,8 @@ fn status_routes() -> ApiRouter<AppState> {
                     .security_requirement("BearerAuth")
             })
             .get_with(status::get_all, |o| {
-                o.summary("Retrieve Status")
+                o.id("getStatus")
+                    .summary("Retrieve Status")
                     .description(
                         "Returns the status of all devices and their channels, returning \
                         only the most recent status by default.",
@@ -592,7 +624,8 @@ fn status_routes() -> ApiRouter<AppState> {
         .api_route(
             "/status/{device_uid}",
             get_with(status::get_device, |o| {
-                o.summary("Retrieve Device Status")
+                o.id("getDeviceStatus")
+                    .summary("Retrieve Device Status")
                     .description(
                         "Returns the status of all channels for a specific device, \
                         returning only the most recent status by default.",
@@ -606,7 +639,8 @@ fn status_routes() -> ApiRouter<AppState> {
         .api_route(
             "/status/{device_uid}/channels/{channel_name}",
             get_with(status::get_device_channel, |o| {
-                o.summary("Retrieve Device Channel Status")
+                o.id("getChannelStatus")
+                    .summary("Retrieve Device Channel Status")
                     .description(
                         "Returns the status of a specific channel for a specific device, \
                         returning only the most recent status by default.",
@@ -623,7 +657,8 @@ fn stats_routes() -> ApiRouter<AppState> {
     ApiRouter::new().api_route(
         "/stats",
         get_with(stats::get_all, |o| {
-            o.summary("Retrieve Channel Stats")
+            o.id("getChannelStats")
+                .summary("Retrieve Channel Stats")
                 .description(
                     "Returns running min/max/avg/count per channel and temp since \
                          daemon start. Entries are present once observed at least once.",
@@ -633,7 +668,8 @@ fn stats_routes() -> ApiRouter<AppState> {
                 .security_requirement("BearerAuth")
         })
         .delete_with(stats::delete_all, |o| {
-            o.summary("Reset Channel Stats")
+            o.id("resetChannelStats")
+                .summary("Reset Channel Stats")
                 .description(
                     "Clears all running stats and reseeds each from the most recent \
                          status with count=1. Channels absent from the most recent status \
@@ -652,7 +688,8 @@ fn profile_routes() -> ApiRouter<AppState> {
         .api_route(
             "/profiles",
             get_with(profiles::get_all, |o| {
-                o.summary("Retrieve Profile List")
+                o.id("listProfiles")
+                    .summary("Retrieve Profile List")
                     .description("Returns a list of all the persisted Profiles.")
                     .tag("profile")
                     .security_requirement("CookieAuth")
@@ -663,14 +700,16 @@ fn profile_routes() -> ApiRouter<AppState> {
         .api_route(
             "/profiles",
             post_with(profiles::create, |o| {
-                o.summary("Create Profile")
+                o.id("createProfile")
+                    .summary("Create Profile")
                     .description("Creates the given Profile")
                     .tag("profile")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
             .put_with(profiles::update, |o| {
-                o.summary("Update Profile")
+                o.id("updateProfile")
+                    .summary("Update Profile")
                     .description(
                         "Updates the Profile with the given properties. \
                     Dependent on the Profile UID.",
@@ -684,7 +723,8 @@ fn profile_routes() -> ApiRouter<AppState> {
         .api_route(
             "/profiles/{profile_uid}",
             delete_with(profiles::delete, |o| {
-                o.summary("Delete Profile")
+                o.id("deleteProfile")
+                    .summary("Delete Profile")
                     .description("Deletes the Profile with the given Profile UID")
                     .tag("profile")
                     .security_requirement("CookieAuth")
@@ -695,7 +735,8 @@ fn profile_routes() -> ApiRouter<AppState> {
         .api_route(
             "/profiles/order",
             post_with(profiles::save_order, |o| {
-                o.summary("Save Profile Order")
+                o.id("saveProfileOrder")
+                    .summary("Save Profile Order")
                     .description("Saves the order of Profiles as given.")
                     .tag("profile")
                     .security_requirement("CookieAuth")
@@ -706,7 +747,8 @@ fn profile_routes() -> ApiRouter<AppState> {
         .api_route(
             "/profiles/generate",
             post_with(profile_generation::generate, |o| {
-                o.summary("Generate Profiles")
+                o.id("generateProfiles")
+                    .summary("Generate Profiles")
                     .description(
                         "Proposes profiles, functions, and custom sensors for the given fan \
                     assignments and presets, without persisting them.",
@@ -724,7 +766,8 @@ fn function_routes() -> ApiRouter<AppState> {
         .api_route(
             "/functions",
             get_with(functions::get_all, |o| {
-                o.summary("Retrieve Function List")
+                o.id("listFunctions")
+                    .summary("Retrieve Function List")
                     .description("Returns a list of all the persisted Functions.")
                     .tag("function")
                     .security_requirement("CookieAuth")
@@ -735,14 +778,16 @@ fn function_routes() -> ApiRouter<AppState> {
         .api_route(
             "/functions",
             post_with(functions::create, |o| {
-                o.summary("Create Function")
+                o.id("createFunction")
+                    .summary("Create Function")
                     .description("Creates the given Function")
                     .tag("function")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
             .put_with(functions::update, |o| {
-                o.summary("Update Function")
+                o.id("updateFunction")
+                    .summary("Update Function")
                     .description(
                         "Updates the Function with the given properties. \
                     Dependent on the Function UID.",
@@ -756,7 +801,8 @@ fn function_routes() -> ApiRouter<AppState> {
         .api_route(
             "/functions/{function_uid}",
             delete_with(functions::delete, |o| {
-                o.summary("Delete Function")
+                o.id("deleteFunction")
+                    .summary("Delete Function")
                     .description("Deletes the Function with the given Function UID")
                     .tag("function")
                     .security_requirement("CookieAuth")
@@ -767,7 +813,8 @@ fn function_routes() -> ApiRouter<AppState> {
         .api_route(
             "/functions/order",
             post_with(functions::save_order, |o| {
-                o.summary("Save Function Order")
+                o.id("saveFunctionOrder")
+                    .summary("Save Function Order")
                     .description("Saves the order of the Functions as given.")
                     .tag("function")
                     .security_requirement("CookieAuth")
@@ -782,7 +829,8 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
         .api_route(
             "/custom-sensors",
             get_with(custom_sensors::get_all, |o| {
-                o.summary("Retrieve Custom Sensor List")
+                o.id("listCustomSensors")
+                    .summary("Retrieve Custom Sensor List")
                     .description("Returns a list of all the persisted Custom Sensors.")
                     .tag("custom-sensor")
                     .security_requirement("CookieAuth")
@@ -793,14 +841,16 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
         .api_route(
             "/custom-sensors",
             post_with(custom_sensors::create, |o| {
-                o.summary("Create Custom Sensor")
+                o.id("createCustomSensor")
+                    .summary("Create Custom Sensor")
                     .description("Creates the given Custom Sensor")
                     .tag("custom-sensor")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
             .put_with(custom_sensors::update, |o| {
-                o.summary("Update Custom Sensor")
+                o.id("updateCustomSensor")
+                    .summary("Update Custom Sensor")
                     .description(
                         "Updates the Custom Sensor with the given properties. \
                     Dependent on the Custom Sensor ID.",
@@ -814,7 +864,8 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
         .api_route(
             "/custom-sensors/{custom_sensor_id}",
             get_with(custom_sensors::get, |o| {
-                o.summary("Retrieve Custom Sensor")
+                o.id("getCustomSensor")
+                    .summary("Retrieve Custom Sensor")
                     .description("Retrieves the Custom Sensor with the given Custom Sensor ID")
                     .tag("custom-sensor")
                     .security_requirement("CookieAuth")
@@ -825,7 +876,8 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
         .api_route(
             "/custom-sensors/{custom_sensor_id}",
             delete_with(custom_sensors::delete, |o| {
-                o.summary("Delete Custom Sensor")
+                o.id("deleteCustomSensor")
+                    .summary("Delete Custom Sensor")
                     .description("Deletes the Custom Sensor with the given Custom Sensor UID")
                     .tag("custom-sensor")
                     .security_requirement("CookieAuth")
@@ -842,7 +894,8 @@ fn power_profile_routes() -> ApiRouter<AppState> {
         .api_route(
             "/power-profiles",
             get_with(power_profiles::get, |o| {
-                o.summary("Retrieve Power Profile State")
+                o.id("getPowerProfiles")
+                    .summary("Retrieve Power Profile State")
                     .description(
                         "Returns the power profiles the system offers, the active one, and the \
                          profile to Mode mapping. An empty `available` list means no power \
@@ -857,7 +910,8 @@ fn power_profile_routes() -> ApiRouter<AppState> {
         .api_route(
             "/power-profiles/modes",
             put_with(power_profiles::update_modes, |o| {
-                o.summary("Set Power Profile Mode Mapping")
+                o.id("setPowerProfileModes")
+                    .summary("Set Power Profile Mode Mapping")
                     .description(
                         "Replaces the mapping of system power profile to Mode. Every referenced \
                          Mode must exist. Profiles left out are unmapped.",
@@ -876,7 +930,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         .api_route(
             "/modes",
             get_with(modes::get_all, |o| {
-                o.summary("Retrieve Mode List")
+                o.id("listModes").summary("Retrieve Mode List")
                     .description("Returns a list of all the persisted Modes.")
                     .tag("mode")
                     .security_requirement("CookieAuth")
@@ -887,14 +941,14 @@ fn mode_routes() -> ApiRouter<AppState> {
         .api_route(
             "/modes",
             post_with(modes::create, |o| {
-                o.summary("Create Mode")
+                o.id("createMode").summary("Create Mode")
                     .description("Creates a Mode with the given name, based on the currently applied settings.")
                     .tag("mode")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
             .put_with(modes::update, |o| {
-                o.summary("Update Mode")
+                o.id("updateMode").summary("Update Mode")
                     .description("Updates the Mode with the given properties.")
                     .tag("mode")
                     .security_requirement("CookieAuth")
@@ -905,7 +959,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         .api_route(
             "/modes/{mode_uid}",
             get_with(modes::get, |o| {
-                o.summary("Retrieve Mode")
+                o.id("getMode").summary("Retrieve Mode")
                     .description("Retrieves the Mode with the given Mode UID")
                     .tag("mode")
                     .security_requirement("CookieAuth")
@@ -916,7 +970,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         .api_route(
             "/modes/{mode_uid}",
             delete_with(modes::delete, |o| {
-                o.summary("Delete Mode")
+                o.id("deleteMode").summary("Delete Mode")
                     .description("Deletes the Mode with the given Mode UID")
                     .tag("mode")
                     .security_requirement("CookieAuth")
@@ -927,7 +981,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         .api_route(
             "/modes/{mode_uid}/duplicate",
             post_with(modes::duplicate, |o| {
-                o.summary("Duplicate Mode")
+                o.id("duplicateMode").summary("Duplicate Mode")
                     .description(
                         "Duplicates the Mode and it's settings from the given \
                     Mode UID and returns the new Mode."
@@ -941,7 +995,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         .api_route(
             "/modes/{mode_uid}/settings",
             put_with(modes::update_mode_settings, |o| {
-                o.summary("Update Mode Device Settings")
+                o.id("updateModeSettings").summary("Update Mode Device Settings")
                     .description(
                         "Updates the Mode with the given Mode UID device settings to \
                     what is currently applied, and returns the Mode with it's new settings."
@@ -955,7 +1009,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         .api_route(
             "/modes-active",
             get_with(modes::get_active, |o| {
-                o.summary("Retrieve Active Modes")
+                o.id("listActiveModes").summary("Retrieve Active Modes")
                     .description(
                         "Returns the active and previously active Mode UIDs."
                     )
@@ -968,7 +1022,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         .api_route(
             "/modes-active/{mode_uid}",
             post_with(modes::activate, |o| {
-                o.summary("Activate Mode")
+                o.id("activateMode").summary("Activate Mode")
                     .description(
                         "Activates the Mode with the given Mode UID. \
                     This applies all of this Mode's device settings."
@@ -982,7 +1036,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         .api_route(
             "/modes/order",
             post_with(modes::save_order, |o| {
-                o.summary("Save Mode Order")
+                o.id("saveModeOrder").summary("Save Mode Order")
                     .description("Saves the order of the Modes as given.")
                     .tag("mode")
                     .security_requirement("CookieAuth")
@@ -999,7 +1053,7 @@ fn settings_routes() -> ApiRouter<AppState> {
         .api_route(
             "/settings",
             get_with(settings::get_cc, |o| {
-                o.summary("CoolerControl Settings")
+                o.id("getSettings").summary("CoolerControl Settings")
                     .description("Returns the current CoolerControl settings.")
                     .tag("setting")
                     .security_requirement("CookieAuth")
@@ -1010,7 +1064,7 @@ fn settings_routes() -> ApiRouter<AppState> {
         .api_route(
             "/settings",
             patch_with(settings::update_cc, |o| {
-                o.summary("Update CoolerControl Settings")
+                o.id("updateSettings").summary("Update CoolerControl Settings")
                     .description("Applies only the given properties.")
                     .tag("setting")
                     .security_requirement("CookieAuth")
@@ -1021,7 +1075,7 @@ fn settings_routes() -> ApiRouter<AppState> {
         .api_route(
             "/settings/devices",
             get_with(settings::get_all_cc_devices, |o| {
-                o.summary("CoolerControl All Device Settings")
+                o.id("listDeviceSettings").summary("CoolerControl All Device Settings")
                     .description("Returns the current CoolerControl device settings for all devices.")
                     .tag("setting")
                     .security_requirement("CookieAuth")
@@ -1032,7 +1086,7 @@ fn settings_routes() -> ApiRouter<AppState> {
         .api_route(
             "/settings/devices/{device_uid}",
             get_with(settings::get_cc_device, |o| {
-                o.summary("CoolerControl Device Settings")
+                o.id("getDeviceSettings").summary("CoolerControl Device Settings")
                     .description("Returns the current CoolerControl device settings for the given device UID.")
                     .tag("setting")
                     .security_requirement("CookieAuth")
@@ -1043,7 +1097,7 @@ fn settings_routes() -> ApiRouter<AppState> {
         .api_route(
             "/settings/devices/{device_uid}",
             put_with(settings::update_cc_device, |o| {
-                o.summary("Update CoolerControl Device Settings")
+                o.id("updateDeviceSettings").summary("Update CoolerControl Device Settings")
                     .description("Updates the CoolerControl device settings for the given device UID.")
                     .tag("setting")
                     .security_requirement("CookieAuth")
@@ -1056,7 +1110,7 @@ fn settings_routes() -> ApiRouter<AppState> {
             // Read-only clients may read user-defined names with a Bearer
             // access token, like /settings/ui.
             get_with(settings::get_overrides, |o| {
-                o.summary("Name Overrides")
+                o.id("getNameOverrides").summary("Name Overrides")
                     .description(
                         "Returns the raw, sparse user-defined name overrides document \
                         (overrides.toml). Devices and channels without an override are absent.",
@@ -1070,7 +1124,7 @@ fn settings_routes() -> ApiRouter<AppState> {
         .api_route(
             "/settings/devices/{device_uid}/overrides",
             put_with(settings::update_device_overrides, |o| {
-                o.summary("Update Device Name Override")
+                o.id("setDeviceNameOverride").summary("Update Device Name Override")
                     .description(
                         "Sets the user-defined display name for the device. \
                         A null or absent name removes the override.",
@@ -1084,7 +1138,7 @@ fn settings_routes() -> ApiRouter<AppState> {
         .api_route(
             "/settings/devices/{device_uid}/channels/{channel_name}/overrides",
             put_with(settings::update_channel_overrides, |o| {
-                o.summary("Update Channel Label Override")
+                o.id("setChannelLabelOverride").summary("Update Channel Label Override")
                     .description(
                         "Sets the user-defined display label for the channel. \
                         A null or absent label removes the override. The channel does not \
@@ -1102,7 +1156,7 @@ fn settings_routes() -> ApiRouter<AppState> {
             // settings. This is so read-only clients can use user-defined channel colors / labels
             // without an admin session.
             get_with(settings::get_ui, |o| {
-                o.summary("CoolerControl UI Settings")
+                o.id("getUiSettings").summary("CoolerControl UI Settings")
                     .description("Returns the current CoolerControl UI Settings.")
                     .tag("setting")
                     .security_requirement("CookieAuth")
@@ -1114,7 +1168,7 @@ fn settings_routes() -> ApiRouter<AppState> {
             "/settings/ui",
             // Writes remain UI session-only.
             put_with(settings::update_ui, |o| {
-                o.summary("Update CoolerControl UI Settings")
+                o.id("updateUiSettings").summary("Update CoolerControl UI Settings")
                     .description("Updates and persists the CoolerControl UI settings.")
                     .tag("setting")
                     .security_requirement("CookieAuth")
@@ -1129,7 +1183,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins",
             get_with(plugins::get_plugins, |o| {
-                o.summary("CoolerControl Plugins")
+                o.id("listPlugins").summary("CoolerControl Plugins")
                     .description("Returns the current list of active CoolerControl plugins.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
@@ -1139,7 +1193,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/lib/cc-plugin-lib.js",
             get_with(plugins::get_cc_plugin_lib, |o| {
-                o.summary("CoolerControl Plugin UI Library")
+                o.id("getPluginLib").summary("CoolerControl Plugin UI Library")
                     .description("Returns the CoolerControl plugin UI library for plugins to use in their UI code.")
                     .tag("plugins")
                     // Due to the request coming from inside an iframe, this needs to be public
@@ -1148,7 +1202,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/config",
             get_with(plugins::get_config, |o| {
-                o.summary("CoolerControl Plugin Config")
+                o.id("getPluginConfig").summary("CoolerControl Plugin Config")
                     .description(
                         "Returns the current CoolerControl plugin config for the given plugin ID.",
                     )
@@ -1160,7 +1214,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/config",
             put_with(plugins::update_config, |o| {
-                o.summary("Update CoolerControl Plugin Config")
+                o.id("updatePluginConfig").summary("Update CoolerControl Plugin Config")
                     .description("Updates the CoolerControl plugin config for the given plugin ID.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
@@ -1170,7 +1224,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/start",
             post_with(plugins::start_plugin, |o| {
-                o.summary("Start CoolerControl Plugin")
+                o.id("startPlugin").summary("Start CoolerControl Plugin")
                     .description("Starts a managed integration plugin's service.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
@@ -1180,7 +1234,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/stop",
             post_with(plugins::stop_plugin, |o| {
-                o.summary("Stop CoolerControl Plugin")
+                o.id("stopPlugin").summary("Stop CoolerControl Plugin")
                     .description("Stops a managed integration plugin's service.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
@@ -1190,7 +1244,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/restart",
             post_with(plugins::restart_plugin, |o| {
-                o.summary("Restart CoolerControl Plugin")
+                o.id("restartPlugin").summary("Restart CoolerControl Plugin")
                     .description("Restarts a managed integration plugin's service.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
@@ -1200,7 +1254,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/reload",
             post_with(plugins::reload_plugin, |o| {
-                o.summary("Reload CoolerControl Plugin Manifest")
+                o.id("reloadPlugin").summary("Reload CoolerControl Plugin Manifest")
                     .description(
                         "Re-reads the manifest of a plugin that has no service to restart. \
                         A device plugin's manifest is only checked: applying it takes a daemon \
@@ -1215,7 +1269,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/status",
             get_with(plugins::get_plugin_status, |o| {
-                o.summary("CoolerControl Plugin Status")
+                o.id("getPluginStatus").summary("CoolerControl Plugin Status")
                     .description("Returns the status of a plugin's service.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
@@ -1225,7 +1279,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/disable",
             post_with(plugins::disable_plugin, |o| {
-                o.summary("Disable CoolerControl Plugin")
+                o.id("disablePlugin").summary("Disable CoolerControl Plugin")
                     .description("Disables a plugin persistently. Stops integration services immediately.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
@@ -1235,7 +1289,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/enable",
             post_with(plugins::enable_plugin, |o| {
-                o.summary("Enable CoolerControl Plugin")
+                o.id("enablePlugin").summary("Enable CoolerControl Plugin")
                     .description("Re-enables a disabled plugin. Starts integration services immediately.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
@@ -1245,7 +1299,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/ui",
             get_with(plugins::has_ui, |o| {
-                o.summary("CoolerControl Plugin UI Check")
+                o.id("checkPluginUi").summary("CoolerControl Plugin UI Check")
                     .description("Returns if the CoolerControl plugin has a UI or not.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
@@ -1255,7 +1309,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/ui/{*file_path}",
             get_with(plugins::get_ui_files, |o| {
-                o.summary("CoolerControl Plugin UI")
+                o.id("getPluginUiFile").summary("CoolerControl Plugin UI")
                     .description(
                         "Returns the CoolerControl plugin UI file for the given plugin ID. Supports nested paths.",
                     )
@@ -1267,7 +1321,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
         .api_route(
             "/plugins/{plugin_id}/data/{*data_path}",
             get_with(plugins::proxy_plugin_data, |o| {
-                o.summary("CoolerControl Plugin Data Proxy")
+                o.id("getPluginData").summary("CoolerControl Plugin Data Proxy")
                     .description(
                         "Reverse-proxies a request to the plugin's local HTTP server. \
                          The plugin must declare [proxy] in its manifest.",
@@ -1276,7 +1330,7 @@ fn plugins_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
             })
             .post_with(plugins::proxy_plugin_data, |o| {
-                o.summary("CoolerControl Plugin Data Proxy (POST)")
+                o.id("postPluginData").summary("CoolerControl Plugin Data Proxy (POST)")
                     .description(
                         "Reverse-proxies a POST request to the plugin's local HTTP server.",
                     )
@@ -1291,7 +1345,8 @@ fn device_health_routes() -> ApiRouter<AppState> {
     ApiRouter::new().api_route(
         "/devices/health",
         get_with(device_health::get_all, |o| {
-            o.summary("Retrieve Device Health")
+            o.id("getDeviceHealth")
+                .summary("Retrieve Device Health")
                 .description(
                     "Returns the failsafe channels and missing temp-source references \
                      currently tracked by the daemon.",
@@ -1309,7 +1364,8 @@ fn alert_routes() -> ApiRouter<AppState> {
         .api_route(
             "/alerts",
             get_with(alerts::get_all, |o| {
-                o.summary("Retrieve Alert List")
+                o.id("listAlerts")
+                    .summary("Retrieve Alert List")
                     .description("Returns a list of all the persisted Alerts.")
                     .tag("alert")
                     .security_requirement("CookieAuth")
@@ -1320,14 +1376,16 @@ fn alert_routes() -> ApiRouter<AppState> {
         .api_route(
             "/alerts",
             post_with(alerts::create, |o| {
-                o.summary("Create Alert")
+                o.id("createAlert")
+                    .summary("Create Alert")
                     .description("Creates the given Alert")
                     .tag("alert")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
             .put_with(alerts::update, |o| {
-                o.summary("Update Alert")
+                o.id("updateAlert")
+                    .summary("Update Alert")
                     .description(
                         "Updates the Alert with the given properties. \
                     Dependent on the Alert UID.",
@@ -1341,7 +1399,8 @@ fn alert_routes() -> ApiRouter<AppState> {
         .api_route(
             "/alerts/{alert_uid}",
             delete_with(alerts::delete, |o| {
-                o.summary("Delete Alert")
+                o.id("deleteAlert")
+                    .summary("Delete Alert")
                     .description("Deletes the Alert with the given Alert UID")
                     .tag("alert")
                     .security_requirement("CookieAuth")
@@ -1360,7 +1419,8 @@ fn calibration_batch_routes() -> ApiRouter<AppState> {
         .api_route(
             "/calibrations/batch",
             get_with(calibration::batch_status, |o| {
-                o.summary("Get the calibration batch status")
+                o.id("getCalibrationBatch")
+                    .summary("Get the calibration batch status")
                     .description(
                         "Returns the active or most recent calibration batch, or null when \
                          no batch has run this session. The daemon owns the queue, so the UI \
@@ -1375,7 +1435,8 @@ fn calibration_batch_routes() -> ApiRouter<AppState> {
         .api_route(
             "/calibrations/batch/start",
             post_with(calibration::batch_start, |o| {
-                o.summary("Start a calibration batch")
+                o.id("startCalibrationBatch")
+                    .summary("Start a calibration batch")
                     .description(
                         "Queues calibration of the given channels and returns 202. \
                          Returns 409 when a batch is already active or the request is invalid.",
@@ -1389,7 +1450,8 @@ fn calibration_batch_routes() -> ApiRouter<AppState> {
         .api_route(
             "/calibrations/batch/cancel",
             post_with(calibration::batch_cancel, |o| {
-                o.summary("Cancel the calibration batch")
+                o.id("cancelCalibrationBatch")
+                    .summary("Cancel the calibration batch")
                     .description(
                         "Cancels the active batch and stops its queue. Returns 404 when no \
                          batch is active.",
@@ -1402,12 +1464,14 @@ fn calibration_batch_routes() -> ApiRouter<AppState> {
         )
 }
 
+#[allow(clippy::too_many_lines)] // Declarative route registration; splitting hurts readability.
 fn calibration_routes() -> ApiRouter<AppState> {
     ApiRouter::new()
         .api_route(
             "/calibrations",
             get_with(calibration::list, |o| {
-                o.summary("List every persisted calibration")
+                o.id("listCalibrations")
+                    .summary("List every persisted calibration")
                     .description(
                         "Returns one entry per channel that has a stored calibration. \
                          Used by the UI at app load to mark calibrated channels in the \
@@ -1423,7 +1487,8 @@ fn calibration_routes() -> ApiRouter<AppState> {
         .api_route(
             "/calibrations/{device_uid}/channels/{channel_name}/start",
             post_with(calibration::start, |o| {
-                o.summary("Start a calibration diagnosis")
+                o.id("startCalibration")
+                    .summary("Start a calibration diagnosis")
                     .description(
                         "Queues a calibration diagnosis on the channel and returns 202. \
                          Poll GET .../status to track progress. \
@@ -1438,7 +1503,8 @@ fn calibration_routes() -> ApiRouter<AppState> {
         .api_route(
             "/calibrations/{device_uid}/channels/{channel_name}/cancel",
             post_with(calibration::cancel, |o| {
-                o.summary("Cancel an in-flight calibration")
+                o.id("cancelCalibration")
+                    .summary("Cancel an in-flight calibration")
                     .description(
                         "Triggers cancellation of the in-flight calibration for the \
                          channel. Returns 404 when nothing is running.",
@@ -1452,7 +1518,8 @@ fn calibration_routes() -> ApiRouter<AppState> {
         .api_route(
             "/calibrations/{device_uid}/channels/{channel_name}/status",
             get_with(calibration::status, |o| {
-                o.summary("Get the calibration status")
+                o.id("getCalibrationStatus")
+                    .summary("Get the calibration status")
                     .description(
                         "Returns the most recent calibration status for the channel \
                          (in_progress / completed / failed). 404 if no diagnosis has \
@@ -1468,14 +1535,16 @@ fn calibration_routes() -> ApiRouter<AppState> {
         .api_route(
             "/calibrations/{device_uid}/channels/{channel_name}",
             get_with(calibration::get, |o| {
-                o.summary("Get the stored calibration")
+                o.id("getCalibration")
+                    .summary("Get the stored calibration")
                     .description("Returns the persisted calibration JSON, or 404 if none.")
                     .tag("calibration")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
             .delete_with(calibration::delete, |o| {
-                o.summary("Delete the stored calibration")
+                o.id("deleteCalibration")
+                    .summary("Delete the stored calibration")
                     .description(
                         "Removes the persisted calibration for the channel. \
                          Returns 404 when none was stored.",
@@ -1489,7 +1558,8 @@ fn calibration_routes() -> ApiRouter<AppState> {
         .api_route(
             "/calibrations/{device_uid}/channels/{channel_name}/overrides",
             patch_with(calibration::set_overrides, |o| {
-                o.summary("Set per-fan calibration overrides")
+                o.id("setCalibrationOverrides")
+                    .summary("Set per-fan calibration overrides")
                     .description(
                         "Replaces the kick-boost and kick-duration override fields on \
                          the stored calibration. Both fields in the body are applied \
@@ -1512,7 +1582,8 @@ fn calibration_map_routes() -> ApiRouter<AppState> {
         // Read auth: this computes and stores nothing, and exposes no
         // more than GET on the same calibration already does.
         post_with(calibration::map_duties, |o| {
-            o.summary("Map device duties to true duties")
+            o.id("mapCalibrationDuties")
+                .summary("Map device duties to true duties")
                 .description(
                     "Runs each device duty through the calibration's stable inverse and \
                      returns the true duties that reproduce it, in the same order. A \
@@ -1538,7 +1609,8 @@ fn detect_routes() -> ApiRouter<AppState> {
         .api_route(
             "/detect",
             get_with(detect::get_detect, |o| {
-                o.summary("Detect Hardware")
+                o.id("detectHardware")
+                    .summary("Detect Hardware")
                     .description(
                         "Return what the startup Super-I/O detection found, retained rather than \
                          re-probed. `probed` is false when no detection ran at all, so an empty \
@@ -1553,7 +1625,8 @@ fn detect_routes() -> ApiRouter<AppState> {
         .api_route(
             "/detect",
             post_with(detect::post_detect, |o| {
-                o.summary("Detect Hardware and Load Modules")
+                o.id("detectAndLoadModules")
+                    .summary("Detect Hardware and Load Modules")
                     .description(
                         "Run Super-I/O hardware detection and optionally load kernel modules.",
                     )
@@ -1569,7 +1642,8 @@ fn hardware_report_routes() -> ApiRouter<AppState> {
     ApiRouter::new().api_route(
         "/hardware-report",
         get_with(hardware_report::get_hardware_report, |o| {
-            o.summary("Hardware Support Report")
+            o.id("getHardwareReport")
+                .summary("Hardware Support Report")
                 .description(
                     "Returns a paste-ready hardware support report as plain text. `full` adds \
                      the whole hwmon tree; the compact default is trimmed to stay pasteable. \
@@ -1590,7 +1664,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
         .api_route(
             "/stress-test/cpu",
             post_with(stress_test::start_cpu, |o| {
-                o.summary("Start CPU Stress Test")
+                o.id("startCpuStressTest")
+                    .summary("Start CPU Stress Test")
                     .description(
                         "Spawns a CPU stress subprocess with tight FMA loops \
                          on the requested number of threads.",
@@ -1599,7 +1674,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
             })
             .delete_with(stress_test::stop_cpu, |o| {
-                o.summary("Stop CPU Stress Test")
+                o.id("stopCpuStressTest")
+                    .summary("Stop CPU Stress Test")
                     .description("Stops the running CPU stress test.")
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
@@ -1609,7 +1685,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
         .api_route(
             "/stress-test/gpu",
             post_with(stress_test::start_gpu, |o| {
-                o.summary("Start GPU Stress Test")
+                o.id("startGpuStressTest")
+                    .summary("Start GPU Stress Test")
                     .description(
                         "Spawns a GPU stress subprocess using wgpu compute \
                          shaders (Vulkan or OpenGL ES via ANGLE).",
@@ -1618,7 +1695,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
             })
             .delete_with(stress_test::stop_gpu, |o| {
-                o.summary("Stop GPU Stress Test")
+                o.id("stopGpuStressTest")
+                    .summary("Stop GPU Stress Test")
                     .description("Stops the running GPU stress test.")
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
@@ -1628,7 +1706,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
         .api_route(
             "/stress-test/gpus",
             get_with(stress_test::list_gpus, |o| {
-                o.summary("List Available GPUs")
+                o.id("listStressTestGpus")
+                    .summary("List Available GPUs")
                     .description(
                         "Returns the GPUs available for stress testing, discrete first. \
                          Enumerated out of process on first use, then cached.",
@@ -1641,7 +1720,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
         .api_route(
             "/stress-test/ram",
             post_with(stress_test::start_ram, |o| {
-                o.summary("Start RAM Stress Test")
+                o.id("startRamStressTest")
+                    .summary("Start RAM Stress Test")
                     .description(
                         "Spawns a RAM stress subprocess that streams data \
                          through system memory to maximize bandwidth.",
@@ -1650,7 +1730,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
             })
             .delete_with(stress_test::stop_ram, |o| {
-                o.summary("Stop RAM Stress Test")
+                o.id("stopRamStressTest")
+                    .summary("Stop RAM Stress Test")
                     .description("Stops the running RAM stress test.")
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
@@ -1660,7 +1741,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
         .api_route(
             "/stress-test/drive",
             post_with(stress_test::start_drive, |o| {
-                o.summary("Start Drive Stress Test")
+                o.id("startDriveStressTest")
+                    .summary("Start Drive Stress Test")
                     .description(
                         "Spawns a drive stress subprocess that performs random \
                          read-only I/O on the specified block device using O_DIRECT.",
@@ -1669,7 +1751,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
             })
             .delete_with(stress_test::stop_drive, |o| {
-                o.summary("Stop Drive Stress Test")
+                o.id("stopDriveStressTest")
+                    .summary("Stop Drive Stress Test")
                     .description("Stops the running drive stress test.")
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
@@ -1679,7 +1762,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
         .api_route(
             "/stress-test/drives",
             get_with(stress_test::list_drives, |o| {
-                o.summary("List Available Drives")
+                o.id("listStressTestDrives")
+                    .summary("List Available Drives")
                     .description("Returns block devices available for drive stress testing.")
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
@@ -1689,7 +1773,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
         .api_route(
             "/stress-test",
             get_with(stress_test::status, |o| {
-                o.summary("Stress Test Status")
+                o.id("getStressTestStatus")
+                    .summary("Stress Test Status")
                     .description(
                         "Returns the current status of CPU, GPU, RAM, and Drive stress tests.",
                     )
@@ -1697,7 +1782,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
             })
             .delete_with(stress_test::stop_all, |o| {
-                o.summary("Stop All Stress Tests")
+                o.id("stopAllStressTests")
+                    .summary("Stop All Stress Tests")
                     .description("Stops all running stress tests (CPU, GPU, RAM, and Drive).")
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
@@ -1710,7 +1796,8 @@ fn metrics_routes() -> ApiRouter<AppState> {
     ApiRouter::new().api_route(
         "/metrics",
         get_with(metrics::get_metrics, |o| {
-            o.summary("Prometheus Metrics")
+            o.id("getMetrics")
+                .summary("Prometheus Metrics")
                 .description("Returns device sensor data in Prometheus text exposition format.")
                 .tag("metrics")
                 .security_requirement("CookieAuth")
@@ -1725,7 +1812,8 @@ fn sse_routes() -> ApiRouter<AppState> {
         .api_route(
             "/sse",
             get_with(sse::combined, |o| {
-                o.summary("Server Sent Events")
+                o.id("streamEvents")
+                    .summary("Server Sent Events")
                     .description(
                         "Subscribes to every event stream on one connection. Optional \
                          `events` query parameter narrows the subscription to a \
@@ -1751,7 +1839,8 @@ fn legacy_sse_routes() -> ApiRouter<AppState> {
         .api_route(
             "/sse/logs",
             get_with(sse::logs, |o| {
-                o.summary("Log Server Sent Events")
+                o.id("streamLogs")
+                    .summary("Log Server Sent Events")
                     .description(
                         "Deprecated: use GET /sse?events=logs. Subscribes and returns the \
                          Server Sent Events for a Log stream",
@@ -1765,7 +1854,8 @@ fn legacy_sse_routes() -> ApiRouter<AppState> {
         .api_route(
             "/sse/status",
             get_with(sse::status, |o| {
-                o.summary("Recent Status Server Sent Events")
+                o.id("streamStatus")
+                    .summary("Recent Status Server Sent Events")
                     .description(
                         "Deprecated: use GET /sse?events=status,health. Subscribes and returns \
                          the Server Sent Events for a Status stream",
@@ -1779,7 +1869,8 @@ fn legacy_sse_routes() -> ApiRouter<AppState> {
         .api_route(
             "/sse/modes",
             get_with(sse::modes, |o| {
-                o.summary("Activated Mode Events")
+                o.id("streamModes")
+                    .summary("Activated Mode Events")
                     .description(
                         "Deprecated: use GET /sse?events=modes. Subscribes and returns the \
                          Server Sent Events for a ModeActivated stream",
@@ -1801,7 +1892,8 @@ fn legacy_sse_event_routes() -> ApiRouter<AppState> {
         .api_route(
             "/sse/alerts",
             get_with(sse::alerts, |o| {
-                o.summary("Alert Events")
+                o.id("streamAlerts")
+                    .summary("Alert Events")
                     .description(
                         "Deprecated: use GET /sse?events=alerts. Subscribes and returns Events \
                          for when an Alert State has changed",
@@ -1815,7 +1907,8 @@ fn legacy_sse_event_routes() -> ApiRouter<AppState> {
         .api_route(
             "/sse/notifications",
             get_with(sse::notifications, |o| {
-                o.summary("Desktop Notification Events")
+                o.id("streamNotifications")
+                    .summary("Desktop Notification Events")
                     .description(
                         "Deprecated: use GET /sse?events=notifications. Subscribes and returns \
                          Events for desktop notifications that should be displayed to the user",

@@ -89,7 +89,7 @@ impl<S> LastModified<S> {
     }
 }
 
-/// A strong ETag is a quoted, non-empty opaque tag with no `W/` prefix (RFC 9110 8.8.3).
+/// A strong `ETag` is a quoted, non-empty opaque tag with no `W/` prefix (RFC 9110 8.8.3).
 fn assert_strong_etag(etag: &str) {
     assert!(etag.len() > 2, "{etag} is a non-empty tag");
     assert!(

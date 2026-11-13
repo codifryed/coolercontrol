@@ -21,7 +21,8 @@
           "base"
         ],
         "summary": "Handshake",
-        "description": "A simple endpoint to verify the connection"
+        "description": "A simple endpoint to verify the connection",
+        "operationId": "handshake"
       }
     },
     "/health": {
@@ -31,6 +32,7 @@
         ],
         "summary": "Health Check",
         "description": "Returns a Health Check Status.",
+        "operationId": "getHealth",
         "responses": {
           "200": {
             "description": "",
@@ -81,6 +83,7 @@
         ],
         "summary": "Daemon Logs",
         "description": "This returns all recent main daemon logs as raw text",
+        "operationId": "getLogs",
         "responses": {
           "200": {
             "description": "plain text",
@@ -106,6 +109,7 @@
         ],
         "summary": "Acknowledge Log Issues",
         "description": "This acknowledges existing log warnings and errors, and sets a timestamp of when this occurred",
+        "operationId": "acknowledgeLogIssues",
         "responses": {
           "200": {
             "description": "no content"
@@ -149,6 +153,7 @@
         ],
         "summary": "Shutdown Daemon",
         "description": "Sends a cancellation signal to shut the daemon down. When the daemon is running as a systemd or initrc service, it is automatically restarted.",
+        "operationId": "shutdownDaemon",
         "responses": {
           "200": {
             "description": "no content"
@@ -189,6 +194,7 @@
         ],
         "summary": "Login",
         "description": "The endpoint used to create a login session.",
+        "operationId": "login",
         "responses": {
           "200": {
             "description": "no content"
@@ -229,6 +235,7 @@
         ],
         "summary": "Verify Session Auth",
         "description": "Verifies that the current session is still authenticated",
+        "operationId": "verifySession",
         "responses": {
           "200": {
             "description": "no content"
@@ -269,6 +276,7 @@
         ],
         "summary": "Set Admin Password",
         "description": "Stores a new Admin password.",
+        "operationId": "setPassword",
         "requestBody": {
           "content": {
             "application/json": {
@@ -320,6 +328,7 @@
         ],
         "summary": "Logout",
         "description": "Logout and invalidate the current session.",
+        "operationId": "logout",
         "responses": {
           "200": {
             "description": "no content"
@@ -339,6 +348,7 @@
         ],
         "summary": "List Access Tokens",
         "description": "Returns a list of all access tokens (without hashes).",
+        "operationId": "listTokens",
         "responses": {
           "200": {
             "description": "",
@@ -384,6 +394,7 @@
         ],
         "summary": "Create Access Token",
         "description": "Creates a new access token for external service authentication. The raw token is only returned once.",
+        "operationId": "createToken",
         "requestBody": {
           "content": {
             "application/json": {
@@ -441,6 +452,7 @@
         ],
         "summary": "Delete Access Token",
         "description": "Deletes the access token with the given ID.",
+        "operationId": "deleteToken",
         "parameters": [
           {
             "in": "path",
@@ -492,6 +504,7 @@
         ],
         "summary": "ThinkPad Fan Control",
         "description": "Enables/Disabled Fan Control for ThinkPads, if acpi driver is present.",
+        "operationId": "setThinkPadFanControl",
         "requestBody": {
           "content": {
             "application/json": {
@@ -545,6 +558,7 @@
         ],
         "summary": "AMD GPU Overdrive State",
         "description": "Returns the AMD GPU overdrive setup state. Changes are also sent as the `amd-gpu-overdrive` SSE event.",
+        "operationId": "getAmdGpuOverdrive",
         "responses": {
           "200": {
             "description": "",
@@ -593,6 +607,7 @@
         ],
         "summary": "AMD GPU Overdrive Enable",
         "description": "Starts AMD GPU overdrive setup by configuring the ppfeaturemask kernel parameter, and returns at once with the new state. Requires a JSON body with `rebuild`: a request without one is refused and starts nothing. The boot image rebuild or kernel argument change runs in the background, and each state change is sent as the `amd-gpu-overdrive` SSE event. Returns the current state without a new run while a setup is running, or once the setting is staged or active. Requires a reboot to take effect.",
+        "operationId": "enableAmdGpuOverdrive",
         "requestBody": {
           "content": {
             "application/json": {
@@ -648,6 +663,7 @@
         ],
         "summary": "AMD GPU Overdrive Disable",
         "description": "Removes the modprobe conf CoolerControl writes and rebuilds the boot image. Returns at once, like the enable, with progress sent as the `amd-gpu-overdrive` SSE event. Does nothing when `removable` is false. A kernel argument is left to the user. A reboot turns overdrive off.",
+        "operationId": "disableAmdGpuOverdrive",
         "responses": {
           "200": {
             "description": "",
@@ -695,6 +711,7 @@
         ],
         "summary": "AMD GPU Overdrive Plan",
         "description": "Returns what enabling, or with `action=disable` disabling, AMD GPU overdrive would do on this system: the route, the exact command run as root, the files written or removed, or why it cannot run now. Clients show it for the user to confirm.",
+        "operationId": "getAmdGpuOverdrivePlan",
         "parameters": [
           {
             "in": "query",
@@ -762,6 +779,7 @@
         ],
         "summary": "All Devices",
         "description": "Returns a list of all detected devices and their associated information.",
+        "operationId": "listDevices",
         "responses": {
           "200": {
             "description": "",
@@ -812,6 +830,7 @@
         ],
         "summary": "Device Channel Attributes",
         "description": "Returns the extra attributes the driver reports for a temperature, fan or power channel, such as its max, critical and emergency limits, fan target or power cap, read from the hardware when requested. Each is named by its sysfs file, because the meaning varies by driver: on some chips min and max are the lowest and highest readings so far. Unset and unreadable values are left out. Channels without attribute files return an empty list.",
+        "operationId": "getChannelAttributes",
         "parameters": [
           {
             "in": "path",
@@ -882,6 +901,7 @@
         ],
         "summary": "All Device Settings",
         "description": "Returns all the currently applied settings for the given device. It returns the Config Settings model, which includes all possibilities for each channel.",
+        "operationId": "listChannelSettings",
         "parameters": [
           {
             "in": "path",
@@ -943,6 +963,7 @@
         ],
         "summary": "Device Channel Manual",
         "description": "Applies a fan duty to a specific device channel.",
+        "operationId": "setChannelManual",
         "parameters": [
           {
             "in": "path",
@@ -1016,6 +1037,7 @@
         ],
         "summary": "Device Channel Profile",
         "description": "Applies a Profile to a specific device channel.",
+        "operationId": "setChannelProfile",
         "parameters": [
           {
             "in": "path",
@@ -1089,6 +1111,7 @@
         ],
         "summary": "Device Channel LCD",
         "description": "Applies LCD Settings to a specific device channel.",
+        "operationId": "setChannelLcd",
         "parameters": [
           {
             "in": "path",
@@ -1128,7 +1151,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LcdSettings"
+                "$ref": "#/components/schemas/LcdSettings-Input"
               }
             }
           },
@@ -1177,6 +1200,7 @@
         ],
         "summary": "Retrieve Device Channel LCD",
         "description": "Retrieves the currently applied LCD Image file.",
+        "operationId": "getChannelLcdImage",
         "parameters": [
           {
             "in": "path",
@@ -1235,6 +1259,7 @@
         ],
         "summary": "Update Device Channel LCD Settings",
         "description": "Used to apply LCD settings that contain images.",
+        "operationId": "updateChannelLcdImage",
         "parameters": [
           {
             "in": "path",
@@ -1321,6 +1346,7 @@
         ],
         "summary": "Process Device Channel LCD Image",
         "description": "This takes and image file and processes it for optimal use by the specified device channel. This is useful for a UI Preview and is used internally before applying the image to the device.",
+        "operationId": "processChannelLcdImage",
         "parameters": [
           {
             "in": "path",
@@ -1392,6 +1418,7 @@
         ],
         "summary": "Set LCD Shutdown Image",
         "description": "Upload and save an LCD image that will be applied to the device when the daemon shuts down.",
+        "operationId": "setLcdShutdownImage",
         "parameters": [
           {
             "in": "path",
@@ -1464,6 +1491,7 @@
         ],
         "summary": "Clear LCD Shutdown Image",
         "description": "Remove the saved LCD shutdown image for the given device channel.",
+        "operationId": "clearLcdShutdownImage",
         "parameters": [
           {
             "in": "path",
@@ -1527,6 +1555,7 @@
         ],
         "summary": "Device Channel Lighting",
         "description": "Applies Lighting Settings (RGB) to a specific device channel.",
+        "operationId": "setChannelLighting",
         "parameters": [
           {
             "in": "path",
@@ -1551,7 +1580,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LightingSettings"
+                "$ref": "#/components/schemas/LightingSettings-Input"
               }
             }
           },
@@ -1600,6 +1629,7 @@
         ],
         "summary": "DEPRECATED: Device Channel PWM Mode",
         "description": "DEPRECATED: Applies PWM Mode to a specific device channel.",
+        "operationId": "setChannelPwmMode",
         "parameters": [
           {
             "in": "path",
@@ -1673,6 +1703,7 @@
         ],
         "summary": "Device Channel Reset",
         "description": "Resents the specific device channel settings to not-set/device default.",
+        "operationId": "resetChannel",
         "parameters": [
           {
             "in": "path",
@@ -1736,6 +1767,7 @@
         ],
         "summary": "Device AseTek690",
         "description": "Set the driver type for liquidctl AseTek cooler. This is needed to set Legacy690Lc or Modern690Lc device driver type.",
+        "operationId": "setAsetek690",
         "parameters": [
           {
             "in": "path",
@@ -1800,6 +1832,7 @@
         ],
         "summary": "Retrieve Device Health",
         "description": "Returns the failsafe channels and missing temp-source references currently tracked by the daemon.",
+        "operationId": "getDeviceHealth",
         "responses": {
           "200": {
             "description": "Full current health snapshot returned by `GET /devices/health`.\n\n Two sections with different meanings, deliberately not interleaved.\n `failsafe`, `missing`, `stale_source` and `firmware_overrides` are\n **current state**: conditions that can clear on their own.\n `channel_capabilities` and `system_findings` are **permanent**: facts about\n what this hardware can do, which will not change while the machine is\n running. Presenting a permanent capability as a fault would imply the user\n should wait for it to resolve; presenting a fault as a capability would\n imply the opposite.",
@@ -1829,6 +1862,7 @@
         ],
         "summary": "Retrieve Status",
         "description": "Returns the status of all devices and their channels, returning only the most recent status by default.",
+        "operationId": "getStatus",
         "parameters": [
           {
             "in": "query",
@@ -1891,6 +1925,7 @@
         ],
         "summary": "Retrieve Status",
         "description": "Returns the status of all devices and their channels,with the selected filters from the request body. This endpoint has the most options available for retrieving all statuses.",
+        "operationId": "queryStatus",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1951,6 +1986,7 @@
         ],
         "summary": "Retrieve Device Status",
         "description": "Returns the status of all channels for a specific device, returning only the most recent status by default.",
+        "operationId": "getDeviceStatus",
         "parameters": [
           {
             "in": "path",
@@ -2024,6 +2060,7 @@
         ],
         "summary": "Retrieve Device Channel Status",
         "description": "Returns the status of a specific channel for a specific device, returning only the most recent status by default.",
+        "operationId": "getChannelStatus",
         "parameters": [
           {
             "in": "path",
@@ -2106,6 +2143,7 @@
         ],
         "summary": "Retrieve Channel Stats",
         "description": "Returns running min/max/avg/count per channel and temp since daemon start. Entries are present once observed at least once.",
+        "operationId": "getChannelStats",
         "responses": {
           "200": {
             "description": "Top-level response for `GET /stats` and `DELETE /stats`. One entry per\n known device. Channels/temps are only present once they have been\n observed at least once since daemon start (or last reset).",
@@ -2133,6 +2171,7 @@
         ],
         "summary": "Reset Channel Stats",
         "description": "Clears all running stats and reseeds each from the most recent status with count=1. Channels absent from the most recent status are dropped and will reseed naturally on their next observation.",
+        "operationId": "resetChannelStats",
         "responses": {
           "200": {
             "description": "Top-level response for `GET /stats` and `DELETE /stats`. One entry per\n known device. Channels/temps are only present once they have been\n observed at least once since daemon start (or last reset).",
@@ -2162,13 +2201,14 @@
         ],
         "summary": "Retrieve Profile List",
         "description": "Returns a list of all the persisted Profiles.",
+        "operationId": "listProfiles",
         "responses": {
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProfilesDto"
+                  "$ref": "#/components/schemas/ProfilesDto-Output"
                 }
               }
             }
@@ -2210,12 +2250,13 @@
         ],
         "summary": "Update Profile",
         "description": "Updates the Profile with the given properties. Dependent on the Profile UID.",
+        "operationId": "updateProfile",
         "requestBody": {
           "description": "Profile Settings",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Profile"
+                "$ref": "#/components/schemas/Profile-Input"
               }
             }
           },
@@ -2262,12 +2303,13 @@
         ],
         "summary": "Create Profile",
         "description": "Creates the given Profile",
+        "operationId": "createProfile",
         "requestBody": {
           "description": "Profile Settings",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Profile"
+                "$ref": "#/components/schemas/Profile-Input"
               }
             }
           },
@@ -2316,6 +2358,7 @@
         ],
         "summary": "Delete Profile",
         "description": "Deletes the Profile with the given Profile UID",
+        "operationId": "deleteProfile",
         "parameters": [
           {
             "in": "path",
@@ -2370,11 +2413,12 @@
         ],
         "summary": "Save Profile Order",
         "description": "Saves the order of Profiles as given.",
+        "operationId": "saveProfileOrder",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ProfilesDto"
+                "$ref": "#/components/schemas/ProfilesDto-Input"
               }
             }
           },
@@ -2423,6 +2467,7 @@
         ],
         "summary": "Generate Profiles",
         "description": "Proposes profiles, functions, and custom sensors for the given fan assignments and presets, without persisting them.",
+        "operationId": "generateProfiles",
         "requestBody": {
           "description": "The full input to one profile-generation run.",
           "content": {
@@ -2484,13 +2529,14 @@
         ],
         "summary": "Retrieve Function List",
         "description": "Returns a list of all the persisted Functions.",
+        "operationId": "listFunctions",
         "responses": {
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FunctionsDto"
+                  "$ref": "#/components/schemas/FunctionsDto-Output"
                 }
               }
             }
@@ -2532,12 +2578,13 @@
         ],
         "summary": "Update Function",
         "description": "Updates the Function with the given properties. Dependent on the Function UID.",
+        "operationId": "updateFunction",
         "requestBody": {
           "description": "The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`\n fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on\n `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left\n to apply-time validation, keeping the input wire contract backward-compatible.",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Function"
+                "$ref": "#/components/schemas/Function-Input"
               }
             }
           },
@@ -2584,12 +2631,13 @@
         ],
         "summary": "Create Function",
         "description": "Creates the given Function",
+        "operationId": "createFunction",
         "requestBody": {
           "description": "The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`\n fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on\n `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left\n to apply-time validation, keeping the input wire contract backward-compatible.",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Function"
+                "$ref": "#/components/schemas/Function-Input"
               }
             }
           },
@@ -2638,6 +2686,7 @@
         ],
         "summary": "Delete Function",
         "description": "Deletes the Function with the given Function UID",
+        "operationId": "deleteFunction",
         "parameters": [
           {
             "in": "path",
@@ -2692,11 +2741,12 @@
         ],
         "summary": "Save Function Order",
         "description": "Saves the order of the Functions as given.",
+        "operationId": "saveFunctionOrder",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FunctionsDto"
+                "$ref": "#/components/schemas/FunctionsDto-Input"
               }
             }
           },
@@ -2745,6 +2795,7 @@
         ],
         "summary": "Retrieve Custom Sensor List",
         "description": "Returns a list of all the persisted Custom Sensors.",
+        "operationId": "listCustomSensors",
         "responses": {
           "200": {
             "description": "",
@@ -2793,12 +2844,13 @@
         ],
         "summary": "Update Custom Sensor",
         "description": "Updates the Custom Sensor with the given properties. Dependent on the Custom Sensor ID.",
+        "operationId": "updateCustomSensor",
         "requestBody": {
           "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CustomSensor"
+                "$ref": "#/components/schemas/CustomSensor-Input"
               }
             }
           },
@@ -2845,12 +2897,13 @@
         ],
         "summary": "Create Custom Sensor",
         "description": "Creates the given Custom Sensor",
+        "operationId": "createCustomSensor",
         "requestBody": {
           "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CustomSensor"
+                "$ref": "#/components/schemas/CustomSensor-Input"
               }
             }
           },
@@ -2899,6 +2952,7 @@
         ],
         "summary": "Retrieve Custom Sensor",
         "description": "Retrieves the Custom Sensor with the given Custom Sensor ID",
+        "operationId": "getCustomSensor",
         "parameters": [
           {
             "in": "path",
@@ -2916,7 +2970,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomSensor"
+                  "$ref": "#/components/schemas/CustomSensor-Output"
                 }
               }
             }
@@ -2958,6 +3012,7 @@
         ],
         "summary": "Delete Custom Sensor",
         "description": "Deletes the Custom Sensor with the given Custom Sensor UID",
+        "operationId": "deleteCustomSensor",
         "parameters": [
           {
             "in": "path",
@@ -3012,6 +3067,7 @@
         ],
         "summary": "Retrieve Mode List",
         "description": "Returns a list of all the persisted Modes.",
+        "operationId": "listModes",
         "responses": {
           "200": {
             "description": "",
@@ -3060,6 +3116,7 @@
         ],
         "summary": "Update Mode",
         "description": "Updates the Mode with the given properties.",
+        "operationId": "updateMode",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3111,6 +3168,7 @@
         ],
         "summary": "Create Mode",
         "description": "Creates a Mode with the given name, based on the currently applied settings.",
+        "operationId": "createMode",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3171,6 +3229,7 @@
         ],
         "summary": "Retrieve Mode",
         "description": "Retrieves the Mode with the given Mode UID",
+        "operationId": "getMode",
         "parameters": [
           {
             "in": "path",
@@ -3230,6 +3289,7 @@
         ],
         "summary": "Delete Mode",
         "description": "Deletes the Mode with the given Mode UID",
+        "operationId": "deleteMode",
         "parameters": [
           {
             "in": "path",
@@ -3284,6 +3344,7 @@
         ],
         "summary": "Duplicate Mode",
         "description": "Duplicates the Mode and it's settings from the given Mode UID and returns the new Mode.",
+        "operationId": "duplicateMode",
         "parameters": [
           {
             "in": "path",
@@ -3345,6 +3406,7 @@
         ],
         "summary": "Update Mode Device Settings",
         "description": "Updates the Mode with the given Mode UID device settings to what is currently applied, and returns the Mode with it's new settings.",
+        "operationId": "updateModeSettings",
         "parameters": [
           {
             "in": "path",
@@ -3406,6 +3468,7 @@
         ],
         "summary": "Retrieve Active Modes",
         "description": "Returns the active and previously active Mode UIDs.",
+        "operationId": "listActiveModes",
         "responses": {
           "200": {
             "description": "",
@@ -3456,6 +3519,7 @@
         ],
         "summary": "Activate Mode",
         "description": "Activates the Mode with the given Mode UID. This applies all of this Mode's device settings.",
+        "operationId": "activateMode",
         "parameters": [
           {
             "in": "path",
@@ -3510,6 +3574,7 @@
         ],
         "summary": "Save Mode Order",
         "description": "Saves the order of the Modes as given.",
+        "operationId": "saveModeOrder",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3563,6 +3628,7 @@
         ],
         "summary": "Retrieve Power Profile State",
         "description": "Returns the power profiles the system offers, the active one, and the profile to Mode mapping. An empty `available` list means no power profile daemon is reachable over D-Bus.",
+        "operationId": "getPowerProfiles",
         "responses": {
           "200": {
             "description": "A point-in-time view of the power profile integration, for API consumers.",
@@ -3592,6 +3658,7 @@
         ],
         "summary": "Set Power Profile Mode Mapping",
         "description": "Replaces the mapping of system power profile to Mode. Every referenced Mode must exist. Profiles left out are unmapped.",
+        "operationId": "setPowerProfileModes",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3645,13 +3712,14 @@
         ],
         "summary": "CoolerControl Settings",
         "description": "Returns the current CoolerControl settings.",
+        "operationId": "getSettings",
         "responses": {
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CoolerControlSettingsDto"
+                  "$ref": "#/components/schemas/CoolerControlSettingsDto-Output"
                 }
               }
             }
@@ -3693,11 +3761,12 @@
         ],
         "summary": "Update CoolerControl Settings",
         "description": "Applies only the given properties.",
+        "operationId": "updateSettings",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CoolerControlSettingsDto"
+                "$ref": "#/components/schemas/CoolerControlSettingsDto-Input"
               }
             }
           },
@@ -3746,6 +3815,7 @@
         ],
         "summary": "CoolerControl All Device Settings",
         "description": "Returns the current CoolerControl device settings for all devices.",
+        "operationId": "listDeviceSettings",
         "responses": {
           "200": {
             "description": "",
@@ -3796,6 +3866,7 @@
         ],
         "summary": "CoolerControl Device Settings",
         "description": "Returns the current CoolerControl device settings for the given device UID.",
+        "operationId": "getDeviceSettings",
         "parameters": [
           {
             "in": "path",
@@ -3855,6 +3926,7 @@
         ],
         "summary": "Update CoolerControl Device Settings",
         "description": "Updates the CoolerControl device settings for the given device UID.",
+        "operationId": "updateDeviceSettings",
         "parameters": [
           {
             "in": "path",
@@ -3920,6 +3992,7 @@
         ],
         "summary": "Name Overrides",
         "description": "Returns the raw, sparse user-defined name overrides document (overrides.toml). Devices and channels without an override are absent.",
+        "operationId": "getNameOverrides",
         "responses": {
           "200": {
             "description": "",
@@ -3970,6 +4043,7 @@
         ],
         "summary": "Update Device Name Override",
         "description": "Sets the user-defined display name for the device. A null or absent name removes the override.",
+        "operationId": "setDeviceNameOverride",
         "parameters": [
           {
             "in": "path",
@@ -4034,6 +4108,7 @@
         ],
         "summary": "Update Channel Label Override",
         "description": "Sets the user-defined display label for the channel. A null or absent label removes the override. The channel does not have to be present; only the device must be known.",
+        "operationId": "setChannelLabelOverride",
         "parameters": [
           {
             "in": "path",
@@ -4107,6 +4182,7 @@
         ],
         "summary": "CoolerControl UI Settings",
         "description": "Returns the current CoolerControl UI Settings.",
+        "operationId": "getUiSettings",
         "responses": {
           "200": {
             "description": "plain text",
@@ -4151,6 +4227,7 @@
         ],
         "summary": "Update CoolerControl UI Settings",
         "description": "Updates and persists the CoolerControl UI settings.",
+        "operationId": "updateUiSettings",
         "requestBody": {
           "content": {
             "text/plain; charset=utf-8": {}
@@ -4197,6 +4274,7 @@
         ],
         "summary": "CoolerControl Plugins",
         "description": "Returns the current list of active CoolerControl plugins.",
+        "operationId": "listPlugins",
         "responses": {
           "200": {
             "description": "",
@@ -4244,6 +4322,7 @@
         ],
         "summary": "CoolerControl Plugin UI Library",
         "description": "Returns the CoolerControl plugin UI library for plugins to use in their UI code.",
+        "operationId": "getPluginLib",
         "responses": {
           "400": {
             "description": "Bad Request. The request is invalid"
@@ -4276,6 +4355,7 @@
         ],
         "summary": "CoolerControl Plugin Config",
         "description": "Returns the current CoolerControl plugin config for the given plugin ID.",
+        "operationId": "getPluginConfig",
         "parameters": [
           {
             "in": "path",
@@ -4328,6 +4408,7 @@
         ],
         "summary": "Update CoolerControl Plugin Config",
         "description": "Updates the CoolerControl plugin config for the given plugin ID.",
+        "operationId": "updatePluginConfig",
         "parameters": [
           {
             "in": "path",
@@ -4385,6 +4466,7 @@
         ],
         "summary": "Start CoolerControl Plugin",
         "description": "Starts a managed integration plugin's service.",
+        "operationId": "startPlugin",
         "parameters": [
           {
             "in": "path",
@@ -4436,6 +4518,7 @@
         ],
         "summary": "Stop CoolerControl Plugin",
         "description": "Stops a managed integration plugin's service.",
+        "operationId": "stopPlugin",
         "parameters": [
           {
             "in": "path",
@@ -4487,6 +4570,7 @@
         ],
         "summary": "Restart CoolerControl Plugin",
         "description": "Restarts a managed integration plugin's service.",
+        "operationId": "restartPlugin",
         "parameters": [
           {
             "in": "path",
@@ -4538,6 +4622,7 @@
         ],
         "summary": "Reload CoolerControl Plugin Manifest",
         "description": "Re-reads the manifest of a plugin that has no service to restart. A device plugin's manifest is only checked: applying it takes a daemon restart. A managed integration plugin is refused, since restarting it re-reads its manifest.",
+        "operationId": "reloadPlugin",
         "parameters": [
           {
             "in": "path",
@@ -4589,6 +4674,7 @@
         ],
         "summary": "CoolerControl Plugin Status",
         "description": "Returns the status of a plugin's service.",
+        "operationId": "getPluginStatus",
         "parameters": [
           {
             "in": "path",
@@ -4647,6 +4733,7 @@
         ],
         "summary": "Disable CoolerControl Plugin",
         "description": "Disables a plugin persistently. Stops integration services immediately.",
+        "operationId": "disablePlugin",
         "parameters": [
           {
             "in": "path",
@@ -4698,6 +4785,7 @@
         ],
         "summary": "Enable CoolerControl Plugin",
         "description": "Re-enables a disabled plugin. Starts integration services immediately.",
+        "operationId": "enablePlugin",
         "parameters": [
           {
             "in": "path",
@@ -4749,6 +4837,7 @@
         ],
         "summary": "CoolerControl Plugin UI Check",
         "description": "Returns if the CoolerControl plugin has a UI or not.",
+        "operationId": "checkPluginUi",
         "parameters": [
           {
             "in": "path",
@@ -4786,6 +4875,7 @@
         ],
         "summary": "CoolerControl Plugin UI",
         "description": "Returns the CoolerControl plugin UI file for the given plugin ID. Supports nested paths.",
+        "operationId": "getPluginUiFile",
         "parameters": [
           {
             "in": "path",
@@ -4843,6 +4933,7 @@
         ],
         "summary": "CoolerControl Plugin Data Proxy",
         "description": "Reverse-proxies a request to the plugin's local HTTP server. The plugin must declare [proxy] in its manifest.",
+        "operationId": "getPluginData",
         "parameters": [
           {
             "in": "path",
@@ -4898,6 +4989,7 @@
         ],
         "summary": "CoolerControl Plugin Data Proxy (POST)",
         "description": "Reverse-proxies a POST request to the plugin's local HTTP server.",
+        "operationId": "postPluginData",
         "parameters": [
           {
             "in": "path",
@@ -4955,6 +5047,7 @@
         ],
         "summary": "Retrieve Alert List",
         "description": "Returns a list of all the persisted Alerts.",
+        "operationId": "listAlerts",
         "responses": {
           "200": {
             "description": "",
@@ -5003,11 +5096,12 @@
         ],
         "summary": "Update Alert",
         "description": "Updates the Alert with the given properties. Dependent on the Alert UID.",
+        "operationId": "updateAlert",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AlertDto"
+                "$ref": "#/components/schemas/AlertDto-Input"
               }
             }
           },
@@ -5054,11 +5148,12 @@
         ],
         "summary": "Create Alert",
         "description": "Creates the given Alert",
+        "operationId": "createAlert",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AlertDto"
+                "$ref": "#/components/schemas/AlertDto-Input"
               }
             }
           },
@@ -5107,6 +5202,7 @@
         ],
         "summary": "Delete Alert",
         "description": "Deletes the Alert with the given Alert UID",
+        "operationId": "deleteAlert",
         "parameters": [
           {
             "in": "path",
@@ -5161,6 +5257,7 @@
         ],
         "summary": "List every persisted calibration",
         "description": "Returns one entry per channel that has a stored calibration. Used by the UI at app load to mark calibrated channels in the tree menu without one request per channel. Always 200; an empty list signals that no channel has been calibrated yet.",
+        "operationId": "listCalibrations",
         "responses": {
           "200": {
             "description": "Snapshot of every persisted calibration. Empty list when nothing\n is stored. Matches the wrapper shape used by `/profiles` and\n `/alerts` so clients can iterate `dto.calibrations`.",
@@ -5190,6 +5287,7 @@
         ],
         "summary": "Start a calibration diagnosis",
         "description": "Queues a calibration diagnosis on the channel and returns 202. Poll GET .../status to track progress. Returns 409 when a diagnosis is already in flight for the channel.",
+        "operationId": "startCalibration",
         "parameters": [
           {
             "in": "path",
@@ -5250,6 +5348,7 @@
         ],
         "summary": "Cancel an in-flight calibration",
         "description": "Triggers cancellation of the in-flight calibration for the channel. Returns 404 when nothing is running.",
+        "operationId": "cancelCalibration",
         "parameters": [
           {
             "in": "path",
@@ -5313,6 +5412,7 @@
         ],
         "summary": "Get the calibration status",
         "description": "Returns the most recent calibration status for the channel (in_progress / completed / failed). 404 if no diagnosis has ever been observed. Intended for UI polling at ~1 Hz while a diagnosis is in flight.",
+        "operationId": "getCalibrationStatus",
         "parameters": [
           {
             "in": "path",
@@ -5383,6 +5483,7 @@
         ],
         "summary": "Get the stored calibration",
         "description": "Returns the persisted calibration JSON, or 404 if none.",
+        "operationId": "getCalibration",
         "parameters": [
           {
             "in": "path",
@@ -5451,6 +5552,7 @@
         ],
         "summary": "Delete the stored calibration",
         "description": "Removes the persisted calibration for the channel. Returns 404 when none was stored.",
+        "operationId": "deleteCalibration",
         "parameters": [
           {
             "in": "path",
@@ -5514,6 +5616,7 @@
         ],
         "summary": "Set per-fan calibration overrides",
         "description": "Replaces the kick-boost and kick-duration override fields on the stored calibration. Both fields in the body are applied unconditionally; `null` clears the override. Returns 404 when no calibration is stored for the channel.",
+        "operationId": "setCalibrationOverrides",
         "parameters": [
           {
             "in": "path",
@@ -5595,6 +5698,7 @@
         ],
         "summary": "Get the calibration batch status",
         "description": "Returns the active or most recent calibration batch, or null when no batch has run this session. The daemon owns the queue, so the UI polls this and re-attaches after a reload.",
+        "operationId": "getCalibrationBatch",
         "responses": {
           "200": {
             "description": "",
@@ -5631,6 +5735,7 @@
         ],
         "summary": "Start a calibration batch",
         "description": "Queues calibration of the given channels and returns 202. Returns 409 when a batch is already active or the request is invalid.",
+        "operationId": "startCalibrationBatch",
         "requestBody": {
           "description": "Body for `POST /calibrations/batch/start`. `concurrency` is how many\n sweeps run at once (1 = sequential); omitted or 0 is treated as 1, and\n the daemon clamps it to the channel count.",
           "content": {
@@ -5682,6 +5787,7 @@
         ],
         "summary": "Cancel the calibration batch",
         "description": "Cancels the active batch and stops its queue. Returns 404 when no batch is active.",
+        "operationId": "cancelCalibrationBatch",
         "responses": {
           "200": {
             "description": "no content"
@@ -5725,6 +5831,7 @@
         ],
         "summary": "Map device duties to true duties",
         "description": "Runs each device duty through the calibration's stable inverse and returns the true duties that reproduce it, in the same order. A calibrated channel reinterprets stored duties as true-duty, so a curve authored before calibration behaves differently; feeding its points through here yields values that restore the old behavior. Computes nothing else and stores nothing. Returns 404 when the channel has no stored calibration, and 409 for a stepped calibration, which is written through unmapped and so has nothing to convert. Rejects an empty list, more than 256 entries, or any duty over 100.",
+        "operationId": "mapCalibrationDuties",
         "parameters": [
           {
             "in": "path",
@@ -5806,6 +5913,7 @@
         ],
         "summary": "Detect Hardware",
         "description": "Return what the startup Super-I/O detection found, retained rather than re-probed. `probed` is false when no detection ran at all, so an empty chip list means \"not looked for\" rather than \"none present\".",
+        "operationId": "detectHardware",
         "responses": {
           "200": {
             "description": "Response for GET/POST /detect",
@@ -5854,6 +5962,7 @@
         ],
         "summary": "Detect Hardware and Load Modules",
         "description": "Run Super-I/O hardware detection and optionally load kernel modules.",
+        "operationId": "detectAndLoadModules",
         "requestBody": {
           "description": "Request body for POST /detect",
           "content": {
@@ -5915,6 +6024,7 @@
         ],
         "summary": "Hardware Support Report",
         "description": "Returns a paste-ready hardware support report as plain text. `full` adds the whole hwmon tree; the compact default is trimmed to stay pasteable. Includes liquidctl devices, which only the running daemon can enumerate without touching hardware.",
+        "operationId": "getHardwareReport",
         "parameters": [
           {
             "in": "query",
@@ -5978,6 +6088,7 @@
         ],
         "summary": "Start CPU Stress Test",
         "description": "Spawns a CPU stress subprocess with tight FMA loops on the requested number of threads.",
+        "operationId": "startCpuStressTest",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6033,6 +6144,7 @@
         ],
         "summary": "Stop CPU Stress Test",
         "description": "Stops the running CPU stress test.",
+        "operationId": "stopCpuStressTest",
         "responses": {
           "200": {
             "description": "",
@@ -6080,6 +6192,7 @@
         ],
         "summary": "Start GPU Stress Test",
         "description": "Spawns a GPU stress subprocess using wgpu compute shaders (Vulkan or OpenGL ES via ANGLE).",
+        "operationId": "startGpuStressTest",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6135,6 +6248,7 @@
         ],
         "summary": "Stop GPU Stress Test",
         "description": "Stops the running GPU stress test.",
+        "operationId": "stopGpuStressTest",
         "responses": {
           "200": {
             "description": "",
@@ -6182,6 +6296,7 @@
         ],
         "summary": "List Available GPUs",
         "description": "Returns the GPUs available for stress testing, discrete first. Enumerated out of process on first use, then cached.",
+        "operationId": "listStressTestGpus",
         "responses": {
           "200": {
             "description": "",
@@ -6211,6 +6326,7 @@
         ],
         "summary": "Start RAM Stress Test",
         "description": "Spawns a RAM stress subprocess that streams data through system memory to maximize bandwidth.",
+        "operationId": "startRamStressTest",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6266,6 +6382,7 @@
         ],
         "summary": "Stop RAM Stress Test",
         "description": "Stops the running RAM stress test.",
+        "operationId": "stopRamStressTest",
         "responses": {
           "200": {
             "description": "",
@@ -6313,6 +6430,7 @@
         ],
         "summary": "Start Drive Stress Test",
         "description": "Spawns a drive stress subprocess that performs random read-only I/O on the specified block device using O_DIRECT.",
+        "operationId": "startDriveStressTest",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6368,6 +6486,7 @@
         ],
         "summary": "Stop Drive Stress Test",
         "description": "Stops the running drive stress test.",
+        "operationId": "stopDriveStressTest",
         "responses": {
           "200": {
             "description": "",
@@ -6415,6 +6534,7 @@
         ],
         "summary": "List Available Drives",
         "description": "Returns block devices available for drive stress testing.",
+        "operationId": "listStressTestDrives",
         "responses": {
           "200": {
             "description": "",
@@ -6444,6 +6564,7 @@
         ],
         "summary": "Stress Test Status",
         "description": "Returns the current status of CPU, GPU, RAM, and Drive stress tests.",
+        "operationId": "getStressTestStatus",
         "responses": {
           "200": {
             "description": "",
@@ -6468,6 +6589,7 @@
         ],
         "summary": "Stop All Stress Tests",
         "description": "Stops all running stress tests (CPU, GPU, RAM, and Drive).",
+        "operationId": "stopAllStressTests",
         "responses": {
           "200": {
             "description": "",
@@ -6515,6 +6637,7 @@
         ],
         "summary": "Prometheus Metrics",
         "description": "Returns device sensor data in Prometheus text exposition format.",
+        "operationId": "getMetrics",
         "responses": {
           "400": {
             "description": "Bad Request. The request is invalid"
@@ -6555,6 +6678,7 @@
         ],
         "summary": "Server Sent Events",
         "description": "Subscribes to every event stream on one connection. Optional `events` query parameter narrows the subscription to a comma-separated subset of: status, health, logs, modes, alerts, notifications, system. Prefer this over the per-stream endpoints: browsers cap concurrent connections per origin over HTTP/1.1.",
+        "operationId": "streamEvents",
         "parameters": [
           {
             "in": "query",
@@ -6658,6 +6782,7 @@
         ],
         "summary": "Log Server Sent Events",
         "description": "Deprecated: use GET /sse?events=logs. Subscribes and returns the Server Sent Events for a Log stream",
+        "operationId": "streamLogs",
         "security": [
           {
             "CookieAuth": []
@@ -6675,6 +6800,7 @@
         ],
         "summary": "Recent Status Server Sent Events",
         "description": "Deprecated: use GET /sse?events=status,health. Subscribes and returns the Server Sent Events for a Status stream",
+        "operationId": "streamStatus",
         "security": [
           {
             "CookieAuth": []
@@ -6692,6 +6818,7 @@
         ],
         "summary": "Activated Mode Events",
         "description": "Deprecated: use GET /sse?events=modes. Subscribes and returns the Server Sent Events for a ModeActivated stream",
+        "operationId": "streamModes",
         "security": [
           {
             "CookieAuth": []
@@ -6709,6 +6836,7 @@
         ],
         "summary": "Alert Events",
         "description": "Deprecated: use GET /sse?events=alerts. Subscribes and returns Events for when an Alert State has changed",
+        "operationId": "streamAlerts",
         "security": [
           {
             "CookieAuth": []
@@ -6726,6 +6854,7 @@
         ],
         "summary": "Desktop Notification Events",
         "description": "Deprecated: use GET /sse?events=notifications. Subscribes and returns Events for desktop notifications that should be displayed to the user",
+        "operationId": "streamNotifications",
         "security": [
           {
             "CookieAuth": []
@@ -6780,7 +6909,12 @@
               "null"
             ]
           }
-        }
+        },
+        "required": [
+          "uid",
+          "name",
+          "previous_uid"
+        ]
       },
       "ActiveModesDto": {
         "type": "object",
@@ -6797,9 +6931,13 @@
               "null"
             ]
           }
-        }
+        },
+        "required": [
+          "current_mode_uid",
+          "previous_mode_uid"
+        ]
       },
-      "AlertDto": {
+      "AlertDto-Input": {
         "type": "object",
         "properties": {
           "channel_source": {
@@ -6915,6 +7053,134 @@
           "warmup_duration"
         ]
       },
+      "AlertDto-Output": {
+        "type": "object",
+        "properties": {
+          "channel_source": {
+            "description": "Legacy single source; still accepted on input when `channel_sources`\n is empty and always populated on output for older API clients.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelSource"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "channel_sources": {
+            "description": "All watched sources; entries must share one `ChannelMetric`.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ChannelSource"
+            }
+          },
+          "cooldown_duration": {
+            "description": "Time in seconds the value must stay back in range before an Active alert clears.",
+            "type": "number",
+            "format": "double",
+            "default": 0.0
+          },
+          "desktop_notify": {
+            "description": "Toggle a desktop notification when this alert enters an `Active` state. (true by default)",
+            "type": "boolean",
+            "default": true
+          },
+          "desktop_notify_audio": {
+            "description": "Toggle whether the desktop notification attempts to play an audio sound\n when this alert enters an `Active` state.\n Note: only applies when `desktop_notify` is enabled.",
+            "type": "boolean",
+            "default": false
+          },
+          "desktop_notify_recovery": {
+            "description": "Toggle a desktop notification when this alert enters an `Inactive` state.",
+            "type": "boolean",
+            "default": true
+          },
+          "enabled": {
+            "description": "A disabled alert is not evaluated at all.",
+            "type": "boolean",
+            "default": true
+          },
+          "max": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "number",
+            "format": "double"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repeat_interval": {
+            "description": "Seconds between repeated notifications while Active; 0 disables, minimum 60 otherwise.",
+            "type": "number",
+            "format": "double",
+            "default": 0.0
+          },
+          "shutdown_on_activation": {
+            "description": "Toggle whether to issue a system shutdown when this Alert enters an `Active` state.",
+            "type": "boolean",
+            "default": false
+          },
+          "silenced_until": {
+            "description": "While set to a future time, notifications and shutdown are suppressed.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null
+          },
+          "source_states": {
+            "description": "Per-source states, parallel to `channel_sources`. Output-only.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceStateDto"
+            }
+          },
+          "state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "uid": {
+            "type": "string"
+          },
+          "warmup_duration": {
+            "description": "Time in seconds throughout which the alert condition must hold before the alert is activated",
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "required": [
+          "uid",
+          "name",
+          "channel_source",
+          "channel_sources",
+          "min",
+          "max",
+          "state",
+          "source_states",
+          "warmup_duration",
+          "cooldown_duration",
+          "repeat_interval",
+          "enabled",
+          "silenced_until",
+          "desktop_notify",
+          "desktop_notify_recovery",
+          "desktop_notify_audio",
+          "shutdown_on_activation"
+        ]
+      },
       "AlertLog": {
         "type": "object",
         "properties": {
@@ -6963,7 +7229,11 @@
           "name",
           "state",
           "message",
-          "timestamp"
+          "timestamp",
+          "silenced",
+          "resolved",
+          "kind",
+          "quiet"
         ]
       },
       "AlertLogKind": {
@@ -6984,17 +7254,6 @@
             "type": "string",
             "const": "unknown"
           }
-        ]
-      },
-      "AlertPath": {
-        "type": "object",
-        "properties": {
-          "alert_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "alert_uid"
         ]
       },
       "AlertState": {
@@ -7047,7 +7306,7 @@
           "alerts": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/AlertDto"
+              "$ref": "#/components/schemas/AlertDto-Output"
             }
           },
           "logs": {
@@ -7118,25 +7377,12 @@
           }
         },
         "required": [
-          "files"
+          "route",
+          "tool",
+          "command",
+          "files",
+          "problem"
         ]
-      },
-      "AmdGpuOverdrivePlanQuery": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "description": "What to plan: `enable` (the default) or `disable`.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OverdriveAction"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          }
-        }
       },
       "AmdGpuOverdriveStatus": {
         "type": "object",
@@ -7187,7 +7433,11 @@
         },
         "required": [
           "state",
+          "tool",
+          "manual_command",
+          "error",
           "rebuild_skipped",
+          "action",
           "removable"
         ]
       },
@@ -7254,7 +7504,7 @@
           "channel_name"
         ]
       },
-      "CCChannelSettings": {
+      "CCChannelSettings-Input": {
         "type": "object",
         "properties": {
           "disabled": {
@@ -7283,6 +7533,37 @@
           "disabled"
         ]
       },
+      "CCChannelSettings-Output": {
+        "type": "object",
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "extension": {
+            "description": "Specialized settings (extensions) that apply to a specific device channel.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChannelExtensions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "description": "The last-detected channel label, stamped by the daemon. Names disabled\n channels. Deprecated as a writable field: client-supplied values are\n ignored. User-defined labels belong in the name overrides\n (overrides.toml). On read it carries the resolved display label.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "label",
+          "disabled",
+          "extension"
+        ]
+      },
       "CCDeviceSettingsUpdate": {
         "description": "A save of `CoolerControl` settings for a specific Device. Extensions it leaves out keep their\n saved values, so a client that predates one does not reset it.",
         "type": "object",
@@ -7291,7 +7572,7 @@
             "description": "A list of channels specific settings, including disable and extension settings.",
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/CCChannelSettings"
+              "$ref": "#/components/schemas/CCChannelSettings-Input"
             }
           },
           "disable": {
@@ -7315,17 +7596,6 @@
           "name",
           "disable",
           "channel_settings"
-        ]
-      },
-      "CSPath": {
-        "type": "object",
-        "properties": {
-          "custom_sensor_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "custom_sensor_id"
         ]
       },
       "CalibrationBatchEntry": {
@@ -7366,7 +7636,10 @@
         "required": [
           "device_uid",
           "channel_name",
-          "phase"
+          "phase",
+          "percent",
+          "stage",
+          "message"
         ]
       },
       "CalibrationBatchStatus": {
@@ -7513,6 +7786,8 @@
               "channel_name",
               "stage",
               "percent",
+              "current_duty",
+              "current_rpm",
               "updated_at"
             ]
           },
@@ -7698,7 +7973,11 @@
           "curve_kind",
           "warnings",
           "was_rpm_only",
-          "timestamp"
+          "kick_boost_override",
+          "kick_duration_override_ms",
+          "walk_after_kick_override",
+          "timestamp",
+          "kick_boost_active"
         ]
       },
       "CalibrationWarning": {
@@ -7835,7 +8114,8 @@
         "required": [
           "device_uid",
           "channel_name",
-          "profile_uid"
+          "profile_uid",
+          "replaces_profile_name"
         ]
       },
       "ChannelAttribute": {
@@ -8140,8 +8420,11 @@
           }
         },
         "required": [
+          "label",
+          "speed_options",
           "lighting_modes",
-          "lcd_modes"
+          "lcd_modes",
+          "lcd_info"
         ]
       },
       "ChannelLabelOverrideRequest": {
@@ -8381,7 +8664,7 @@
           "channel_settings": {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/CCChannelSettings"
+              "$ref": "#/components/schemas/CCChannelSettings-Output"
             }
           },
           "disable": {
@@ -8405,7 +8688,7 @@
           "channel_settings"
         ]
       },
-      "CoolerControlSettingsDto": {
+      "CoolerControlSettingsDto-Input": {
         "type": "object",
         "properties": {
           "allow_unencrypted": {
@@ -8523,6 +8806,143 @@
           }
         }
       },
+      "CoolerControlSettingsDto-Output": {
+        "type": "object",
+        "properties": {
+          "allow_unencrypted": {
+            "description": "Allow unencrypted HTTP connections from non-localhost addresses",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "apply_on_boot": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "compress": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "debug_logging": {
+            "description": "Whether to log at DEBUG level. Applies after a daemon restart.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "device_listener_enabled": {
+            "description": "Whether to listen for device add/remove events at startup",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "drivetemp_suspend": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "hide_duplicate_devices": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "liquidctl_integration": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "no_init": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "poll_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "protocol_header": {
+            "description": "Header to check for proxy client protocol (e.g., \"X-Forwarded-Proto\")",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sensors_auto_detect": {
+            "description": "Whether to auto-detect Super-I/O sensors at startup (`x86_64` only)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "sensors_conf_enabled": {
+            "description": "Whether to apply labels and ignores from the lm-sensors configuration",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "startup_delay": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0
+          },
+          "thinkpad_full_speed": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "tls_fingerprint": {
+            "description": "The SHA-256 fingerprint of the TLS certificate this daemon serves, or `None` when\n TLS is off. Report-only: it is derived from the certificate, so anything sent here\n is ignored.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_strict": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "apply_on_boot",
+          "no_init",
+          "startup_delay",
+          "thinkpad_full_speed",
+          "liquidctl_integration",
+          "hide_duplicate_devices",
+          "compress",
+          "poll_rate",
+          "drivetemp_suspend",
+          "allow_unencrypted",
+          "protocol_header",
+          "sensors_auto_detect",
+          "device_listener_enabled",
+          "sensors_conf_enabled",
+          "tls_strict",
+          "tls_fingerprint",
+          "debug_logging"
+        ]
+      },
       "CreateModeDto": {
         "type": "object",
         "properties": {
@@ -8588,6 +9008,7 @@
           "label",
           "token",
           "created_at",
+          "expires_at",
           "write_access"
         ]
       },
@@ -8598,7 +9019,7 @@
           "Stepped"
         ]
       },
-      "CustomSensor": {
+      "CustomSensor-Input": {
         "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
         "type": "object",
         "properties": {
@@ -8760,6 +9181,172 @@
           "id"
         ]
       },
+      "CustomSensor-Output": {
+        "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
+        "type": "object",
+        "properties": {
+          "children": {
+            "description": "The Custom Sensor's children, if any.\n\n Each Custom Sensor is either a child, parent, or standalone, not a combination of those.\n Custom Sensors are limited to 1 level of hierarchy. This removes the possibility\n of circular references.\n\n The children and parents vectors are managed and filled internally. For GET endpoints,\n they provide this information for clients. For POST or PUT endpoints,\n any values here are essentially ignored.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "description": "The ID MUST be unique: it names the sensor's temp or, for any other metric, its channel\n on the Custom Sensors device.",
+            "type": "string"
+          },
+          "metric": {
+            "description": "The channel metric the sensor reads and reports, `Temp` when absent. All sources\n share it: a `Temp` sensor's sources are `temp_source`, any other metric's are\n `channel_source`. It cannot change once the sensor exists.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomSensorMetric"
+              }
+            ],
+            "default": "Temp"
+          },
+          "parents": {
+            "description": "The Custom Sensor's parents, if any. See `children` for more details.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "Mix"
+              },
+              "mix_function": {
+                "$ref": "#/components/schemas/CustomSensorMixFunctionType"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CustomSensorSource"
+                }
+              }
+            },
+            "required": [
+              "cs_type",
+              "mix_function",
+              "sources"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "File"
+              },
+              "file_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cs_type",
+              "file_path"
+            ]
+          },
+          {
+            "description": "Scale & Offset: `source * scale + offset`.",
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "Offset"
+              },
+              "offset": {
+                "type": "number",
+                "format": "double"
+              },
+              "scale": {
+                "description": "1 when absent.",
+                "type": "number",
+                "format": "double",
+                "default": 1.0
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CustomSensorSource"
+                }
+              }
+            },
+            "required": [
+              "cs_type",
+              "scale",
+              "offset",
+              "sources"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "TimeAverage"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CustomSensorSource"
+                }
+              },
+              "time_window_seconds": {
+                "type": "integer",
+                "format": "uint16",
+                "maximum": 65535,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "cs_type",
+              "time_window_seconds",
+              "sources"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cs_type": {
+                "type": "string",
+                "const": "ExponentialMovingAvg"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CustomSensorSource"
+                }
+              },
+              "time_window_seconds": {
+                "type": "integer",
+                "format": "uint16",
+                "maximum": 65535,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "cs_type",
+              "time_window_seconds",
+              "sources"
+            ]
+          }
+        ],
+        "required": [
+          "id",
+          "metric",
+          "children",
+          "parents"
+        ]
+      },
       "CustomSensorChannelSource": {
         "description": "A channel a non-temperature Custom Sensor reads. The sensor's metric says which of the\n channel's values.",
         "type": "object",
@@ -8844,7 +9431,7 @@
           "custom_sensors": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/CustomSensor"
+              "$ref": "#/components/schemas/CustomSensor-Output"
             }
           }
         },
@@ -8963,21 +9550,6 @@
           "module_status"
         ]
       },
-      "DeviceChannelPath": {
-        "type": "object",
-        "properties": {
-          "channel_name": {
-            "type": "string"
-          },
-          "device_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "device_uid",
-          "channel_name"
-        ]
-      },
       "DeviceChannelStatusDto": {
         "type": "object",
         "properties": {
@@ -8995,7 +9567,7 @@
       "DeviceDto": {
         "type": "object",
         "properties": {
-          "d_type": {
+          "type": {
             "$ref": "#/components/schemas/DeviceType"
           },
           "info": {
@@ -9026,9 +9598,10 @@
         },
         "required": [
           "name",
-          "d_type",
+          "type",
           "type_index",
           "uid",
+          "lc_info",
           "info"
         ]
       },
@@ -9055,7 +9628,8 @@
         },
         "required": [
           "direct_access",
-          "delay_millis"
+          "delay_millis",
+          "per_thread_freq"
         ]
       },
       "DeviceExtensionsUpdate": {
@@ -9236,6 +9810,10 @@
           "temp_max",
           "profile_max_length",
           "profile_min_length",
+          "model",
+          "thinkpad_fan_control",
+          "amd_gpu_overdrive",
+          "per_thread_freq",
           "driver_info"
         ]
       },
@@ -9277,17 +9855,6 @@
           }
         }
       },
-      "DevicePath": {
-        "type": "object",
-        "properties": {
-          "device_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "device_uid"
-        ]
-      },
       "DeviceStatsDto": {
         "type": "object",
         "properties": {
@@ -9319,7 +9886,7 @@
       "DeviceStatusDto": {
         "type": "object",
         "properties": {
-          "d_type": {
+          "type": {
             "$ref": "#/components/schemas/DeviceType"
           },
           "status_history": {
@@ -9340,7 +9907,7 @@
           }
         },
         "required": [
-          "d_type",
+          "type",
           "type_index",
           "uid",
           "status_history"
@@ -9394,6 +9961,7 @@
         },
         "required": [
           "device_path",
+          "model",
           "size_bytes"
         ]
       },
@@ -9427,8 +9995,7 @@
           }
         },
         "required": [
-          "drv_type",
-          "locations"
+          "drv_type"
         ]
       },
       "DriverType": {
@@ -9619,7 +10186,7 @@
           "Bottom"
         ]
       },
-      "Function": {
+      "Function-Input": {
         "description": "The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`\n fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on\n `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left\n to apply-time validation, keeping the input wire contract backward-compatible.",
         "type": "object",
         "properties": {
@@ -9730,24 +10297,142 @@
           "threshold_hopping"
         ]
       },
-      "FunctionPath": {
+      "Function-Output": {
+        "description": "The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`\n fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on\n `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left\n to apply-time validation, keeping the input wire contract backward-compatible.",
         "type": "object",
         "properties": {
-          "function_uid": {
+          "bypass_min_at_extremes": {
+            "description": "Whether to bypass the minimum step size when the target duty is exactly 0% or 100%.\n Useful for ensuring fans fully stop or reach max RPM even when the change is below the\n minimum step size. The maximum step size is still respected. Disabled by default.",
+            "type": "boolean",
+            "default": false
+          },
+          "duty_maximum": {
+            "description": "The maximum duty change (step size) to apply\n A duty maximum of `0` indicates a fixed step size. Use `duty_minimum` to set the step size.\n Previously `duty_maximum`.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "duty_minimum": {
+            "description": "The minimum duty change (step size) to apply\n Previously `duty_minimum`.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "name": {
+            "description": "The user given name for this function",
+            "type": "string"
+          },
+          "step_size_max_decreasing": {
+            "description": "The maximum step size to apply when decreasing.\n A value of `0` indicates a fixed step size. Use `step_size_minimum_decreasing` to set the step size.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "step_size_min_decreasing": {
+            "description": "The minimum step size to apply when decreasing.\n A value of `0` indicates a symmetric step size. Use `duty_minimum` to set the step size.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "threshold_hopping": {
+            "description": "Whether to temporarily bypass thresholds when fan speed remains unchanged for 30+ seconds to meet curve target.",
+            "type": "boolean"
+          },
+          "uid": {
+            "description": "The Unique identifier for this function",
             "type": "string"
           }
         },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "f_type": {
+                "type": "string",
+                "const": "Identity"
+              }
+            },
+            "required": [
+              "f_type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "deviance": {
+                "description": "The temperature deviance threshold in degrees",
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "f_type": {
+                "type": "string",
+                "const": "Standard"
+              },
+              "only_downward": {
+                "description": "Whether to apply settings only on the way down",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "response_delay": {
+                "description": "The response delay in seconds",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "f_type",
+              "deviance",
+              "only_downward",
+              "response_delay"
+            ]
+          }
+        ],
         "required": [
-          "function_uid"
+          "uid",
+          "name",
+          "duty_minimum",
+          "duty_maximum",
+          "step_size_min_decreasing",
+          "step_size_max_decreasing",
+          "threshold_hopping",
+          "bypass_min_at_extremes"
         ]
       },
-      "FunctionsDto": {
+      "FunctionsDto-Input": {
         "type": "object",
         "properties": {
           "functions": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Function"
+              "$ref": "#/components/schemas/Function-Input"
+            }
+          }
+        },
+        "required": [
+          "functions"
+        ]
+      },
+      "FunctionsDto-Output": {
+        "type": "object",
+        "properties": {
+          "functions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Function-Output"
             }
           }
         },
@@ -9798,19 +10483,19 @@
           "custom_sensors": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/CustomSensor"
+              "$ref": "#/components/schemas/CustomSensor-Output"
             }
           },
           "functions": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Function"
+              "$ref": "#/components/schemas/Function-Output"
             }
           },
           "profiles": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Profile"
+              "$ref": "#/components/schemas/Profile-Output"
             }
           }
         },
@@ -10058,10 +10743,11 @@
         },
         "required": [
           "driver_type",
+          "firmware_version",
           "unknown_asetek"
         ]
       },
-      "LcdCarouselSettings": {
+      "LcdCarouselSettings-Input": {
         "description": "Settings for the LCD Carousel.\n\n This can be used to have a carousel of images (static or gif), of sensor data,\n or a combination of both.",
         "type": "object",
         "properties": {
@@ -10083,18 +10769,28 @@
           "interval"
         ]
       },
-      "LcdImageUpdateQuery": {
+      "LcdCarouselSettings-Output": {
+        "description": "Settings for the LCD Carousel.\n\n This can be used to have a carousel of images (static or gif), of sensor data,\n or a combination of both.",
         "type": "object",
         "properties": {
-          "log": {
-            "description": "Set to false to log a successful apply at debug level.",
+          "images_path": {
+            "description": "The absolute path directory location for images for the carousel. All applicable images\n present are processed when the setting is applied.",
             "type": [
-              "boolean",
+              "string",
               "null"
-            ],
-            "default": null
+            ]
+          },
+          "interval": {
+            "description": "The interval in seconds (2-900) in which to change images in the carousel.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
           }
-        }
+        },
+        "required": [
+          "images_path",
+          "interval"
+        ]
       },
       "LcdInfo": {
         "description": "Specific LCD Screen info",
@@ -10130,6 +10826,9 @@
       "LcdMode": {
         "type": "object",
         "properties": {
+          "type": {
+            "$ref": "#/components/schemas/LcdModeType"
+          },
           "brightness": {
             "type": "boolean"
           },
@@ -10156,9 +10855,6 @@
           },
           "orientation": {
             "type": "boolean"
-          },
-          "type_": {
-            "$ref": "#/components/schemas/LcdModeType"
           }
         },
         "required": [
@@ -10169,7 +10865,7 @@
           "image",
           "colors_min",
           "colors_max",
-          "type_"
+          "type"
         ]
       },
       "LcdModeType": {
@@ -10180,7 +10876,7 @@
           "Custom"
         ]
       },
-      "LcdSettings": {
+      "LcdSettings-Input": {
         "description": "LCD mode and its mode-specific fields, internally tagged on the `mode` discriminator\n (lowercase, as before). Named `LcdModeKind` to avoid colliding with `device::LcdMode`, the\n device-capability struct. The per-mode fields stay `Option` for now: the enum already makes\n a mode structurally unable to carry another mode's field; requiredness is still enforced by\n the existing apply-time validation.",
         "type": "object",
         "properties": {
@@ -10307,7 +11003,7 @@
               "carousel": {
                 "anyOf": [
                   {
-                    "$ref": "#/components/schemas/LcdCarouselSettings"
+                    "$ref": "#/components/schemas/LcdCarouselSettings-Input"
                   },
                   {
                     "type": "null"
@@ -10325,22 +11021,165 @@
           }
         ]
       },
-      "LcdUpdateQuery": {
+      "LcdSettings-Output": {
+        "description": "LCD mode and its mode-specific fields, internally tagged on the `mode` discriminator\n (lowercase, as before). Named `LcdModeKind` to avoid colliding with `device::LcdMode`, the\n device-capability struct. The per-mode fields stay `Option` for now: the enum already makes\n a mode structurally unable to carry another mode's field; requiredness is still enforced by\n the existing apply-time validation.",
         "type": "object",
         "properties": {
-          "log": {
-            "description": "Set to false for frequent updates from an external program. The setting is applied\n to the device only: it is not saved and does not deactivate the active Mode. Success\n is logged at debug level.",
+          "brightness": {
+            "description": "The LCD brightness (0-100%).",
             "type": [
-              "boolean",
+              "integer",
               "null"
             ],
-            "default": null
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "colors": {
+            "description": "Unused; kept for downgrade compatibility.",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "array",
+              "items": [
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                },
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                },
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                }
+              ],
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "orientation": {
+            "description": "The LCD orientation (0, 90, 180, 270). Applies across modes, so it stays shared.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0
           }
-        }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "none"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "liquid"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "image_file_processed": {
+                "description": "Processed (preprocessed) image file path location.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mode": {
+                "type": "string",
+                "const": "image"
+              }
+            },
+            "required": [
+              "mode",
+              "image_file_processed"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "temp"
+              },
+              "temp_source": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TempSource"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "mode",
+              "temp_source"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "carousel": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LcdCarouselSettings-Output"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mode": {
+                "type": "string",
+                "const": "carousel"
+              }
+            },
+            "required": [
+              "mode",
+              "carousel"
+            ]
+          }
+        ],
+        "required": [
+          "brightness",
+          "orientation",
+          "colors"
+        ]
       },
       "LightingMode": {
         "type": "object",
         "properties": {
+          "type": {
+            "$ref": "#/components/schemas/LightingModeType"
+          },
           "backward_enabled": {
             "type": "boolean"
           },
@@ -10364,9 +11203,6 @@
           },
           "speed_enabled": {
             "type": "boolean"
-          },
-          "type_": {
-            "$ref": "#/components/schemas/LightingModeType"
           }
         },
         "required": [
@@ -10376,7 +11212,7 @@
           "max_colors",
           "speed_enabled",
           "backward_enabled",
-          "type_"
+          "type"
         ]
       },
       "LightingModeType": {
@@ -10387,7 +11223,7 @@
           "Custom"
         ]
       },
-      "LightingSettings": {
+      "LightingSettings-Input": {
         "type": "object",
         "properties": {
           "backward": {
@@ -10440,6 +11276,64 @@
         },
         "required": [
           "mode",
+          "colors"
+        ]
+      },
+      "LightingSettings-Output": {
+        "type": "object",
+        "properties": {
+          "backward": {
+            "description": "run backwards or not",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "colors": {
+            "description": "a list of RGB tuple values, eg [(20,20,120), (0,0,255)]",
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": [
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                },
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                },
+                {
+                  "type": "integer",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0
+                }
+              ],
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "mode": {
+            "description": "The lighting mode name",
+            "type": "string"
+          },
+          "speed": {
+            "description": "The speed to set",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "speed",
+          "backward",
           "colors"
         ]
       },
@@ -10553,17 +11447,6 @@
           "mode_uids"
         ]
       },
-      "ModePath": {
-        "type": "object",
-        "properties": {
-          "mode_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "mode_uid"
-        ]
-      },
       "ModesDto": {
         "type": "object",
         "properties": {
@@ -10649,21 +11532,9 @@
             },
             "default": {}
           }
-        }
-      },
-      "PluginDataPath": {
-        "type": "object",
-        "properties": {
-          "data_path": {
-            "type": "string"
-          },
-          "plugin_id": {
-            "type": "string"
-          }
         },
         "required": [
-          "plugin_id",
-          "data_path"
+          "devices"
         ]
       },
       "PluginDto": {
@@ -10709,21 +11580,13 @@
         "required": [
           "id",
           "service_type",
+          "description",
+          "version",
+          "url",
           "address",
           "privileged",
           "path",
           "disabled"
-        ]
-      },
-      "PluginPath": {
-        "type": "object",
-        "properties": {
-          "plugin_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "plugin_id"
         ]
       },
       "PluginStatusDto": {
@@ -10740,22 +11603,8 @@
           }
         },
         "required": [
-          "status"
-        ]
-      },
-      "PluginUiPath": {
-        "type": "object",
-        "properties": {
-          "file_path": {
-            "type": "string"
-          },
-          "plugin_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "plugin_id",
-          "file_path"
+          "status",
+          "reason"
         ]
       },
       "PluginsDto": {
@@ -10815,6 +11664,7 @@
         },
         "required": [
           "available",
+          "active",
           "modes"
         ]
       },
@@ -10843,7 +11693,7 @@
           "preset"
         ]
       },
-      "Profile": {
+      "Profile-Input": {
         "description": "Profile Settings",
         "type": "object",
         "properties": {
@@ -11034,6 +11884,204 @@
           "function_uid"
         ]
       },
+      "Profile-Output": {
+        "description": "Profile Settings",
+        "type": "object",
+        "properties": {
+          "function_uid": {
+            "description": "The function uid to apply to this profile.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "p_type": {
+                "type": "string",
+                "const": "Default"
+              }
+            },
+            "required": [
+              "p_type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "p_type": {
+                "type": "string",
+                "const": "Fixed"
+              },
+              "speed_fixed": {
+                "description": "The fixed duty speed to set. eg: 20 (%)",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "p_type",
+              "speed_fixed"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "p_type": {
+                "type": "string",
+                "const": "Graph"
+              },
+              "speed_profile": {
+                "description": "The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]",
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "format": "double"
+                    },
+                    {
+                      "type": "integer",
+                      "format": "uint8",
+                      "maximum": 255,
+                      "minimum": 0
+                    }
+                  ],
+                  "maxItems": 2,
+                  "minItems": 2
+                }
+              },
+              "temp_max": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "temp_min": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "temp_source": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TempSource"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "p_type",
+              "speed_profile",
+              "temp_source",
+              "temp_min",
+              "temp_max"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "member_profile_uids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "mix_function_type": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ProfileMixFunctionType"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "p_type": {
+                "type": "string",
+                "const": "Mix"
+              }
+            },
+            "required": [
+              "p_type",
+              "member_profile_uids",
+              "mix_function_type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "member_profile_uids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "offset_profile": {
+                "description": "The graph offset to apply to the associated member profile. Can also be a static\n offset when there is only one duty/offset pair.",
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "integer",
+                      "format": "uint8",
+                      "maximum": 255,
+                      "minimum": 0
+                    },
+                    {
+                      "type": "integer",
+                      "format": "int8",
+                      "maximum": 127,
+                      "minimum": -128
+                    }
+                  ],
+                  "maxItems": 2,
+                  "minItems": 2
+                }
+              },
+              "p_type": {
+                "type": "string",
+                "const": "Overlay"
+              }
+            },
+            "required": [
+              "p_type",
+              "member_profile_uids",
+              "offset_profile"
+            ]
+          }
+        ],
+        "required": [
+          "uid",
+          "name",
+          "function_uid"
+        ]
+      },
       "ProfileMixFunctionType": {
         "type": "string",
         "enum": [
@@ -11044,24 +12092,13 @@
           "Sum"
         ]
       },
-      "ProfilePath": {
-        "type": "object",
-        "properties": {
-          "profile_uid": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "profile_uid"
-        ]
-      },
-      "ProfilesDto": {
+      "ProfilesDto-Input": {
         "type": "object",
         "properties": {
           "profiles": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Profile"
+              "$ref": "#/components/schemas/Profile-Input"
             }
           }
         },
@@ -11069,15 +12106,19 @@
           "profiles"
         ]
       },
-      "ReportQuery": {
+      "ProfilesDto-Output": {
         "type": "object",
         "properties": {
-          "full": {
-            "description": "Include the whole hwmon tree instead of the compact summary.",
-            "type": "boolean",
-            "default": false
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Profile-Output"
+            }
           }
-        }
+        },
+        "required": [
+          "profiles"
+        ]
       },
       "ReportResponse": {
         "type": "object",
@@ -11155,7 +12196,7 @@
             "type": "object",
             "properties": {
               "lighting": {
-                "$ref": "#/components/schemas/LightingSettings"
+                "$ref": "#/components/schemas/LightingSettings-Output"
               }
             },
             "required": [
@@ -11167,7 +12208,7 @@
             "type": "object",
             "properties": {
               "lcd": {
-                "$ref": "#/components/schemas/LcdSettings"
+                "$ref": "#/components/schemas/LcdSettings-Output"
               }
             },
             "required": [
@@ -11368,7 +12409,8 @@
         "required": [
           "min_duty",
           "max_duty",
-          "fixed_enabled"
+          "fixed_enabled",
+          "extension"
         ]
       },
       "SseEvent": {
@@ -11592,18 +12634,6 @@
           }
         ]
       },
-      "SseQuery": {
-        "type": "object",
-        "properties": {
-          "events": {
-            "description": "Comma-separated substreams to subscribe to. All of them when absent.",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
       "StartCalibrationBatchRequest": {
         "description": "Body for `POST /calibrations/batch/start`. `concurrency` is how many\n sweeps run at once (1 = sequential); omitted or 0 is treated as 1, and\n the daemon clamps it to the channel count.",
         "type": "object",
@@ -11800,22 +12830,8 @@
           }
         },
         "required": [
-          "timestamp",
-          "temps",
-          "channels"
+          "timestamp"
         ]
-      },
-      "StatusQuery": {
-        "type": "object",
-        "properties": {
-          "all": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "default": null
-          }
-        }
       },
       "StatusRequest": {
         "type": "object",
@@ -11927,12 +12943,16 @@
         "required": [
           "stress_ng_available",
           "cpu_active",
+          "cpu_duration_secs",
           "cpu_backend",
           "gpu_active",
+          "gpu_duration_secs",
           "gpu_backend",
           "ram_active",
+          "ram_duration_secs",
           "ram_backend",
           "drive_active",
+          "drive_duration_secs",
           "drive_backend"
         ]
       },
@@ -11966,7 +12986,8 @@
         },
         "required": [
           "kind",
-          "value"
+          "value",
+          "previous"
         ]
       },
       "SystemEventKind": {
@@ -12149,6 +13170,8 @@
           "id",
           "label",
           "created_at",
+          "expires_at",
+          "last_used",
           "write_access"
         ]
       },
@@ -12164,17 +13187,6 @@
         },
         "required": [
           "tokens"
-        ]
-      },
-      "TokenPath": {
-        "type": "object",
-        "properties": {
-          "token_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "token_id"
         ]
       },
       "UnreachableDelta": {

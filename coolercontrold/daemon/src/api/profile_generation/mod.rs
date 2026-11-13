@@ -11,6 +11,7 @@
 //! and the remaining kinds are skipped until their phase.
 
 use crate::api::devices::{apply_effective_speed_options, build_calibration_map, DeviceDto};
+use crate::api::Json;
 use crate::api::{AppState, CCError};
 use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, Temp, TempName};
 use crate::setting::{
@@ -19,7 +20,6 @@ use crate::setting::{
     SensorSource, TempSource, DEFAULT_FUNCTION_UID,
 };
 use axum::extract::State;
-use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

@@ -17,6 +17,7 @@ mod dual_protocol;
 mod frame_policy;
 mod functions;
 mod hardware_report;
+mod json;
 mod last_modified;
 mod metrics;
 pub mod modes;
@@ -75,9 +76,10 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::{Json, Router, ServiceExt};
+use axum::{Router, ServiceExt};
 use axum_server::accept::DefaultAcceptor;
 use axum_server::tls_rustls::RustlsConfig;
+pub use json::Json;
 use log::{debug, info, warn, Level};
 use moro_local::Scope;
 use schemars::JsonSchema;
@@ -455,15 +457,24 @@ async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxi
 #[cfg(debug_assertions)]
 fn finish_api(router: ApiRouter) -> Router {
     let mut open_api = OpenApi::default();
-    router
-        .finish_api_with(&mut open_api, api_docs)
-        .layer(axum::Extension(Arc::new(open_api)))
+    let router = router.finish_api_with(&mut open_api, api_docs);
+    json::finish_spec(&mut open_api);
+    router.layer(axum::Extension(Arc::new(open_api)))
 }
 
 /// Release builds have no `/api.json` route, so nothing would read the document. Each
 /// listener's copy holds about 3 MB.
 #[cfg(not(debug_assertions))]
 fn finish_api(router: ApiRouter) -> Router {
+    finish_api_release(router)
+}
+
+/// Declaring routes fills aide's thread-local schema state and ours. Only document builds
+/// drain it, so without the discard a release daemon keeps it for its whole life.
+#[cfg(any(test, not(debug_assertions)))]
+fn finish_api_release<S: Clone + Send + Sync + 'static>(router: ApiRouter<S>) -> Router<S> {
+    aide::generate::reset_context();
+    json::discard_response_schemas();
     Router::from(router)
 }
 
@@ -558,6 +569,7 @@ fn with_base_layers(
 pub fn openapi_spec() -> OpenApi {
     let mut open_api = OpenApi::default();
     let _ = router::documented_routes().finish_api_with(&mut open_api, api_docs);
+    json::finish_spec(&mut open_api);
     open_api
 }
 
@@ -1485,6 +1497,7 @@ impl FromRef<AppState> for DeviceHandle {
 mod tests {
     use super::*;
     use axum::Extension;
+    use std::collections::HashSet;
     use tower::ServiceExt as _;
 
     /// Goal: only debug builds build and keep the `OpenAPI` document. Release builds have no
@@ -1753,6 +1766,124 @@ mod tests {
              routes no longer served: {only_in_file:?}\n\
              (an empty diff here means only schemas or descriptions changed)"
         );
+    }
+
+    /// Goal: generated API clients name their methods after `operationId`, so every operation
+    /// needs one, unique and stable. A missing id makes some generators refuse the spec.
+    /// Method: walk every operation in the generated spec and check its id.
+    #[test]
+    fn every_operation_has_a_unique_camel_case_id() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let paths = spec["paths"].as_object().expect("the spec has paths");
+        let mut ids = HashSet::new();
+        for (path, item) in paths {
+            let item = item.as_object().expect("a path item is an object");
+            for method in [
+                "get", "put", "post", "delete", "options", "head", "patch", "trace",
+            ] {
+                let Some(operation) = item.get(method) else {
+                    continue;
+                };
+                let id = operation["operationId"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{method} {path} has no operationId"));
+                let mut chars = id.chars();
+                assert!(
+                    chars.next().is_some_and(|c| c.is_ascii_lowercase()),
+                    "{method} {path}: {id} must start with a lowercase letter"
+                );
+                assert!(
+                    chars.all(|c| c.is_ascii_alphanumeric()),
+                    "{method} {path}: {id} must be camelCase"
+                );
+                assert!(ids.insert(id.to_string()), "duplicate operationId {id}");
+            }
+        }
+        assert!(ids.is_empty().not());
+    }
+
+    /// Goal: merging the two schema directions leaves no ref dangling or still pointing at
+    /// the response generator's temporary path, and pruning leaves no schema unused.
+    /// Method: collect every `$ref` in the generated spec and resolve it, then check that
+    /// every component schema was the target of one.
+    #[test]
+    fn every_schema_ref_resolves_and_every_schema_is_used() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let schemas = spec["components"]["schemas"]
+            .as_object()
+            .expect("the spec has schemas");
+        let mut stack = vec![&spec];
+        let mut ref_count = 0_usize;
+        let mut referenced = HashSet::new();
+        while let Some(node) = stack.pop() {
+            match node {
+                serde_json::Value::Object(object) => {
+                    for (key, child) in object {
+                        if key != "$ref" {
+                            stack.push(child);
+                            continue;
+                        }
+                        let reference = child.as_str().expect("a ref is a string");
+                        let name = reference
+                            .strip_prefix("#/components/schemas/")
+                            .unwrap_or_else(|| panic!("{reference} is not a component ref"));
+                        assert!(schemas.contains_key(name), "{reference} dangles");
+                        referenced.insert(name);
+                        ref_count += 1;
+                    }
+                }
+                serde_json::Value::Array(items) => stack.extend(items),
+                _ => {}
+            }
+        }
+        assert!(ref_count > 0);
+        for name in schemas.keys() {
+            assert!(
+                referenced.contains(name.as_str()),
+                "{name} is never referenced"
+            );
+        }
+    }
+
+    /// Goal: release builds keep no schema state once routes are declared, since nothing
+    /// builds a document from it.
+    /// Method: declare the routes, then check both generators are empty after the release
+    /// finish, which every build compiles under test.
+    #[test]
+    fn release_finish_frees_schema_definitions() {
+        let aide_count = || aide::generate::in_context(|ctx| ctx.schema.definitions().len());
+        let routes = router::documented_routes();
+        assert!(aide_count() > 0);
+        assert!(json::response_schema_count() > 0);
+        let _router = finish_api_release(routes);
+        assert_eq!(aide_count(), 0);
+        assert_eq!(json::response_schema_count(), 0);
+    }
+
+    /// Goal: response schemas describe what the daemon sends. These fields were documented
+    /// by their deserialize shape, which no client receives.
+    /// Method: build the full spec, then check field names and `required` lists of types
+    /// whose serialize and deserialize shapes differ.
+    #[test]
+    fn response_schemas_follow_the_serialize_contract() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let schemas = &spec["components"]["schemas"];
+        let device = &schemas["DeviceDto"]["properties"];
+        assert!(device.get("type").is_some());
+        assert!(device.get("d_type").is_none());
+        let required = |name: &str| -> Vec<String> {
+            assert!(schemas[name].is_object(), "{name} is in the spec");
+            serde_json::from_value(schemas[name]["required"].clone()).unwrap_or_default()
+        };
+        // Always sent.
+        assert!(required("Status").contains(&"timestamp".to_string()));
+        // Sent only when non-empty.
+        assert!(required("Status").contains(&"temps".to_string()).not());
+        assert!(required("Status").contains(&"channels".to_string()).not());
+        // Always sent, but optional in a PATCH body.
+        assert!(required("CoolerControlSettingsDto-Output").contains(&"poll_rate".to_string()));
+        let input = required("CoolerControlSettingsDto-Input");
+        assert!(input.contains(&"poll_rate".to_string()).not());
     }
 
     /// An empty or blank address is the documented way to turn an address family off,
