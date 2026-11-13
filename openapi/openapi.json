@@ -4273,7 +4273,7 @@
           "plugins"
         ],
         "summary": "CoolerControl Plugins",
-        "description": "Returns the current list of active CoolerControl plugins.",
+        "description": "Rescans the plugins folder and returns the CoolerControl plugins. The rescan registers new plugins and applies the edited manifest of an integration plugin that has no service. `restart_required` marks the plugins whose changes only a daemon restart applies.",
         "operationId": "listPlugins",
         "responses": {
           "200": {
@@ -4571,58 +4571,6 @@
         "summary": "Restart CoolerControl Plugin",
         "description": "Restarts a managed integration plugin's service.",
         "operationId": "restartPlugin",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "plugin_id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "style": "simple"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "Bad Request. The request is invalid"
-          },
-          "401": {
-            "description": "Unauthorized. Invalid credentials were provided."
-          },
-          "403": {
-            "description": "Forbidden. Insufficient permissions."
-          },
-          "404": {
-            "description": "Whatever you're looking for, it's not here."
-          },
-          "500": {
-            "description": "An internal error has occurred."
-          },
-          "429": {
-            "description": "Too Many Requests. Login attempts have been rate limited."
-          },
-          "502": {
-            "description": "Bad Gateway. An error has occurred with an external library."
-          }
-        },
-        "security": [
-          {
-            "CookieAuth": []
-          }
-        ]
-      }
-    },
-    "/plugins/{plugin_id}/reload": {
-      "post": {
-        "tags": [
-          "plugins"
-        ],
-        "summary": "Reload CoolerControl Plugin Manifest",
-        "description": "Re-reads the manifest of a plugin that has no service to restart. A device plugin's manifest is only checked: applying it takes a daemon restart. A managed integration plugin is refused, since restarting it re-reads its manifest.",
-        "operationId": "reloadPlugin",
         "parameters": [
           {
             "in": "path",
@@ -11562,7 +11510,7 @@
             "type": "boolean"
           },
           "restart_required": {
-            "description": "An enabled device plugin added while the daemon runs: a daemon restart loads its devices.",
+            "description": "Only a daemon restart applies this plugin's changes: a device plugin found, enabled or\n disabled since startup, or a manifest edit the last rescan found.",
             "type": "boolean"
           },
           "service_type": {
