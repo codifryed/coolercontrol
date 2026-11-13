@@ -1295,11 +1295,16 @@
           }
         ],
         "requestBody": {
-          "description": "multipart form data",
+          "description": "Multipart form with one image file.",
           "content": {
             "multipart/form-data": {
               "schema": {
-                "type": "array"
+                "$ref": "#/components/schemas/LcdImageForm"
+              },
+              "encoding": {
+                "images[]": {
+                  "contentType": "image/png, image/gif, image/jpeg, image/bmp, image/tiff"
+                }
               }
             }
           },
@@ -1368,11 +1373,16 @@
           }
         ],
         "requestBody": {
-          "description": "multipart form data",
+          "description": "Multipart form with one image file.",
           "content": {
             "multipart/form-data": {
               "schema": {
-                "type": "array"
+                "$ref": "#/components/schemas/LcdImageForm"
+              },
+              "encoding": {
+                "images[]": {
+                  "contentType": "image/png, image/gif, image/jpeg, image/bmp, image/tiff"
+                }
               }
             }
           },
@@ -1440,11 +1450,16 @@
           }
         ],
         "requestBody": {
-          "description": "multipart form data",
+          "description": "Multipart form with one image file.",
           "content": {
             "multipart/form-data": {
               "schema": {
-                "type": "array"
+                "$ref": "#/components/schemas/LcdImageForm"
+              },
+              "encoding": {
+                "images[]": {
+                  "contentType": "image/png, image/gif, image/jpeg, image/bmp, image/tiff"
+                }
               }
             }
           },
@@ -6731,6 +6746,7 @@
         "summary": "Log Server Sent Events",
         "description": "Deprecated: use GET /sse?events=logs. Subscribes and returns the Server Sent Events for a Log stream",
         "operationId": "streamLogs",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []
@@ -6749,6 +6765,7 @@
         "summary": "Recent Status Server Sent Events",
         "description": "Deprecated: use GET /sse?events=status,health. Subscribes and returns the Server Sent Events for a Status stream",
         "operationId": "streamStatus",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []
@@ -6767,6 +6784,7 @@
         "summary": "Activated Mode Events",
         "description": "Deprecated: use GET /sse?events=modes. Subscribes and returns the Server Sent Events for a ModeActivated stream",
         "operationId": "streamModes",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []
@@ -6785,6 +6803,7 @@
         "summary": "Alert Events",
         "description": "Deprecated: use GET /sse?events=alerts. Subscribes and returns Events for when an Alert State has changed",
         "operationId": "streamAlerts",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []
@@ -6803,6 +6822,7 @@
         "summary": "Desktop Notification Events",
         "description": "Deprecated: use GET /sse?events=notifications. Subscribes and returns Events for desktop notifications that should be displayed to the user",
         "operationId": "streamNotifications",
+        "deprecated": true,
         "security": [
           {
             "CookieAuth": []
@@ -10739,6 +10759,49 @@
           "interval"
         ]
       },
+      "LcdImageForm": {
+        "description": "The multipart form every LCD image endpoint reads.",
+        "type": "object",
+        "properties": {
+          "brightness": {
+            "description": "The LCD brightness (0-100%).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0
+          },
+          "images[]": {
+            "description": "The image file. Exactly one per request.",
+            "type": "string",
+            "format": "binary"
+          },
+          "mode": {
+            "description": "The LCD mode to apply.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LcdModeName"
+              }
+            ]
+          },
+          "orientation": {
+            "description": "The LCD orientation (0, 90, 180, 270).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0
+          }
+        },
+        "required": [
+          "mode",
+          "images[]"
+        ]
+      },
       "LcdInfo": {
         "description": "Specific LCD Screen info",
         "type": "object",
@@ -10813,6 +10876,16 @@
           "colors_min",
           "colors_max",
           "type"
+        ]
+      },
+      "LcdModeName": {
+        "type": "string",
+        "enum": [
+          "none",
+          "liquid",
+          "image",
+          "temp",
+          "carousel"
         ]
       },
       "LcdModeType": {
@@ -12366,9 +12439,10 @@
         ]
       },
       "SseEvent": {
-        "description": "Every event `/sse` publishes, pairing the SSE event name with its payload.\n\n This is the single source of truth for the wire format. Substreams construct these\n and `Event::from` is the only place an event is named, so the compiler rejects a new\n variant until it has a name and a payload. The `OpenAPI` schema derives from the same\n type, which is what keeps the documentation from drifting away from what is sent.\n\n The serde representation models a frame logically as `{\"event\": ..., \"data\": ...}`.\n The wire form is SSE framing (`event: status\\ndata: {...}`), not that envelope:\n `OpenAPI` 3.1 has no way to describe a stream of tagged frames, so the envelope is the\n closest honest description. `sse_event_names_match_serde_tags` pins the two together.",
+        "description": "Every event `/sse` publishes, pairing the SSE event name with its payload.\n\n This is the single source of truth for the wire format. Substreams construct these\n and `Event::from` is the only place an event is named, so the compiler rejects a new\n variant until it has a name and a payload. The `OpenAPI` schema derives from the same\n type, which is what keeps the documentation from drifting away from what is sent.\n\n The serde representation models a frame logically as `{\"event\": ..., \"data\": ...}`.\n The wire form is SSE framing (`event: status\\ndata: {...}`), not that envelope:\n `OpenAPI` 3.1 has no way to describe a stream of tagged frames, so the envelope is the\n closest honest description. `sse_event_names_match_serde_tags` pins the two together.\n Each variant has a title so client generators name its type instead of numbering it.",
         "oneOf": [
           {
+            "title": "SseStatusEvent",
             "description": "One poll tick of every device's most recent status.",
             "type": "object",
             "properties": {
@@ -12386,6 +12460,7 @@
             ]
           },
           {
+            "title": "SseMissingEvent",
             "description": "Temp sources that appeared or disappeared this tick.",
             "type": "object",
             "properties": {
@@ -12406,6 +12481,7 @@
             ]
           },
           {
+            "title": "SseStaleSourceEvent",
             "description": "Temp sources that went stale or recovered this tick.",
             "type": "object",
             "properties": {
@@ -12426,6 +12502,7 @@
             ]
           },
           {
+            "title": "SseFailsafeEvent",
             "description": "Channels that entered or left failsafe this tick.",
             "type": "object",
             "properties": {
@@ -12446,6 +12523,7 @@
             ]
           },
           {
+            "title": "SseUnreachableEvent",
             "description": "Devices that stopped or resumed answering this tick.",
             "type": "object",
             "properties": {
@@ -12466,6 +12544,7 @@
             ]
           },
           {
+            "title": "SseHealthEvent",
             "description": "Full device-health snapshot, sent to a consumer that lagged the transitions.",
             "type": "object",
             "properties": {
@@ -12483,6 +12562,7 @@
             ]
           },
           {
+            "title": "SseLogEvent",
             "description": "One or more daemon log lines, pre-coalesced. Raw text, not JSON.",
             "type": "object",
             "properties": {
@@ -12500,6 +12580,7 @@
             ]
           },
           {
+            "title": "SseModeEvent",
             "description": "The mode that just became active.",
             "type": "object",
             "properties": {
@@ -12517,6 +12598,7 @@
             ]
           },
           {
+            "title": "SseAlertEvent",
             "description": "An alert whose state changed.",
             "type": "object",
             "properties": {
@@ -12534,6 +12616,7 @@
             ]
           },
           {
+            "title": "SseNotificationEvent",
             "description": "A desktop notification for the client to display.",
             "type": "object",
             "properties": {
@@ -12551,6 +12634,7 @@
             ]
           },
           {
+            "title": "SseSystemEvent",
             "description": "A change in observed system state, discriminated by its `kind`.",
             "type": "object",
             "properties": {
@@ -12568,6 +12652,7 @@
             ]
           },
           {
+            "title": "SseAmdGpuOverdriveEvent",
             "description": "The AMD GPU overdrive setup state changed.",
             "type": "object",
             "properties": {

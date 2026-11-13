@@ -15,9 +15,14 @@ use crate::events::amd_gpu_overdrive::{
 use crate::setting::{LcdModeName, LcdSettings, LightingSettings, Setting};
 use crate::Device;
 use aide::axum::IntoApiResponse;
-use axum::extract::multipart::Field;
-use axum::extract::{Multipart, Path, Query, State};
+use aide::generate::GenContext;
+use aide::openapi::{Encoding, MediaType, Operation, RequestBody, SchemaObject};
+use aide::operation::set_body;
+use aide::OperationInput;
+use axum::extract::multipart::{Field, MultipartRejection};
+use axum::extract::{FromRequest, Multipart, Path, Query, Request, State};
 use axum::http::header;
+use indexmap::IndexMap;
 use mime::Mime;
 use schemars::JsonSchema;
 use serde::{de, Deserialize, Deserializer, Serialize};
@@ -205,7 +210,7 @@ pub async fn update_device_setting_lcd_image(
     Path(path): Path<DeviceChannelPath>,
     Query(lcd_image_update_query): Query<LcdImageUpdateQuery>,
     State(AppState { device_handle, .. }): State<AppState>,
-    multipart: Multipart,
+    LcdImageMultipart(multipart): LcdImageMultipart,
 ) -> Result<(), CCError> {
     let form = LcdImageForm::parse(multipart).await?;
     let log_success = lcd_image_update_query.log.unwrap_or(true);
@@ -228,7 +233,7 @@ pub async fn update_device_setting_lcd_image(
 pub async fn process_device_lcd_images(
     Path(path): Path<DeviceChannelPath>,
     State(AppState { device_handle, .. }): State<AppState>,
-    multipart: Multipart,
+    LcdImageMultipart(multipart): LcdImageMultipart,
 ) -> Result<impl IntoApiResponse, CCError> {
     let form = LcdImageForm::parse(multipart).await?;
     device_handle
@@ -247,7 +252,7 @@ pub async fn process_device_lcd_images(
 pub async fn set_device_lcd_shutdown_image(
     Path(path): Path<DeviceChannelPath>,
     State(AppState { device_handle, .. }): State<AppState>,
-    multipart: Multipart,
+    LcdImageMultipart(multipart): LcdImageMultipart,
 ) -> Result<(), CCError> {
     let form = LcdImageForm::parse(multipart).await?;
     let mode = form.lcd_mode()?;
@@ -438,6 +443,79 @@ const LCD_IMAGE_FIELD: &str = "images[]";
 /// Only a single image is ever applied to a channel, so a second upload is
 /// rejected before its body is buffered.
 const LCD_IMAGE_COUNT_MAX: usize = 1;
+
+/// Drop-in for `Multipart` on the LCD image routes. Identical on the wire; it exists so
+/// the documented request body is the form `LcdImageForm::parse` reads, instead of
+/// aide's untyped `array`, which client generators cannot use.
+pub struct LcdImageMultipart(Multipart);
+
+impl<S: Send + Sync> FromRequest<S> for LcdImageMultipart {
+    type Rejection = MultipartRejection;
+
+    async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
+        Multipart::from_request(request, state).await.map(Self)
+    }
+}
+
+impl OperationInput for LcdImageMultipart {
+    fn operation_input(ctx: &mut GenContext, operation: &mut Operation) {
+        let json_schema = ctx.schema.subschema_for::<LcdImageFormSchema>();
+        let image_types: Vec<String> = image::supported_image_types()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert!(
+            image_types.is_empty().not(),
+            "LCD uploads accept some image type"
+        );
+        let image_encoding = Encoding {
+            content_type: Some(image_types.join(", ")),
+            ..Default::default()
+        };
+        let media_type = MediaType {
+            schema: Some(SchemaObject {
+                json_schema,
+                example: None,
+                external_docs: None,
+            }),
+            encoding: IndexMap::from_iter([(LCD_IMAGE_FIELD.to_string(), image_encoding)]),
+            ..Default::default()
+        };
+        set_body(
+            ctx,
+            operation,
+            RequestBody {
+                description: Some("Multipart form with one image file.".to_string()),
+                content: IndexMap::from_iter([("multipart/form-data".to_string(), media_type)]),
+                required: true,
+                ..Default::default()
+            },
+        );
+    }
+}
+
+/// The multipart form every LCD image endpoint reads.
+// Documentation only: the parts are streamed by `LcdImageForm::parse`, never
+// deserialized into this.
+#[derive(JsonSchema)]
+#[schemars(rename = "LcdImageForm")]
+#[expect(dead_code, reason = "only its schema is used")]
+struct LcdImageFormSchema {
+    /// The LCD mode to apply.
+    mode: LcdModeName,
+    /// The LCD brightness (0-100%).
+    #[schemars(range(max = 100))]
+    brightness: Option<u8>,
+    /// The LCD orientation (0, 90, 180, 270).
+    orientation: Option<u16>,
+    /// The image file. Exactly one per request.
+    #[schemars(rename = "images[]", schema_with = "binary_file_schema")]
+    images: (),
+}
+
+fn binary_file_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({ "type": "string", "format": "binary" })
+}
 
 /// Which part of `LcdImageForm` a multipart field feeds. Resolved before the
 /// field is consumed, because reading a body invalidates the borrowed name.
@@ -817,5 +895,52 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Invalid LCD mode name: hologram"));
+    }
+
+    /// Goal: every LCD image route documents the form the handler reads, so generated
+    /// clients can upload, and the documented file field is the one `parse` accepts.
+    /// Method: read each route's request body from the generated spec and the form schema
+    /// it references.
+    #[test]
+    fn lcd_image_routes_document_the_form() {
+        let spec = serde_json::to_value(crate::api::openapi_spec()).expect("the spec serializes");
+        let routes = [
+            (
+                "/devices/{device_uid}/settings/{channel_name}/lcd/images",
+                "post",
+            ),
+            (
+                "/devices/{device_uid}/settings/{channel_name}/lcd/images",
+                "put",
+            ),
+            (
+                "/devices/{device_uid}/settings/{channel_name}/lcd/shutdown-image",
+                "put",
+            ),
+        ];
+        for (path, method) in routes {
+            let body =
+                &spec["paths"][path][method]["requestBody"]["content"]["multipart/form-data"];
+            assert_eq!(
+                body["schema"]["$ref"], "#/components/schemas/LcdImageForm",
+                "{path}"
+            );
+            assert!(
+                body["encoding"][LCD_IMAGE_FIELD]["contentType"].is_string(),
+                "{path}"
+            );
+        }
+        let form = &spec["components"]["schemas"]["LcdImageForm"];
+        assert_eq!(form["properties"][LCD_IMAGE_FIELD]["format"], "binary");
+        assert!(
+            form["properties"].get("images").is_none(),
+            "the field name keeps its []"
+        );
+        let required = form["required"]
+            .as_array()
+            .expect("the form lists required fields");
+        assert!(required.contains(&serde_json::json!("mode")));
+        assert!(required.contains(&serde_json::json!(LCD_IMAGE_FIELD)));
+        assert!(required.contains(&serde_json::json!("brightness")).not());
     }
 }
