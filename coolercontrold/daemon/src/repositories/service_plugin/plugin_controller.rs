@@ -1525,6 +1525,40 @@ mod tests {
         });
     }
 
+    /// Goal: a plugin's type decides whether its devices are registered at startup, so a
+    /// changed type takes a daemon restart even for a plugin whose edits a rescan applies.
+    /// The edit must not be applied, and one that is undone needs no restart.
+    /// Method: register an integration plugin without a service, then change its type to
+    /// device and revert it, rescanning after each.
+    #[test]
+    fn a_rescan_flags_a_changed_plugin_type_until_it_is_reverted() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            write_manifest(plugins_dir.path(), "int", "integration", "at startup");
+            let folder = plugins_dir.path().join("int");
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let controller = controller_with(config, FakeManager::new([ServiceStatus::Running]));
+            let registered = ServicePluginRepo::read_manifest(&folder).await.unwrap();
+            assert!(registered.is_managed().not());
+            controller.register(registered);
+            let restart_required = |controller: &PluginController<FakeManager>| {
+                controller.is_restart_required(&controller.manifest("int").unwrap())
+            };
+
+            write_manifest(plugins_dir.path(), "int", "device", "at startup");
+            controller.discover_plugins_in(plugins_dir.path()).await;
+            assert_eq!(
+                controller.manifest("int").unwrap().service_type,
+                ServiceType::Integration
+            );
+            assert!(restart_required(&controller));
+
+            write_manifest(plugins_dir.path(), "int", "integration", "at startup");
+            controller.discover_plugins_in(plugins_dir.path()).await;
+            assert!(restart_required(&controller).not());
+        });
+    }
+
     /// Goal: devices are loaded or dropped only at startup, so a device plugin enabled or
     /// disabled since then takes a daemon restart, and one switched back needs none. One
     /// enabled since has no devices, which its status has to say.
