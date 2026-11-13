@@ -173,12 +173,14 @@ impl<M: ServiceManager> PluginController<M> {
             .get(&found.id)
             .expect("only a registered plugin is rescanned");
         assert_eq!(registered.id, found.id);
-        let is_stale = match registered.service_type {
-            // A changed type moves the plugin into or out of the startup device registry.
-            _ if ensure_same_plugin(registered, &found).is_err() => true,
+        // With the ids equal, this fails only on a changed type, which moves the plugin
+        // into or out of the startup device registry.
+        let is_same_plugin = ensure_same_plugin(registered, &found).is_ok();
+        let is_stale = match (is_same_plugin, &registered.service_type) {
+            (false, _) => true,
             // Its devices were registered with the manifest it started with.
-            ServiceType::Device => found != *registered,
-            ServiceType::Integration => false,
+            (true, ServiceType::Device) => found != *registered,
+            (true, ServiceType::Integration) => false,
         };
         let mut stale_manifests = self.stale_manifests.borrow_mut();
         if is_stale {
