@@ -164,6 +164,8 @@ fn merge_response_schemas(api: &mut OpenApi) {
         .replace(serialize_generator())
         .take_definitions(true);
     let schemas = &mut api.components.get_or_insert_with(Default::default).schemas;
+    assert_unnumbered_names(schemas.keys());
+    assert_unnumbered_names(serialized.keys());
     let shared = shared_names(schemas, &serialized);
     let split: HashSet<String> = serialized
         .keys()
@@ -231,6 +233,23 @@ fn prune_unreferenced_schemas(api: &mut OpenApi) {
         reachable.len(),
         "every reachable ref resolves"
     );
+}
+
+/// Fails on a name schemars numbered because two types share a base name. Each generator
+/// numbers in the order it meets the types, so `Foo2` can mean a different type in each map,
+/// and the number shifts whenever routes are reordered, renaming a client type.
+fn assert_unnumbered_names<'a>(names: impl Iterator<Item = &'a String>) {
+    let names: HashSet<&str> = names.map(String::as_str).collect();
+    for name in &names {
+        let digits = name.len() - name.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+        for split in (name.len() - digits)..name.len() {
+            let base = &name[..split];
+            assert!(
+                names.contains(base).not(),
+                "{name} collides with {base}; give one type a distinct #[schemars(rename)]"
+            );
+        }
+    }
 }
 
 fn rename_request_variants(
@@ -693,6 +712,43 @@ mod tests {
                 .api_route("/renamed", post(take_renamed))
                 .api_route("/renamed", get(give_renamed))
                 .api_route("/renamed-input", post(take_renamed_input)),
+        );
+    }
+
+    mod first {
+        /// Shares its name with `second::Twin`.
+        #[derive(serde::Deserialize, schemars::JsonSchema)]
+        pub struct Twin {
+            #[expect(dead_code, reason = "only the schema is read")]
+            pub value: u8,
+        }
+    }
+
+    mod second {
+        /// Shares its name with `first::Twin`.
+        #[derive(serde::Deserialize, schemars::JsonSchema)]
+        pub struct Twin {
+            #[expect(dead_code, reason = "only the schema is read")]
+            pub flag: bool,
+        }
+    }
+
+    #[allow(clippy::unused_async)]
+    async fn take_first_twin(Json(_): Json<first::Twin>) {}
+    #[allow(clippy::unused_async)]
+    async fn take_second_twin(Json(_): Json<second::Twin>) {}
+
+    /// Goal: two types that share a name fail the build of the spec rather than reaching
+    /// clients under a numbered name that depends on route order.
+    /// Method: route two same-named types as request bodies, then expect the merge to panic
+    /// on the name schemars numbered.
+    #[test]
+    #[should_panic(expected = "Twin2 collides with Twin")]
+    fn numbered_name_collision_panics() {
+        spec(
+            ApiRouter::new()
+                .api_route("/first", post(take_first_twin))
+                .api_route("/second", post(take_second_twin)),
         );
     }
 
