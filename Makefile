@@ -242,7 +242,9 @@ ci-local: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon 
 # pre-PR gate: lints the committed branch diff only, then UI and daemon tests, clippy pedantic, Qt build
 # usage: make pr-check [base=<ref>]
 base ?= main
-pr-check: validate-metadata openapi-check
+pr-check: validate-metadata
+	@if [ -n "$(openapi_validator)" ]; then $(MAKE) -s openapi-check; \
+	else echo 'Skipping openapi-check: openapi-spec-validator not installed (CI runs it).'; fi
 	@./trunk install --ci
 	@git merge-base $(base) HEAD > /dev/null
 	@git diff -z --name-only --diff-filter=d $(base)...HEAD | xargs -0 -r ./trunk check --ci
