@@ -149,16 +149,6 @@ pub async fn restart_plugin(
         .map_err(handle_lifecycle_error)
 }
 
-pub async fn reload_plugin(
-    Path(path): Path<PluginPath>,
-    State(AppState { plugin_handle, .. }): State<AppState>,
-) -> Result<(), CCError> {
-    plugin_handle
-        .reload_plugin(path.plugin_id)
-        .await
-        .map_err(handle_lifecycle_error)
-}
-
 pub async fn get_plugin_status(
     Path(path): Path<PluginPath>,
     State(AppState { plugin_handle, .. }): State<AppState>,
@@ -453,6 +443,9 @@ pub struct PluginDto {
     pub privileged: bool,
     pub path: String,
     pub disabled: bool,
+    /// Only a daemon restart applies this plugin's changes: a device plugin found, enabled or
+    /// disabled since startup, or a manifest edit the last rescan found.
+    pub restart_required: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]

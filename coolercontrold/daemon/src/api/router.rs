@@ -1184,7 +1184,12 @@ fn plugins_routes() -> ApiRouter<AppState> {
             "/plugins",
             get_with(plugins::get_plugins, |o| {
                 o.id("listPlugins").summary("CoolerControl Plugins")
-                    .description("Returns the current list of active CoolerControl plugins.")
+                    .description(
+                        "Rescans the plugins folder and returns the CoolerControl plugins. The \
+                        rescan registers new plugins and applies the edited manifest of an \
+                        integration plugin that has no service. `restart_required` marks the \
+                        plugins whose changes only a daemon restart applies.",
+                    )
                     .tag("plugins")
                     .security_requirement("CookieAuth")
             })
@@ -1246,21 +1251,6 @@ fn plugins_routes() -> ApiRouter<AppState> {
             post_with(plugins::restart_plugin, |o| {
                 o.id("restartPlugin").summary("Restart CoolerControl Plugin")
                     .description("Restarts a managed integration plugin's service.")
-                    .tag("plugins")
-                    .security_requirement("CookieAuth")
-            })
-            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
-        )
-        .api_route(
-            "/plugins/{plugin_id}/reload",
-            post_with(plugins::reload_plugin, |o| {
-                o.id("reloadPlugin").summary("Reload CoolerControl Plugin Manifest")
-                    .description(
-                        "Re-reads the manifest of a plugin that has no service to restart. \
-                        A device plugin's manifest is only checked: applying it takes a daemon \
-                        restart. A managed integration plugin is refused, since restarting it \
-                        re-reads its manifest.",
-                    )
                     .tag("plugins")
                     .security_requirement("CookieAuth")
             })

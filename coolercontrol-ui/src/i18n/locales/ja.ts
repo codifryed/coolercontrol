@@ -502,7 +502,10 @@ export default {
                 'プラグインはCoolerControlに追加のデバイスサポート、統合、自動化を拡張します。新しいデバイスセンサーとコントロールの提供、外部サービスへの接続、カスタムUIページの追加が可能です。',
             findPlugins: 'プラグインを探してインストール',
             restartNote:
-                '新しく追加したプラグインは、このページを開くとここに表示されます。デバイスプラグインの場合は、デバイスを読み込むために CoolerControl デーモンの再起動も必要です。',
+                '再スキャンするか、このページを開くと、新しく追加したプラグインとマニフェストの変更を検出します。デバイスプラグインの変更は、CoolerControl デーモンの再起動後に反映されます。',
+            restartRequiredBanner:
+                'これらのプラグインの変更を適用するには、デーモンを再起動してください: {plugins}',
+            rescan: 'プラグインを再スキャン',
             containerNote:
                 'コンテナでCoolerControlを実行する場合、プラグインはコンテナの再起動後も保持されるよう、永続化された仮想共有フォルダに配置する必要があります。',
             installedPlugins: 'インストール済みプラグイン',
@@ -519,11 +522,6 @@ export default {
                 'プラグインが有効化されました。適用するにはデーモンを再起動してください。',
             disableFailed: 'プラグインの無効化に失敗しました',
             enableFailed: 'プラグインの有効化に失敗しました',
-            reloadManifest: 'マニフェストを再読み込み',
-            manifestReloaded: 'マニフェストを再読み込みしました。',
-            manifestValidRestart:
-                'マニフェストは有効です。適用するにはデーモンを再起動してください。',
-            reloadFailed: 'マニフェストの再読み込みに失敗しました',
             serviceLogs: 'サービスログ',
             commandCopied: 'コマンドをクリップボードにコピーしました',
             openLinkHeader: '外部リンクを開きますか？',
@@ -1768,6 +1766,7 @@ export default {
             stopped: '停止',
             unmanaged: '非管理',
             disabled: '無効',
+            restartRequired: '再起動が必要',
         },
         deviceType: {
             customSensors: 'カスタムセンサー',

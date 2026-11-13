@@ -498,7 +498,10 @@ export default {
                 'Plugins extend CoolerControl with additional device support, integrations, and automation. They can provide new device sensors and controls, connect to external services, or add custom UI pages.',
             findPlugins: 'Find and install Plugins',
             restartNote:
-                'A newly added plugin appears here when this page is opened. A device plugin also needs a restart of the CoolerControl daemon before its devices are loaded.',
+                "Rescan, or opening this page, picks up newly added plugins and manifest changes. A device plugin's changes take effect after a restart of the CoolerControl daemon.",
+            restartRequiredBanner:
+                'Restart the daemon to apply the changes of these plugins: {plugins}',
+            rescan: 'Rescan plugins',
             containerNote:
                 'When running CoolerControl in a container, plugins must be placed in the persisted virtual shared folder so they survive container restarts.',
             installedPlugins: 'Installed Plugins',
@@ -513,10 +516,6 @@ export default {
             pluginEnabledRestart: 'Plugin enabled. Restart the daemon to apply.',
             disableFailed: 'Failed to disable plugin',
             enableFailed: 'Failed to enable plugin',
-            reloadManifest: 'Reload manifest',
-            manifestReloaded: 'Manifest reloaded.',
-            manifestValidRestart: 'Manifest is valid. Restart the daemon to apply.',
-            reloadFailed: 'Failed to reload manifest',
             serviceLogs: 'Service Logs',
             commandCopied: 'Command copied to clipboard',
             openLinkHeader: 'Open external link?',
@@ -1757,6 +1756,7 @@ export default {
             stopped: 'Stopped',
             unmanaged: 'Unmanaged',
             disabled: 'Disabled',
+            restartRequired: 'Restart Required',
         },
         deviceType: {
             customSensors: 'Custom Sensors',

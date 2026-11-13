@@ -479,7 +479,9 @@ export default {
                 '插件通过额外的设备支持、集成和自动化来扩展 CoolerControl。它们可以提供新的设备传感器和控制、连接外部服务或添加自定义 UI 页面。',
             findPlugins: '查找并安装插件',
             restartNote:
-                '打开此页面时，新添加的插件会显示在此处。设备插件还需要重启 CoolerControl 守护进程，才会加载其设备。',
+                '重新扫描或打开此页面会发现新添加的插件和清单更改。设备插件的更改在 CoolerControl 守护进程重启后生效。',
+            restartRequiredBanner: '重启守护进程以应用这些插件的更改：{plugins}',
+            rescan: '重新扫描插件',
             containerNote:
                 '在容器中运行 CoolerControl 时，插件必须放置在持久化的虚拟共享文件夹中，以便在容器重启后保留。',
             installedPlugins: '已安装的插件',
@@ -494,10 +496,6 @@ export default {
             pluginEnabledRestart: '插件已启用。请重启守护进程以应用。',
             disableFailed: '禁用插件失败',
             enableFailed: '启用插件失败',
-            reloadManifest: '重新加载清单',
-            manifestReloaded: '清单已重新加载。',
-            manifestValidRestart: '清单有效。请重启守护进程以应用。',
-            reloadFailed: '重新加载清单失败',
             serviceLogs: '服务日志',
             commandCopied: '命令已复制到剪贴板',
             openLinkHeader: '打开外部链接？',
@@ -1686,6 +1684,7 @@ export default {
             stopped: '已停止',
             unmanaged: '未托管',
             disabled: '已禁用',
+            restartRequired: '需要重启',
         },
         deviceType: {
             customSensors: '自定义传感器',

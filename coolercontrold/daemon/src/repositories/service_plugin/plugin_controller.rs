@@ -82,6 +82,11 @@ pub struct PluginController<M: ServiceManager = Manager> {
     /// What the last rescan could not load, so that each problem is logged as an error
     /// once and not every time the plugins are listed.
     reported_problems: RefCell<HashSet<String>>,
+    /// The plugins disabled when the daemon started, whose devices were not loaded.
+    disabled_at_startup: HashSet<ServiceId>,
+    /// The plugins whose manifest on disk, as of the last rescan, only a daemon restart
+    /// applies.
+    stale_manifests: RefCell<HashSet<ServiceId>>,
     config: Option<Rc<Config>>,
     service_manager: M,
     is_systemd: bool,
@@ -100,6 +105,9 @@ impl PluginController {
             plugins: RefCell::new(service_plugin_repo.get_plugins()),
             runtime_plugins: service_plugin_repo.runtime_plugins(),
             reported_problems: RefCell::new(HashSet::new()),
+            // The repository has just read the same list to skip these.
+            disabled_at_startup: config.get_disabled_plugins().into_iter().collect(),
+            stale_manifests: RefCell::new(HashSet::new()),
             config: Some(config),
             service_manager,
             is_systemd,
@@ -114,6 +122,8 @@ impl PluginController {
             plugins: RefCell::new(HashMap::new()),
             runtime_plugins: Rc::new(RefCell::new(Vec::new())),
             reported_problems: RefCell::new(HashSet::new()),
+            disabled_at_startup: HashSet::new(),
+            stale_manifests: RefCell::new(HashSet::new()),
             config: None,
             service_manager: Manager::Disabled,
             is_systemd: false,
@@ -123,9 +133,13 @@ impl PluginController {
 }
 
 impl<M: ServiceManager> PluginController<M> {
-    /// Registers plugins whose folder appeared after the daemon started.
+    /// Registers plugins whose folder appeared after the daemon started, and picks up the
+    /// manifest edits of known ones.
     ///
-    /// A known plugin is left alone here: its manifest is re-read when it is started.
+    /// An integration plugin without a service has nothing to restart, so its edited
+    /// manifest is applied here. One with a service applies it when the service starts,
+    /// so that the two stay in step. An edit only a daemon restart applies is noted, see
+    /// `is_restart_required`.
     pub async fn discover_plugins(&self) {
         // Without a config the plugin system failed to initialize.
         if self.config.is_none() {
@@ -141,13 +155,54 @@ impl<M: ServiceManager> PluginController<M> {
         }
         for (service_id, manifest) in found {
             debug_assert_eq!(service_id, manifest.id, "a scan keys a plugin by its id");
-            if self.plugins.borrow().contains_key(&service_id) {
+            let is_registered = self.plugins.borrow().contains_key(&service_id);
+            if is_registered {
+                self.rescan_known(manifest);
                 continue;
             }
             info!("Found new plugin: {service_id}");
             self.runtime_plugins.borrow_mut().push(manifest.clone());
             self.register(manifest);
         }
+    }
+
+    /// Notes or applies the manifest a rescan found for a registered plugin.
+    fn rescan_known(&self, found: ServiceManifest) {
+        let plugins = self.plugins.borrow();
+        let registered = plugins
+            .get(&found.id)
+            .expect("only a registered plugin is rescanned");
+        assert_eq!(registered.id, found.id);
+        // With the ids equal, this fails only on a changed type, which moves the plugin
+        // into or out of the startup device registry.
+        let is_same_plugin = ensure_same_plugin(registered, &found).is_ok();
+        let is_stale = match (is_same_plugin, &registered.service_type) {
+            (false, _) => true,
+            // Its devices were registered with the manifest it started with.
+            (true, ServiceType::Device) => found != *registered,
+            (true, ServiceType::Integration) => false,
+        };
+        let mut stale_manifests = self.stale_manifests.borrow_mut();
+        if is_stale {
+            stale_manifests.insert(found.id);
+            // Only registered plugins are noted, and none is ever unregistered.
+            assert!(stale_manifests.len() <= plugins.len());
+            return;
+        }
+        stale_manifests.remove(&found.id);
+        drop(stale_manifests);
+        if found == *registered {
+            return;
+        }
+        assert_eq!(registered.service_type, ServiceType::Integration);
+        if registered.is_managed() {
+            // Left for its restart, which applies it together with its service.
+            return;
+        }
+        info!("Applied the edited manifest of plugin: {}", found.id);
+        self.track_service(registered, &found);
+        drop(plugins);
+        self.register(found);
     }
 
     /// The problems of a rescan that the one before it did not have, which makes them news.
@@ -181,6 +236,43 @@ impl<M: ServiceManager> PluginController<M> {
             .borrow()
             .iter()
             .any(|manifest| manifest.id == plugin_id)
+    }
+
+    /// Whether a device plugin's devices were loaded when the daemon started.
+    fn was_loaded_at_startup(&self, plugin_id: &str) -> bool {
+        self.is_runtime_plugin(plugin_id).not()
+            && self.disabled_at_startup.contains(plugin_id).not()
+    }
+
+    /// An enabled device plugin, found or enabled since startup, has no devices until the
+    /// daemon restarts.
+    fn is_unloaded_device_plugin(&self, manifest: &ServiceManifest) -> bool {
+        if manifest.service_type != ServiceType::Device {
+            return false;
+        }
+        if self.is_plugin_disabled(&manifest.id) {
+            return false;
+        }
+        self.was_loaded_at_startup(&manifest.id).not()
+    }
+
+    /// Whether a daemon restart would load this plugin differently from how it runs now:
+    /// a device plugin found, enabled or disabled since startup, or an enabled plugin whose
+    /// manifest has an edit only a restart applies.
+    pub fn is_restart_required(&self, manifest: &ServiceManifest) -> bool {
+        assert!(self.plugins.borrow().contains_key(&manifest.id));
+        // Only registered plugins are noted, and none is ever unregistered.
+        assert!(self.stale_manifests.borrow().len() <= self.plugins.borrow().len());
+        let is_enabled = self.is_plugin_disabled(&manifest.id).not();
+        if manifest.service_type == ServiceType::Device {
+            if self.was_loaded_at_startup(&manifest.id) != is_enabled {
+                return true;
+            }
+        }
+        if is_enabled.not() {
+            return false;
+        }
+        self.stale_manifests.borrow().contains(&manifest.id)
     }
 
     /// Re-reads an integration plugin's manifest, so that starting it applies what is on
@@ -342,30 +434,10 @@ impl<M: ServiceManager> PluginController<M> {
             .with_context(|| format!("Restarting plugin service: {plugin_id}"))
     }
 
-    /// Re-reads the manifest of a plugin that has no service to restart.
-    ///
-    /// A managed integration plugin is refused: restarting it is what re-reads its manifest,
-    /// and the only way its service and its manifest stay in step. A device plugin's
-    /// manifest is checked but not applied, since its devices were registered at startup.
-    pub async fn reload_plugin(&self, plugin_id: &str) -> Result<()> {
-        let registered = self.manifest(plugin_id)?;
-        if registered.service_type == ServiceType::Device {
-            let reloaded = ServicePluginRepo::read_manifest(&registered.path).await?;
-            return ensure_same_plugin(&registered, &reloaded);
-        }
-        if registered.is_managed() {
-            return Err(CCError::UserError {
-                msg: "Restart this plugin to apply its manifest".to_string(),
-            }
-            .into());
-        }
-        self.reload_manifest(plugin_id).await
-    }
-
     /// Get the status of a plugin's service.
     pub async fn get_plugin_status(&self, plugin_id: &str) -> Result<ServiceStatus> {
         let manifest = self.manifest(plugin_id)?;
-        if manifest.service_type == ServiceType::Device && self.is_runtime_plugin(plugin_id) {
+        if self.is_unloaded_device_plugin(&manifest) {
             return Ok(ServiceStatus::Stopped(Some(
                 RESTART_TO_LOAD_DEVICES.to_string(),
             )));
@@ -1249,6 +1321,8 @@ mod tests {
             plugins: RefCell::new(HashMap::new()),
             runtime_plugins: Rc::new(RefCell::new(Vec::new())),
             reported_problems: RefCell::new(HashSet::new()),
+            disabled_at_startup: config.get_disabled_plugins().into_iter().collect(),
+            stale_manifests: RefCell::new(HashSet::new()),
             config: Some(config),
             service_manager: manager,
             is_systemd: false,
@@ -1365,81 +1439,163 @@ mod tests {
         });
     }
 
-    /// Goal: a plugin with no service has no restart to re-read its manifest, so a reload
-    /// has to apply it.
-    /// Method: register the plugin without an executable, reload it, and check that the
-    /// description on disk is the one registered.
+    /// Goal: a plugin with no service has no restart to re-read its manifest, so a rescan
+    /// has to apply it. One that gains an executable must be tracked, or its service would
+    /// outlive the daemon.
+    /// Method: register the plugin without an executable, rescan a manifest with one.
     #[test]
-    fn a_reload_applies_the_manifest_of_a_plugin_without_a_service() {
+    fn a_rescan_applies_the_manifest_of_a_plugin_without_a_service() {
         crate::rt::test_runtime(async {
             let plugins_dir = tempfile::tempdir().unwrap();
             let controller = controller_with_edited_manifest(plugins_dir.path(), |registered| {
                 registered.executable = None;
             });
 
-            let result = controller.reload_plugin("test-plugin").await;
+            controller.discover_plugins_in(plugins_dir.path()).await;
 
-            assert!(result.is_ok(), "{result:?}");
             assert_eq!(
                 description_of(&controller, "test-plugin").as_deref(),
                 Some("edited on disk")
             );
+            assert!(controller.is_runtime_plugin("test-plugin"));
+            let manifest = controller.manifest("test-plugin").unwrap();
+            assert!(controller.is_restart_required(&manifest).not());
         });
     }
 
     /// Goal: a managed plugin's manifest must only change together with its service, so a
-    /// reload sends it to its restart and leaves what is registered alone.
-    /// Method: reload a plugin registered with an executable, and check the error and that
-    /// the registered description is unchanged.
+    /// rescan leaves it to the plugin's restart, which needs no daemon restart.
+    /// Method: rescan an edited manifest of a plugin registered with an executable.
     #[test]
-    fn a_reload_sends_a_managed_plugin_to_its_restart() {
+    fn a_rescan_leaves_a_managed_plugin_manifest_to_its_restart() {
         crate::rt::test_runtime(async {
             let plugins_dir = tempfile::tempdir().unwrap();
             let controller = controller_with_edited_manifest(plugins_dir.path(), |_| {});
 
-            let result = controller.reload_plugin("test-plugin").await;
+            controller.discover_plugins_in(plugins_dir.path()).await;
 
-            let message = result.expect_err("a restart applies it").to_string();
-            assert!(message.contains("Restart this plugin"), "{message}");
             assert_eq!(
                 description_of(&controller, "test-plugin").as_deref(),
                 Some("as registered")
             );
+            let manifest = controller.manifest("test-plugin").unwrap();
+            assert!(controller.is_restart_required(&manifest).not());
         });
     }
 
-    /// Goal: a device plugin's devices are registered at startup, so its edited manifest
-    /// cannot take effect under a running daemon. A reload still has to say whether the
-    /// manifest is usable, which is otherwise only found out by restarting the daemon.
-    /// Method: a valid edit is accepted but not registered, a broken one is reported.
+    /// Goal: a device plugin's devices are registered at startup, so an edit to its manifest
+    /// takes a daemon restart, and the UI has to offer one. An edit that is undone needs
+    /// none, and a broken edit must not apply anything.
+    /// Method: register the manifest on disk as at startup, then edit, break and revert it,
+    /// rescanning after each.
     #[test]
-    fn a_reload_checks_a_device_plugin_without_applying_it() {
+    fn a_rescan_flags_an_edited_device_manifest_until_it_is_reverted() {
         crate::rt::test_runtime(async {
             let plugins_dir = tempfile::tempdir().unwrap();
-            let controller = controller_with_edited_manifest(plugins_dir.path(), |registered| {
-                registered.service_type = ServiceType::Device;
-            });
-            write_manifest(
-                plugins_dir.path(),
-                "test-plugin",
-                "device",
-                "edited on disk",
-            );
+            write_manifest(plugins_dir.path(), "dev", "device", "at startup");
+            let folder = plugins_dir.path().join("dev");
+            let manifest_file = folder.join(SERVICE_MANIFEST_FILE_NAME);
+            let at_startup = std::fs::read_to_string(&manifest_file).unwrap();
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let controller = controller_with(config, FakeManager::new([ServiceStatus::Running]));
+            controller.register(ServicePluginRepo::read_manifest(&folder).await.unwrap());
+            let restart_required = |controller: &PluginController<FakeManager>| {
+                controller.is_restart_required(&controller.manifest("dev").unwrap())
+            };
 
-            let valid = controller.reload_plugin("test-plugin").await;
-            let manifest_file = plugins_dir
-                .path()
-                .join("test-plugin")
-                .join(SERVICE_MANIFEST_FILE_NAME);
-            std::fs::write(&manifest_file, "id = ").unwrap();
-            let broken = controller.reload_plugin("test-plugin").await;
+            controller.discover_plugins_in(plugins_dir.path()).await;
+            assert!(restart_required(&controller).not());
 
-            assert!(valid.is_ok(), "{valid:?}");
-            assert!(broken.is_err());
+            write_manifest(plugins_dir.path(), "dev", "device", "edited");
+            controller.discover_plugins_in(plugins_dir.path()).await;
+            assert!(restart_required(&controller));
             assert_eq!(
-                description_of(&controller, "test-plugin").as_deref(),
-                Some("as registered")
+                controller.manifest("dev").unwrap().description.as_deref(),
+                Some("at startup")
             );
+
+            std::fs::write(&manifest_file, "id = ").unwrap();
+            controller.discover_plugins_in(plugins_dir.path()).await;
+            assert!(
+                restart_required(&controller),
+                "a broken edit changes nothing"
+            );
+
+            std::fs::write(&manifest_file, at_startup).unwrap();
+            controller.discover_plugins_in(plugins_dir.path()).await;
+            assert!(restart_required(&controller).not());
+        });
+    }
+
+    /// Goal: a plugin's type decides whether its devices are registered at startup, so a
+    /// changed type takes a daemon restart even for a plugin whose edits a rescan applies.
+    /// The edit must not be applied, and one that is undone needs no restart.
+    /// Method: register an integration plugin without a service, then change its type to
+    /// device and revert it, rescanning after each.
+    #[test]
+    fn a_rescan_flags_a_changed_plugin_type_until_it_is_reverted() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            write_manifest(plugins_dir.path(), "int", "integration", "at startup");
+            let folder = plugins_dir.path().join("int");
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let controller = controller_with(config, FakeManager::new([ServiceStatus::Running]));
+            let registered = ServicePluginRepo::read_manifest(&folder).await.unwrap();
+            assert!(registered.is_managed().not());
+            controller.register(registered);
+            let restart_required = |controller: &PluginController<FakeManager>| {
+                controller.is_restart_required(&controller.manifest("int").unwrap())
+            };
+
+            write_manifest(plugins_dir.path(), "int", "device", "at startup");
+            controller.discover_plugins_in(plugins_dir.path()).await;
+            assert_eq!(
+                controller.manifest("int").unwrap().service_type,
+                ServiceType::Integration
+            );
+            assert!(restart_required(&controller));
+
+            write_manifest(plugins_dir.path(), "int", "integration", "at startup");
+            controller.discover_plugins_in(plugins_dir.path()).await;
+            assert!(restart_required(&controller).not());
+        });
+    }
+
+    /// Goal: devices are loaded or dropped only at startup, so a device plugin enabled or
+    /// disabled since then takes a daemon restart, and one switched back needs none. One
+    /// enabled since has no devices, which its status has to say.
+    /// Method: one device plugin enabled at startup and one disabled, then swap them.
+    #[test]
+    fn a_device_plugin_toggled_since_startup_requires_a_restart() {
+        crate::rt::test_runtime(async {
+            let config = Rc::new(Config::init_default_config().unwrap());
+            config.set_disabled_plugins(&["off-at-start".to_string()]);
+            let manager = FakeManager::new([ServiceStatus::Running]);
+            let controller = controller_with(Rc::clone(&config), manager);
+            for plugin_id in ["on-at-start", "off-at-start"] {
+                let mut manifest = managed_manifest(PathBuf::from("/nonexistent"));
+                manifest.id = plugin_id.to_string();
+                manifest.service_type = ServiceType::Device;
+                manifest.executable = None;
+                controller.register(manifest);
+            }
+            let restart_required = |plugin_id: &str| {
+                controller.is_restart_required(&controller.manifest(plugin_id).unwrap())
+            };
+            assert!(restart_required("on-at-start").not());
+            assert!(restart_required("off-at-start").not());
+
+            config.set_disabled_plugins(&["on-at-start".to_string()]);
+            assert!(restart_required("on-at-start"));
+            assert!(restart_required("off-at-start"));
+            assert_eq!(
+                controller.get_plugin_status("off-at-start").await.unwrap(),
+                ServiceStatus::Stopped(Some(RESTART_TO_LOAD_DEVICES.to_string()))
+            );
+
+            config.set_disabled_plugins(&["off-at-start".to_string()]);
+            assert!(restart_required("on-at-start").not());
+            assert!(restart_required("off-at-start").not());
         });
     }
 
@@ -1605,10 +1761,10 @@ mod tests {
     }
 
     /// Goal: a plugin folder added under a running daemon has to show up without a restart,
-    /// while a plugin that is already registered keeps the manifest it was started with.
+    /// while a managed plugin keeps the manifest it was started with until it restarts.
     /// Method: one known and one new plugin on disk, scanned twice.
     #[test]
-    fn discovery_registers_new_plugins_and_leaves_known_ones_alone() {
+    fn discovery_registers_new_plugins_and_leaves_managed_ones_alone() {
         crate::rt::test_runtime(async {
             let plugins_dir = tempfile::tempdir().unwrap();
             write_manifest(plugins_dir.path(), "known", "integration", "edited on disk");
@@ -1719,6 +1875,46 @@ mod tests {
                 controller.get_plugin_status("known").await.unwrap(),
                 ServiceStatus::Unmanaged
             );
+        });
+    }
+
+    /// Goal: the UI offers a daemon restart only where one would load a plugin's devices.
+    /// That is a device plugin found while running, unless it is disabled, which a restart
+    /// would not load either. A plugin from startup or a new integration needs none.
+    /// Method: discover one of each, then disable the device plugin.
+    #[test]
+    fn only_an_enabled_discovered_device_plugin_requires_a_restart() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            write_manifest(plugins_dir.path(), "added-device", "device", "new");
+            write_manifest(
+                plugins_dir.path(),
+                "added-integration",
+                "integration",
+                "new",
+            );
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let manager = FakeManager::new([ServiceStatus::Running]);
+            let controller = controller_with(Rc::clone(&config), manager);
+            let mut known = managed_manifest(plugins_dir.path().join("known"));
+            known.id = "known".to_string();
+            known.service_type = ServiceType::Device;
+            known.executable = None;
+            controller.register(known);
+
+            controller.discover_plugins_in(plugins_dir.path()).await;
+
+            let manifest_of = |plugin_id: &str| controller.manifest(plugin_id).unwrap();
+            assert!(controller.is_restart_required(&manifest_of("added-device")));
+            assert!(controller
+                .is_restart_required(&manifest_of("added-integration"))
+                .not());
+            assert!(controller.is_restart_required(&manifest_of("known")).not());
+
+            config.set_disabled_plugins(&["added-device".to_string()]);
+            assert!(controller
+                .is_restart_required(&manifest_of("added-device"))
+                .not());
         });
     }
 
