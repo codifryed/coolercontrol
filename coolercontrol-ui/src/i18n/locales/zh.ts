@@ -43,7 +43,7 @@ export default {
         discard: '放弃',
         copy: '(副本)',
         minuteAbbr: '分钟',
-        rpmAbbr: '转/分',
+        rpmAbbr: 'RPM',
         mhzAbbr: 'MHz',
         ghzAbbr: 'GHz',
         tempUnit: '°C',
@@ -287,10 +287,10 @@ export default {
             changePassword: '修改密码',
             accessTokens: '访问令牌',
             restartUI: '重启界面',
-            restartDaemonAndUI: '重启后台和界面',
-            restartConfirmMessage: '确定要重启后台和界面吗？',
-            restartConfirmHeader: '后台重启',
-            shutdownSuccess: '后台关闭信号已接收',
+            restartDaemonAndUI: '重启守护进程和界面',
+            restartConfirmMessage: '确定要重启守护进程和界面吗？',
+            restartConfirmHeader: '守护进程重启',
+            shutdownSuccess: '守护进程关闭信号已接收',
             shutdownError: '发送关闭信号时出现未知错误。详情请查看日志。',
             quitDesktopApp: '退出桌面应用',
             back: '返回',
@@ -404,7 +404,7 @@ export default {
                     '在启动桌面应用程序前添加一些延迟（以秒为单位）。\n有助于解决由于在登录时自动启动桌面应用程序或启动过快而产生的问题',
                 unlockRange: '允许超出推荐范围的值',
                 lockRange: '限制在推荐范围内',
-                applySettingsOnStartup: '在后台启动和从睡眠状态唤醒时自动应用设置',
+                applySettingsOnStartup: '在守护进程启动和从睡眠状态唤醒时自动应用设置',
                 deviceDelayAtStartup:
                     '启动设备通信前的延迟（以秒为单位）。\n有助于处理需要时间初始化或间歇性检测到的设备',
                 pollingRate:
@@ -906,13 +906,13 @@ export default {
             projectPage: '项目主页',
             helpfulCommands: '一些有用的启用和验证守护进程的命令：',
             nonStandardAddress: '如果您配置了非标准地址连接到守护进程，可以在此处设置：',
-            daemonAddressDesktop: '后台地址 - 桌面应用',
-            daemonAddressWeb: '后台地址 - Web界面',
+            daemonAddressDesktop: '守护进程地址 - 桌面应用',
+            daemonAddressWeb: '守护进程地址 - Web 界面',
             addressTooltip: '用于建立连接的IP地址或域名。',
             portTooltip: '用于建立连接的端口。',
             sslTooltip: '是否使用SSL/TLS连接到守护进程。',
-            saveTooltip: '保存后台设置并重新加载界面。',
-            resetTooltip: '将后台设置重置为默认值并重新加载界面。',
+            saveTooltip: '保存设置并重新加载界面。',
+            resetTooltip: '重置为默认设置并重新加载界面。',
         },
         mode: {
             activateMode: '激活模式',
@@ -1021,7 +1021,7 @@ export default {
             homeDesc:
                 '应用程序主页：一目了然地查看守护进程状态和设备健康状况，还有日志、应用信息、实用链接和压力测试工具。',
             cooling: '冷却',
-            coolingDesc: '您的风扇控制中心：调整PWM值和水泵，并将配置文件和功能应用到任何通道。',
+            coolingDesc: '您的风扇控制中心：调整风扇转速和水泵，并将配置文件和功能应用到任何通道。',
             monitoring: '监控',
             monitoringDesc: '构建仪表盘、监视每个传感器，并设置警报以实时跟踪您的系统。',
             devices: '设备',
@@ -1336,13 +1336,13 @@ export default {
                 reload_duty_range_completed_single:
                     '{channelName} 的校准已完成。重新加载界面，让手动PWM值滑块和风扇控制向导采用该通道的新PWM值范围。',
                 reload_duty_range_completed_multi:
-                    '{channelList} 的校准已完成。重新加载界面,让手动PWM值滑块和风扇控制向导采用各通道的新PWM值范围。',
+                    '{channelList} 的校准已完成。重新加载界面，让手动PWM值滑块和风扇控制向导采用各通道的新PWM值范围。',
                 reload_duty_range_cleared_single:
-                    '{channelName} 的校准已清除。重新加载界面,让手动PWM值滑块回到该通道的硬件上下限。',
+                    '{channelName} 的校准已清除。重新加载界面，让手动PWM值滑块回到该通道的硬件上下限。',
                 reload_duty_range_cleared_multi:
-                    '{channelList} 的校准已清除。重新加载界面,让手动PWM值滑块回到各通道的硬件上下限。',
+                    '{channelList} 的校准已清除。重新加载界面，让手动PWM值滑块回到各通道的硬件上下限。',
                 reload_mixed_multi:
-                    '{channelList} 的校准已更改。重新加载界面,让各通道采用新的PWM值显示和滑块范围。',
+                    '{channelList} 的校准已更改。重新加载界面，让各通道采用新的PWM值显示和滑块范围。',
             },
         },
         calibrationCurve: {
@@ -1359,36 +1359,36 @@ export default {
             curveKindStepped: '阶梯（映射已禁用）',
             fieldCurveKind: '曲线',
             fieldCurveKindTooltip:
-                '通道对PWM值变化的响应方式。\n平滑风扇具有连续的PWM值到转速曲线,因此调度器会通过校准映射目标PWM值。阶梯风扇具有离散的转速平台,因此PWM值直接透传不作修改。',
+                '通道对PWM值变化的响应方式。\n平滑风扇具有连续的PWM值到转速曲线，因此调度器会通过校准映射目标PWM值。阶梯风扇具有离散的转速平台，因此PWM值直接透传不作修改。',
             fieldRpmMax: '峰值转速',
             fieldRpmMaxTooltip:
-                '扫描期间观测到的最高转速。\n用作 100% 参考值,在将目标PWM值转换为按转速归一化的真实PWM值时使用。',
+                '扫描期间观测到的最高转速。\n用作 100% 参考值，在将目标PWM值转换为按转速归一化的真实PWM值时使用。',
             fieldKick: '启动冲量时长',
             fieldKickTooltip:
-                '在冷启动时,调度器在降至保持值之前维持启动冲量PWM值的时间。\n通过从停止状态写入调度器最坏情况(带 Boost)的启动冲量PWM值,并等待转速进入稳定窗口来测量。',
+                '在冷启动时，调度器在降至保持值之前维持启动冲量PWM值的时间。\n通过从停止状态写入调度器最坏情况（带 Boost）的启动冲量PWM值，并等待转速进入稳定窗口来测量。',
             fieldStart: '最小启动PWM值',
             fieldStartTooltip:
-                '能够可靠地让风扇从停止状态起转的最低PWM值。\n低于此PWM值时,即使已经运转的风扇可以继续转,停止中的风扇也可能无法开始转动。',
+                '能够可靠地让风扇从停止状态起转的最低PWM值。\n低于此PWM值时，即使已经运转的风扇可以继续转，停止中的风扇也可能无法开始转动。',
             fieldSustain: '最小保持PWM值',
             fieldSustainTooltip:
-                '风扇启动后仍能持续运转的最低PWM值。\n除非通道被设置为 0,调度器不会把运转中的PWM值降到此值以下。',
+                '风扇启动后仍能持续运转的最低PWM值。\n除非通道被设置为 0，调度器不会把运转中的PWM值降到此值以下。',
             fieldStable: '最小稳定PWM值',
             fieldStableTooltip:
-                '风扇能够无振荡运行的最低PWM值。\n固件控制的风扇会在低PWM值下将转速顶到内部下限以上,产生可听见的颤动;调度器会将启动冲量之后的保持值上钳到此值,使风扇始终高于该振荡带。',
+                '风扇能够无振荡运行的最低PWM值。\n固件控制的风扇会在低PWM值下将转速顶到内部下限以上，产生可听见的颤动；调度器会将启动冲量之后的保持值上钳到此值，使风扇始终高于该振荡带。',
             fieldSaturate: '接近平台的PWM值',
             fieldSaturateTooltip:
-                '转速增益开始减小的PWM值。\n超过此PWM值后风扇仍可能在 100 % 之前再增加几转,因此校准使用 0 到 100 % 的整个PWM值范围。',
+                '转速增益开始减小的PWM值。\n超过此PWM值后风扇仍可能在 100 % 之前再增加几转，因此校准使用 0 到 100 % 的整个PWM值范围。',
             fieldTimestamp: '校准时间',
             overridesHeading: '覆盖',
             fieldKickBoostOverride: '启动冲量 Boost',
             fieldKickBoostOverrideTooltip:
-                '为该通道强制开启或关闭冷启动时的启动冲量 Boost,或让守护进程基于上升曲线的启发式判断自动决定。\nBoost 会短暂将启动冲量PWM值抬到保持值之上,推动风扇越过其惯性阈值。',
+                '为该通道强制开启或关闭冷启动时的启动冲量 Boost，或让守护进程基于上升曲线的启发式判断自动决定。\nBoost 会短暂将启动冲量PWM值抬到保持值之上，推动风扇越过其惯性阈值。',
             kickBoostAuto: '自动',
             kickBoostOn: '强制开启',
             kickBoostOff: '强制关闭',
             fieldKickDurationOverride: '启动冲量时长覆盖',
             fieldKickDurationOverrideTooltip:
-                '覆盖校准得到的启动冲量时长。留空将使用测量值。\n如果风扇需要更多时间在启动冲量PWM值下稳定,然后再切换到保持值,可延长此值。',
+                '覆盖校准得到的启动冲量时长。留空将使用测量值。\n如果风扇需要更多时间在启动冲量PWM值下稳定，然后再切换到保持值，可延长此值。',
             kickDurationDefault: '默认',
             kickDurationReset: '恢复默认值',
             kickBoostCurrentlyOn: '当前开启',
