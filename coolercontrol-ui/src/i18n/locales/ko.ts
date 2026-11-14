@@ -101,9 +101,9 @@ export default {
                 pinned: '고정됨',
                 pin: '고정',
                 unpin: '고정 해제',
-                library: '프로파일 및 기능',
+                library: '프로파일 및 함수',
                 profiles: '프로파일',
-                functions: '기능',
+                functions: '함수',
                 addFolder: '폴더 추가',
                 newFolder: '새 폴더',
                 deleteFolder: '폴더 삭제',
@@ -283,11 +283,11 @@ export default {
                     },
                 },
                 miniCurveHint:
-                    '할당된 프로파일 곡선입니다. 점은 현재 소스 온도에서의 목표 듀티를 나타내며, 채널의 기능이 실제 듀티를 결정합니다.',
+                    '할당된 프로파일 곡선입니다. 점은 현재 소스 온도에서의 목표 듀티를 나타내며, 채널의 함수가 실제 듀티를 결정합니다.',
                 chain: {
                     tempSource: '온도 소스',
                     profile: '프로파일',
-                    function: '기능',
+                    function: '함수',
                 },
             },
         },
@@ -472,7 +472,7 @@ export default {
                 duplicate: '복제',
                 rename: '이름 바꾸기',
                 addCustomSensor: '커스텀 센서 추가',
-                addFunction: '기능 추가',
+                addFunction: '함수 추가',
                 chooseColor: '색상 선택',
             },
         },
@@ -525,7 +525,7 @@ export default {
         },
         add: {
             profile: '프로파일',
-            function: '기능',
+            function: '함수',
             customSensor: '커스텀 센서',
         },
     },
@@ -553,7 +553,7 @@ export default {
             rpmUnitHint:
                 '이 측정 항목은 다른 단위의 값에도 사용할 수 있습니다. 단위를 표시하려면 센서 이름 끝에 대괄호로 단위를 붙이세요. 예: 압력 [mbar]',
             sensorType: '센서 유형',
-            mixFunction: '혼합 기능',
+            mixFunction: '혼합 함수',
             howCalculateValue: '센서값을 계산하는 방법',
             sensorFile: '센서 파일',
             filePathTooltip:
@@ -570,7 +570,7 @@ export default {
             sources: '소스',
             source: '소스',
             sourcesTooltip:
-                '혼합 기능에 사용할 소스<br/><i>참고: 여러 커스텀 센서를 결합할 때는<br/>직접적인 부모-자식 관계만 허용됩니다.<br/>더 복잡한 설정을 위해서는 혼합 프로파일을 사용하세요.</i>',
+                '혼합 함수에 사용할 소스<br/><i>참고: 여러 커스텀 센서를 결합할 때는<br/>직접적인 부모-자식 관계만 허용됩니다.<br/>더 복잡한 설정을 위해서는 혼합 프로파일을 사용하세요.</i>',
             scale: '배율',
             scaleTooltip:
                 '오프셋을 더하기 전에 소스에 곱할 계수를 입력하세요.<br/><i>참고: 음수 계수는 값을 반전시킵니다. 0은 사용할 수 없습니다.</i>',
@@ -799,19 +799,19 @@ export default {
             targetDuty: '목표',
             actualDuty: '실제',
             targetHint:
-                '목표는 채널의 기능이 적용되기 전, 현재 온도로부터 계산된 값입니다. 스무딩과 히스테리시스로 인해 실제 듀티는 다를 수 있습니다.',
+                '목표는 채널의 함수가 적용되기 전, 현재 온도로부터 계산된 값입니다. 스무딩과 히스테리시스로 인해 실제 듀티는 다를 수 있습니다.',
             createProfile: '프로파일 생성',
             deleteProfile: '프로파일 삭제',
             profileType: '프로파일 유형',
             fixedDuty: '고정 팬 속도',
             tempSource: '온도 소스',
             memberProfiles: '멤버 프로파일',
-            mixFunction: '혼합 기능',
-            applyMixFunction: '선택한 프로파일에 혼합 기능 적용',
+            mixFunction: '혼합 함수',
+            applyMixFunction: '선택한 프로파일에 혼합 함수 적용',
             profilesToMix: '혼합할 프로파일',
             saveProfile: '프로파일 저장',
-            function: '기능',
-            functionToApply: '적용할 기능',
+            function: '함수',
+            functionToApply: '적용할 함수',
             graphProfileMouseActions:
                 '그래프 프로파일 마우스 동작:\n- Ctrl+스크롤하여 확대/축소합니다.\n- 선을 왼쪽 클릭하여 포인트를 추가합니다.\n- 해당 포인트를 마우스 오른쪽 클릭하여 제거합니다.\n- 포인트를 드래그하여 이동합니다.',
             unsavedChanges: '이 프로파일에 저장되지 않은 변경 사항이 있습니다.',
@@ -859,9 +859,9 @@ export default {
             duplicateMode: '중복 모드',
         },
         functions: {
-            createFunction: '기능 생성',
-            deleteFunction: '기능 삭제',
-            saveFunction: '기능 저장',
+            createFunction: '함수 생성',
+            deleteFunction: '함수 삭제',
+            saveFunction: '함수 저장',
             stepSizeTitle: '단계 크기',
             fixedStepSize: '고정',
             fixedStepSizeTooltip:
@@ -912,16 +912,16 @@ export default {
             bypassMinAtExtremes: '항상 0% / 100% 적용',
             bypassMinAtExtremesTooltip:
                 '활성화되면 변경이 최소 단계 크기보다 작더라도 0% 또는 100%의 목표 듀티가 적용됩니다.\n팬이 완전히 멈추거나 최대 RPM에 도달하도록 보장하는 데 유용합니다. 기본적으로 비활성화됩니다.',
-            unsavedChanges: '이 기능에 저장되지 않은 변경 사항이 있습니다.',
+            unsavedChanges: '이 함수에 저장되지 않은 변경 사항이 있습니다.',
             unsavedChangesHeader: '저장되지 않은 변경 사항',
-            functionError: '이 기능을 업데이트하는 데 오류 발생',
-            newFunction: '새 기능',
-            functionDeleted: '기능 삭제됨',
-            functionDuplicated: '기능 중복됨',
+            functionError: '이 함수를 업데이트하는 중 오류 발생',
+            newFunction: '새 함수',
+            functionDeleted: '함수 삭제됨',
+            functionDuplicated: '함수 복제됨',
             usedBy: '사용처',
             deleteFunctionConfirm: '"{name}"을/를 삭제할까요?',
             deleteFunctionWithProfilesConfirm:
-                '"{name}"은/는 현재 다음 프로파일에서 사용 중입니다: {profiles}.\n이 기능을 삭제하면 해당 프로파일 기능이 초기화됩니다.\n"{name}"을/를 삭제할까요?',
+                '"{name}"은/는 현재 다음 프로파일에서 사용 중입니다: {profiles}.\n이 함수를 삭제하면 해당 프로파일의 함수가 초기화됩니다.\n"{name}"을/를 삭제할까요?',
         },
         error: {
             accessDenied: '접근 거부',
@@ -947,7 +947,7 @@ export default {
             activateMode: '활성화 모드',
             currentlyActive: '현재 활성화',
             modeHint:
-                '참고: 모드에는 프로파일 또는 기능 설정이 포함되지 않고 채널 구성만 포함됩니다.',
+                '참고: 모드에는 프로파일 또는 함수 설정이 포함되지 않고 채널 구성만 포함됩니다.',
         },
         lighting: {
             saveLightingSettings: '조명 설정 저장',
@@ -1056,7 +1056,7 @@ export default {
                 '애플리케이션 홈 페이지: 데몬 상태와 장치 상태를 한눈에 보고, 로그, 앱 정보, 유용한 링크, 스트레스 테스트 도구도 이용할 수 있습니다.',
             cooling: '냉각',
             coolingDesc:
-                '팬 제어 허브: 팬 속도와 펌프를 조정하고 모든 채널에 프로파일과 기능을 적용합니다.',
+                '팬 제어 허브: 팬 속도와 펌프를 조정하고 모든 채널에 프로파일과 함수를 적용합니다.',
             monitoring: '모니터링',
             monitoringDesc:
                 '대시보드를 만들고, 모든 센서를 관찰하고, 알림을 설정하여 시스템을 실시간으로 추적하세요.',
@@ -1162,10 +1162,10 @@ export default {
             hide: '숨기기',
             jitter: '변동',
             jitterHelp:
-                '이 구간에서 연속된 측정값 사이의 평균 변화량입니다. 온도의 경우 팬이 센서 노이즈에 반응하지 않도록 기능의 고급 이력 현상에서 임계값을 이 값보다 크게 설정하세요. 점유나 RPM에서 값이 크면 팬이 계속 속도를 바꾸고 있다는 뜻입니다.',
+                '이 구간에서 연속된 측정값 사이의 평균 변화량입니다. 온도의 경우 팬이 센서 노이즈에 반응하지 않도록 함수의 고급 이력 현상에서 임계값을 이 값보다 크게 설정하세요. 점유나 RPM에서 값이 크면 팬이 계속 속도를 바꾸고 있다는 뜻입니다.',
             directionChanges: '방향 전환',
             directionChangesHelp:
-                '이 구간에서 점유가 상승에서 하강으로, 또는 그 반대로 바뀐 횟수입니다. 자주 바뀌면 팬이 계속 속도를 바꾸고 있다는 뜻이며 소리로도 들립니다. 기능의 고급 이력 현상에서 임계값이나 지연을 늘리면 안정됩니다.',
+                '이 구간에서 점유가 상승에서 하강으로, 또는 그 반대로 바뀐 횟수입니다. 자주 바뀌면 팬이 계속 속도를 바꾸고 있다는 뜻이며 소리로도 들립니다. 함수의 고급 이력 현상에서 임계값이나 지연을 늘리면 안정됩니다.',
             changesValue: '{count} ({rate}/분)',
             stopped: '정지',
             stoppedHelp:
@@ -1240,7 +1240,7 @@ export default {
             fanControl: {
                 fanControlWizard: '팬 제어 마법사',
                 editCurrentProfile: '프로파일 편집',
-                editCurrentFunction: '기능 편집',
+                editCurrentFunction: '함수 편집',
                 currentSettings: '현재 설정',
                 manualSpeed: '수동 속도',
                 createNewProfile: '새 프로파일',
@@ -1256,17 +1256,17 @@ export default {
                 newMixProfile: '새 혼합 프로파일',
                 newGraphProfile: '새 그래프 프로파일',
                 newOverlayProfile: '새 오버레이 프로파일',
-                functionFor: '적용할 기능를 선택',
+                functionFor: '적용할 함수 선택',
                 functionDescription:
-                    '기능은 응답 시간 및 최소 부하 시간과 같이 프로파일이 적용되는 방식을 세밀하게 조정합니다.',
-                createNewFunction: '새 기능',
-                existingFunction: '기능 선택',
-                defaultFunction: '기본 기능',
-                chooseFunctionName: '기능 이름 선택',
-                newFunctionName: '{profileName}용 기능',
+                    '함수는 응답 시간 및 최소 부하 시간과 같이 프로파일이 적용되는 방식을 세밀하게 조정합니다.',
+                createNewFunction: '새 함수',
+                existingFunction: '함수 선택',
+                defaultFunction: '기본 함수',
+                chooseFunctionName: '함수 이름 선택',
+                newFunctionName: '{profileName}용 함수',
                 summary: '요약',
                 aNewProfile: '새 프로파일',
-                andFunction: '그리고 기능',
+                andFunction: '및 함수',
             },
             profile: {
                 willCreated: '생성될 것 입니다.',
@@ -1282,10 +1282,10 @@ export default {
                 noTags: '구성된 태그가 없습니다.',
             },
             functionApply: {
-                applyFunction: '기능 적용',
-                profilesApply: '기능을 적용할 프로파일',
+                applyFunction: '함수 적용',
+                profilesApply: '함수를 적용할 프로파일',
                 selectProfiles: '프로파일 선택',
-                profilesTooltip: '이 기능을 적용할 프로파일을 하나 이상 선택하십시오.',
+                profilesTooltip: '이 함수를 적용할 프로파일을 하나 이상 선택하십시오.',
             },
             generate: {
                 title: '프로필 자동 생성',
@@ -1331,7 +1331,7 @@ export default {
             title: '장치 채널 설정',
             firmwareControlledProfile: '펌웨어 제어 프로파일',
             firmwareControlledProfileDesc:
-                '이 기능이 활성화되면 장치 펌웨어에서 팬 프로파일을 관리합니다.\n잦은 소프트웨어 속도 변경에 잘 반응하지 않는 하드웨어에 유용합니다.\n장치 내부 온도 센서를 사용하는 그래프 프로파일에서만 사용할 수 있습니다.\n기능 설정은 적용되지 않습니다.\n보정된 채널에서는 곡선의 각 점이 보정을 통해 변환되지만 시동 부스트는 적용되지 않습니다.',
+                '이 기능이 활성화되면 장치 펌웨어에서 팬 프로파일을 관리합니다.\n잦은 소프트웨어 속도 변경에 잘 반응하지 않는 하드웨어에 유용합니다.\n장치 내부 온도 센서를 사용하는 그래프 프로파일에서만 사용할 수 있습니다.\n함수 설정은 적용되지 않습니다.\n보정된 채널에서는 곡선의 각 점이 보정을 통해 변환되지만 시동 부스트는 적용되지 않습니다.',
             saveError: '채널 확장 설정 저장에 실패함',
             firmwareControlDisabled:
                 '현재 설정으로는 펌웨어 제어가 불가능합니다.\n지원되는 내부 온도 센서가 있는 이 장치에는 그래프 프로파일을 사용하세요.',
