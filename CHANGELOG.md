@@ -10,20 +10,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
-## [Unreleased]
+## [5.1.2] - 2026-11-14
+
+### Added
+
+- Opt-in per-thread CPU frequency channels (#618)
+- AMD GPU overdrive setup shows its plan and progress, and can be disabled again
+- A plugin Rescan button, with a flag for plugins that need a daemon restart
+- Password reset commands for Docker and Podman in the forgotten password dialog
+- Docker images enable D-Bus when the host's system bus is mounted
+- OpenAPI operation IDs for generated API clients
 
 ### Changed
 
-- On RDNA3/4 AMD GPUs, a Profile that never reaches 0% duty now turns Zero RPM off
+- On RDNA3/4 AMD GPUs, a Profile that never reaches 0% duty turns Zero RPM off
+- Leaving the Performance power profile waits 10 seconds before switching Modes (@caferen)
+- The daemon's device handling was refactored with lower CPU use and no io_uring (#606)
+- NVIDIA detection is skipped without an NVIDIA GPU, and always in musl builds (#495)
+- liquidctl devices that never answer at startup are dropped instead of left blank
+- The Logs page shows local times
+- Updated Simplified Chinese translation (!639, @zzj203947)
+
+### Removed
+
+- The plugin Reload button and endpoint, replaced by Rescan
 
 ### Fixed
 
-- RDNA3/4 AMD GPU fans on newer firmwares could stay stopped after Zero RPM was disabled, until the
-  fan speed changed. Changed our commit method so that everything is applied in one firmware upload,
-  which works for newer and older firmwares despite the same kernel driver
-- CoolerControl no longer overwrites fan settings from other programs, such as LACT, on fans it is
-  not controlling. Unmanaged fans get one reset when leaving CoolerControl's control, then no writes
-  at boot, on resume, on a Mode change or at shutdown
+- RDNA3/4 AMD GPU fans on newer firmware could stay stopped after Zero RPM was disabled
+- Fan settings from other programs, such as LACT, are no longer overwritten on unmanaged fans (#628)
+- AMD GPU overdrive setup supports more boot image tools and is refused in containers
+- The desktop app works with Qt WebEngine 6.140 and keeps fullscreen in sync (#633)
+- Time Average and EMA custom sensors no longer start from zero after a start or resume (#632)
+- The daemon no longer restarts on resume or stalls at shutdown on an unresponsive plugin (#629)
+- liquidctl devices keep direct access after liqctld restarts
+- Commands with large output no longer hang until their timeout
+- Saving plugin config works with `fs.protected_regular=2`, as on Ubuntu
+- Saving device settings from an older client no longer resets other settings
+- Fixed Profile speeds above 100% are rejected
+- A broken LCD Carousel image no longer stops the Carousel
+- Docker images can load libdrm for AMD GPUs
+- musl builds send cache headers for UI files
+- The OpenAPI spec matches what the daemon sends
+- Updated vulnerable dependencies (#626, #627, #630, #631)
 
 ## [5.1.1] - 2026-10-19
 
