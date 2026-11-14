@@ -37,15 +37,15 @@ export default {
         message: '消息',
         timestamp: '时间戳',
         temperature: '温度',
-        duty: '风扇转速',
+        duty: 'PWM',
         offset: '偏移量',
         stay: '保留',
         discard: '放弃',
         copy: '(副本)',
         minuteAbbr: '分钟',
         rpmAbbr: '转/分',
-        mhzAbbr: '兆赫',
-        ghzAbbr: '吉赫',
+        mhzAbbr: 'MHz',
+        ghzAbbr: 'GHz',
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: '秒',
@@ -155,9 +155,9 @@ export default {
             logsPage: {
                 debugTitle: '调试日志已开启',
                 debugJournal:
-                    '此页面仅显示最近的 INFO、WARN 和 ERROR 行。完整的调试输出位于系统日志（journal）中。要将其保存到文件，请在后台服务所在的主机上运行：',
+                    '此页面仅显示最近的 INFO、WARN 和 ERROR 行。完整的调试输出位于系统日志（journal）中。要将其保存到文件，请在守护进程所在的主机上运行：',
                 debugNoJournal:
-                    '此页面仅显示最近的 INFO、WARN 和 ERROR 行。完整的调试输出会发送到后台服务的标准错误输出。',
+                    '此页面仅显示最近的 INFO、WARN 和 ERROR 行。完整的调试输出会发送到守护进程的标准错误输出。',
                 debugDocs: '如何收集日志',
                 debugTurnOff: '关闭调试日志',
                 copyCommand: '复制命令',
@@ -192,7 +192,7 @@ export default {
                     calibrateAllFans: '校准所有风扇',
                 },
                 manualAt: '手动 {duty}%',
-                manualDuty: '手动风扇转速',
+                manualDuty: '手动PWM值',
                 modeProfile: '配置文件',
                 modeManual: '手动',
                 modeUnmanaged: '未管理',
@@ -222,11 +222,11 @@ export default {
                     confirmProfile:
                         '将配置文件“{profile}”复制为新的配置文件“{copy}”，转换其转速，并分配给 {channel}。\n\n仅转换本风扇校准之前设置的转速。重复转换会使风扇以错误的转速运行。原配置文件保持不变。',
                     confirmManual:
-                        '转换 {channel} 的手动占空比，使风扇保持校准前的转速。\n\n仅转换本风扇校准之前设置的数值。重复转换会使风扇以错误的转速运行。',
+                        '转换 {channel} 的手动PWM值，使风扇保持校准前的转速。\n\n仅转换本风扇校准之前设置的数值。重复转换会使风扇以错误的转速运行。',
                     nameQualifier: '已校准',
                     accept: '转换',
                     successProfile: '已将“{profile}”以转换后的转速分配给 {channel}。',
-                    successManual: '手动占空比已转换为 {duty}%。',
+                    successManual: '手动PWM值已转换为 {duty}%。',
                     error: '无法转换此风扇的转速。',
                     floorHeading: '部分点已转换为 0%',
                     floorNotice:
@@ -243,8 +243,8 @@ export default {
                 verdictNotSupportedByDriver: '当前使用的驱动未为此通道提供风扇控制。',
                 verdictNoPwm: '已加载的驱动未为此通道提供风扇控制，只提供转速。',
                 verdictPwmReadOnly: '已加载的驱动为此通道提供了风扇控制，但将其标记为只读。',
-                verdictIgnoresDuty: '此通道接受了占空比更改，但测得的转速从未响应。',
-                verdictUnverifiable: '此通道没有可用的转速计，因此无法验证它对占空比变化的响应。',
+                verdictIgnoresDuty: '此通道接受了PWM值更改，但测得的转速从未响应。',
+                verdictUnverifiable: '此通道没有可用的转速计，因此无法验证它对PWM值变化的响应。',
                 verdictEvidenceLabel: '在本机上的测量结果：',
                 evidenceNoPwmFile: '未提供风扇控制',
                 evidencePwmNotWritable: '风扇控制为只读',
@@ -263,9 +263,9 @@ export default {
                     noMode: '无模式',
                     saveFailed: '无法保存电源配置映射。',
                     modeNotActive: '{mode} 已分配给当前配置，但未激活。',
-                    modeNotActiveRestart: '后台服务下次启动时将再次激活它。',
+                    modeNotActiveRestart: '守护进程下次启动时将再次激活它。',
                     cooldownTooltip:
-                        '系统离开性能配置文件后，所映射的模式将在 10 秒冷却后才激活，让系统先散去热量再降低风扇转速。',
+                        '系统离开性能配置文件后，所映射的模式将在 10 秒冷却后才激活，让系统先散去热量再降低PWM值。',
                     profileNames: {
                         'power-saver': '节能',
                         balanced: '平衡',
@@ -273,7 +273,7 @@ export default {
                     },
                 },
                 miniCurveHint:
-                    '已分配配置文件的曲线。圆点表示当前来源温度下的目标占空比；通道的功能决定实际占空比。',
+                    '已分配配置文件的曲线。圆点表示当前来源温度下的目标PWM值；通道的功能决定实际PWM值。',
                 chain: {
                     tempSource: '温度源',
                     profile: '配置文件',
@@ -307,7 +307,7 @@ export default {
             title: '设置',
             devices: {
                 toggleRequiresRestart:
-                    '切换设备或传感器需要重启后台服务和界面。您确定要立即执行此操作吗？',
+                    '切换设备或传感器需要重启守护进程和界面。您确定要立即执行此操作吗？',
                 enableDevices: '启用设备',
                 unknownError: '尝试应用对所有设备的更改时出现未知错误。详情请查看日志。',
             },
@@ -426,11 +426,11 @@ export default {
                     '监听设备添加/移除事件（例如USB热插拔）\n并在检测到硬件变更时发送通知。',
                 debugLogging:
                     '记录详细的 DEBUG 输出以便排查问题。\n输出量很大，收集完日志后请关闭。\n日志页面会说明如何收集。',
-                triggersDaemonRestart: '触发自动后台服务重启',
+                triggersDaemonRestart: '触发自动守护进程重启',
                 copyThemeCode: '复制代表当前自定义主题的紧凑代码。\n可粘贴到聊天或论坛分享。',
                 pasteThemeCode: '通过他人分享的代码 (cct1:...) 应用自定义主题。',
             },
-            applySettingAndRestart: '更改此设置需要重启后台服务和界面。确定要立即执行此操作吗？',
+            applySettingAndRestart: '更改此设置需要重启守护进程和界面。确定要立即执行此操作吗？',
             restartHeader: '应用设置并重启',
             success: '成功',
             successDetail: '操作已成功完成',
@@ -512,13 +512,13 @@ export default {
     },
     views: {
         daemon: {
-            title: '后台服务',
-            daemonErrors: '后台服务错误',
-            daemonErrorsDetail: '后台服务已报告错误。请查看日志了解详情。',
-            daemonDisconnected: '后台服务已断开',
-            daemonDisconnectedDetail: '无法连接到后台服务。请检查后台服务是否正在运行。',
+            title: '守护进程',
+            daemonErrors: '守护进程错误',
+            daemonErrorsDetail: '守护进程已报告错误。请查看日志了解详情。',
+            daemonDisconnected: '守护进程已断开',
+            daemonDisconnectedDetail: '无法连接到守护进程。请检查守护进程是否正在运行。',
             connectionRestored: '连接已恢复',
-            connectionRestoredMessage: '与后台服务的连接已恢复。',
+            connectionRestoredMessage: '与守护进程的连接已恢复。',
             reconnecting: '正在重新连接...',
             disconnectedFor: '已断开连接 {time}',
         },
@@ -603,7 +603,7 @@ export default {
         appInfo: {
             noWarranty: '本程序不提供任何保证。',
             changeStartupPage: '在设置中更改启动页面',
-            daemonStatus: '后台服务状态',
+            daemonStatus: '守护进程状态',
             acknowledgeIssues: '确认问题',
             status: '状态',
             host: '主机',
@@ -770,11 +770,11 @@ export default {
             targetDuty: '目标',
             actualDuty: '实际',
             targetHint:
-                '目标是在应用通道功能之前，根据当前温度计算得出的。平滑和滞后可能使实际占空比有所不同。',
+                '目标是在应用通道功能之前，根据当前温度计算得出的。平滑和滞后可能使实际PWM值有所不同。',
             createProfile: '创建配置文件',
             deleteProfile: '删除配置文件',
             profileType: '配置文件类型',
-            fixedDuty: '固定风扇速度',
+            fixedDuty: '固定PWM值',
             tempSource: '温度源',
             memberProfiles: '成员配置文件',
             mixFunction: '混合函数',
@@ -810,8 +810,8 @@ export default {
             offsetTypeGraph: '曲线偏移',
             baseProfile: '基础配置文件',
             baseProfileRequired: '叠加配置文件需要一个基础配置文件。',
-            profileOutputDuty: '配置文件输出转速',
-            offsetDuty: '偏移转速',
+            profileOutputDuty: '配置文件输出的PWM值',
+            offsetDuty: '偏移PWM值',
             points: '点',
             moveTable: '移动到其他角落',
             addPointAfter: '在后面添加点',
@@ -882,7 +882,7 @@ export default {
                 '当风扇速度保持30秒以上不变时，最小步长和滞后限制将被临时绕过。\n这确保风扇最终达到目标速度，即使使用保守的阈值设置。最大步长始终生效。',
             bypassMinAtExtremes: '始终应用 0% / 100%',
             bypassMinAtExtremesTooltip:
-                '启用后，即使变化小于最小步长，0% 或 100% 的目标占空比也会被应用。\n有助于确保风扇完全停止或达到最大转速。默认禁用。',
+                '启用后，即使变化小于最小步长，0% 或 100% 的目标PWM值也会被应用。\n有助于确保风扇完全停止或达到最大转速。默认禁用。',
             unsavedChanges: '此功能有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
             functionError: '尝试更新此功能时出现错误',
@@ -900,17 +900,17 @@ export default {
             connectionError: 'CoolerControl 连接错误',
             pageNotFound: '页面未找到',
             returnToDashboard: '返回仪表板',
-            connectionErrorMessage: '无法连接到 CoolerControl 后台服务。',
+            connectionErrorMessage: '无法连接到 CoolerControl 守护进程。',
             serviceRunningMessage: '请确保系统服务正在运行并可用。',
             checkProjectPage: '查看项目页面获取安装说明。',
             projectPage: '项目主页',
             helpfulCommands: '一些有用的启用和验证守护进程的命令：',
-            nonStandardAddress: '如果您配置了非标准地址连接到后台服务，可以在此处设置：',
+            nonStandardAddress: '如果您配置了非标准地址连接到守护进程，可以在此处设置：',
             daemonAddressDesktop: '后台地址 - 桌面应用',
             daemonAddressWeb: '后台地址 - Web界面',
             addressTooltip: '用于建立连接的IP地址或域名。',
             portTooltip: '用于建立连接的端口。',
-            sslTooltip: '是否使用SSL/TLS连接到后台服务。',
+            sslTooltip: '是否使用SSL/TLS连接到守护进程。',
             saveTooltip: '保存后台设置并重新加载界面。',
             resetTooltip: '将后台设置重置为默认值并重新加载界面。',
         },
@@ -1021,7 +1021,7 @@ export default {
             homeDesc:
                 '应用程序主页：一目了然地查看守护进程状态和设备健康状况，还有日志、应用信息、实用链接和压力测试工具。',
             cooling: '冷却',
-            coolingDesc: '您的风扇控制中心：调整风扇转速和水泵，并将配置文件和功能应用到任何通道。',
+            coolingDesc: '您的风扇控制中心：调整PWM值和水泵，并将配置文件和功能应用到任何通道。',
             monitoring: '监控',
             monitoringDesc: '构建仪表盘、监视每个传感器，并设置警报以实时跟踪您的系统。',
             devices: '设备',
@@ -1030,11 +1030,11 @@ export default {
             plugins: '插件',
             pluginsDesc: '浏览并打开扩展 CoolerControl 的已安装插件。',
             settings: '设置',
-            settingsDesc: '配置界面偏好、后台服务选项和系统行为。',
+            settingsDesc: '配置界面偏好、守护进程选项和系统行为。',
             access: '访问',
             accessDesc: '登录或退出、修改密码，并管理为工具和插件授予 API 访问权限的访问令牌。',
             restartMenu: '重启菜单',
-            restartMenuDesc: '需要时重新加载界面或重启系统后台服务。',
+            restartMenuDesc: '需要时重新加载界面或重启系统守护进程。',
             modes: '模式',
             modesDesc: '模式是您设置的保存集合。在这里切换静音和性能等配置，或对其进行管理。',
             thatsIt: '就是这样！',
@@ -1045,10 +1045,10 @@ export default {
             autoScale: '自动缩放',
             max: '最大值',
             min: '最小值',
-            dutyTemperature: '风扇转速 / 温度',
-            rpmMhz: '转速 / 兆赫兹',
-            krpmGhz: '千转速 / 吉赫兹',
-            watts: '瓦特',
+            dutyTemperature: 'PWM / 温度',
+            rpmMhz: 'RPM / MHz',
+            krpmGhz: 'KRPM / GHz',
+            watts: 'W',
         },
         chartDisplayOptions: {
             limitLines: '限值线',
@@ -1122,16 +1122,16 @@ export default {
             hide: '隐藏',
             jitter: '波动',
             jitterHelp:
-                '此时间窗口内相邻两次读数之间的平均变化量。对于温度，请将功能的高级滞后中的阈值设置为高于此值，使风扇忽略传感器噪声。对于风扇转速或转速，数值较高表示风扇在不断改变速度。',
+                '此时间窗口内相邻两次读数之间的平均变化量。对于温度，请将功能的高级滞后中的阈值设置为高于此值，使风扇忽略传感器噪声。对于PWM值或转速，数值较高表示风扇在不断改变速度。',
             directionChanges: '方向变化',
             directionChangesHelp:
-                '此时间窗口内风扇转速由上升转为下降或反之的次数。变化频繁表示风扇在不断改变速度，可以听得到。在功能的高级滞后中增大阈值或延迟可使其平稳。',
+                '此时间窗口内PWM值由上升转为下降或反之的次数。变化频繁表示风扇在不断改变速度，可以听得到。在功能的高级滞后中增大阈值或延迟可使其平稳。',
             changesValue: '{count}（{rate}/分钟）',
             stopped: '停转',
             stoppedHelp: '时间窗口内转速为 0 RPM 的比例。对于具有零转速模式的风扇属正常现象。',
             stalls: '堵转',
             stallsHelp:
-                '风扇转速设定为 {duty}% 或更高时，连续 {polls} 次或更多轮询读数为 0 RPM 的次数及总时长。故障或未连接的风扇，或设得过低的最低转速会显示在这里。',
+                'PWM值设定为 {duty}% 或更高时，连续 {polls} 次或更多轮询读数为 0 RPM 的次数及总时长。故障或未连接的风扇，或设得过低的最低转速会显示在这里。',
             stallsNone: '无',
             stallsValue: '{count}（{duration}）',
             timeInRange: '区间时长',
@@ -1170,7 +1170,7 @@ export default {
                 calibratedBadge: '已校准',
                 firmwareControlledBadge: '固件控制',
                 firmwareControlledDesc:
-                    '此通道的配置文件由固件执行。校准仍然生效：其占空比映射会写入交给固件的曲线。启动冲量不会，因为固件曲线无法表达它。',
+                    '此通道的配置文件由固件执行。校准仍然生效：其PWM值映射会写入交给固件的曲线。启动冲量不会，因为固件曲线无法表达它。',
                 blockedByAlert: "已阻止：警报 '{name}' 处于触发状态",
                 alertsPausedNote: '{count} 个警报监视所选风扇，在每个风扇扫掠期间将暂停。',
                 idleNote:
@@ -1257,7 +1257,7 @@ export default {
                 tempNone: '无',
                 presetIntro: '选择风扇应以多大力度提速。',
                 perKindOverrides: '按角色覆盖（高级）',
-                cfmCaveat: '正压偏置基于占空比（duty），而非气流：风扇数量不均衡时无法保证正压。',
+                cfmCaveat: '正压偏置基于占空比（PWM值），而非气流：风扇数量不均衡时无法保证正压。',
                 previewIntro: '查看将要创建和应用的内容。在您确认之前不会保存任何内容。',
                 previewAssignments: '风扇分配',
                 reusedHeader: '已存在',
@@ -1290,7 +1290,7 @@ export default {
             calibration: {
                 heading: '转速校准',
                 description:
-                    '让风扇完整扫掠，以获取其真实的占空比–转速曲线，然后将该通道按以转速归一化的真实占空比进行控制。\n消除低占空比的死区与高占空比的饱和。\n校准后，启动冲量也会自动处理：短暂的启动加速将风扇从静止状态转起，随后稳定到目标占空比。\n扫掠通常需要几分钟，对响应较慢的风扇可能明显更久。开始时通道将被设为 0 %。',
+                    '让风扇完整扫掠，以获取其真实的PWM值–转速曲线，然后将该通道按以转速归一化的真实PWM值进行控制。\n消除低PWM值的死区与高PWM值的饱和。\n校准后，启动冲量也会自动处理：短暂的启动加速将风扇从静止状态转起，随后稳定到目标PWM值。\n扫掠通常需要几分钟，对响应较慢的风扇可能明显更久。开始时通道将被设为 0 %。',
                 statusNotCalibrated: '未校准',
                 blockedByAlert: "校准已被阻止：警报 '{name}' 在此风扇上处于触发状态。",
                 alertsPausedNote: '监视此风扇的警报在扫掠期间将暂停。',
@@ -1300,10 +1300,10 @@ export default {
                 statusCompletedWithWarnings: '已校准但带有警告：{messages}',
                 statusFailed: '上次尝试失败：{message}',
                 warningNoTachometer: '未检测到转速（传感器或线缆可能未连接）',
-                warningNotControllable: '风扇对占空比无响应（很可能由 BIOS 控制）',
+                warningNotControllable: '风扇对PWM值无响应（很可能由 BIOS 控制）',
                 warningLimitedRange: '转速范围有限（{span} RPM），映射分辨率较粗',
                 warningOscillating:
-                    '风扇在 {lower} % 与 {upper} % 占空比之间振荡（固件控制的启动冲量）；在低占空比下已禁用映射',
+                    '风扇在 {lower} % 与 {upper} % PWM值之间振荡（固件控制的启动冲量）；在低PWM值下已禁用映射',
                 warningImplausibleCurve:
                     '测得的曲线平坦、反向，或其下限没有留下可用范围（转速读数看起来不可靠）；映射已禁用，请重新校准后重试',
                 stagePreflight: '预检',
@@ -1318,7 +1318,7 @@ export default {
                 buttonViewCurve: '查看曲线',
                 caveatsBanner:
                     '同时校准多个主要散热风扇可能会提高系统温度。\n并行诊断的推拉式散热排风扇可能产生不准确的读数。\n请在校准期间保持系统处于空闲状态。',
-                clearedNotice: '已清除。此通道的风扇曲线现在直接控制设备占空比。',
+                clearedNotice: '已清除。此通道的风扇曲线现在直接控制设备PWM值。',
                 startError: '无法开始校准',
                 cancelError: '无法取消校准',
                 clearError: '无法清除校准',
@@ -1326,23 +1326,23 @@ export default {
                 reloadAccept: '重新加载',
                 reloadReject: '稍后',
                 reload_rpm_only_completed_single:
-                    '{channelName} 的校准已完成。重新加载界面以显示该通道的占空比图。',
+                    '{channelName} 的校准已完成。重新加载界面以显示该通道的PWM值图。',
                 reload_rpm_only_completed_multi:
-                    '{channelList} 的校准已完成。重新加载界面以显示各通道的占空比图。',
+                    '{channelList} 的校准已完成。重新加载界面以显示各通道的PWM值图。',
                 reload_rpm_only_cleared_single:
-                    '{channelName} 的校准已清除。重新加载界面以移除该通道现在已过时的占空比图。',
+                    '{channelName} 的校准已清除。重新加载界面以移除该通道现在已过时的PWM值图。',
                 reload_rpm_only_cleared_multi:
-                    '{channelList} 的校准已清除。重新加载界面以移除各通道现在已过时的占空比图。',
+                    '{channelList} 的校准已清除。重新加载界面以移除各通道现在已过时的PWM值图。',
                 reload_duty_range_completed_single:
-                    '{channelName} 的校准已完成。重新加载界面，让手动占空比滑块和风扇控制向导采用该通道的新占空比范围。',
+                    '{channelName} 的校准已完成。重新加载界面，让手动PWM值滑块和风扇控制向导采用该通道的新PWM值范围。',
                 reload_duty_range_completed_multi:
-                    '{channelList} 的校准已完成。重新加载界面,让手动占空比滑块和风扇控制向导采用各通道的新占空比范围。',
+                    '{channelList} 的校准已完成。重新加载界面,让手动PWM值滑块和风扇控制向导采用各通道的新PWM值范围。',
                 reload_duty_range_cleared_single:
-                    '{channelName} 的校准已清除。重新加载界面,让手动占空比滑块回到该通道的硬件上下限。',
+                    '{channelName} 的校准已清除。重新加载界面,让手动PWM值滑块回到该通道的硬件上下限。',
                 reload_duty_range_cleared_multi:
-                    '{channelList} 的校准已清除。重新加载界面,让手动占空比滑块回到各通道的硬件上下限。',
+                    '{channelList} 的校准已清除。重新加载界面,让手动PWM值滑块回到各通道的硬件上下限。',
                 reload_mixed_multi:
-                    '{channelList} 的校准已更改。重新加载界面,让各通道采用新的占空比显示和滑块范围。',
+                    '{channelList} 的校准已更改。重新加载界面,让各通道采用新的PWM值显示和滑块范围。',
             },
         },
         calibrationCurve: {
@@ -1350,7 +1350,7 @@ export default {
             loading: '正在加载校准数据...',
             notFound: '未找到此通道的校准数据。',
             loadError: '加载校准数据失败。',
-            axisDuty: '占空比',
+            axisDuty: 'PWM',
             axisRpm: 'RPM',
             legendUp: '上升扫掠',
             legendDown: '下降扫掠',
@@ -1359,43 +1359,43 @@ export default {
             curveKindStepped: '阶梯（映射已禁用）',
             fieldCurveKind: '曲线',
             fieldCurveKindTooltip:
-                '通道对占空比变化的响应方式。\n平滑风扇具有连续的占空比到转速曲线,因此调度器会通过校准映射目标占空比。阶梯风扇具有离散的转速平台,因此占空比直接透传不作修改。',
+                '通道对PWM值变化的响应方式。\n平滑风扇具有连续的PWM值到转速曲线,因此调度器会通过校准映射目标PWM值。阶梯风扇具有离散的转速平台,因此PWM值直接透传不作修改。',
             fieldRpmMax: '峰值转速',
             fieldRpmMaxTooltip:
-                '扫描期间观测到的最高转速。\n用作 100% 参考值,在将目标占空比转换为按转速归一化的真实占空比时使用。',
+                '扫描期间观测到的最高转速。\n用作 100% 参考值,在将目标PWM值转换为按转速归一化的真实PWM值时使用。',
             fieldKick: '启动冲量时长',
             fieldKickTooltip:
-                '在冷启动时,调度器在降至保持值之前维持启动冲量占空比的时间。\n通过从停止状态写入调度器最坏情况(带 Boost)的启动冲量占空比,并等待转速进入稳定窗口来测量。',
-            fieldStart: '最小启动占空比',
+                '在冷启动时,调度器在降至保持值之前维持启动冲量PWM值的时间。\n通过从停止状态写入调度器最坏情况(带 Boost)的启动冲量PWM值,并等待转速进入稳定窗口来测量。',
+            fieldStart: '最小启动PWM值',
             fieldStartTooltip:
-                '能够可靠地让风扇从停止状态起转的最低占空比。\n低于此占空比时,即使已经运转的风扇可以继续转,停止中的风扇也可能无法开始转动。',
-            fieldSustain: '最小保持占空比',
+                '能够可靠地让风扇从停止状态起转的最低PWM值。\n低于此PWM值时,即使已经运转的风扇可以继续转,停止中的风扇也可能无法开始转动。',
+            fieldSustain: '最小保持PWM值',
             fieldSustainTooltip:
-                '风扇启动后仍能持续运转的最低占空比。\n除非通道被设置为 0,调度器不会把运转中的占空比降到此值以下。',
-            fieldStable: '最小稳定占空比',
+                '风扇启动后仍能持续运转的最低PWM值。\n除非通道被设置为 0,调度器不会把运转中的PWM值降到此值以下。',
+            fieldStable: '最小稳定PWM值',
             fieldStableTooltip:
-                '风扇能够无振荡运行的最低占空比。\n固件控制的风扇会在低占空比下将转速顶到内部下限以上,产生可听见的颤动;调度器会将启动冲量之后的保持值上钳到此值,使风扇始终高于该振荡带。',
-            fieldSaturate: '接近平台的占空比',
+                '风扇能够无振荡运行的最低PWM值。\n固件控制的风扇会在低PWM值下将转速顶到内部下限以上,产生可听见的颤动;调度器会将启动冲量之后的保持值上钳到此值,使风扇始终高于该振荡带。',
+            fieldSaturate: '接近平台的PWM值',
             fieldSaturateTooltip:
-                '转速增益开始减小的占空比。\n超过此占空比后风扇仍可能在 100 % 之前再增加几转,因此校准使用 0 到 100 % 的整个占空比范围。',
+                '转速增益开始减小的PWM值。\n超过此PWM值后风扇仍可能在 100 % 之前再增加几转,因此校准使用 0 到 100 % 的整个PWM值范围。',
             fieldTimestamp: '校准时间',
             overridesHeading: '覆盖',
             fieldKickBoostOverride: '启动冲量 Boost',
             fieldKickBoostOverrideTooltip:
-                '为该通道强制开启或关闭冷启动时的启动冲量 Boost,或让守护进程基于上升曲线的启发式判断自动决定。\nBoost 会短暂将启动冲量占空比抬到保持值之上,推动风扇越过其惯性阈值。',
+                '为该通道强制开启或关闭冷启动时的启动冲量 Boost,或让守护进程基于上升曲线的启发式判断自动决定。\nBoost 会短暂将启动冲量PWM值抬到保持值之上,推动风扇越过其惯性阈值。',
             kickBoostAuto: '自动',
             kickBoostOn: '强制开启',
             kickBoostOff: '强制关闭',
             fieldKickDurationOverride: '启动冲量时长覆盖',
             fieldKickDurationOverrideTooltip:
-                '覆盖校准得到的启动冲量时长。留空将使用测量值。\n如果风扇需要更多时间在启动冲量占空比下稳定,然后再切换到保持值,可延长此值。',
+                '覆盖校准得到的启动冲量时长。留空将使用测量值。\n如果风扇需要更多时间在启动冲量PWM值下稳定,然后再切换到保持值,可延长此值。',
             kickDurationDefault: '默认',
             kickDurationReset: '恢复默认值',
             kickBoostCurrentlyOn: '当前开启',
             kickBoostCurrentlyOff: '当前关闭',
             fieldWalkAfterKick: '启动冲量后逐级下降',
             fieldWalkAfterKickTooltip:
-                '启动冲量结束后，将占空比以较小幅度逐级降至保持值。保护那些控制器在占空比骤降时会切断电源的风扇。\n关闭后将直接从冲量切换到保持值。对绝大多数现代 PWM 风扇是安全的，并可消除每次冷启动后可见的下降斜坡。',
+                '启动冲量结束后，将PWM值以较小幅度逐级降至保持值。保护那些控制器在PWM值骤降时会切断电源的风扇。\n关闭后将直接从冲量切换到保持值。对绝大多数现代 PWM 风扇是安全的，并可消除每次冷启动后可见的下降斜坡。',
             overridesSaveFailed: '保存校准覆盖失败',
         },
         deviceExtensionSettings: {
@@ -1414,7 +1414,7 @@ export default {
                 '发送到此设备的命令之间的延迟（毫秒）。\n当多个命令快速连续发送时，\n这可以帮助解决设备通信问题。',
             perThreadFreq: '每线程频率',
             perThreadFreqDesc:
-                '为每个 CPU 线程添加一个频率通道。\n每个通道保留一小时的历史记录，会增加界面加载的数据量和后台服务的内存占用。',
+                '为每个 CPU 线程添加一个频率通道。\n每个通道保留一小时的历史记录，会增加界面加载的数据量和守护进程的内存占用。',
             overdrive: 'GPU 超频',
             overdriveDesc:
                 'AMD RDNA3/4 GPU 需要启用超频才能控制风扇。\n这将配置 amdgpu.ppfeaturemask 内核参数，\n需要重启系统才能生效。',
@@ -1614,7 +1614,7 @@ export default {
         },
         dataType: {
             temp: '温度',
-            duty: '风扇转速',
+            duty: 'PWM值',
             load: '负载',
             rpm: '转速',
             freq: '频率',
