@@ -15,6 +15,20 @@ TimeoutStopSec=10
 TimeoutStartSec=300
 # The daemon pings once per main-loop tick, so a wedged loop is restarted.
 WatchdogSec=30
+# Sandboxing: blocks only what the daemon and its children (liqctld,
+# nvidia-settings, modprobe, shutdown) never do. Older systemd ignores keys
+# it does not know. Hardware access needs /sys, /dev, /proc and the
+# remaining root capabilities, so those stay open.
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ProtectKernelLogs=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+# @clock instead of ProtectClock, which would also restrict device access.
+SystemCallFilter=~@clock @cpu-emulation @debug @mount @obsolete @raw-io @reboot @swap
+CapabilityBoundingSet=~CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_AUDIT_WRITE CAP_FSETID CAP_LEASE CAP_MAC_ADMIN CAP_MAC_OVERRIDE CAP_NET_BROADCAST CAP_NET_RAW CAP_SETFCAP CAP_SETPCAP CAP_SYSLOG CAP_SYS_BOOT CAP_SYS_TIME CAP_WAKE_ALARM
 
 [Install]
 WantedBy=multi-user.target
