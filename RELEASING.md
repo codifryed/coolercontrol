@@ -35,13 +35,15 @@ one.
          The tag pipeline first verifies that rehearsal through the API (`prerelease_verify`), then
          fetches its jobs' builds instead of rebuilding and publishes them. Only the source and
          vendor tarballs are rebuilt, from the verified commit (`EXPECTED_SHA`). Docker images are
-         staged under a commit-keyed tag and given their release tags by digest. A tag never reaches
-         downstream packagers before its commit has passed. `make prerelease-local` runs the tests
-         and RPM builds on this machine beforehand. `make push-release` needs `GITLAB_TOKEN`, a
-         read_api token, to watch the rehearsal; the tag pipeline checks it with the masked,
-         protected CI variable `RELEASE_READ_TOKEN` (tags must be protected for it to reach their
-         pipelines). Make that a project access token of this project, not a personal one: Reporter
-         role, `read_api` scope only, with an expiry date. Every main and tag job can read it.
+         staged under a commit-keyed tag and given their release tags by digest, then the staging
+         tag is deleted, which needs `DH_REGISTRY_PASSWORD` to be a Docker Hub personal access token
+         with Read, Write, Delete permission. A tag never reaches downstream packagers before its
+         commit has passed. `make prerelease-local` runs the tests and RPM builds on this machine
+         beforehand. `make push-release` needs `GITLAB_TOKEN`, a read_api token, to watch the
+         rehearsal; the tag pipeline checks it with the masked, protected CI variable
+         `RELEASE_READ_TOKEN` (tags must be protected for it to reach their pipelines). Make that a
+         project access token of this project, not a personal one: Reporter role, `read_api` scope
+         only, with an expiry date. Every main and tag job can read it.
          - If the rehearsal fails, the tag has not left this machine. Delete it
            (`git tag -d X.Y.Z`), push the fix, then `make release` (an empty Release commit) and
            `make push-release` again.

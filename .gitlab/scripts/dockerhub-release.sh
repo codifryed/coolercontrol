@@ -70,15 +70,43 @@ echo "Published ${IMAGE}@${digest} as ${RELEASE_TAGS}"
 # The release tags keep the image; only the staging name goes. A failure here leaves a stale tag,
 # not a broken release.
 repository="${IMAGE#*/}"
+response=$(mktemp)
+# report_failure STEP: the failed call's status and the start of its response body.
+report_failure() {
+    echo "Docker Hub $1 failed (HTTP ${status}):"
+    head -c 300 "${response}" || true
+    echo
+}
+# Deleting needs a token with delete permission (PAT: Read, Write, Delete). Only failed responses
+# are printed: a successful login's body holds the token.
 # jq reads the credentials from the environment, so they stay out of every argv.
-token=$(jq -n '{username: env.DH_REGISTRY_USER, password: env.DH_REGISTRY_PASSWORD}' |
-    curl --silent --header 'Content-Type: application/json' --data @- \
-        https://hub.docker.com/v2/users/login/ | jq -r '.token // empty')
-# The header goes in on stdin (printf is a builtin), keeping the token out of curl's argv.
-if [ -n "${token}" ] && printf 'Authorization: JWT %s\n' "${token}" |
-    curl --fail --silent --request DELETE --header @- \
-        "https://hub.docker.com/v2/repositories/${repository}/tags/${STAGING_TAG}/"; then
-    echo "Deleted the staging tag ${STAGING_TAG}"
+status=$(jq -n '{identifier: env.DH_REGISTRY_USER, secret: env.DH_REGISTRY_PASSWORD}' |
+    curl --silent --output "${response}" --write-out '%{http_code}' \
+        --header 'Content-Type: application/json' --data @- \
+        https://hub.docker.com/v2/auth/token) || status="000"
+token=""
+deleted="no"
+if [ "${status}" = "200" ]; then
+    token=$(jq -r '.access_token // empty' "${response}")
+    [ -n "${token}" ] || echo "Docker Hub login returned no access token"
 else
-    echo "Could not delete the staging tag ${STAGING_TAG}; remove it on Docker Hub."
+    report_failure login
 fi
+if [ -n "${token}" ]; then
+    # The header goes in on stdin (printf is a builtin), keeping the token out of curl's argv.
+    status=$(printf 'Authorization: Bearer %s\n' "${token}" |
+        curl --silent --output "${response}" --write-out '%{http_code}' --request DELETE \
+            --header @- \
+            "https://hub.docker.com/v2/namespaces/${repository%%/*}/repositories/${repository#*/}/tags/${STAGING_TAG}") ||
+        status="000"
+    case "${status}" in
+    2*)
+        deleted="yes"
+        echo "Deleted the staging tag ${STAGING_TAG}"
+        ;;
+    *) report_failure "tag delete" ;;
+    esac
+fi
+rm -f "${response}"
+[ "${deleted}" = "yes" ] ||
+    echo "Could not delete the staging tag ${STAGING_TAG}; remove it on Docker Hub."
