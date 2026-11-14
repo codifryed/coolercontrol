@@ -55,9 +55,8 @@ one.
       9. close the current Milestone
       10. create the next release milestone (can easily change the milestone name/version later)
    5. Apt Repo: Verify amd and arm package uploads were successful.
-   6. DockerHub: Adjust Image links on main page
-   7. Copr: Adjust git tag version for each package and trigger new builds.
-   8. Merge any website changes to be made.
+   6. Copr: Adjust git tag version for each package and trigger new builds.
+   7. Merge any website changes to be made.
 
 3. Update OpenAPI specification
    1. Nothing to do in this repo: `make bump` regenerates `openapi/openapi.json` (the spec stamps
