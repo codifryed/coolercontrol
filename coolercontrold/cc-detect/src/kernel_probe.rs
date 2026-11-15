@@ -22,6 +22,7 @@ use crate::{DetectionResults, KernelProbedDriver};
 
 /// A distro `modules.dep` is around 1 MiB. Anything far larger is not one.
 const MODULES_DEP_MAX_BYTES: u64 = 16 * 1024 * 1024;
+const _: () = assert!(MODULES_DEP_MAX_BYTES < usize::MAX as u64);
 const OSRELEASE_PATH: &str = "/proc/sys/kernel/osrelease";
 const PLATFORM_DRIVERS_PATH: &str = "/sys/bus/platform/drivers";
 
@@ -47,12 +48,14 @@ pub fn load_installed_out_of_tree(lockdown_active: bool, results: &mut Detection
         "Super-I/O probe unavailable, loading installed out-of-tree drivers: {}",
         candidates.join(", ")
     );
+    let attempts = candidates.len();
     let mut any_loaded = false;
     for driver in candidates {
         let result = module_loader::load_module(&driver, lockdown_active);
         any_loaded |= matches!(result, LoadResult::Loaded);
         record_attempt(results, driver, &result);
     }
+    assert_eq!(results.kernel_probed.len(), attempts);
     if any_loaded {
         module_loader::udevadm_settle();
     }
@@ -85,6 +88,7 @@ pub fn select_candidates(
     candidates.sort_unstable();
     candidates.dedup();
     assert!(candidates.len() <= superio_drivers.len());
+    assert!(candidates.windows(2).all(|pair| pair[0] < pair[1]));
     candidates
 }
 
@@ -112,6 +116,11 @@ fn out_of_tree_module_names(modules_dep: &str) -> HashSet<String> {
         if name.is_empty().not() {
             names.insert(name.replace('-', "_"));
         }
+    }
+    assert!(names.len() <= modules_dep.lines().count());
+    for name in &names {
+        assert!(name.is_empty().not());
+        assert!(name.contains('-').not());
     }
     names
 }
@@ -172,6 +181,8 @@ fn read_modules_dep() -> Option<String> {
         debug!("Could not read {}: {err}", path.display());
         return None;
     }
+    // `take` caps the read one byte past the limit, so oversize is detectable.
+    assert!(content.len() as u64 <= MODULES_DEP_MAX_BYTES + 1);
     if content.len() as u64 > MODULES_DEP_MAX_BYTES {
         debug!("{} is implausibly large, skipping", path.display());
         return None;

@@ -448,9 +448,15 @@ pub fn findings_from_detection(
         &environment,
         bound_drivers,
     );
-    if detection_supported {
-        apply_signature_rejections(&mut findings, &results.signature_rejected);
+    if detection_supported.not() {
+        assert!(matches!(
+            findings.as_slice(),
+            [SystemFinding::DetectionUnsupported]
+        ));
+        return findings;
     }
+    apply_signature_rejections(&mut findings, &results.signature_rejected);
+    assert!(findings.len() >= results.signature_rejected.len());
     findings
 }
 
@@ -462,7 +468,10 @@ fn apply_signature_rejections(findings: &mut Vec<SystemFinding>, signature_rejec
     if signature_rejected.is_empty() {
         return;
     }
-    findings.retain(|finding| matches!(finding, SystemFinding::BlockedByEnvironment { .. }).not());
+    let is_blocked =
+        |finding: &SystemFinding| matches!(finding, SystemFinding::BlockedByEnvironment { .. });
+    findings.retain(|finding| is_blocked(finding).not());
+    assert!(findings.iter().any(is_blocked).not());
     findings.extend(
         signature_rejected
             .iter()
@@ -470,7 +479,7 @@ fn apply_signature_rejections(findings: &mut Vec<SystemFinding>, signature_rejec
                 driver: driver.clone(),
             }),
     );
-    debug_assert!(findings.len() >= signature_rejected.len());
+    assert!(findings.iter().any(is_blocked).not());
 }
 
 /// Derives the machine-scope findings.
@@ -521,9 +530,14 @@ fn blocked_probe_matters(environment: &ProbeEnvironment, bound_drivers: &HashSet
     if environment.is_portable_chassis {
         return false;
     }
-    let superio_driver_bound = cc_detect::chip_db::compiled_drivers()
+    let superio_drivers = cc_detect::chip_db::compiled_drivers();
+    assert!(superio_drivers.is_empty().not());
+    let superio_driver_bound = superio_drivers
         .iter()
         .any(|driver| is_chip_served(driver, bound_drivers));
+    if superio_driver_bound {
+        assert!(bound_drivers.is_empty().not());
+    }
     superio_driver_bound.not()
 }
 
