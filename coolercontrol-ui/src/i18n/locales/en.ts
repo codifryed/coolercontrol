@@ -677,6 +677,8 @@ export default {
             hardwareReportCopied: 'Copied',
             findingNoDriverBound: 'A chip was detected, but no loaded driver is serving it.',
             findingBlacklisted: 'This driver is blacklisted and was not loaded.',
+            findingSignatureRejected:
+                'This driver is installed, but the kernel rejected its module signature, so it was not loaded.',
             findingBlockedByEnvironment: 'Hardware detection could not run in this environment.',
             findingBlockedBySecureBoot:
                 'Hardware detection could not run because Secure Boot is enabled.',

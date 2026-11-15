@@ -679,6 +679,8 @@ export default {
             hardwareReportCopied: 'कॉपी हो गया',
             findingNoDriverBound: 'एक चिप मिली, पर कोई लोड किया गया ड्राइवर उसे नहीं चला रहा।',
             findingBlacklisted: 'यह ड्राइवर ब्लैकलिस्ट में है और लोड नहीं किया गया।',
+            findingSignatureRejected:
+                'यह ड्राइवर इंस्टॉल है, पर कर्नेल ने इसके मॉड्यूल सिग्नेचर को अस्वीकार कर दिया, इसलिए इसे लोड नहीं किया गया।',
             findingBlockedByEnvironment: 'इस परिवेश में हार्डवेयर पहचान नहीं चल सकी।',
             findingBlockedBySecureBoot:
                 'सिक्योर बूट सक्षम होने के कारण हार्डवेयर पहचान नहीं चल सकी।',

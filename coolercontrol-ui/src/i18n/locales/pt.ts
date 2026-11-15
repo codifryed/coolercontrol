@@ -686,6 +686,8 @@ export default {
             hardwareReportCopied: 'Copiado',
             findingNoDriverBound: 'Um chip foi detectado, mas nenhum driver carregado o atende.',
             findingBlacklisted: 'Este driver está na lista negra e não foi carregado.',
+            findingSignatureRejected:
+                'Este driver está instalado, mas o kernel rejeitou a assinatura do módulo, por isso não foi carregado.',
             findingBlockedByEnvironment:
                 'A detecção de hardware não pôde ser executada neste ambiente.',
             findingBlockedBySecureBoot:

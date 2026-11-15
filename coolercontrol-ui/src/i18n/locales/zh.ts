@@ -652,6 +652,7 @@ export default {
             hardwareReportCopied: '已复制',
             findingNoDriverBound: '检测到一个芯片，但没有已加载的驱动为其服务。',
             findingBlacklisted: '该驱动已列入黑名单，未被加载。',
+            findingSignatureRejected: '该驱动已安装，但内核拒绝了其模块签名，因此未被加载。',
             findingBlockedByEnvironment: '硬件检测无法在此环境中运行。',
             findingBlockedBySecureBoot: '安全启动已启用，硬件检测无法运行。',
             findingBlockedByContainer: '硬件检测无法在容器中运行。',

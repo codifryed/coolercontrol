@@ -67,6 +67,19 @@ describe('hardwareNoticeKind', () => {
         expect(hardwareNoticeKind(blocked, 4, 4)).toBeUndefined()
     })
 
+    // A rejected signature names its driver, and the notice lists it with its
+    // own cause, so the headline stays on the channel count.
+    it('leaves the headline to the channel count for a rejected signature', () => {
+        const findings = [finding(SystemFindingKind.SignatureRejected)]
+        expect(hardwareNoticeKind(findings, 0, 0)).toBe('noChannels')
+        expect(hardwareNoticeKind(findings, 4, 0)).toBe('noneControllable')
+    })
+
+    it('stays silent about a rejected signature when the fans work anyway', () => {
+        const findings = [finding(SystemFindingKind.SignatureRejected)]
+        expect(hardwareNoticeKind(findings, 4, 2)).toBeUndefined()
+    })
+
     it('ignores DetectionUnsupported when picking the headline', () => {
         const findings = [finding(SystemFindingKind.DetectionUnsupported)]
         expect(hardwareNoticeKind(findings, 0, 0)).toBe('noChannels')

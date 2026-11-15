@@ -653,6 +653,7 @@ export default {
             hardwareReportCopied: '已複製',
             findingNoDriverBound: '偵測到一個晶片，但沒有已載入的驅動程式為其服務。',
             findingBlacklisted: '該驅動程式已列入黑名單，未被載入。',
+            findingSignatureRejected: '該驅動程式已安裝，但核心拒絕了其模組簽章，因此未被載入。',
             findingBlockedByEnvironment: '硬體偵測無法在此環境中執行。',
             findingBlockedBySecureBoot: '已啟用安全開機，硬體偵測無法執行。',
             findingBlockedByContainer: '硬體偵測無法在容器中執行。',

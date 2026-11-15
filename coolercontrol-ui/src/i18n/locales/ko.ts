@@ -674,6 +674,8 @@ export default {
             hardwareReportCopied: '복사됨',
             findingNoDriverBound: '칩이 감지되었지만 이를 처리하는 로드된 드라이버가 없습니다.',
             findingBlacklisted: '이 드라이버는 차단 목록에 있어 로드되지 않았습니다.',
+            findingSignatureRejected:
+                '이 드라이버는 설치되어 있지만 커널이 모듈 서명을 거부하여 로드되지 않았습니다.',
             findingBlockedByEnvironment: '이 환경에서는 하드웨어 탐지를 실행할 수 없습니다.',
             findingBlockedBySecureBoot: '보안 부팅이 켜져 있어 하드웨어 탐지를 실행할 수 없습니다.',
             findingBlockedByContainer: '컨테이너 안에서는 하드웨어 탐지를 실행할 수 없습니다.',

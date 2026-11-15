@@ -673,6 +673,8 @@ export default {
             hardwareReportCopied: 'تم النسخ',
             findingNoDriverBound: 'تم اكتشاف شريحة، لكن لا يوجد برنامج تشغيل محمَّل يخدمها.',
             findingBlacklisted: 'برنامج التشغيل هذا محظور ولم يتم تحميله.',
+            findingSignatureRejected:
+                'برنامج التشغيل هذا مثبّت، لكن النواة رفضت توقيع الوحدة الخاص به، لذا لم يتم تحميله.',
             findingBlockedByEnvironment: 'تعذّر تشغيل اكتشاف الأجهزة في هذه البيئة.',
             findingBlockedBySecureBoot: 'تعذّر تشغيل اكتشاف الأجهزة لأن الإقلاع الآمن مُفعّل.',
             findingBlockedByContainer: 'تعذّر تشغيل اكتشاف الأجهزة داخل حاوية.',

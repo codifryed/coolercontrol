@@ -700,6 +700,8 @@ export default {
             hardwareReportCopied: 'Copié',
             findingNoDriverBound: 'Une puce a été détectée, mais aucun pilote chargé ne la gère.',
             findingBlacklisted: "Ce pilote est sur liste noire et n'a pas été chargé.",
+            findingSignatureRejected:
+                "Ce pilote est installé, mais le noyau a rejeté la signature de son module, il n'a donc pas été chargé.",
             findingBlockedByEnvironment:
                 "La détection matérielle n'a pas pu s'exécuter dans cet environnement.",
             findingBlockedBySecureBoot:

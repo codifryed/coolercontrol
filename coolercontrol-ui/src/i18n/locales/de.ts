@@ -696,6 +696,8 @@ export default {
             findingNoDriverBound:
                 'Ein Chip wurde erkannt, aber kein geladener Treiber bedient ihn.',
             findingBlacklisted: 'Dieser Treiber steht auf der Blockliste und wurde nicht geladen.',
+            findingSignatureRejected:
+                'Dieser Treiber ist installiert, aber der Kernel hat seine Modulsignatur abgelehnt, daher wurde er nicht geladen.',
             findingBlockedByEnvironment:
                 'Die Hardware-Erkennung konnte in dieser Umgebung nicht ausgeführt werden.',
             findingBlockedBySecureBoot:
