@@ -47,14 +47,12 @@ pub fn load_installed_out_of_tree(lockdown_active: bool, results: &mut Detection
         "Super-I/O probe unavailable, loading installed out-of-tree drivers: {}",
         candidates.join(", ")
     );
+    let mut any_loaded = false;
     for driver in candidates {
         let result = module_loader::load_module(&driver, lockdown_active);
+        any_loaded |= matches!(result, LoadResult::Loaded);
         record_attempt(results, driver, &result);
     }
-    let any_loaded = results
-        .kernel_probed
-        .iter()
-        .any(|probed| probed.module_status == "loaded");
     if any_loaded {
         module_loader::udevadm_settle();
     }
