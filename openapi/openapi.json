@@ -13102,6 +13102,23 @@
             ]
           },
           {
+            "description": "The kernel refused the driver's module signature, as it does under\n Secure Boot for a module signed with no enrolled key.",
+            "type": "object",
+            "properties": {
+              "driver": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "signature_rejected"
+              }
+            },
+            "required": [
+              "kind",
+              "driver"
+            ]
+          },
+          {
             "description": "The probe could not run at all.",
             "type": "object",
             "properties": {

@@ -347,6 +347,9 @@ pub enum SystemFinding {
     },
     /// modprobe refused because the driver is blacklisted.
     Blacklisted { driver: String },
+    /// The kernel refused the driver's module signature, as it does under
+    /// Secure Boot for a module signed with no enrolled key.
+    SignatureRejected { driver: String },
     /// The probe could not run at all.
     BlockedByEnvironment { reason: EnvironmentBlocker },
     /// Not an `x86_64` target, so no probe was ever attempted. Distinct from
@@ -438,13 +441,36 @@ pub fn findings_from_detection(
         has_dev_port: results.environment.has_dev_port,
         is_portable_chassis,
     };
-    derive_system_findings(
+    let mut findings = derive_system_findings(
         detection_supported,
         &chips,
         &results.blacklisted,
         &environment,
         bound_drivers,
-    )
+    );
+    if detection_supported {
+        apply_signature_rejections(&mut findings, &results.signature_rejected);
+    }
+    findings
+}
+
+/// Adds a finding per driver the kernel refused to load for its signature.
+///
+/// A refusal is the precise reason a chip went missing, so it replaces the
+/// blocked-probe finding, which would only point at the probe.
+fn apply_signature_rejections(findings: &mut Vec<SystemFinding>, signature_rejected: &[String]) {
+    if signature_rejected.is_empty() {
+        return;
+    }
+    findings.retain(|finding| matches!(finding, SystemFinding::BlockedByEnvironment { .. }).not());
+    findings.extend(
+        signature_rejected
+            .iter()
+            .map(|driver| SystemFinding::SignatureRejected {
+                driver: driver.clone(),
+            }),
+    );
+    debug_assert!(findings.len() >= signature_rejected.len());
 }
 
 /// Derives the machine-scope findings.
@@ -859,6 +885,10 @@ impl HardwareSupportController {
                 SystemFinding::Blacklisted { driver } => {
                     warn!("Hardware support: driver {driver} is blacklisted and was not loaded");
                 }
+                SystemFinding::SignatureRejected { driver } => warn!(
+                    "Hardware support: driver {driver} is installed, but the kernel rejected \
+                     its module signature, so it was not loaded"
+                ),
                 SystemFinding::BlockedByEnvironment { reason } => warn!(
                     "Hardware support: Super-I/O chips could not be probed because {} and no \
                      Super-I/O driver is loaded, so a chip that needs one will not be found",
@@ -1238,6 +1268,56 @@ mod tests {
             vec![SystemFinding::Blacklisted {
                 driver: "it87".to_string()
             }]
+        );
+    }
+
+    /// Goal: a driver the kernel refused for its signature becomes its own
+    /// finding and replaces the blocked-probe one, which would only point at
+    /// the probe. Method: a locked-down, unserved desktop whose fallback had
+    /// one driver rejected, with a blacklisted driver alongside.
+    #[test]
+    fn signature_rejection_replaces_the_blocked_probe() {
+        let mut results = cc_detect::DetectionResults::empty(cc_detect::EnvironmentInfo {
+            is_container: false,
+            is_secure_boot: true,
+            has_dev_port: true,
+        });
+        let bound = HashSet::from(["k10temp".to_string()]);
+        assert_eq!(
+            findings_from_detection(true, &results, &bound, false),
+            vec![SystemFinding::BlockedByEnvironment {
+                reason: EnvironmentBlocker::SecureBoot
+            }]
+        );
+
+        results.blacklisted.push("it87".to_string());
+        results.signature_rejected.push("nct6687".to_string());
+        assert_eq!(
+            findings_from_detection(true, &results, &bound, false),
+            vec![
+                SystemFinding::Blacklisted {
+                    driver: "it87".to_string()
+                },
+                SystemFinding::SignatureRejected {
+                    driver: "nct6687".to_string()
+                },
+            ]
+        );
+    }
+
+    /// Goal: off `x86_64` nothing was loaded, so a rejection list cannot add
+    /// findings to the unsupported one. Method: a populated list, unsupported.
+    #[test]
+    fn unsupported_detection_ignores_signature_rejections() {
+        let mut results = cc_detect::DetectionResults::empty(cc_detect::EnvironmentInfo {
+            is_container: false,
+            is_secure_boot: false,
+            has_dev_port: false,
+        });
+        results.signature_rejected.push("nct6687".to_string());
+        assert_eq!(
+            findings_from_detection(false, &results, &HashSet::new(), false),
+            vec![SystemFinding::DetectionUnsupported]
         );
     }
 

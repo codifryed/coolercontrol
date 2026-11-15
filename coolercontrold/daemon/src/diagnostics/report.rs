@@ -1054,6 +1054,9 @@ fn finding_label(finding: &SystemFinding) -> String {
             "{chip_name}: detected, but no loaded driver serves it (expected {expected_driver})"
         ),
         SystemFinding::Blacklisted { driver } => format!("{driver}: blacklisted, not loaded"),
+        SystemFinding::SignatureRejected { driver } => {
+            format!("{driver}: installed, module signature rejected by the kernel")
+        }
         SystemFinding::BlockedByEnvironment { reason } => {
             format!("Super-I/O probe blocked: {reason:?}")
         }
