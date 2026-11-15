@@ -193,7 +193,13 @@ pub async fn generate(
     write_probe_summary(&mut report, detection, full, cc_detect::DETECTION_SUPPORTED);
     write_fan_summary(&mut report, &devices, budget).await;
     write_device_sections(&mut report, devices_other);
-    write_findings(&mut report, detection, cc_detect::DETECTION_SUPPORTED);
+    let findings = derive_findings(detection, cc_detect::DETECTION_SUPPORTED).await;
+    write_findings(
+        &mut report,
+        detection,
+        cc_detect::DETECTION_SUPPORTED,
+        findings.as_deref(),
+    );
     if full {
         write_full_tree(&mut report, &devices, budget).await;
         return report;
@@ -503,42 +509,59 @@ fn write_device_section(
 }
 
 /// See `write_probe_summary` for why `detection_supported` is a parameter.
+/// `findings` come from `derive_findings` for the same `detection`.
 fn write_findings(
     report: &mut String,
     detection: Option<&cc_detect::DetectionResults>,
     detection_supported: bool,
+    findings: Option<&[SystemFinding]>,
 ) {
     let _ = writeln!(report, "\nSystem findings");
     if detection_supported.not() {
         let _ = writeln!(report, "  detection unsupported on this architecture");
         return;
     }
-    let Some(detection) = detection else {
+    if detection.is_none() {
         let _ = writeln!(report, "  not determined (detection disabled)");
         return;
+    }
+    let Some(findings) = findings else {
+        let _ = writeln!(report, "  not determined (machine facts unreadable)");
+        return;
     };
-    let findings = derive_findings(detection, detection_supported);
     if findings.is_empty() {
         let _ = writeln!(report, "  none");
         return;
     }
-    for finding in &findings {
+    for finding in findings {
         let _ = writeln!(report, "  {}", finding_label(finding));
     }
 }
 
-/// See `write_probe_summary` for why `detection_supported` is a parameter.
-fn derive_findings(
-    detection: &cc_detect::DetectionResults,
+/// `None` when there is no detection to judge or the machine facts could not
+/// be read. Sysfs and DMI reads, so on the blocking pool.
+async fn derive_findings(
+    detection: Option<&cc_detect::DetectionResults>,
     detection_supported: bool,
-) -> Vec<SystemFinding> {
-    let bound_drivers = support::resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
-    support::findings_from_detection(
-        detection_supported,
-        detection,
-        &bound_drivers,
-        support::read_is_portable_chassis(),
-    )
+) -> Option<Vec<SystemFinding>> {
+    let detection = detection?.clone();
+    let derived = rt::spawn_blocking(move || {
+        let bound_drivers = support::resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
+        support::findings_from_detection(
+            detection_supported,
+            &detection,
+            &bound_drivers,
+            support::read_is_portable_chassis(),
+        )
+    })
+    .await;
+    match derived {
+        Ok(findings) => Some(findings),
+        Err(err) => {
+            warn!("Could not derive the report's system findings: {err}");
+            None
+        }
+    }
 }
 
 async fn write_full_tree(report: &mut String, devices: &[ReportDevice], budget: ReadBudget) {
@@ -1841,7 +1864,7 @@ mod tests {
         write_probe_summary(&mut report, None, false, true);
         assert!(report.contains("skipped"));
         let mut findings = String::new();
-        write_findings(&mut findings, None, true);
+        write_findings(&mut findings, None, true, None);
         assert!(findings.contains("not determined"));
         assert!(findings.contains("Secure Boot").not());
     }
@@ -2003,7 +2026,7 @@ mod tests {
         assert!(report.contains("skipped").not());
 
         let mut findings = String::new();
-        write_findings(&mut findings, None, false);
+        write_findings(&mut findings, None, false, None);
         assert!(findings.contains("detection unsupported on this architecture"));
         assert!(findings.contains("Secure Boot").not());
         assert!(findings.contains("not determined").not());
