@@ -13,8 +13,8 @@
 
 use crate::device::{ChannelName, Device, DeviceInfo, DeviceType};
 use crate::diagnostics::support::{
-    self, ChannelExclusion, ChannelVerdict, DetectedChipRef, HiddenHardware, HwmonExclusion,
-    ProbeEnvironment, SystemFinding, SystemInfo,
+    self, ChannelExclusion, ChannelVerdict, HiddenHardware, HwmonExclusion, SystemFinding,
+    SystemInfo,
 };
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -526,25 +526,11 @@ fn derive_findings(
     detection_supported: bool,
 ) -> Vec<SystemFinding> {
     let bound_drivers = support::resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
-    let chips = detection
-        .detected_chips
-        .iter()
-        .map(|chip| DetectedChipRef {
-            name: &chip.name,
-            driver: &chip.driver,
-        })
-        .collect::<Vec<_>>();
-    let environment = ProbeEnvironment {
-        is_container: detection.environment.is_container,
-        is_secure_boot: detection.environment.is_secure_boot,
-        has_dev_port: detection.environment.has_dev_port,
-    };
-    support::derive_system_findings(
+    support::findings_from_detection(
         detection_supported,
-        &chips,
-        &detection.blacklisted,
-        &environment,
+        detection,
         &bound_drivers,
+        support::read_is_portable_chassis(),
     )
 }
 

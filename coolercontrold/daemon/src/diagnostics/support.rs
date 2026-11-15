@@ -375,10 +375,64 @@ pub struct DetectedChipRef<'a> {
 }
 
 /// The environment the probe ran in.
+#[allow(clippy::struct_excessive_bools)] // Independent observations, not a state machine.
 pub struct ProbeEnvironment {
     pub is_container: bool,
     pub is_secure_boot: bool,
     pub has_dev_port: bool,
+    /// DMI names a laptop or other portable chassis.
+    pub is_portable_chassis: bool,
+}
+
+/// SMBIOS chassis types for portable machines: Portable, Laptop, Notebook,
+/// Hand Held, Sub Notebook, Tablet, Convertible and Detachable.
+const PORTABLE_CHASSIS_TYPES: [u8; 8] = [8, 9, 10, 11, 14, 30, 31, 32];
+
+/// Whether a DMI `chassis_type` value names a portable machine.
+///
+/// An unreadable or unknown value counts as not portable, which keeps any
+/// blocked-probe finding rather than hiding it.
+pub fn is_portable_chassis(chassis_type: &str) -> bool {
+    chassis_type
+        .trim()
+        .parse::<u8>()
+        .is_ok_and(|value| PORTABLE_CHASSIS_TYPES.contains(&value))
+}
+
+/// Blocking DMI read, for the blocking pool.
+pub fn read_is_portable_chassis() -> bool {
+    is_portable_chassis(&crate::logger::read_dmi_system_info("chassis_type"))
+}
+
+/// The machine-scope findings for one detection run. Shared by the health
+/// snapshot and the report so the two cannot disagree.
+pub fn findings_from_detection(
+    detection_supported: bool,
+    results: &cc_detect::DetectionResults,
+    bound_drivers: &HashSet<String>,
+    is_portable_chassis: bool,
+) -> Vec<SystemFinding> {
+    let chips = results
+        .detected_chips
+        .iter()
+        .map(|chip| DetectedChipRef {
+            name: &chip.name,
+            driver: &chip.driver,
+        })
+        .collect::<Vec<_>>();
+    let environment = ProbeEnvironment {
+        is_container: results.environment.is_container,
+        is_secure_boot: results.environment.is_secure_boot,
+        has_dev_port: results.environment.has_dev_port,
+        is_portable_chassis,
+    };
+    derive_system_findings(
+        detection_supported,
+        &chips,
+        &results.blacklisted,
+        &environment,
+        bound_drivers,
+    )
 }
 
 /// Derives the machine-scope findings.
@@ -398,7 +452,9 @@ pub fn derive_system_findings(
     }
     let mut findings = Vec::with_capacity(chips.len() + blacklisted.len() + 1);
     if let Some(reason) = environment_blocker(environment) {
-        findings.push(SystemFinding::BlockedByEnvironment { reason });
+        if blocked_probe_matters(environment, bound_drivers) {
+            findings.push(SystemFinding::BlockedByEnvironment { reason });
+        }
     }
     for driver in blacklisted {
         findings.push(SystemFinding::Blacklisted {
@@ -417,8 +473,24 @@ pub fn derive_system_findings(
     findings
 }
 
+/// Whether a probe could have found something the machine does not already show.
+///
+/// A bound Super-I/O driver means the chip is served, and its channels carry
+/// their own verdicts, including the out-of-tree one. Laptops usually keep
+/// their fans behind an embedded controller instead. In both cases a blocked
+/// probe explains nothing and only sends the user the wrong way.
+fn blocked_probe_matters(environment: &ProbeEnvironment, bound_drivers: &HashSet<String>) -> bool {
+    if environment.is_portable_chassis {
+        return false;
+    }
+    let superio_driver_bound = cc_detect::chip_db::compiled_drivers()
+        .iter()
+        .any(|driver| is_chip_served(driver, bound_drivers));
+    superio_driver_bound.not()
+}
+
 /// Secure Boot is checked first because it is the cause users are least likely
-/// to suspect and it silently defeats module loading.
+/// to suspect: its kernel lockdown blocks the I/O port probe.
 fn environment_blocker(environment: &ProbeEnvironment) -> Option<EnvironmentBlocker> {
     if environment.is_secure_boot {
         return Some(EnvironmentBlocker::SecureBoot);
@@ -740,34 +812,20 @@ impl HardwareSupportController {
         let Some(results) = detection else {
             return Vec::new();
         };
-        // A walk of the hwmon class, on the blocking pool like the probe before it.
-        let resolved =
-            rt::spawn_blocking(|| resolve_bound_drivers(Path::new(HWMON_CLASS_PATH))).await;
-        let Ok(bound_drivers) = resolved else {
+        // Sysfs walks, on the blocking pool like the probe before them.
+        let resolved = rt::spawn_blocking(|| {
+            (
+                resolve_bound_drivers(Path::new(HWMON_CLASS_PATH)),
+                read_is_portable_chassis(),
+            )
+        })
+        .await;
+        let Ok((bound_drivers, is_portable_chassis)) = resolved else {
             // An empty set would report every detected chip as unbound, so report nothing.
             warn!("Could not resolve the bound hwmon drivers; no hardware findings this time");
             return Vec::new();
         };
-        let chips = results
-            .detected_chips
-            .iter()
-            .map(|chip| DetectedChipRef {
-                name: &chip.name,
-                driver: &chip.driver,
-            })
-            .collect::<Vec<_>>();
-        let environment = ProbeEnvironment {
-            is_container: results.environment.is_container,
-            is_secure_boot: results.environment.is_secure_boot,
-            has_dev_port: results.environment.has_dev_port,
-        };
-        derive_system_findings(
-            true,
-            &chips,
-            &results.blacklisted,
-            &environment,
-            &bound_drivers,
-        )
+        findings_from_detection(true, results, &bound_drivers, is_portable_chassis)
     }
 
     /// Secure Boot silently defeating module loading is invisible in the app
@@ -1092,9 +1150,8 @@ mod tests {
     #[test]
     fn unsupported_detection_never_reports_blockers() {
         let environment = ProbeEnvironment {
-            is_container: false,
-            is_secure_boot: false,
             has_dev_port: false,
+            ..clear_environment()
         };
         let findings = derive_system_findings(false, &[], &[], &environment, &HashSet::new());
         assert_eq!(findings, vec![SystemFinding::DetectionUnsupported]);
@@ -1108,6 +1165,7 @@ mod tests {
             is_container: true,
             is_secure_boot: true,
             has_dev_port: false,
+            is_portable_chassis: false,
         };
         let findings = derive_system_findings(true, &[], &[], &environment, &HashSet::new());
         assert_eq!(
@@ -1116,6 +1174,67 @@ mod tests {
                 reason: EnvironmentBlocker::SecureBoot
             }]
         );
+    }
+
+    /// Goal: a blocked probe is reported only where it could have found a chip
+    /// nothing serves. Method: Secure Boot on a desktop, once with only
+    /// non-Super-I/O drivers bound (reported) and once per Super-I/O family
+    /// bound, in-tree and out-of-tree (silent). The bound in-tree case is the
+    /// MSI and ASUS one: its channels already carry the out-of-tree verdict.
+    #[test]
+    fn bound_superio_driver_silences_a_blocked_probe() {
+        let environment = secure_boot_environment();
+        let unrelated = HashSet::from(["k10temp".to_string(), "amdgpu".to_string()]);
+        assert_eq!(
+            derive_system_findings(true, &[], &[], &environment, &unrelated),
+            vec![SystemFinding::BlockedByEnvironment {
+                reason: EnvironmentBlocker::SecureBoot
+            }]
+        );
+        for superio_driver in ["nct6683", "nct6687", "nct6775", "it87", "f71882fg"] {
+            let bound = HashSet::from(["k10temp".to_string(), superio_driver.to_string()]);
+            let findings = derive_system_findings(true, &[], &[], &environment, &bound);
+            assert!(findings.is_empty(), "{superio_driver}: {findings:?}");
+        }
+    }
+
+    /// Goal: laptops get no blocked-probe finding, since their fans usually sit
+    /// behind an embedded controller. Method: the same unserved Secure Boot
+    /// machine as a desktop and as a laptop. Blacklisted drivers are still
+    /// reported on the laptop: the gate covers only the blocked probe.
+    #[test]
+    fn portable_chassis_silences_a_blocked_probe() {
+        let desktop = secure_boot_environment();
+        let laptop = ProbeEnvironment {
+            is_portable_chassis: true,
+            ..secure_boot_environment()
+        };
+        let bound = HashSet::new();
+        assert_eq!(
+            derive_system_findings(true, &[], &[], &desktop, &bound).len(),
+            1
+        );
+        assert!(derive_system_findings(true, &[], &[], &laptop, &bound).is_empty());
+        let blacklisted = vec!["it87".to_string()];
+        assert_eq!(
+            derive_system_findings(true, &[], &blacklisted, &laptop, &bound),
+            vec![SystemFinding::Blacklisted {
+                driver: "it87".to_string()
+            }]
+        );
+    }
+
+    /// Goal: only the SMBIOS portable chassis types count, and anything
+    /// unreadable keeps the finding. Method: portable, desktop and malformed
+    /// sysfs values, with the trailing newline sysfs adds.
+    #[test]
+    fn portable_chassis_types_are_recognized() {
+        for portable in ["8", "9", "10\n", "14", "31", "32"] {
+            assert!(is_portable_chassis(portable), "{portable:?}");
+        }
+        for not_portable in ["3", "4", "35", "", "laptop", "-9", "900"] {
+            assert!(is_portable_chassis(not_portable).not(), "{not_portable:?}");
+        }
     }
 
     /// A blacklisted driver is strongly actionable and must survive alongside
@@ -1152,6 +1271,14 @@ mod tests {
             is_container: false,
             is_secure_boot: false,
             has_dev_port: true,
+            is_portable_chassis: false,
+        }
+    }
+
+    fn secure_boot_environment() -> ProbeEnvironment {
+        ProbeEnvironment {
+            is_secure_boot: true,
+            ..clear_environment()
         }
     }
 }

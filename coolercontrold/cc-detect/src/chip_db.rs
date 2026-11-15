@@ -7,9 +7,24 @@
 //! runtime override files, providing a unified chip database for detection.
 
 use std::path::Path;
+use std::sync::LazyLock;
 
 use log::{debug, warn};
 use serde::Deserialize;
+
+/// Far above the ~15 distinct drivers the compiled database names today.
+const MAX_DISTINCT_DRIVERS: usize = 64;
+
+/// Every driver the compiled database names, sorted and deduplicated.
+///
+/// Parsed once, on first use, so callers that only need the names do not
+/// re-parse the TOML each time.
+#[must_use]
+pub fn compiled_drivers() -> &'static [String] {
+    static DRIVERS: LazyLock<Box<[String]>> =
+        LazyLock::new(|| ChipDatabase::load_compiled().drivers().into_boxed_slice());
+    &DRIVERS
+}
 
 /// Compiled-in TOML data files.
 const TOML_NATIONAL_SEMI: &str = include_str!("../data/superio_national_semi.toml");
@@ -143,6 +158,26 @@ impl ChipDatabase {
         Self { families }
     }
 
+    /// The distinct drivers named by any chip, sorted. Driverless chips are left out.
+    ///
+    /// # Panics
+    ///
+    /// If the database names more than `MAX_DISTINCT_DRIVERS` drivers.
+    #[must_use]
+    pub fn drivers(&self) -> Vec<String> {
+        let mut drivers = self
+            .families
+            .iter()
+            .flat_map(|family| family.chips.iter())
+            .filter(|chip| chip.has_driver())
+            .map(|chip| chip.driver.clone())
+            .collect::<Vec<_>>();
+        drivers.sort_unstable();
+        drivers.dedup();
+        assert!(drivers.len() <= MAX_DISTINCT_DRIVERS);
+        drivers
+    }
+
     /// Load and merge an optional override file from the given path.
     /// Entries with matching `devid` replace compiled defaults.
     /// New entries are appended to their chip family.
@@ -266,6 +301,7 @@ fn parse_toml_family(toml_str: &str) -> Result<ChipFamily, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Not;
 
     #[test]
     fn test_load_compiled_database() {
@@ -276,6 +312,23 @@ mod tests {
             total_chips > 50,
             "should have >50 total chips, got {total_chips}"
         );
+    }
+
+    /// Goal: the driver list names each Super-I/O driver once, including the
+    /// out-of-tree `nct6687`, and never the empty name of a driverless chip.
+    /// Method: read the compiled list and check its shape and key members.
+    #[test]
+    fn compiled_drivers_are_distinct_and_named() {
+        let drivers = compiled_drivers();
+        assert!(drivers.is_empty().not());
+        assert!(drivers.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(drivers.iter().all(|driver| driver.is_empty().not()));
+        for expected in ["it87", "nct6775", "nct6683", "nct6687", "f71882fg"] {
+            assert!(
+                drivers.iter().any(|driver| driver == expected),
+                "{expected}"
+            );
+        }
     }
 
     #[test]
