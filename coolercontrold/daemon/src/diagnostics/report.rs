@@ -1869,6 +1869,30 @@ mod tests {
         assert!(findings.contains("Secure Boot").not());
     }
 
+    /// Goal: when detection ran but the machine facts could not be read, the
+    /// report says so rather than claiming there are no findings. An empty
+    /// finding list is the only case that prints "none".
+    #[test]
+    fn unreadable_machine_facts_are_not_reported_as_none() {
+        let detection = cc_detect::DetectionResults::empty(cc_detect::EnvironmentInfo {
+            is_container: false,
+            is_secure_boot: false,
+            has_dev_port: true,
+        });
+        let mut unreadable = String::new();
+        write_findings(&mut unreadable, Some(&detection), true, None);
+        assert!(
+            unreadable.contains("not determined (machine facts unreadable)"),
+            "{unreadable}"
+        );
+        assert!(unreadable.contains("  none").not(), "{unreadable}");
+
+        let mut empty = String::new();
+        write_findings(&mut empty, Some(&detection), true, Some(&[]));
+        assert!(empty.contains("  none"), "{empty}");
+        assert!(empty.contains("not determined").not(), "{empty}");
+    }
+
     /// Goal: a fresh budget hands a device its own cap, not the whole report's.
     /// One device must never be able to spend every other device's time.
     #[test]
