@@ -97,7 +97,10 @@ fn out_of_tree_module_names(modules_dep: &str) -> HashSet<String> {
         let Some((path, _)) = line.split_once(':') else {
             continue;
         };
-        if path.starts_with("kernel/") || path.contains("/kernel/") {
+        if path.starts_with("kernel/") {
+            continue;
+        }
+        if path.contains("/kernel/") {
             continue;
         }
         let Some(file_name) = path.rsplit('/').next() else {
@@ -153,7 +156,10 @@ fn record_attempt(results: &mut DetectionResults, driver: String, result: &LoadR
 fn read_modules_dep() -> Option<String> {
     let release = std::fs::read_to_string(OSRELEASE_PATH).ok()?;
     let release = release.trim();
-    if release.is_empty() || release.contains('/') {
+    if release.is_empty() {
+        return None;
+    }
+    if release.contains('/') {
         return None;
     }
     let path = PathBuf::from(format!("/lib/modules/{release}/modules.dep"));
@@ -162,21 +168,15 @@ fn read_modules_dep() -> Option<String> {
         file.take(MODULES_DEP_MAX_BYTES + 1)
             .read_to_string(&mut content)
     });
-    match read {
-        Ok(length_bytes)
-            if u64::try_from(length_bytes).is_ok_and(|length| length <= MODULES_DEP_MAX_BYTES) =>
-        {
-            Some(content)
-        }
-        Ok(_) => {
-            debug!("{} is implausibly large, skipping", path.display());
-            None
-        }
-        Err(err) => {
-            debug!("Could not read {}: {err}", path.display());
-            None
-        }
+    if let Err(err) = read {
+        debug!("Could not read {}: {err}", path.display());
+        return None;
     }
+    if content.len() as u64 > MODULES_DEP_MAX_BYTES {
+        debug!("{} is implausibly large, skipping", path.display());
+        return None;
+    }
+    Some(content)
 }
 
 #[cfg(test)]
