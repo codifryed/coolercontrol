@@ -2269,87 +2269,63 @@ mod tests {
         let hosts = default_allowed_hosts();
         let exact = vec!["https://coolercontrol.example.com".to_string()];
         // Different port should not match exact origin
-        assert!(!is_origin_allowed(
+        assert!(is_origin_allowed(
             "https://coolercontrol.example.com:8443",
             &hosts,
             &DAEMON_PORTS,
             &exact
-        ));
+        )
+        .not());
     }
 
     #[test]
     fn test_origin_rejects_evil_localhost_subdomain() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed(
-            "https://localhost.evil.com:443",
-            &hosts,
-            &DAEMON_PORTS,
-            &[]
-        ));
+        assert!(
+            is_origin_allowed("https://localhost.evil.com:443", &hosts, &DAEMON_PORTS, &[]).not()
+        );
     }
 
     #[test]
     fn test_origin_rejects_evil_with_localhost_path() {
         let hosts = default_allowed_hosts();
         // This was vulnerable with contains() matching
-        assert!(!is_origin_allowed(
+        assert!(is_origin_allowed(
             "https://evil.com//localhost:fake",
             &hosts,
             &DAEMON_PORTS,
             &[]
-        ));
+        )
+        .not());
     }
 
     #[test]
     fn test_origin_rejects_lookalike_ip() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed(
-            "https://127.0.0.1.evil.com:443",
-            &hosts,
-            &DAEMON_PORTS,
-            &[]
-        ));
+        assert!(
+            is_origin_allowed("https://127.0.0.1.evil.com:443", &hosts, &DAEMON_PORTS, &[]).not()
+        );
     }
 
     #[test]
     fn test_origin_rejects_arbitrary_domain() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed(
-            "https://evil.com:443",
-            &hosts,
-            &DAEMON_PORTS,
-            &[]
-        ));
-        assert!(!is_origin_allowed(
-            "https://attacker.org",
-            &hosts,
-            &DAEMON_PORTS,
-            &[]
-        ));
+        assert!(is_origin_allowed("https://evil.com:443", &hosts, &DAEMON_PORTS, &[]).not());
+        assert!(is_origin_allowed("https://attacker.org", &hosts, &DAEMON_PORTS, &[]).not());
     }
 
     #[test]
     fn test_origin_rejects_invalid_format() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed("not-a-url", &hosts, &DAEMON_PORTS, &[]));
-        assert!(!is_origin_allowed(
-            "localhost:11987",
-            &hosts,
-            &DAEMON_PORTS,
-            &[]
-        ));
-        assert!(!is_origin_allowed(
-            "//localhost:11987",
-            &hosts,
-            &DAEMON_PORTS,
-            &[]
-        ));
+        assert!(is_origin_allowed("not-a-url", &hosts, &DAEMON_PORTS, &[]).not());
+        assert!(is_origin_allowed("localhost:11987", &hosts, &DAEMON_PORTS, &[]).not());
+        assert!(is_origin_allowed("//localhost:11987", &hosts, &DAEMON_PORTS, &[]).not());
     }
 
     #[test]
     fn test_origin_rejects_empty() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed("", &hosts, &DAEMON_PORTS, &[]));
+        assert!(is_origin_allowed("", &hosts, &DAEMON_PORTS, &[]).not());
     }
 
     #[test]
@@ -2371,12 +2347,7 @@ mod tests {
             &DAEMON_PORTS,
             &exact
         ));
-        assert!(!is_origin_allowed(
-            "https://other.com",
-            &hosts,
-            &DAEMON_PORTS,
-            &exact
-        ));
+        assert!(is_origin_allowed("https://other.com", &hosts, &DAEMON_PORTS, &exact).not());
     }
 
     // validate_name_string tests
