@@ -248,6 +248,16 @@ export class DetectedChip {
     module_status: string = ''
 }
 
+/** A driver loaded without a probe, because the probe could not run. */
+export class KernelProbedDriver {
+    driver: string = ''
+    /**
+     * Free-form from the daemon: loaded, already_loaded, no_device,
+     * signature_rejected, blacklisted, failed.
+     */
+    module_status: string = ''
+}
+
 export class DetectEnvironment {
     is_container: boolean = false
     is_secure_boot: boolean = false
@@ -262,6 +272,8 @@ export class DetectionDTO {
     @Type(() => DetectedChip)
     detected_chips: Array<DetectedChip> = []
     blacklisted: Array<string> = []
+    @Type(() => KernelProbedDriver)
+    kernel_probed: Array<KernelProbedDriver> = []
     @Type(() => DetectEnvironment)
     environment: DetectEnvironment = new DetectEnvironment()
     probed: boolean = false
