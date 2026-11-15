@@ -81,6 +81,12 @@ function buildFeatureFlags(): Record<string, boolean> {
 
 export default defineConfig({
     base: '/',
+    // Bind all interfaces inside the dev container (CC_DEV_CONTAINER, set in the
+    // Containerfile) where ccont publishes the port on the host loopback;
+    // localhost-only everywhere else.
+    server: {
+        host: process.env.CC_DEV_CONTAINER === '1',
+    },
     define: {
         __FEATURES__: JSON.stringify(buildFeatureFlags()),
     },

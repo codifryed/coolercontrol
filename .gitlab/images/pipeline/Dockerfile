@@ -77,6 +77,6 @@ RUN pip3 install --upgrade pip
 
 # for our conversion to gitlib test results
 RUN rustup component add clippy
-RUN cargo install cargo-audit gitlab-report nixpkgs-fmt --locked
+RUN cargo install cargo-audit gitlab-report --locked
 
 RUN apt-get -y autoclean

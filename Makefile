@@ -19,7 +19,8 @@ CARGO := $(shell command -v cargo || command -v cargo-1.91 || command -v cargo-1
 	ci-install ci-test ci-test-ui ci-test-daemon ci-test-qt \
 	ci-check ci-fmt ci-local pr-check validate-metadata \
 	copyright-check copyright-fix \
-	clean clean-ui install install-data install-source uninstall dev-run dev-install openapi
+	clean clean-ui install install-data install-source uninstall dev-run dev-install openapi \
+	dev-setup dev-purge dev-shell dev-gui
 
 # Run `make help` for the common developer targets.
 help:
@@ -47,6 +48,12 @@ help:
 	@printf '    make install-source   Build + install everything from source (sudo)\n'
 	@printf '    make dev-install      Install release binaries + restart the service\n'
 	@printf '    make clean            Remove all build artifacts\n\n'
+	@printf '  \033[1mDev container\033[0m (see CONTRIBUTING.md)\n'
+	@printf '    make dev-setup        Symlink ccont into ~/.local/bin and build\n'
+	@printf '                          or update the container image (podman)\n'
+	@printf '    make dev-shell        Shell into the dev container\n'
+	@printf '    make dev-gui          Build + run the desktop app in the dev container\n'
+	@printf '    make dev-purge        Remove ccont symlinks, the dev image and its caches\n\n'
 	@printf '  Maintainer targets (appimages, docker-*, prerelease-local, bump, release, vendor, assets)\n'
 	@printf '  live in make/*.mk.\n\n'
 
@@ -219,6 +226,24 @@ sudo_keepalive = sudo -v || exit 1; while sudo -n -v 2>/dev/null; do sleep 50; d
 dev-run:
 	@$(sudo_keepalive) \
 	$(MAKE) build-qt && $(MAKE) -C $(ui_dir) $@ && $(MAKE) -C $(daemon_dir) $@
+
+# Symlink ccont to ~/.local/bin/ccont.
+# Build or update the image; needs podman.
+dev-setup:
+	@./ccont setup
+
+# Undo the dev container setup: ccont symlinks, the image and its cache volumes.
+dev-purge:
+	@./ccont purge
+
+# Interactive shell in the dev container.
+dev-shell:
+	@./ccont shell
+
+# Incremental build, then run the Qt desktop app in the dev container with the
+# display forwarded. Needs the daemon running on the host.
+dev-gui:
+	@./ccont gui
 
 # reproduce the CI pipeline locally: full clean, CI tooling, trunk checks, junit-producing tests
 ci-local: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt

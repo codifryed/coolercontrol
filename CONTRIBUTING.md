@@ -98,13 +98,9 @@ In general, we follow the
 
 #### Development Environment
 
-We supply a nix-shell configuration to quickly set up an environment containing all the necessities
-for CoolerControl development.
-
-To use it, make sure you have [Nix installed](https://nixos.org/download/#nix-install-linux).
-
-Then run `nix-shell /path/to/coolercontrol/shell.nix`. This will give a shell without modifying your
-system.
+We supply a development container with every build and check dependency pre-installed, so nothing
+needs to be installed on the host. Run `make dev-setup` and follow the instructions. Afterwards use
+the `ccont` command instead of `make` as usual.
 
 #### Copyright headers
 

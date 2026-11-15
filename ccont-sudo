@@ -1,0 +1,18 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Guy Boldon and contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Shadows sudo to forward predefined targets back out to the host and anything else fails since in
+# the rootless container there's nowhere else to elevate to. Anything we have to execute must be
+# added as a known target to `ccont` and to the case statement below.
+
+# Flag-only calls (`sudo -v`, `sudo -n -v`, ...) have no command to run:
+# the first non-flag argument is what would be executed, so they stay no-ops.
+while [ -n "$1" ] && [ "${1#-}" != "$1" ]; do shift; done
+
+case "$1" in
+./target*/debug/coolercontrold) echo debug-daemon >/src/.ccont-run ;;
+*) ;;
+esac
+
+exit 0
