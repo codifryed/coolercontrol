@@ -53,6 +53,10 @@ npm run dev
 make dev
 ```
 
+The dev server proxies the daemon at `http://localhost:11987`, so leave the connection address and
+port at their defaults. Set `CC_DAEMON_URL` to use another daemon, e.g.
+`CC_DAEMON_URL=https://192.168.1.10:11987 npm run dev`.
+
 ## Held-back Dependencies
 
 - `"@types/node": "22.19.19"` for compat with the current tsconfig node version
