@@ -13,8 +13,8 @@
 
 use crate::device::{ChannelName, Device, DeviceInfo, DeviceType};
 use crate::diagnostics::support::{
-    self, ChannelExclusion, ChannelVerdict, HiddenHardware, HwmonExclusion, SystemFinding,
-    SystemInfo,
+    ChannelExclusion, ChannelVerdict, HardwareSupportController, HiddenHardware, HwmonExclusion,
+    SystemFinding, SystemInfo,
 };
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -193,7 +193,9 @@ pub async fn generate(
     write_probe_summary(&mut report, detection, full, cc_detect::DETECTION_SUPPORTED);
     write_fan_summary(&mut report, &devices, budget).await;
     write_device_sections(&mut report, devices_other);
-    let findings = derive_findings(detection, cc_detect::DETECTION_SUPPORTED).await;
+    let findings =
+        HardwareSupportController::compute_findings(detection, cc_detect::DETECTION_SUPPORTED)
+            .await;
     write_findings(
         &mut report,
         detection,
@@ -509,7 +511,7 @@ fn write_device_section(
 }
 
 /// See `write_probe_summary` for why `detection_supported` is a parameter.
-/// `findings` come from `derive_findings` for the same `detection`.
+/// `findings` come from `HardwareSupportController::compute_findings` for the same `detection`.
 fn write_findings(
     report: &mut String,
     detection: Option<&cc_detect::DetectionResults>,
@@ -535,32 +537,6 @@ fn write_findings(
     }
     for finding in findings {
         let _ = writeln!(report, "  {}", finding_label(finding));
-    }
-}
-
-/// `None` when there is no detection to judge or the machine facts could not
-/// be read. Sysfs and DMI reads, so on the blocking pool.
-async fn derive_findings(
-    detection: Option<&cc_detect::DetectionResults>,
-    detection_supported: bool,
-) -> Option<Vec<SystemFinding>> {
-    let detection = detection?.clone();
-    let derived = rt::spawn_blocking(move || {
-        let bound_drivers = support::resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
-        support::findings_from_detection(
-            detection_supported,
-            &detection,
-            &bound_drivers,
-            support::read_is_portable_chassis(),
-        )
-    })
-    .await;
-    match derived {
-        Ok(findings) => Some(findings),
-        Err(err) => {
-            warn!("Could not derive the report's system findings: {err}");
-            None
-        }
     }
 }
 

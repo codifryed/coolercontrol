@@ -674,7 +674,9 @@ impl HardwareSupportController {
         detection_supported: bool,
     ) -> Self {
         let system_info = SystemInfo::read().await;
-        let system_findings = Self::compute_findings(detection.as_ref(), detection_supported).await;
+        let system_findings = Self::compute_findings(detection.as_ref(), detection_supported)
+            .await
+            .unwrap_or_default();
         Self {
             system_info,
             detection: RefCell::new(detection),
@@ -701,7 +703,9 @@ impl HardwareSupportController {
     /// the findings from them so the health snapshot cannot keep asserting a
     /// driver is unbound after the same request loaded it.
     pub async fn refresh_detection(&self, results: cc_detect::DetectionResults) {
-        let findings = Self::compute_findings(Some(&results), self.detection_supported).await;
+        let findings = Self::compute_findings(Some(&results), self.detection_supported)
+            .await
+            .unwrap_or_default();
         *self.detection.borrow_mut() = Some(results);
         *self.system_findings.borrow_mut() = findings;
     }
@@ -853,16 +857,17 @@ impl HardwareSupportController {
 
     /// `None` detection means the probe was switched off by config or
     /// environment, which is not an observation and therefore yields no
-    /// findings.
-    async fn compute_findings(
+    /// findings. `None` when the bound drivers could not be resolved, which
+    /// the report tells apart from an empty list.
+    pub(crate) async fn compute_findings(
         detection: Option<&cc_detect::DetectionResults>,
         detection_supported: bool,
-    ) -> Vec<SystemFinding> {
+    ) -> Option<Vec<SystemFinding>> {
         if detection_supported.not() {
-            return vec![SystemFinding::DetectionUnsupported];
+            return Some(vec![SystemFinding::DetectionUnsupported]);
         }
         let Some(results) = detection else {
-            return Vec::new();
+            return Some(Vec::new());
         };
         // Sysfs walks, on the blocking pool like the probe before them.
         let resolved = rt::spawn_blocking(|| {
@@ -875,9 +880,14 @@ impl HardwareSupportController {
         let Ok((bound_drivers, is_portable_chassis)) = resolved else {
             // An empty set would report every detected chip as unbound, so report nothing.
             warn!("Could not resolve the bound hwmon drivers; no hardware findings this time");
-            return Vec::new();
+            return None;
         };
-        findings_from_detection(true, results, &bound_drivers, is_portable_chassis)
+        Some(findings_from_detection(
+            true,
+            results,
+            &bound_drivers,
+            is_portable_chassis,
+        ))
     }
 
     /// Secure Boot silently defeating module loading is invisible in the app
