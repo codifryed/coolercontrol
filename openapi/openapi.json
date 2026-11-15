@@ -10633,6 +10633,7 @@
             "type": "string"
           },
           "module_status": {
+            "description": "One of `loaded`, `already_loaded`, `no_device`, `signature_rejected`,\n `blacklisted`, or `failed: <modprobe error>`.",
             "type": "string"
           }
         },

@@ -46,6 +46,8 @@ pub struct DetectedChipDto {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct KernelProbedDto {
     pub driver: String,
+    /// One of `loaded`, `already_loaded`, `no_device`, `signature_rejected`,
+    /// `blacklisted`, or `failed: <modprobe error>`.
     pub module_status: String,
 }
 
