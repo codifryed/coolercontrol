@@ -10,10 +10,11 @@
 
 use crate::api::CCError;
 use axum::extract::Request;
-use axum::http::{header, HeaderMap, Method};
+use axum::http::{header, HeaderMap, HeaderValue, Method};
 use axum::response::{IntoResponse, Response};
 use futures_util::future::Either;
 use std::future::{ready, Ready};
+use std::ops::Not;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tower::{Layer, Service};
@@ -94,26 +95,51 @@ fn refusal() -> Response {
 
 /// Whether a request may reach the routes.
 ///
-/// Reads pass: they change nothing, and CORS decides who may see the response. A request
-/// without `Sec-Fetch-Site` passes too. Only browsers send it, so curl, scripts and the Qt
-/// app's own requests are unaffected, while every browser the UI supports sends it on a
-/// write. A bearer token earns no exemption: the session-only routes ignore
-/// `Authorization` and read the cookie, so a junk token would carry the cookie past here.
+/// Reads pass: they change nothing, and CORS decides who may see the response. A write with
+/// `Sec-Fetch-Site` passes when it is `same-origin`. Browsers send that header only to
+/// trustworthy URLs (HTTPS, localhost, loopback), so a write without it falls back to
+/// `Origin`: absent passes (curl, scripts and the Qt app's own requests), and present must
+/// name this host. A configured origin passes either way. A bearer token earns no
+/// exemption: the session-only routes ignore `Authorization` and read the cookie, so a junk
+/// token would carry the cookie past here.
 fn is_request_allowed(method: &Method, headers: &HeaderMap, configured: &[String]) -> bool {
     if is_safe(method) {
         return true;
     }
-    let Some(site) = headers.get(SEC_FETCH_SITE) else {
-        return true;
-    };
-    // `same-site` and `none` are refused too: the gap this closes is a same-site page.
-    if site.as_bytes() == SAME_ORIGIN {
-        return true;
+    debug_assert!(is_safe(method).not());
+    let origin = headers.get(header::ORIGIN);
+    match headers.get(SEC_FETCH_SITE) {
+        // `same-site` and `none` are refused too: the gap this closes is a same-site page.
+        Some(site) if site.as_bytes() == SAME_ORIGIN => return true,
+        Some(_) => {}
+        None => {
+            let Some(origin) = origin else {
+                return true;
+            };
+            if is_origin_of_host(origin.as_bytes(), headers.get(header::HOST)) {
+                return true;
+            }
+        }
     }
-    headers
-        .get(header::ORIGIN)
+    origin
         .and_then(|origin| origin.to_str().ok())
         .is_some_and(|origin| configured.iter().any(|c| c == origin))
+}
+
+/// Whether `Origin`'s authority, the part after `://`, is exactly the `Host` header. The
+/// scheme is ignored, so no TLS state is needed. `Origin: null` has no authority.
+fn is_origin_of_host(origin: &[u8], host: Option<&HeaderValue>) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    let Some(scheme_end) = origin.windows(3).position(|w| w == b"://") else {
+        return false;
+    };
+    let authority = &origin[scheme_end + 3..];
+    if authority.is_empty() {
+        return false;
+    }
+    authority == host.as_bytes()
 }
 
 fn is_safe(method: &Method) -> bool {
@@ -123,8 +149,6 @@ fn is_safe(method: &Method) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::HeaderValue;
-    use std::ops::Not;
 
     const CONFIGURED: &str = "https://coolercontrol.home.lan";
 
@@ -175,17 +199,64 @@ mod tests {
         }
     }
 
-    /// Goal: clients that are not browsers keep working. Method: writes without
-    /// `Sec-Fetch-Site`, with and without an `Origin`.
+    const LAN_HOST: &str = "192.168.1.100:11987";
+
+    fn allowed_over_http(origin: Option<&'static str>, host: Option<&'static str>) -> bool {
+        let mut headers = headers(None, origin);
+        if let Some(host) = host {
+            headers.insert(header::HOST, HeaderValue::from_static(host));
+        }
+        is_request_allowed(&Method::POST, &headers, &[CONFIGURED.to_string()])
+    }
+
+    /// Goal: clients that are not browsers keep working. Method: writes with neither
+    /// `Sec-Fetch-Site` nor `Origin`, with and without a `Host`.
     #[test]
-    fn a_write_without_fetch_metadata_passes() {
+    fn a_write_without_fetch_metadata_or_origin_passes() {
         for method in &UNSAFE_METHODS {
             assert!(allowed(method, None, None), "{method}");
+        }
+        assert!(allowed_over_http(None, Some(LAN_HOST)));
+    }
+
+    /// Goal: over plain HTTP, where browsers send no `Sec-Fetch-Site`, a page on another
+    /// port of the daemon's host cannot write. Method: `Origin` names another port, another
+    /// host, or `null`; also an `Origin` with no `Host` to compare against.
+    #[test]
+    fn a_plain_http_write_from_another_origin_is_refused() {
+        for origin in [
+            "http://192.168.1.100:9090",
+            "http://192.168.1.101:11987",
+            "http://192.168.1.100",
+            "null",
+            "http://",
+        ] {
             assert!(
-                allowed(method, None, Some("http://localhost:9090")),
-                "{method}"
+                allowed_over_http(Some(origin), Some(LAN_HOST)).not(),
+                "{origin}"
             );
         }
+        assert!(allowed_over_http(Some("http://192.168.1.100:11987"), None).not());
+    }
+
+    /// Goal: over plain HTTP, the UI's own writes and a configured origin pass. Method:
+    /// `Origin` whose authority equals `Host`, with either scheme, and the configured origin.
+    #[test]
+    fn a_plain_http_write_from_this_host_or_a_configured_origin_passes() {
+        assert!(allowed_over_http(
+            Some("http://192.168.1.100:11987"),
+            Some(LAN_HOST)
+        ));
+        assert!(allowed_over_http(
+            Some("https://192.168.1.100:11987"),
+            Some(LAN_HOST)
+        ));
+        assert!(allowed_over_http(
+            Some("http://192.168.1.100"),
+            Some("192.168.1.100")
+        ));
+        assert!(allowed_over_http(Some(CONFIGURED), Some(LAN_HOST)));
+        assert!(allowed_over_http(Some(CONFIGURED), None));
     }
 
     /// Goal: an origin from the `origins` setting may write, and only that exact origin.

@@ -2635,15 +2635,17 @@ mod tests {
     /// Goal: the origin guard sits in the production stack ahead of authentication, and its
     /// refusal still carries the security headers. Method: `POST /shutdown`, a session-only
     /// route, with no session, so nothing can shut down. A same-site browser write must be
-    /// refused 403 by the guard; a same-origin one and a header-less client must get past it
-    /// to the session check's 401.
+    /// refused 403 by the guard, as must a plain HTTP write from another origin; a same-origin
+    /// one and a header-less client must get past it to the session check's 401.
     #[test]
     #[serial_test::serial(modes_file)]
     #[cfg(feature = "gated-tests")]
     fn the_origin_guard_refuses_before_authentication() {
-        let request = |site: Option<&str>| {
-            let mut builder = axum::http::Request::post("/shutdown")
-                .header(axum::http::header::ORIGIN, "http://localhost:9090");
+        let request = |site: Option<&str>, origin: Option<&str>| {
+            let mut builder = axum::http::Request::post("/shutdown");
+            if let Some(origin) = origin {
+                builder = builder.header(axum::http::header::ORIGIN, origin);
+            }
             if let Some(site) = site {
                 builder = builder.header("sec-fetch-site", site);
             }
@@ -2656,11 +2658,13 @@ mod tests {
                 ))));
             request
         };
+        let other = Some("http://localhost:9090");
         let requests = vec![
-            request(Some("same-site")),
-            request(Some("cross-site")),
-            request(Some("same-origin")),
-            request(None),
+            request(Some("same-site"), other),
+            request(Some("cross-site"), other),
+            request(None, other),
+            request(Some("same-origin"), other),
+            request(None, None),
         ];
         crate::rt::test_runtime(async {
             let cancel_token = CancellationToken::new();
@@ -2670,12 +2674,12 @@ mod tests {
                 // Stops the actors so the scope can finish.
                 cancel_token.cancel();
 
-                assert_eq!(heads.len(), 4);
-                for refused in &heads[..2] {
+                assert_eq!(heads.len(), 5);
+                for refused in &heads[..3] {
                     assert_eq!(refused.status, StatusCode::FORBIDDEN);
                     assert_eq!(refused.headers["x-frame-options"], "SAMEORIGIN");
                 }
-                for passed in &heads[2..] {
+                for passed in &heads[3..] {
                     assert_eq!(passed.status, StatusCode::UNAUTHORIZED);
                 }
                 Ok(())
