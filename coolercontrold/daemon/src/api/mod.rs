@@ -950,6 +950,7 @@ fn cors_layer(
         allowed_hosts.push(format!("[{}]", addr.ip()));
         listener_ports.push(addr.port());
     }
+    assert!(listener_ports.len() <= 2);
 
     cors::CorsLayer::new()
         .allow_credentials(true)
@@ -1001,18 +1002,27 @@ fn origin_host_and_port(origin: &str) -> Option<(&str, u16)> {
         after_scheme.find(':').unwrap_or(after_scheme.len())
     };
     let (host, rest) = after_scheme.split_at(host_len);
-    if host.is_empty() || host.contains(['/', '?', '#', '@']) {
+    if host.is_empty() {
         return None;
     }
+    if host.contains(['/', '?', '#', '@']) {
+        return None;
+    }
+    debug_assert!(after_scheme.starts_with(host));
     if rest.is_empty() {
         return Some((host, default_port));
     }
     let port = rest.strip_prefix(':')?;
-    // `parse` alone would also take a leading '+'.
-    if port.is_empty() || port.bytes().all(|b| b.is_ascii_digit()).not() {
+    if port.is_empty() {
         return None;
     }
-    port.parse().ok().map(|port| (host, port))
+    // `parse` alone would also take a leading '+'.
+    if port.bytes().all(|b| b.is_ascii_digit()).not() {
+        return None;
+    }
+    let port = port.parse().ok()?;
+    debug_assert!(host.is_empty().not());
+    Some((host, port))
 }
 
 /// TLS Configuration
