@@ -3,6 +3,7 @@
 
 //! Kernel module loading and blacklist checking.
 
+use std::ops::Not;
 use std::path::Path;
 use std::time::Duration;
 
@@ -12,6 +13,7 @@ use crate::shell_command::{ShellCommand, ShellCommandResult};
 
 const MODPROBE_TIMEOUT: Duration = Duration::from_secs(10);
 const UDEVADM_TIMEOUT: Duration = Duration::from_secs(30);
+const MODULES_DISABLED_PATH: &str = "/proc/sys/kernel/modules_disabled";
 
 /// Result of a module load attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,7 +72,7 @@ pub fn load_module(driver: &str, lockdown_active: bool) -> LoadResult {
             LoadResult::Loaded
         }
         ShellCommandResult::Error(err) => {
-            let result = classify_failure(err, lockdown_active);
+            let result = classify_failure(err, lockdown_active, read_modules_disabled());
             match &result {
                 LoadResult::NoDevice => debug!("Module {driver} found no device"),
                 LoadResult::SignatureRejected => {
@@ -86,8 +88,9 @@ pub fn load_module(driver: &str, lockdown_active: bool) -> LoadResult {
 /// Reads a modprobe failure from its stderr, which is in the C locale.
 ///
 /// With `module.sig_enforce` the kernel answers a bad signature with
-/// `EKEYREJECTED`; under lockdown alone it answers `EPERM`.
-fn classify_failure(stderr: String, lockdown_active: bool) -> LoadResult {
+/// `EKEYREJECTED`; under lockdown alone it answers `EPERM`. The
+/// `kernel.modules_disabled` sysctl also answers `EPERM`, for every module.
+fn classify_failure(stderr: String, lockdown_active: bool, modules_disabled: bool) -> LoadResult {
     if stderr.contains("Key was rejected by service") {
         return LoadResult::SignatureRejected;
     }
@@ -95,8 +98,10 @@ fn classify_failure(stderr: String, lockdown_active: bool) -> LoadResult {
         return LoadResult::SignatureRejected;
     }
     if lockdown_active {
-        if stderr.contains("Operation not permitted") {
-            return LoadResult::SignatureRejected;
+        if modules_disabled.not() {
+            if stderr.contains("Operation not permitted") {
+                return LoadResult::SignatureRejected;
+            }
         }
     }
     // Also matches ENXIO, "No such device or address".
@@ -104,6 +109,12 @@ fn classify_failure(stderr: String, lockdown_active: bool) -> LoadResult {
         return LoadResult::NoDevice;
     }
     LoadResult::Failed(stderr)
+}
+
+/// Whether `kernel.modules_disabled` forbids all module loading. Unreadable
+/// counts as not set.
+fn read_modules_disabled() -> bool {
+    std::fs::read_to_string(MODULES_DISABLED_PATH).is_ok_and(|value| value.trim() == "1")
 }
 
 /// Check if a module is already loaded via /proc/modules.
@@ -221,7 +232,8 @@ mod tests {
     use super::*;
 
     /// Goal: each modprobe failure maps to its kind, and `EPERM` counts as a
-    /// signature refusal only under lockdown. Method: real modprobe stderr.
+    /// signature refusal only under lockdown and only while module loading is
+    /// not disabled outright. Method: real modprobe stderr.
     #[test]
     fn modprobe_failures_are_classified() {
         let rejected = "modprobe: ERROR: could not insert 'nct6687': Key was rejected by service\n";
@@ -231,19 +243,27 @@ mod tests {
         let enxio = "modprobe: ERROR: could not insert 'it87': No such device or address\n";
         let busy = "modprobe: ERROR: could not insert 'it87': Device or resource busy\n";
         for lockdown_active in [false, true] {
-            let classify = |text: &str| classify_failure(text.to_string(), lockdown_active);
-            assert_eq!(classify(rejected), LoadResult::SignatureRejected);
-            assert_eq!(classify(no_key), LoadResult::SignatureRejected);
-            assert_eq!(classify(enodev), LoadResult::NoDevice);
-            assert_eq!(classify(enxio), LoadResult::NoDevice);
-            assert_eq!(classify(busy), LoadResult::Failed(busy.to_string()));
+            for modules_disabled in [false, true] {
+                let classify = |text: &str| {
+                    classify_failure(text.to_string(), lockdown_active, modules_disabled)
+                };
+                assert_eq!(classify(rejected), LoadResult::SignatureRejected);
+                assert_eq!(classify(no_key), LoadResult::SignatureRejected);
+                assert_eq!(classify(enodev), LoadResult::NoDevice);
+                assert_eq!(classify(enxio), LoadResult::NoDevice);
+                assert_eq!(classify(busy), LoadResult::Failed(busy.to_string()));
+            }
         }
         assert_eq!(
-            classify_failure(eperm.to_string(), true),
+            classify_failure(eperm.to_string(), true, false),
             LoadResult::SignatureRejected
         );
         assert_eq!(
-            classify_failure(eperm.to_string(), false),
+            classify_failure(eperm.to_string(), false, false),
+            LoadResult::Failed(eperm.to_string())
+        );
+        assert_eq!(
+            classify_failure(eperm.to_string(), true, true),
             LoadResult::Failed(eperm.to_string())
         );
     }
