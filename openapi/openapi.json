@@ -9466,6 +9466,13 @@
           "environment": {
             "$ref": "#/components/schemas/EnvironmentDto"
           },
+          "kernel_probed": {
+            "description": "Drivers loaded without a chip id because the probe could not run, as\n under kernel lockdown. Only installed out-of-tree drivers are tried.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KernelProbedDto"
+            }
+          },
           "probed": {
             "description": "False when no probe was made at all, so an empty `detected_chips` means\n \"not looked for\" rather than \"none present\". Detection can be switched\n off by config or environment, and is unsupported off `x86_64`.",
             "type": "boolean"
@@ -9474,6 +9481,7 @@
         "required": [
           "detected_chips",
           "blacklisted",
+          "kernel_probed",
           "environment",
           "probed"
         ]
@@ -10616,6 +10624,21 @@
         "enum": [
           "Detected",
           "Resolved"
+        ]
+      },
+      "KernelProbedDto": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string"
+          },
+          "module_status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "driver",
+          "module_status"
         ]
       },
       "KeyTemps": {

@@ -22,6 +22,7 @@
 pub mod chip_db;
 pub mod chips_custom;
 pub mod environment;
+pub mod kernel_probe;
 pub mod module_loader;
 pub mod port_io;
 pub mod shell_command;
@@ -58,7 +59,19 @@ pub const DETECTION_SUPPORTED: bool = cfg!(target_arch = "x86_64");
 pub struct DetectionResults {
     pub detected_chips: Vec<DetectedChipInfo>,
     pub blacklisted: Vec<String>,
+    /// Drivers the kernel refused to load because of their signature.
+    pub signature_rejected: Vec<String>,
+    /// Drivers handed to the kernel without a probe, because the probe could
+    /// not run. See `kernel_probe`.
+    pub kernel_probed: Vec<KernelProbedDriver>,
     pub environment: EnvironmentInfo,
+}
+
+/// A driver loaded without a chip id, and what came of it.
+#[derive(Debug, Clone, Serialize)]
+pub struct KernelProbedDriver {
+    pub driver: String,
+    pub module_status: String,
 }
 
 /// Information about a detected chip and its module load status.
@@ -111,11 +124,11 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
         } else {
             info!("/dev/port unavailable, skipping hardware detection");
         }
-        return DetectionResults {
-            detected_chips: Vec::new(),
-            blacklisted: Vec::new(),
-            environment: env_info,
-        };
+        let mut results = DetectionResults::empty(env_info);
+        if load_modules && env.can_load_modules() {
+            kernel_probe::load_installed_out_of_tree(env.is_secure_boot, &mut results);
+        }
+        return results;
     }
 
     // Load chip database
@@ -131,11 +144,7 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
         Ok(port) => port,
         Err(err) => {
             warn!("Failed to open /dev/port: {err}");
-            return DetectionResults {
-                detected_chips: Vec::new(),
-                blacklisted: Vec::new(),
-                environment: env_info,
-            };
+            return DetectionResults::empty(env_info);
         }
     };
 
@@ -150,14 +159,24 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
 #[cfg(not(target_arch = "x86_64"))]
 pub fn run_detection(_load_modules: bool, _override_path: Option<&Path>) -> DetectionResults {
     info!("Super-I/O detection is only supported on x86_64");
-    DetectionResults {
-        detected_chips: Vec::new(),
-        blacklisted: Vec::new(),
-        environment: EnvironmentInfo {
-            is_container: false,
-            is_secure_boot: false,
-            has_dev_port: false,
-        },
+    DetectionResults::empty(EnvironmentInfo {
+        is_container: false,
+        is_secure_boot: false,
+        has_dev_port: false,
+    })
+}
+
+impl DetectionResults {
+    /// Nothing detected and nothing loaded yet.
+    #[must_use]
+    pub fn empty(environment: EnvironmentInfo) -> Self {
+        Self {
+            detected_chips: Vec::new(),
+            blacklisted: Vec::new(),
+            signature_rejected: Vec::new(),
+            kernel_probed: Vec::new(),
+            environment,
+        }
     }
 }
 
@@ -170,6 +189,7 @@ fn process_results(
 ) -> DetectionResults {
     let mut chip_infos = Vec::new();
     let mut blacklisted = Vec::new();
+    let mut signature_rejected = Vec::new();
 
     for chip in detected {
         let module_status = if !load_modules {
@@ -177,17 +197,13 @@ fn process_results(
         } else if !env.can_load_modules() {
             "skipped_no_modprobe".to_string()
         } else {
-            match module_loader::load_module(&chip.driver) {
-                LoadResult::Loaded => "loaded".to_string(),
-                LoadResult::AlreadyLoaded => "already_loaded".to_string(),
-                LoadResult::Blacklisted => {
-                    blacklisted.push(chip.driver.clone());
-                    "blacklisted".to_string()
-                }
-                LoadResult::Failed(err) => {
-                    format!("failed: {err}")
-                }
+            let result = module_loader::load_module(&chip.driver, env.is_secure_boot);
+            match result {
+                LoadResult::Blacklisted => blacklisted.push(chip.driver.clone()),
+                LoadResult::SignatureRejected => signature_rejected.push(chip.driver.clone()),
+                _ => {}
             }
+            result.status()
         };
 
         chip_infos.push(DetectedChipInfo {
@@ -218,12 +234,20 @@ fn process_results(
     DetectionResults {
         detected_chips: chip_infos,
         blacklisted,
+        signature_rejected,
+        kernel_probed: Vec::new(),
         environment: env_info,
     }
 }
 
 /// Attempt to print detection results in a human-readable table format.
 pub fn output_results(results: &DetectionResults) {
+    for probed in &results.kernel_probed {
+        info!(
+            "Loaded without a probe: {} ({})",
+            probed.driver, probed.module_status
+        );
+    }
     if results.detected_chips.is_empty() {
         info!("No Super-I/O chips detected.");
         if results.environment.is_container {
@@ -322,6 +346,8 @@ mod tests {
         let results = DetectionResults {
             detected_chips: Vec::new(),
             blacklisted: Vec::new(),
+            signature_rejected: Vec::new(),
+            kernel_probed: Vec::new(),
             environment: EnvironmentInfo {
                 is_container: false,
                 is_secure_boot: false,
@@ -345,6 +371,11 @@ mod tests {
                 module_status: "loaded".into(),
             }],
             blacklisted: vec!["nouveau".into()],
+            signature_rejected: Vec::new(),
+            kernel_probed: vec![KernelProbedDriver {
+                driver: "nct6687".into(),
+                module_status: "signature_rejected".into(),
+            }],
             environment: EnvironmentInfo {
                 is_container: false,
                 is_secure_boot: false,

@@ -931,6 +931,8 @@ mod tests {
                         module_status: "detection_only".to_string(),
                     }],
                     blacklisted: Vec::new(),
+                    signature_rejected: Vec::new(),
+                    kernel_probed: Vec::new(),
                     environment: cc_detect::EnvironmentInfo {
                         is_container: false,
                         is_secure_boot: false,
@@ -975,6 +977,8 @@ mod tests {
                         module_status: "detection_only".to_string(),
                     }],
                     blacklisted: Vec::new(),
+                    signature_rejected: Vec::new(),
+                    kernel_probed: Vec::new(),
                     environment: cc_detect::EnvironmentInfo {
                         is_container: false,
                         is_secure_boot: false,

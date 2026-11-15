@@ -261,6 +261,13 @@ fn write_probe_summary(
             let _ = writeln!(report, "           base address {}", chip.base_address);
         }
     }
+    for probed in &detection.kernel_probed {
+        let _ = writeln!(
+            report,
+            "         no probe -> {} ({})",
+            probed.driver, probed.module_status
+        );
+    }
 }
 
 /// Controllable channels are collapsed to a count. Anything we cannot drive is
@@ -1516,6 +1523,29 @@ mod tests {
         assert_eq!(report.matches("no devices").count(), 3, "{report}");
     }
 
+    /// Goal: a driver loaded without a probe shows up with its outcome, so a
+    /// locked-down report explains why a chip appeared or did not. Method: a
+    /// Secure Boot run with one attempt, read from the compact summary.
+    #[test]
+    fn kernel_probed_drivers_are_listed() {
+        let mut detection = cc_detect::DetectionResults::empty(cc_detect::EnvironmentInfo {
+            is_container: false,
+            is_secure_boot: true,
+            has_dev_port: true,
+        });
+        detection.kernel_probed.push(cc_detect::KernelProbedDriver {
+            driver: "nct6687".to_string(),
+            module_status: "signature_rejected".to_string(),
+        });
+        let mut report = String::new();
+        write_probe_summary(&mut report, Some(&detection), false, true);
+        assert!(report.contains("Secure Boot on"), "{report}");
+        assert!(
+            report.contains("no probe -> nct6687 (signature_rejected)"),
+            "{report}"
+        );
+    }
+
     /// Goal: a chip line carries the address and device id, matching the
     /// startup detection log, so a pasted report and a pasted log can be lined
     /// up against each other. Base address is detail for `--full` only, to keep
@@ -1533,6 +1563,8 @@ mod tests {
                 module_status: "already_loaded".to_string(),
             }],
             blacklisted: Vec::new(),
+            signature_rejected: Vec::new(),
+            kernel_probed: Vec::new(),
             environment: cc_detect::EnvironmentInfo {
                 is_container: false,
                 is_secure_boot: false,
