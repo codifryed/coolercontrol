@@ -528,7 +528,7 @@ fn write_findings(
         return;
     }
     let Some(findings) = findings else {
-        let _ = writeln!(report, "  not determined (machine facts unreadable)");
+        let _ = writeln!(report, "  not determined (findings could not be derived)");
         return;
     };
     if findings.is_empty() {
@@ -1845,7 +1845,7 @@ mod tests {
         assert!(findings.contains("Secure Boot").not());
     }
 
-    /// Goal: when detection ran but the machine facts could not be read, the
+    /// Goal: when detection ran but its findings could not be derived, the
     /// report says so rather than claiming there are no findings. An empty
     /// finding list is the only case that prints "none".
     #[test]
@@ -1858,7 +1858,7 @@ mod tests {
         let mut unreadable = String::new();
         write_findings(&mut unreadable, Some(&detection), true, None);
         assert!(
-            unreadable.contains("not determined (machine facts unreadable)"),
+            unreadable.contains("not determined (findings could not be derived)"),
             "{unreadable}"
         );
         assert!(unreadable.contains("  none").not(), "{unreadable}");
