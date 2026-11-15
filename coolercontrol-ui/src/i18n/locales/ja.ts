@@ -182,6 +182,8 @@ export default {
                 noChannels: 'ファンまたはポンプのチャンネルが検出されませんでした。',
                 noneControllable:
                     '検出されたファンまたはポンプのチャンネルはいずれも制御できません。',
+                noticeSignatureRejected:
+                    'カーネルがインストール済みドライバーのモジュール署名を拒否したため、ファンやポンプのチャンネルが不足している可能性があります。',
                 noticeBlockedByEnvironment:
                     'ハードウェア検出を実行できなかったため、ファンやポンプのチャンネルが不足している可能性があります。',
                 fullChart: 'フルチャート',
@@ -685,6 +687,8 @@ export default {
                 'チップは検出されましたが、対応する読み込み済みドライバーがありません。',
             findingBlacklisted:
                 'このドライバーはブラックリストに登録されており、読み込まれませんでした。',
+            findingSignatureRejected:
+                'このドライバーはインストールされていますが、カーネルがモジュール署名を拒否したため、読み込まれませんでした。',
             findingBlockedByEnvironment: 'この環境ではハードウェア検出を実行できませんでした。',
             findingBlockedBySecureBoot:
                 'セキュアブートが有効なため、ハードウェア検出を実行できませんでした。',

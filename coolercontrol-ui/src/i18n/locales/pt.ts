@@ -185,6 +185,8 @@ export default {
                 noChannels: 'Nenhum canal de ventilador ou bomba foi detectado.',
                 noneControllable:
                     'Nenhum dos canais de ventilador ou bomba detectados pode ser controlado.',
+                noticeSignatureRejected:
+                    'O kernel rejeitou a assinatura do módulo de um driver instalado, portanto canais de ventilador e bomba podem estar faltando.',
                 noticeBlockedByEnvironment:
                     'A detecção de hardware não pôde ser executada, portanto canais de ventilador e bomba podem estar faltando.',
                 fullChart: 'Gráfico completo',
@@ -686,6 +688,8 @@ export default {
             hardwareReportCopied: 'Copiado',
             findingNoDriverBound: 'Um chip foi detectado, mas nenhum driver carregado o atende.',
             findingBlacklisted: 'Este driver está na lista negra e não foi carregado.',
+            findingSignatureRejected:
+                'Este driver está instalado, mas o kernel rejeitou a assinatura do módulo, por isso não foi carregado.',
             findingBlockedByEnvironment:
                 'A detecção de hardware não pôde ser executada neste ambiente.',
             findingBlockedBySecureBoot:

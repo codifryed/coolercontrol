@@ -181,6 +181,8 @@ export default {
                 landingHint: '选择一个风扇或水泵以查看和调整其冷却。',
                 noChannels: '未检测到风扇或水泵通道。',
                 noneControllable: '检测到的风扇或水泵通道均无法控制。',
+                noticeSignatureRejected:
+                    '内核拒绝了已安装驱动的模块签名，因此可能缺少风扇和水泵通道。',
                 noticeBlockedByEnvironment: '硬件检测无法运行，因此可能缺少风扇和水泵通道。',
                 fullChart: '完整图表',
                 guidedSetup: '引导设置',
@@ -652,6 +654,7 @@ export default {
             hardwareReportCopied: '已复制',
             findingNoDriverBound: '检测到一个芯片，但没有已加载的驱动为其服务。',
             findingBlacklisted: '该驱动已列入黑名单，未被加载。',
+            findingSignatureRejected: '该驱动已安装，但内核拒绝了其模块签名，因此未被加载。',
             findingBlockedByEnvironment: '硬件检测无法在此环境中运行。',
             findingBlockedBySecureBoot: '安全启动已启用，硬件检测无法运行。',
             findingBlockedByContainer: '硬件检测无法在容器中运行。',

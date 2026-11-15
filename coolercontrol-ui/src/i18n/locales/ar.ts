@@ -181,6 +181,8 @@ export default {
                 landingHint: 'حدد مروحة أو مضخة لعرض تبريدها وضبطه.',
                 noChannels: 'لم يتم اكتشاف قنوات مراوح أو مضخات.',
                 noneControllable: 'لا يمكن التحكم في أي من قنوات المراوح أو المضخات المكتشفة.',
+                noticeSignatureRejected:
+                    'رفضت النواة توقيع وحدة برنامج تشغيل مثبّت، لذا قد تكون بعض قنوات المراوح والمضخات مفقودة.',
                 noticeBlockedByEnvironment:
                     'تعذّر تشغيل اكتشاف الأجهزة، لذا قد تكون بعض قنوات المراوح والمضخات مفقودة.',
                 fullChart: 'الرسم البياني الكامل',
@@ -673,6 +675,8 @@ export default {
             hardwareReportCopied: 'تم النسخ',
             findingNoDriverBound: 'تم اكتشاف شريحة، لكن لا يوجد برنامج تشغيل محمَّل يخدمها.',
             findingBlacklisted: 'برنامج التشغيل هذا محظور ولم يتم تحميله.',
+            findingSignatureRejected:
+                'برنامج التشغيل هذا مثبّت، لكن النواة رفضت توقيع الوحدة الخاص به، لذا لم يتم تحميله.',
             findingBlockedByEnvironment: 'تعذّر تشغيل اكتشاف الأجهزة في هذه البيئة.',
             findingBlockedBySecureBoot: 'تعذّر تشغيل اكتشاف الأجهزة لأن الإقلاع الآمن مُفعّل.',
             findingBlockedByContainer: 'تعذّر تشغيل اكتشاف الأجهزة داخل حاوية.',

@@ -186,6 +186,8 @@ export default {
                 noChannels: 'Keine Lüfter- oder Pumpenkanäle erkannt.',
                 noneControllable:
                     'Keiner der erkannten Lüfter- oder Pumpenkanäle kann gesteuert werden.',
+                noticeSignatureRejected:
+                    'Der Kernel hat die Modulsignatur eines installierten Treibers abgelehnt, daher fehlen möglicherweise Lüfter- und Pumpenkanäle.',
                 noticeBlockedByEnvironment:
                     'Die Hardware-Erkennung konnte nicht ausgeführt werden, daher fehlen möglicherweise Lüfter- und Pumpenkanäle.',
                 fullChart: 'Vollständiges Diagramm',
@@ -696,6 +698,8 @@ export default {
             findingNoDriverBound:
                 'Ein Chip wurde erkannt, aber kein geladener Treiber bedient ihn.',
             findingBlacklisted: 'Dieser Treiber steht auf der Blockliste und wurde nicht geladen.',
+            findingSignatureRejected:
+                'Dieser Treiber ist installiert, aber der Kernel hat seine Modulsignatur abgelehnt, daher wurde er nicht geladen.',
             findingBlockedByEnvironment:
                 'Die Hardware-Erkennung konnte in dieser Umgebung nicht ausgeführt werden.',
             findingBlockedBySecureBoot:

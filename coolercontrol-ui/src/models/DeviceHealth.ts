@@ -69,6 +69,7 @@ export class ChannelVerdictRef {
 export enum SystemFindingKind {
     NoDriverBound = 'no_driver_bound',
     Blacklisted = 'blacklisted',
+    SignatureRejected = 'signature_rejected',
     BlockedByEnvironment = 'blocked_by_environment',
     DetectionUnsupported = 'detection_unsupported',
 }

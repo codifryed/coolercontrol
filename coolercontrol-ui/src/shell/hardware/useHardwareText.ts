@@ -32,6 +32,8 @@ export function useHardwareText() {
                 return t('views.appInfo.findingNoDriverBound')
             case SystemFindingKind.Blacklisted:
                 return t('views.appInfo.findingBlacklisted')
+            case SystemFindingKind.SignatureRejected:
+                return t('views.appInfo.findingSignatureRejected')
             case SystemFindingKind.BlockedByEnvironment:
                 return blockerDetail(finding.reason)
             default:
@@ -41,6 +43,8 @@ export function useHardwareText() {
 
     function noticeHeadline(kind: HardwareNoticeKind): string {
         switch (kind) {
+            case 'signatureRejected':
+                return t('layout.shell.coolingPage.noticeSignatureRejected')
             case 'blockedByEnvironment':
                 return t('layout.shell.coolingPage.noticeBlockedByEnvironment')
             case 'noChannels':

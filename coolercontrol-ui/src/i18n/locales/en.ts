@@ -181,6 +181,8 @@ export default {
                 landingHint: 'Select a fan or pump to view and adjust its cooling.',
                 noChannels: 'No fan or pump channels were detected.',
                 noneControllable: 'None of the detected fan or pump channels can be controlled.',
+                noticeSignatureRejected:
+                    'The kernel rejected the module signature of an installed driver, so fan and pump channels may be missing.',
                 noticeBlockedByEnvironment:
                     'Hardware detection could not run, so fan and pump channels may be missing.',
                 fullChart: 'Full chart',
@@ -677,6 +679,8 @@ export default {
             hardwareReportCopied: 'Copied',
             findingNoDriverBound: 'A chip was detected, but no loaded driver is serving it.',
             findingBlacklisted: 'This driver is blacklisted and was not loaded.',
+            findingSignatureRejected:
+                'This driver is installed, but the kernel rejected its module signature, so it was not loaded.',
             findingBlockedByEnvironment: 'Hardware detection could not run in this environment.',
             findingBlockedBySecureBoot:
                 'Hardware detection could not run because Secure Boot is enabled.',

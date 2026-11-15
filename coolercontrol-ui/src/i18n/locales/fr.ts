@@ -187,6 +187,8 @@ export default {
                 noChannels: "Aucun canal de ventilateur ou de pompe n'a été détecté.",
                 noneControllable:
                     'Aucun des canaux de ventilateur ou de pompe détectés ne peut être contrôlé.',
+                noticeSignatureRejected:
+                    "Le noyau a rejeté la signature du module d'un pilote installé, des canaux de ventilateur et de pompe peuvent donc manquer.",
                 noticeBlockedByEnvironment:
                     "La détection matérielle n'a pas pu s'exécuter, des canaux de ventilateur et de pompe peuvent donc manquer.",
                 fullChart: 'Graphique complet',
@@ -700,6 +702,8 @@ export default {
             hardwareReportCopied: 'Copié',
             findingNoDriverBound: 'Une puce a été détectée, mais aucun pilote chargé ne la gère.',
             findingBlacklisted: "Ce pilote est sur liste noire et n'a pas été chargé.",
+            findingSignatureRejected:
+                "Ce pilote est installé, mais le noyau a rejeté la signature de son module, il n'a donc pas été chargé.",
             findingBlockedByEnvironment:
                 "La détection matérielle n'a pas pu s'exécuter dans cet environnement.",
             findingBlockedBySecureBoot:
