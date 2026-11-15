@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::ops::Not;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use log::{debug, info};
 
@@ -23,7 +23,7 @@ use crate::{DetectionResults, KernelProbedDriver};
 /// A distro `modules.dep` is around 1 MiB. Anything far larger is not one.
 const MODULES_DEP_MAX_BYTES: u64 = 16 * 1024 * 1024;
 const OSRELEASE_PATH: &str = "/proc/sys/kernel/osrelease";
-const PROC_MODULES_PATH: &str = "/proc/modules";
+const PLATFORM_DRIVERS_PATH: &str = "/sys/bus/platform/drivers";
 
 /// Loads every installed out-of-tree Super-I/O driver, recording each attempt
 /// in `results`. Blocking: reads module files and runs modprobe.
@@ -36,12 +36,9 @@ pub fn load_installed_out_of_tree(lockdown_active: bool, results: &mut Detection
     let Some(modules_dep) = read_modules_dep() else {
         return;
     };
-    let proc_modules = std::fs::read_to_string(PROC_MODULES_PATH).unwrap_or_default();
-    let candidates = select_candidates(
-        crate::chip_db::compiled_drivers(),
-        &modules_dep,
-        &proc_modules,
-    );
+    let superio_drivers = crate::chip_db::compiled_drivers();
+    let bound = bound_platform_drivers(Path::new(PLATFORM_DRIVERS_PATH), superio_drivers);
+    let candidates = select_candidates(superio_drivers, &modules_dep, &bound);
     if candidates.is_empty() {
         debug!("No installed out-of-tree Super-I/O driver to load");
         return;
@@ -65,8 +62,9 @@ pub fn load_installed_out_of_tree(lockdown_active: bool, results: &mut Detection
 
 /// The out-of-tree Super-I/O drivers worth handing to the kernel, sorted.
 ///
-/// Empty while any Super-I/O driver is loaded: that driver already holds the
-/// chip, so an out-of-tree one could not bind to it anyway.
+/// Empty while any Super-I/O driver is bound to a device: that driver already
+/// holds the chip. A driver that is only loaded does not count, as in-tree
+/// `nct6683` stays loaded on boards whose chip its probe refuses.
 ///
 /// # Panics
 ///
@@ -75,12 +73,9 @@ pub fn load_installed_out_of_tree(lockdown_active: bool, results: &mut Detection
 pub fn select_candidates(
     superio_drivers: &[String],
     modules_dep: &str,
-    proc_modules: &str,
+    bound_drivers: &HashSet<String>,
 ) -> Vec<String> {
-    let any_loaded = superio_drivers
-        .iter()
-        .any(|driver| module_loader::is_module_in_proc_modules(driver, proc_modules));
-    if any_loaded {
+    if bound_drivers.is_empty().not() {
         return Vec::new();
     }
     let installed = out_of_tree_module_names(modules_dep);
@@ -118,6 +113,29 @@ fn out_of_tree_module_names(modules_dep: &str) -> HashSet<String> {
         }
     }
     names
+}
+
+/// The given drivers with a device bound under `platform_drivers`, the
+/// `/sys/bus/platform/drivers` tree. A bound device shows as a symlink in the
+/// driver's directory; `module` is the one symlink that is not a device.
+fn bound_platform_drivers(platform_drivers: &Path, drivers: &[String]) -> HashSet<String> {
+    let mut bound = HashSet::new();
+    for driver in drivers {
+        let Ok(entries) = std::fs::read_dir(platform_drivers.join(driver)) else {
+            continue;
+        };
+        let has_device = entries.flatten().any(|entry| {
+            if entry.file_name() == "module" {
+                return false;
+            }
+            entry.file_type().is_ok_and(|kind| kind.is_symlink())
+        });
+        if has_device {
+            bound.insert(driver.clone());
+        }
+    }
+    assert!(bound.len() <= drivers.len());
+    bound
 }
 
 fn record_attempt(results: &mut DetectionResults, driver: String, result: &LoadResult) {
@@ -204,22 +222,47 @@ updates/dkms/some-other.ko:
     /// fixture with nothing loaded.
     #[test]
     fn candidates_are_installed_out_of_tree_superio_drivers() {
-        let candidates = select_candidates(&superio_drivers(), MODULES_DEP, "");
+        let candidates = select_candidates(&superio_drivers(), MODULES_DEP, &HashSet::new());
         assert_eq!(candidates, vec!["it87".to_string(), "nct6687".to_string()]);
     }
 
-    /// Goal: a loaded Super-I/O driver, in-tree or not, stops every attempt,
-    /// because it already holds the chip. An unrelated loaded module does not.
-    /// Method: the same fixture under three `/proc/modules` contents.
+    /// Goal: a bound Super-I/O driver, in-tree or not, stops every attempt,
+    /// because it already holds the chip. Method: the fixture with one bound.
     #[test]
-    fn a_loaded_superio_driver_stops_the_fallback() {
+    fn a_bound_superio_driver_stops_the_fallback() {
         let drivers = superio_drivers();
-        let in_tree = "nct6683 24576 0 - Live 0x0000000000000000\n";
-        let out_of_tree = "nct6687 24576 0 - Live 0x0000000000000000 (OE)\n";
-        let unrelated = "k10temp 12288 0 - Live 0x0000000000000000\n";
-        assert!(select_candidates(&drivers, MODULES_DEP, in_tree).is_empty());
-        assert!(select_candidates(&drivers, MODULES_DEP, out_of_tree).is_empty());
-        assert_eq!(select_candidates(&drivers, MODULES_DEP, unrelated).len(), 2);
+        let in_tree = HashSet::from(["nct6683".to_string()]);
+        let out_of_tree = HashSet::from(["nct6687".to_string()]);
+        assert!(select_candidates(&drivers, MODULES_DEP, &in_tree).is_empty());
+        assert!(select_candidates(&drivers, MODULES_DEP, &out_of_tree).is_empty());
+    }
+
+    /// Goal: only a driver directory holding a device symlink counts as bound.
+    /// A loaded driver whose probe refused the chip, as in-tree `nct6683` does
+    /// on MSI boards, keeps the fallback going. Method: a fake
+    /// `/sys/bus/platform/drivers` with one bound and one unbound driver.
+    #[test]
+    fn only_drivers_with_a_device_count_as_bound() {
+        let sysfs = tempfile::tempdir().unwrap();
+        let device = sysfs.path().join("devices/nct6775.656");
+        let module = sysfs.path().join("modules/nct6683");
+        std::fs::create_dir_all(&device).unwrap();
+        std::fs::create_dir_all(&module).unwrap();
+        let unbound = sysfs.path().join("nct6683");
+        std::fs::create_dir(&unbound).unwrap();
+        std::fs::write(unbound.join("bind"), "").unwrap();
+        std::os::unix::fs::symlink(&module, unbound.join("module")).unwrap();
+        let bound_dir = sysfs.path().join("nct6775");
+        std::fs::create_dir(&bound_dir).unwrap();
+        std::os::unix::fs::symlink(&device, bound_dir.join("nct6775.656")).unwrap();
+
+        let bound = bound_platform_drivers(sysfs.path(), &superio_drivers());
+        assert_eq!(bound, HashSet::from(["nct6775".to_string()]));
+
+        let unbound_only = bound_platform_drivers(sysfs.path(), &["nct6683".to_string()]);
+        assert!(unbound_only.is_empty());
+        let candidates = select_candidates(&superio_drivers(), MODULES_DEP, &unbound_only);
+        assert_eq!(candidates, vec!["it87".to_string(), "nct6687".to_string()]);
     }
 
     /// Goal: with no out-of-tree driver installed nothing is attempted, which
@@ -227,8 +270,9 @@ updates/dkms/some-other.ko:
     #[test]
     fn no_out_of_tree_install_yields_no_candidates() {
         let in_tree_only = "kernel/drivers/hwmon/nct6683.ko.zst:\n";
-        assert!(select_candidates(&superio_drivers(), in_tree_only, "").is_empty());
-        assert!(select_candidates(&superio_drivers(), "", "").is_empty());
+        let none_bound = HashSet::new();
+        assert!(select_candidates(&superio_drivers(), in_tree_only, &none_bound).is_empty());
+        assert!(select_candidates(&superio_drivers(), "", &none_bound).is_empty());
     }
 
     /// Goal: each attempt is recorded, and rejected or blacklisted drivers also
