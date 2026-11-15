@@ -186,8 +186,6 @@ export default {
                 noChannels: 'Keine Lüfter- oder Pumpenkanäle erkannt.',
                 noneControllable:
                     'Keiner der erkannten Lüfter- oder Pumpenkanäle kann gesteuert werden.',
-                noticeSignatureRejected:
-                    'Der Kernel hat die Modulsignatur eines installierten Treibers abgelehnt, daher fehlen möglicherweise Lüfter- und Pumpenkanäle.',
                 noticeBlockedByEnvironment:
                     'Die Hardware-Erkennung konnte nicht ausgeführt werden, daher fehlen möglicherweise Lüfter- und Pumpenkanäle.',
                 fullChart: 'Vollständiges Diagramm',

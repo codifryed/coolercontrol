@@ -181,8 +181,6 @@ export default {
                 landingHint: 'Select a fan or pump to view and adjust its cooling.',
                 noChannels: 'No fan or pump channels were detected.',
                 noneControllable: 'None of the detected fan or pump channels can be controlled.',
-                noticeSignatureRejected:
-                    'The kernel rejected the module signature of an installed driver, so fan and pump channels may be missing.',
                 noticeBlockedByEnvironment:
                     'Hardware detection could not run, so fan and pump channels may be missing.',
                 fullChart: 'Full chart',

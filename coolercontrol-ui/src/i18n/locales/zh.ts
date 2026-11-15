@@ -181,8 +181,6 @@ export default {
                 landingHint: '选择一个风扇或水泵以查看和调整其冷却。',
                 noChannels: '未检测到风扇或水泵通道。',
                 noneControllable: '检测到的风扇或水泵通道均无法控制。',
-                noticeSignatureRejected:
-                    '内核拒绝了已安装驱动的模块签名，因此可能缺少风扇和水泵通道。',
                 noticeBlockedByEnvironment: '硬件检测无法运行，因此可能缺少风扇和水泵通道。',
                 fullChart: '完整图表',
                 guidedSetup: '引导设置',

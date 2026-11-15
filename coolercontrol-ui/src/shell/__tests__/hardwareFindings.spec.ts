@@ -67,15 +67,12 @@ describe('hardwareNoticeKind', () => {
         expect(hardwareNoticeKind(blocked, 4, 4)).toBeUndefined()
     })
 
-    // A rejected signature names the driver that went missing, so it is the
-    // more precise cause and leads over a blocked probe.
-    it('leads with a rejected signature over a blocked probe', () => {
-        const findings = [
-            finding(SystemFindingKind.BlockedByEnvironment, EnvironmentBlocker.SecureBoot),
-            finding(SystemFindingKind.SignatureRejected),
-        ]
-        expect(hardwareNoticeKind(findings, 0, 0)).toBe('signatureRejected')
-        expect(hardwareNoticeKind(findings, 4, 0)).toBe('signatureRejected')
+    // A rejected signature names its driver, and the notice lists it with its
+    // own cause, so the headline stays on the channel count.
+    it('leaves the headline to the channel count for a rejected signature', () => {
+        const findings = [finding(SystemFindingKind.SignatureRejected)]
+        expect(hardwareNoticeKind(findings, 0, 0)).toBe('noChannels')
+        expect(hardwareNoticeKind(findings, 4, 0)).toBe('noneControllable')
     })
 
     it('stays silent about a rejected signature when the fans work anyway', () => {

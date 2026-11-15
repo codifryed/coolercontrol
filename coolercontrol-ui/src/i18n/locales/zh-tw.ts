@@ -181,8 +181,6 @@ export default {
                 landingHint: '選擇風扇或水泵以檢視並調整其冷卻。',
                 noChannels: '未偵測到風扇或水泵通道。',
                 noneControllable: '偵測到的風扇或水泵通道均無法控制。',
-                noticeSignatureRejected:
-                    '核心拒絕了已安裝驅動程式的模組簽章，因此可能缺少風扇和水泵通道。',
                 noticeBlockedByEnvironment: '硬體偵測無法執行，因此可能缺少風扇和水泵通道。',
                 fullChart: '完整圖表',
                 guidedSetup: '引導式設定',

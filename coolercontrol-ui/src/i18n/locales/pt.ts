@@ -185,8 +185,6 @@ export default {
                 noChannels: 'Nenhum canal de ventilador ou bomba foi detectado.',
                 noneControllable:
                     'Nenhum dos canais de ventilador ou bomba detectados pode ser controlado.',
-                noticeSignatureRejected:
-                    'O kernel rejeitou a assinatura do módulo de um driver instalado, portanto canais de ventilador e bomba podem estar faltando.',
                 noticeBlockedByEnvironment:
                     'A detecção de hardware não pôde ser executada, portanto canais de ventilador e bomba podem estar faltando.',
                 fullChart: 'Gráfico completo',

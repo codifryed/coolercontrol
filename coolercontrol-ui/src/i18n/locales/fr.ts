@@ -187,8 +187,6 @@ export default {
                 noChannels: "Aucun canal de ventilateur ou de pompe n'a été détecté.",
                 noneControllable:
                     'Aucun des canaux de ventilateur ou de pompe détectés ne peut être contrôlé.',
-                noticeSignatureRejected:
-                    "Le noyau a rejeté la signature du module d'un pilote installé, des canaux de ventilateur et de pompe peuvent donc manquer.",
                 noticeBlockedByEnvironment:
                     "La détection matérielle n'a pas pu s'exécuter, des canaux de ventilateur et de pompe peuvent donc manquer.",
                 fullChart: 'Graphique complet',

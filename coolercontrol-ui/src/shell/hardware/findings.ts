@@ -16,15 +16,15 @@ export function actionableFindings(findings: Array<SystemFinding>): Array<System
 }
 
 /** Which headline the cooling notice leads with, or none when all is well. */
-export type HardwareNoticeKind =
-    'signatureRejected' | 'blockedByEnvironment' | 'noChannels' | 'noneControllable'
+export type HardwareNoticeKind = 'blockedByEnvironment' | 'noChannels' | 'noneControllable'
 
 /**
  * A notice is raised only when the channels themselves are the problem: a
  * machine whose fans all work has nothing to be told, even if a probe was
- * blocked on the way there. When one is raised, a cause wins the headline
- * because it explains the channel count rather than restating it. A rejected
- * signature names the driver that went missing, so it beats a blocked probe.
+ * blocked on the way there. When one is raised, a blocked probe wins the
+ * headline because it explains the channel count rather than restating it.
+ * Findings that name a chip or driver keep the count headline, since the
+ * notice lists each of them with its own cause.
  */
 export function hardwareNoticeKind(
     findings: Array<SystemFinding>,
@@ -34,7 +34,6 @@ export function hardwareNoticeKind(
     if (channelCount > 0 && controllableCount > 0) return undefined
     const actionable = actionableFindings(findings)
     const hasKind = (kind: SystemFindingKind) => actionable.some((finding) => finding.kind === kind)
-    if (hasKind(SystemFindingKind.SignatureRejected)) return 'signatureRejected'
     if (hasKind(SystemFindingKind.BlockedByEnvironment)) return 'blockedByEnvironment'
     return channelCount === 0 ? 'noChannels' : 'noneControllable'
 }

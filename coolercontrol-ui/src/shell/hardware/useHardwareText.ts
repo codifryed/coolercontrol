@@ -43,8 +43,6 @@ export function useHardwareText() {
 
     function noticeHeadline(kind: HardwareNoticeKind): string {
         switch (kind) {
-            case 'signatureRejected':
-                return t('layout.shell.coolingPage.noticeSignatureRejected')
             case 'blockedByEnvironment':
                 return t('layout.shell.coolingPage.noticeBlockedByEnvironment')
             case 'noChannels':

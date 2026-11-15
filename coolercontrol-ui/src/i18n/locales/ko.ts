@@ -181,8 +181,6 @@ export default {
                 landingHint: '팬 또는 펌프를 선택하여 냉각을 확인하고 조정하세요.',
                 noChannels: '팬 또는 펌프 채널이 감지되지 않았습니다.',
                 noneControllable: '감지된 팬 또는 펌프 채널 중 제어할 수 있는 것이 없습니다.',
-                noticeSignatureRejected:
-                    '커널이 설치된 드라이버의 모듈 서명을 거부하여 일부 팬 및 펌프 채널이 누락되었을 수 있습니다.',
                 noticeBlockedByEnvironment:
                     '하드웨어 탐지를 실행할 수 없어 일부 팬 및 펌프 채널이 누락되었을 수 있습니다.',
                 fullChart: '전체 차트',

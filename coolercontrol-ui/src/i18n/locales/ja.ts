@@ -182,8 +182,6 @@ export default {
                 noChannels: 'ファンまたはポンプのチャンネルが検出されませんでした。',
                 noneControllable:
                     '検出されたファンまたはポンプのチャンネルはいずれも制御できません。',
-                noticeSignatureRejected:
-                    'カーネルがインストール済みドライバーのモジュール署名を拒否したため、ファンやポンプのチャンネルが不足している可能性があります。',
                 noticeBlockedByEnvironment:
                     'ハードウェア検出を実行できなかったため、ファンやポンプのチャンネルが不足している可能性があります。',
                 fullChart: 'フルチャート',
