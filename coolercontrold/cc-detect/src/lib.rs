@@ -35,6 +35,8 @@ use serde::Serialize;
 
 #[cfg(target_arch = "x86_64")]
 use log::{debug, warn};
+#[cfg(target_arch = "x86_64")]
+use std::ops::Not;
 
 #[cfg(target_arch = "x86_64")]
 use chip_db::ChipDatabase;
@@ -125,7 +127,7 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
             info!("/dev/port unavailable, skipping hardware detection");
         }
         let mut results = DetectionResults::empty(env_info);
-        if load_modules && env.can_load_modules() {
+        if should_load_without_probe(&env, load_modules) {
             kernel_probe::load_installed_out_of_tree(env.is_secure_boot, &mut results);
         }
         return results;
@@ -153,6 +155,19 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
 
     // Process results and optionally load modules
     process_results(&detected, load_modules, &env, env_info)
+}
+
+/// Whether installed out-of-tree drivers stand in for the probe: only when the
+/// probe cannot run, module loading was asked for, and modprobe can run here.
+#[cfg(target_arch = "x86_64")]
+fn should_load_without_probe(env: &Environment, load_modules: bool) -> bool {
+    if env.can_probe() {
+        return false;
+    }
+    if load_modules.not() {
+        return false;
+    }
+    env.can_load_modules()
 }
 
 /// Non-x86_64 stub: detection is not supported.
@@ -339,6 +354,43 @@ mod tests {
         let results = process_results(&Vec::new(), false, &env, env_info);
         assert!(results.detected_chips.is_empty());
         assert!(results.blacklisted.is_empty());
+    }
+
+    /// Goal: the no-probe fallback runs under lockdown or without `/dev/port`,
+    /// and never when the probe can run, loading is off, or modprobe cannot
+    /// run. Method: each gate flipped from a locked-down base.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn fallback_runs_only_when_the_probe_cannot() {
+        let locked_down = Environment {
+            is_container: false,
+            is_secure_boot: true,
+            has_dev_port: true,
+            has_modprobe: true,
+        };
+        let no_dev_port = Environment {
+            is_secure_boot: false,
+            has_dev_port: false,
+            ..locked_down.clone()
+        };
+        let can_probe = Environment {
+            is_secure_boot: false,
+            ..locked_down.clone()
+        };
+        let container = Environment {
+            is_container: true,
+            ..locked_down.clone()
+        };
+        let no_modprobe = Environment {
+            has_modprobe: false,
+            ..locked_down.clone()
+        };
+        assert!(should_load_without_probe(&locked_down, true));
+        assert!(should_load_without_probe(&no_dev_port, true));
+        assert!(should_load_without_probe(&locked_down, false).not());
+        assert!(should_load_without_probe(&can_probe, true).not());
+        assert!(should_load_without_probe(&container, true).not());
+        assert!(should_load_without_probe(&no_modprobe, true).not());
     }
 
     #[test]
