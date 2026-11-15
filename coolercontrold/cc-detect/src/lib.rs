@@ -105,8 +105,8 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
     if !env.can_probe() {
         if env.is_secure_boot {
             info!(
-                "Secure boot is enabled. To enable auto-detection of Super-I/O \
-                 kernel drivers, secure boot will need to be disabled."
+                "Kernel lockdown is active (usually from Secure Boot), so Super-I/O \
+                 chips cannot be probed. Drivers loaded by other means are not affected."
             );
         } else {
             info!("/dev/port unavailable, skipping hardware detection");
@@ -231,8 +231,8 @@ pub fn output_results(results: &DetectionResults) {
         }
         if results.environment.is_secure_boot {
             info!(
-                "  (Secure boot is enabled - to enable auto-detection of Super-I/O \
-                 kernel drivers, secure boot will need to be disabled)"
+                "  (Kernel lockdown is active, usually from Secure Boot, so Super-I/O \
+                 chips could not be probed)"
             );
         }
         if !results.environment.has_dev_port {

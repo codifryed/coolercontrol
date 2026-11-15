@@ -324,6 +324,18 @@ pub enum EnvironmentBlocker {
     NoDevPort,
 }
 
+impl EnvironmentBlocker {
+    /// What stopped the probe, as a clause for a log line. States the
+    /// observation only: what to do about it is for the docs.
+    pub fn cause(self) -> &'static str {
+        match self {
+            Self::SecureBoot => "kernel lockdown (usually from Secure Boot) blocks I/O port access",
+            Self::Container => "the daemon runs in a container",
+            Self::NoDevPort => "/dev/port is not available",
+        }
+    }
+}
+
 /// A fact about the machine rather than about one channel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -848,8 +860,9 @@ impl HardwareSupportController {
                     warn!("Hardware support: driver {driver} is blacklisted and was not loaded");
                 }
                 SystemFinding::BlockedByEnvironment { reason } => warn!(
-                    "Hardware support: Super-I/O detection could not run ({reason:?}); \
-                     chips needing a Super-I/O probe will not be found"
+                    "Hardware support: Super-I/O chips could not be probed because {} and no \
+                     Super-I/O driver is loaded, so a chip that needs one will not be found",
+                    reason.cause()
                 ),
                 SystemFinding::DetectionUnsupported => {
                     info!("Hardware support: Super-I/O detection is x86_64 only");
