@@ -11,6 +11,7 @@
 
 use std::collections::HashSet;
 use std::fs::File;
+use std::hash::BuildHasher;
 use std::io::Read;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -71,10 +72,10 @@ pub fn load_installed_out_of_tree(lockdown_active: bool, results: &mut Detection
 ///
 /// If more candidates come out than Super-I/O drivers went in.
 #[must_use]
-pub fn select_candidates(
+pub fn select_candidates<S: BuildHasher>(
     superio_drivers: &[String],
     modules_dep: &str,
-    bound_drivers: &HashSet<String>,
+    bound_drivers: &HashSet<String, S>,
 ) -> Vec<String> {
     if bound_drivers.is_empty().not() {
         return Vec::new();
