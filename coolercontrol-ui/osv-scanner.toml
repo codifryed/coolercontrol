@@ -5,3 +5,8 @@
 # id = "GHSA-xxxx-xxxx-xxxx"
 # ignoreUntil = 2026-12-31
 # reason = "Why it does not apply, or what blocks the fix."
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2027-01-18
+reason = "picomatch: no fixed release, see https://github.com/micromatch/picomatch/issues/234. Build and dev tooling only (vite, tailwindcss, vitest), fed our own config globs."
