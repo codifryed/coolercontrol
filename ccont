@@ -61,7 +61,7 @@ run_container() {
     # Host network: the vite dev server proxies the API to the daemon on host loopback,
     # and the GUI connects to it there.
     # shellcheck disable=SC2086
-    ${CONTAINER_TOOL} run --rm --init "${exec_mode}" ${display_args} \
+    ${CONTAINER_TOOL} run --rm --init ${exec_mode:+"${exec_mode}"} ${display_args} \
         --network host \
         -v "${REPO}:/src" \
         -v "${REPO}/.git:/src/.git:ro" \
