@@ -122,10 +122,6 @@ export default defineConfig({
         }),
     ],
     server: {
-        // Bind all interfaces inside the dev container (CC_DEV_CONTAINER, set in the
-        // Containerfile) where ccont publishes the port on the host loopback;
-        // localhost-only everywhere else.
-        host: process.env.CC_DEV_CONTAINER === '1',
         proxy: {
             [daemonProxyPattern()]: {
                 target: DAEMON_URL,
