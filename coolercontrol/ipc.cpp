@@ -14,6 +14,8 @@ IPC::IPC(QObject* parent)
       m_mainWindow(qobject_cast<MainWindow*>(parent)) {
   connect(m_mainWindow, &MainWindow::setZoomFactorSignal, m_mainWindow, &MainWindow::setZoomFactor,
           Qt::QueuedConnection);
+  connect(m_mainWindow, &MainWindow::setFullScreenSignal, m_mainWindow, &MainWindow::setFullScreen,
+          Qt::QueuedConnection);
   connect(m_mainWindow, &MainWindow::setTrayMenuModesSignal, m_mainWindow,
           &MainWindow::setTrayMenuModes, Qt::QueuedConnection);
   connect(m_mainWindow, &MainWindow::acknowledgeDaemonErrorsSignal, m_mainWindow,
@@ -82,6 +84,10 @@ void IPC::setZoomFactor(const double zoomFactor) const {
 
 void IPC::setModes(const QString& modesJson) const {
   emit m_mainWindow->setTrayMenuModesSignal(modesJson);
+}
+
+void IPC::setFullScreen(const bool fullScreen) const {
+  emit m_mainWindow->setFullScreenSignal(fullScreen);
 }
 
 void IPC::saveWindowGeometry(const QByteArray& geometry) const {

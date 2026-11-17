@@ -1316,6 +1316,7 @@ impl GpuNVidia {
     /// Often the cookie is not immediately available at boot time and extra time is needed to let
     /// the display-manager and Xorg to fully come up.
     /// See [issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/156)
+    /// `None` when none appears within `XAUTHORITY_SEARCH_TIMEOUT`. Callers log the effect.
     async fn search_for_xauthority_path() -> Option<String> {
         let search_timeout_time = Instant::now().add(XAUTHORITY_SEARCH_TIMEOUT);
         while Instant::now() < search_timeout_time {
@@ -1326,7 +1327,6 @@ impl GpuNVidia {
                 return Some(path);
             }
         }
-        error!("Xauthority not found within {XAUTHORITY_SEARCH_TIMEOUT:?}.");
         None
     }
 
@@ -1340,9 +1340,10 @@ impl GpuNVidia {
         &self,
     ) -> Result<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
         if self.xauthority_path.borrow().is_none() {
-            error!(
-                "Nvidia device detected but no xauthority cookie found which is needed \
-            for proper communication with nvidia-settings. Nvidia Fan Control disabled."
+            warn!(
+                "NVIDIA fan control is disabled: nvidia-settings needs an Xauthority cookie, and \
+                 none was found within {XAUTHORITY_SEARCH_TIMEOUT:?}. Enable NVML to control fans \
+                 without X: install it, and drop --nvidia-cli and CC_NVML=off."
             );
             return Ok(HashMap::new());
         }
@@ -1512,6 +1513,12 @@ impl GpuNVidia {
                         the Xauthority file. Xauthority file reset in progress."
                     );
                     let xauthority_path = Self::search_for_xauthority_path().await;
+                    if xauthority_path.is_none() {
+                        warn!(
+                            "No Xauthority cookie found within {XAUTHORITY_SEARCH_TIMEOUT:?}. \
+                             NVIDIA fans stay at their last set speed until the daemon restarts."
+                        );
+                    }
                     self.xauthority_path.replace(xauthority_path);
                 }
                 Err(anyhow!(
@@ -1821,47 +1828,63 @@ struct NvmlProbe {
     device_uids: Vec<UID>,
 }
 
+/// Whether NVIDIA detection is worth running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NvidiaPresence {
+    /// No NVIDIA driver and no NVIDIA display controller.
+    Absent,
+    /// An NVIDIA display controller, which nouveau may drive, or an unreadable bus.
+    MaybePresent,
+    /// The proprietary NVIDIA kernel module is loaded.
+    DriverLoaded,
+}
+
 /// Whether NVIDIA detection is worth running: the NVIDIA driver is loaded, or an NVIDIA display
 /// controller is on the PCI bus. `nvmlInit` maps libcuda even when it then fails, and libcuda stays
 /// mapped for the daemon's lifetime, so a machine with only the NVIDIA userspace installed skips
-/// it. True when the bus or any function on it cannot be read, so detection runs as before.
-pub async fn nvidia_gpu_may_be_present() -> bool {
+/// it. `MaybePresent` when the bus or any function on it cannot be read, so detection runs as
+/// before.
+pub async fn nvidia_presence() -> NvidiaPresence {
     rt::spawn_blocking(|| {
-        nvidia_gpu_may_be_present_in(
+        nvidia_presence_in(
             Path::new(PCI_DEVICES_PATH),
             Path::new(NVIDIA_MODULE_PATH),
             PCI_DEVICES_MAX,
         )
     })
     .await
-    .unwrap_or(true)
+    .unwrap_or(NvidiaPresence::MaybePresent)
 }
 
-fn nvidia_gpu_may_be_present_in(
+fn nvidia_presence_in(
     pci_devices_path: &Path,
     nvidia_module_path: &Path,
     pci_devices_max: usize,
-) -> bool {
+) -> NvidiaPresence {
     assert!(pci_devices_max > 0);
     if nvidia_module_path.exists() {
-        return true;
+        return NvidiaPresence::DriverLoaded;
     }
     let Ok(entries) = std::fs::read_dir(pci_devices_path) else {
-        return true;
+        return NvidiaPresence::MaybePresent;
     };
     let mut device_count: usize = 0;
     for entry in entries.take(pci_devices_max) {
         device_count += 1;
         let Ok(entry) = entry else {
-            return true;
+            return NvidiaPresence::MaybePresent;
         };
         // An unreadable function may be an NVIDIA GPU.
         if is_nvidia_display_controller(&entry.path()).unwrap_or(true) {
-            return true;
+            return NvidiaPresence::MaybePresent;
         }
     }
     assert!(device_count <= pci_devices_max);
-    device_count == pci_devices_max
+    if device_count == pci_devices_max {
+        NvidiaPresence::MaybePresent
+    } else {
+        NvidiaPresence::Absent
+    }
 }
 
 /// Reads only `vendor` and `class`, which the kernel caches, so a GPU in D3cold stays asleep.
@@ -2131,13 +2154,13 @@ mod tests {
         add_pci_device(&pci_devices_path, "0000:03:00.0", "0x1002", "0x030000");
         add_pci_device(&pci_devices_path, "0000:03:00.1", "0x10de", "0x040300");
 
-        let present = nvidia_gpu_may_be_present_in(
+        let present = nvidia_presence_in(
             &pci_devices_path,
             &root.path().join("module/nvidia"),
             PCI_DEVICES_MAX,
         );
 
-        assert!(present.not());
+        assert_eq!(present, NvidiaPresence::Absent);
     }
 
     /// Goal: an NVIDIA GPU is found whether it reports as VGA or as a 3D controller, before its
@@ -2149,31 +2172,44 @@ mod tests {
             let pci_devices_path = root.path().join("devices");
             add_pci_device(&pci_devices_path, "0000:01:00.0", "0x10de", class);
 
-            let present = nvidia_gpu_may_be_present_in(
+            let present = nvidia_presence_in(
                 &pci_devices_path,
                 &root.path().join("module/nvidia"),
                 PCI_DEVICES_MAX,
             );
 
-            assert!(present, "class {class} is a display controller");
+            assert_eq!(
+                present,
+                NvidiaPresence::MaybePresent,
+                "class {class} is a display controller"
+            );
         }
     }
 
     /// Goal: a loaded NVIDIA driver runs detection even when no NVIDIA PCI GPU is listed, e.g. a
-    /// GPU off the PCI bus. Method: the module directory exists, the bus is empty.
+    /// GPU off the PCI bus, and is told apart from a GPU nouveau may drive. Method: the module
+    /// directory exists, with an empty bus and with an NVIDIA GPU on it.
     #[test]
     fn a_loaded_nvidia_driver_runs_detection() {
-        let root = tempfile::tempdir().unwrap();
-        let pci_devices_path = root.path().join("devices");
-        let nvidia_module_path = root.path().join("module/nvidia");
-        std::fs::create_dir_all(&pci_devices_path).unwrap();
-        std::fs::create_dir_all(&nvidia_module_path).unwrap();
+        for with_gpu in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let pci_devices_path = root.path().join("devices");
+            let nvidia_module_path = root.path().join("module/nvidia");
+            std::fs::create_dir_all(&pci_devices_path).unwrap();
+            std::fs::create_dir_all(&nvidia_module_path).unwrap();
+            if with_gpu {
+                add_pci_device(&pci_devices_path, "0000:01:00.0", "0x10de", "0x030000");
+            }
 
-        assert!(nvidia_gpu_may_be_present_in(
-            &pci_devices_path,
-            &nvidia_module_path,
-            PCI_DEVICES_MAX,
-        ));
+            let present =
+                nvidia_presence_in(&pci_devices_path, &nvidia_module_path, PCI_DEVICES_MAX);
+
+            assert_eq!(
+                present,
+                NvidiaPresence::DriverLoaded,
+                "with GPU: {with_gpu}"
+            );
+        }
     }
 
     /// Goal: an unreadable bus never hides an NVIDIA GPU. Method: no PCI directory at all.
@@ -2181,13 +2217,13 @@ mod tests {
     fn an_unreadable_pci_bus_runs_detection() {
         let root = tempfile::tempdir().unwrap();
 
-        let present = nvidia_gpu_may_be_present_in(
+        let present = nvidia_presence_in(
             &root.path().join("devices"),
             &root.path().join("module/nvidia"),
             PCI_DEVICES_MAX,
         );
 
-        assert!(present);
+        assert_eq!(present, NvidiaPresence::MaybePresent);
     }
 
     /// Goal: a function whose attributes cannot be read never hides an NVIDIA GPU. Method: an
@@ -2209,13 +2245,13 @@ mod tests {
         ] {
             let root = write_attributes(attributes);
 
-            let present = nvidia_gpu_may_be_present_in(
+            let present = nvidia_presence_in(
                 &root.path().join("devices"),
                 &root.path().join("module/nvidia"),
                 PCI_DEVICES_MAX,
             );
 
-            assert!(present, "{attributes:?}");
+            assert_eq!(present, NvidiaPresence::MaybePresent, "{attributes:?}");
         }
     }
 
@@ -2225,7 +2261,10 @@ mod tests {
     #[test]
     fn a_bus_at_the_device_cap_runs_detection() {
         let pci_devices_max: usize = 4;
-        for (device_count, expected) in [(pci_devices_max, true), (pci_devices_max - 1, false)] {
+        for (device_count, expected) in [
+            (pci_devices_max, NvidiaPresence::MaybePresent),
+            (pci_devices_max - 1, NvidiaPresence::Absent),
+        ] {
             let root = tempfile::tempdir().unwrap();
             let pci_devices_path = root.path().join("devices");
             for function in 0..device_count {
@@ -2233,7 +2272,7 @@ mod tests {
                 add_pci_device(&pci_devices_path, &slot, "0x1002", "0x030000");
             }
 
-            let present = nvidia_gpu_may_be_present_in(
+            let present = nvidia_presence_in(
                 &pci_devices_path,
                 &root.path().join("module/nvidia"),
                 pci_devices_max,

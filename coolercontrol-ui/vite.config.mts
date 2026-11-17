@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -79,14 +79,34 @@ function buildFeatureFlags(): Record<string, boolean> {
     )
 }
 
+// The dev server proxies the daemon so the UI and its API share one origin, as they do when
+// the daemon serves the UI. The daemon refuses cookie-authenticated writes from any other
+// origin, and the proxy is how dev passes that check without an exception in the daemon.
+// Everything is proxied except what vite serves itself: its own paths and public/, which is
+// read here so a new public file needs no edit.
+const DAEMON_URL = process.env.CC_DAEMON_URL ?? 'http://localhost:11987'
+
+function escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function daemonProxyPattern(): string {
+    const publicEntries = readdirSync(fileURLToPath(new URL('./public', import.meta.url)))
+    const viteOwned = [
+        '$',
+        '\\?',
+        'index\\.html',
+        '@',
+        'src/',
+        'node_modules/',
+        'assets/Reflect\\.js',
+        ...publicEntries.map(escapeRegExp),
+    ]
+    return `^/(?!(?:${viteOwned.join('|')}))`
+}
+
 export default defineConfig({
     base: '/',
-    // Bind all interfaces inside the dev container (CC_DEV_CONTAINER, set in the
-    // Containerfile) where ccont publishes the port on the host loopback;
-    // localhost-only everywhere else.
-    server: {
-        host: process.env.CC_DEV_CONTAINER === '1',
-    },
     define: {
         __FEATURES__: JSON.stringify(buildFeatureFlags()),
     },
@@ -101,6 +121,19 @@ export default defineConfig({
             modernPolyfills: true,
         }),
     ],
+    server: {
+        // Bind all interfaces inside the dev container (CC_DEV_CONTAINER, set in the
+        // Containerfile) where ccont publishes the port on the host loopback;
+        // localhost-only everywhere else.
+        host: process.env.CC_DEV_CONTAINER === '1',
+        proxy: {
+            [daemonProxyPattern()]: {
+                target: DAEMON_URL,
+                // The daemon's self-signed certificate, when CC_DAEMON_URL is https.
+                secure: false,
+            },
+        },
+    },
     resolve: {
         alias: {
             '@': fileURLToPath(new URL('./src', import.meta.url)),

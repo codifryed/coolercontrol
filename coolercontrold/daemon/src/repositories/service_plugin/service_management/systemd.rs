@@ -27,6 +27,22 @@ const SYSTEMCTL: &str = "systemctl";
 const DEFAULT_SYSTEMD_DIR: &str = "/etc/systemd/system";
 const SYSTEMCTL_TIMEOUT: Duration = Duration::from_secs(10);
 const SERVICE_FILE_PERMISSIONS: u32 = 0o644;
+/// Sandboxing for an unprivileged plugin: blocks kernel surface a non-root process never
+/// needs, and stops one plugin from tracing another under the shared plugin user. Every key
+/// predates systemd 249. The filesystem view is left alone, since plugins hand image paths
+/// and sockets to the daemon through `/tmp`. `RestrictNamespaces`, `RestrictSUIDSGID` and
+/// `~@mount` are left out because they break bubblewrap, which image loaders such as glycin
+/// use to sandbox their own decoding. `ProtectKernelModules` is left out because it hides
+/// `/usr/lib/modules`.
+const UNPRIVILEGED_SANDBOX: [&str; 7] = [
+    "CapabilityBoundingSet=",
+    "RestrictRealtime=yes",
+    "LockPersonality=yes",
+    "ProtectKernelLogs=yes",
+    "ProtectControlGroups=yes",
+    "SystemCallArchitectures=native",
+    "SystemCallFilter=~@clock @cpu-emulation @debug @module @obsolete @raw-io @reboot @swap",
+];
 /// `systemctl stop` waits for the unit, but a unit that ignores its stop signal outlives it.
 /// These bound the wait for the unit to actually leave.
 const STOP_VERIFY_INTERVAL: Duration = Duration::from_millis(250);
@@ -251,13 +267,7 @@ fn create_unit_file(
     writeln!(service, "[Service]")?;
     writeln!(service, "Type=simple")?;
     if let Some(username) = service_definition.username {
-        writeln!(service, "User={username}")?;
-        writeln!(service, "Group={username}")?;
-        // Stops the plugin user escalating through a setuid binary or a file capability, which
-        // is the whole point of running it unprivileged. Deliberately not applied to a
-        // `privileged = true` plugin: that one already runs as root, so this would add nothing
-        // while breaking any setuid or capability helper it legitimately calls.
-        writeln!(service, "NoNewPrivileges=true")?;
+        write_unprivileged_user(&mut service, &username)?;
     }
     if let Some(working_directory) = service_definition.wrk_dir {
         writeln!(
@@ -298,6 +308,27 @@ fn create_unit_file(
         writeln!(service, "TimeoutStopSec={timeout_stop_sec}")?;
     }
     Ok(service.trim().to_string())
+}
+
+/// Runs the plugin as `username` and sandboxes it. A `privileged = true` plugin has no
+/// username and gets none of this: it already runs as root, so these lines would add nothing
+/// while breaking any setuid or capability helper it legitimately calls.
+fn write_unprivileged_user(service: &mut String, username: &str) -> std::fmt::Result {
+    use std::fmt::Write;
+    debug_assert!(username.is_empty().not(), "the plugin user has a name");
+    debug_assert!(
+        username != "root",
+        "an unprivileged plugin never runs as root"
+    );
+    writeln!(service, "User={username}")?;
+    writeln!(service, "Group={username}")?;
+    // Stops the plugin user escalating through a setuid binary or a file capability, which
+    // is the whole point of running it unprivileged.
+    writeln!(service, "NoNewPrivileges=true")?;
+    for directive in UNPRIVILEGED_SANDBOX {
+        writeln!(service, "{directive}")?;
+    }
+    Ok(())
 }
 
 /// One `ExecStart=` word, quoted so it reaches the program as a single argument.
@@ -590,8 +621,68 @@ mod tests {
         assert!(unit.contains("NoNewPrivileges=true"), "{unit}");
     }
 
-    /// Goal: a plugin the user deliberately gave root must keep working. The directive would add
-    /// nothing there (it is already root) but would break a setuid or capability helper it calls.
+    /// Goal: an unprivileged plugin runs inside the basic sandbox, with each directive on a
+    /// line of its own inside `[Service]`, where systemd reads it.
+    /// Methodology: render the default (unprivileged) definition and look up every directive
+    /// as a whole line after the `[Service]` header.
+    #[test]
+    fn unit_file_sandboxes_an_unprivileged_plugin() {
+        let unit = create_unit_file(
+            &SystemdConfig::default(),
+            &"Test".to_string(),
+            base_definition(),
+        )
+        .expect("unit must render");
+
+        let service_section = unit
+            .split_once("[Service]")
+            .expect("the unit has a [Service] section")
+            .1;
+        for directive in UNPRIVILEGED_SANDBOX {
+            assert!(
+                service_section.lines().any(|line| line == directive),
+                "missing {directive}: {unit}"
+            );
+        }
+    }
+
+    /// Goal: the sandbox stays clear of directives that broke real plugins in testing, or
+    /// that would cut the `/tmp` handoff between plugins and the daemon.
+    /// Methodology: render the unprivileged unit and assert each one is absent.
+    /// - `RestrictNamespaces`, `RestrictSUIDSGID`, `@mount`: break bubblewrap, used by glycin.
+    /// - `ProtectKernelModules`: hides `/usr/lib/modules`, breaking `modinfo`.
+    /// - `PrivateTmp`, `ProtectSystem`: hide or freeze the shared `/tmp`.
+    /// - `ProtectClock`: implies a device allow-list that blocks hidraw and USB.
+    /// - `MemoryDenyWriteExecute`: breaks JIT runtimes.
+    #[test]
+    fn unit_file_sandbox_avoids_directives_that_break_plugins() {
+        let unit = create_unit_file(
+            &SystemdConfig::default(),
+            &"Test".to_string(),
+            base_definition(),
+        )
+        .expect("unit must render");
+
+        for forbidden in [
+            "RestrictNamespaces",
+            "RestrictSUIDSGID",
+            "@mount",
+            "ProtectKernelModules",
+            "PrivateTmp",
+            "ProtectSystem",
+            "ProtectClock",
+            "MemoryDenyWriteExecute",
+        ] {
+            assert!(
+                unit.contains(forbidden).not(),
+                "{forbidden} present: {unit}"
+            );
+        }
+    }
+
+    /// Goal: a plugin the user deliberately gave root must keep working. `NoNewPrivileges` and
+    /// the sandbox would add nothing there (it is already root) but could break a setuid or
+    /// capability helper it calls.
     /// Methodology: a privileged plugin is expressed by the absence of a username, which is also
     /// what makes systemd default the unit to root.
     #[test]
@@ -603,6 +694,12 @@ mod tests {
             .expect("unit must render");
 
         assert!(unit.contains("NoNewPrivileges").not(), "{unit}");
+        for directive in UNPRIVILEGED_SANDBOX {
+            assert!(
+                unit.contains(directive).not(),
+                "{directive} present: {unit}"
+            );
+        }
         assert!(
             unit.contains("User=").not(),
             "a privileged plugin runs as root: {unit}"

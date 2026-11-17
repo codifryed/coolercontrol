@@ -34,6 +34,10 @@ class MainWindow final : public QMainWindow {
 
   void handleStartInTray();
 
+  // Every path that brings the window up goes through here, so a start-in-tray launch whose
+  // UI never finished loading can still be shown.
+  void showWindow();
+
   // Escape hatch for --no-discard, so a bad interaction on some desktop has a
   // workaround that does not require a rebuild.
   void setDiscardEnabled(bool enabled);
@@ -54,6 +58,9 @@ class MainWindow final : public QMainWindow {
   void startWatchingSSE() const;
 
   void setZoomFactor(double zoomFactor) const;
+
+  // The window state is the one fullscreen truth. Tells the UI the result.
+  void setFullScreen(bool fullScreen);
 
   void setTrayMenuModes(const QString& modesJson) const;
 
@@ -78,6 +85,8 @@ class MainWindow final : public QMainWindow {
   void dropConnections() const;
 
   void setZoomFactorSignal(double zoomFactor) const;
+
+  void setFullScreenSignal(bool fullScreen) const;
 
   void setTrayMenuModesSignal(const QString& modesJson) const;
 
@@ -146,6 +155,8 @@ class MainWindow final : public QMainWindow {
   // Delays the discard so a quick hide/show toggle never pays a page reload.
   QTimer* m_discardTimer;
   QTimer* m_sensorPollTimer;
+  // Checks the bridge once after each daemon UI load; restarted per load.
+  QTimer* m_uiBridgeTimer;
   mutable int m_sensorPollTicks{0};
   bool m_discardEnabled{true};
   // Set when the daemon reconnects while hidden. A discarded page reloads on its own
@@ -157,6 +168,7 @@ class MainWindow final : public QMainWindow {
   mutable bool m_webLoadFinished{false};
   mutable bool m_loginWindowShown{false};
   mutable bool m_uiLoadingStopped{false};
+  mutable bool m_uiBridgeWarned{false};
   // Whether the user has been told the connection dropped. Reconnection never depends
   // on this, only the notifications do, so they stay paired: no "restored" without a
   // "disconnected" first, and no second "disconnected" before a recovery.
@@ -290,6 +302,11 @@ class MainWindow final : public QMainWindow {
   void discardPage() const;
 
   void restorePage() const;
+
+  void toggleWindow();
+
+  // Warns once per daemon when its UI loaded but never connected the WebChannel bridge.
+  void checkUiBridge() const;
 
   void setTrayActionToShow() const;
 

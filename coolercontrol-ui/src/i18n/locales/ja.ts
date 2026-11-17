@@ -101,9 +101,9 @@ export default {
                 pinned: 'ピン留め済み',
                 pin: 'ピン留め',
                 unpin: 'ピン留め解除',
-                library: 'プロファイルと機能',
+                library: 'プロファイルと関数',
                 profiles: 'プロファイル',
-                functions: '機能',
+                functions: '関数',
                 addFolder: 'フォルダーを追加',
                 newFolder: '新しいフォルダー',
                 deleteFolder: 'フォルダーを削除',
@@ -286,11 +286,11 @@ export default {
                     },
                 },
                 miniCurveHint:
-                    '割り当てられたプロファイルの曲線。ドットは現在のソース温度でのターゲットデューティを示し、チャンネルのファンクションが実際のデューティを決定します。',
+                    '割り当てられたプロファイルの曲線。ドットは現在のソース温度でのターゲットデューティを示し、チャンネルの関数が実際のデューティを決定します。',
                 chain: {
                     tempSource: '温度ソース',
                     profile: 'プロファイル',
-                    function: '機能',
+                    function: '関数',
                 },
             },
         },
@@ -477,7 +477,7 @@ export default {
                 duplicate: '複製',
                 rename: '名前変更',
                 addCustomSensor: 'カスタムセンサーを追加',
-                addFunction: '機能を追加',
+                addFunction: '関数を追加',
                 chooseColor: '色を選択',
             },
         },
@@ -502,7 +502,10 @@ export default {
                 'プラグインはCoolerControlに追加のデバイスサポート、統合、自動化を拡張します。新しいデバイスセンサーとコントロールの提供、外部サービスへの接続、カスタムUIページの追加が可能です。',
             findPlugins: 'プラグインを探してインストール',
             restartNote:
-                '新しく追加したプラグインは、このページを開くとここに表示されます。デバイスプラグインの場合は、デバイスを読み込むために CoolerControl デーモンの再起動も必要です。',
+                '再スキャンするか、このページを開くと、新しく追加したプラグインとマニフェストの変更を検出します。デバイスプラグインの変更は、CoolerControl デーモンの再起動後に反映されます。',
+            restartRequiredBanner:
+                'これらのプラグインの変更を適用するには、デーモンを再起動してください: {plugins}',
+            rescan: 'プラグインを再スキャン',
             containerNote:
                 'コンテナでCoolerControlを実行する場合、プラグインはコンテナの再起動後も保持されるよう、永続化された仮想共有フォルダに配置する必要があります。',
             installedPlugins: 'インストール済みプラグイン',
@@ -519,11 +522,6 @@ export default {
                 'プラグインが有効化されました。適用するにはデーモンを再起動してください。',
             disableFailed: 'プラグインの無効化に失敗しました',
             enableFailed: 'プラグインの有効化に失敗しました',
-            reloadManifest: 'マニフェストを再読み込み',
-            manifestReloaded: 'マニフェストを再読み込みしました。',
-            manifestValidRestart:
-                'マニフェストは有効です。適用するにはデーモンを再起動してください。',
-            reloadFailed: 'マニフェストの再読み込みに失敗しました',
             serviceLogs: 'サービスログ',
             commandCopied: 'コマンドをクリップボードにコピーしました',
             openLinkHeader: '外部リンクを開きますか？',
@@ -534,7 +532,7 @@ export default {
         },
         add: {
             profile: 'プロファイル',
-            function: '機能',
+            function: '関数',
             customSensor: 'カスタムセンサー',
         },
     },
@@ -563,7 +561,7 @@ export default {
             rpmUnitHint:
                 'このメトリックは他の単位の値にも使用できます。単位を表示するには、センサー名の末尾に角括弧で単位を付けてください。例: 圧力 [mbar]',
             sensorType: 'センサータイプ',
-            mixFunction: 'ミックス機能',
+            mixFunction: 'ミックス関数',
             howCalculateValue: '結果センサー値の計算方法',
             sensorFile: 'センサーファイル',
             filePathTooltip:
@@ -580,7 +578,7 @@ export default {
             sources: 'ソース',
             source: 'ソース',
             sourcesTooltip:
-                'ミックス機能で使用するソース<br/><i>注: 複数のカスタムセンサーを組み合わせる場合、許可されるのは直接の親子関係のみです。<br/>より複雑な構成にはミックスプロファイルを使用してください。</i>',
+                'ミックス関数で使用するソース<br/><i>注: 複数のカスタムセンサーを組み合わせる場合、許可されるのは直接の親子関係のみです。<br/>より複雑な構成にはミックスプロファイルを使用してください。</i>',
             scale: 'スケール',
             scaleTooltip:
                 'オフセットを加える前にソースに掛ける係数を入力してください。<br/><i>注: 負の係数は値を反転します。0にはできません。</i>',
@@ -687,6 +685,8 @@ export default {
                 'チップは検出されましたが、対応する読み込み済みドライバーがありません。',
             findingBlacklisted:
                 'このドライバーはブラックリストに登録されており、読み込まれませんでした。',
+            findingSignatureRejected:
+                'このドライバーはインストールされていますが、カーネルがモジュール署名を拒否したため、読み込まれませんでした。',
             findingBlockedByEnvironment: 'この環境ではハードウェア検出を実行できませんでした。',
             findingBlockedBySecureBoot:
                 'セキュアブートが有効なため、ハードウェア検出を実行できませんでした。',
@@ -815,7 +815,7 @@ export default {
             targetDuty: 'ターゲット',
             actualDuty: '実際',
             targetHint:
-                'ターゲットはチャンネルのファンクション適用前に、現在の温度から計算された値です。スムージングやヒステリシスにより実際のデューティは異なる場合があります。',
+                'ターゲットはチャンネルの関数適用前に、現在の温度から計算された値です。スムージングやヒステリシスにより実際のデューティは異なる場合があります。',
             createProfile: 'プロファイルを作成',
             deleteProfile: 'プロファイルを削除',
             profileType: 'プロファイルタイプ',
@@ -878,9 +878,9 @@ export default {
             duplicateMode: 'モードを複製',
         },
         functions: {
-            createFunction: '機能を作成',
-            deleteFunction: '機能を削除',
-            saveFunction: '機能を保存',
+            createFunction: '関数を作成',
+            deleteFunction: '関数を削除',
+            saveFunction: '関数を保存',
             stepSizeTitle: 'ステップサイズ',
             fixedStepSize: '固定',
             fixedStepSizeTooltip:
@@ -931,16 +931,16 @@ export default {
             bypassMinAtExtremes: '常に 0% / 100% を適用',
             bypassMinAtExtremesTooltip:
                 '有効にすると、変化が最小ステップサイズより小さい場合でも、0% または 100% のターゲットデューティが適用されます。\nファンを完全に停止させるか、最大 RPM に到達させるのに便利です。デフォルトでは無効です。',
-            unsavedChanges: 'この機能に未保存の変更があります。',
+            unsavedChanges: 'この関数に未保存の変更があります。',
             unsavedChangesHeader: '未保存の変更',
-            functionError: 'この機能を更新しようとしてエラーが発生しました',
-            newFunction: '新しい機能',
-            functionDeleted: '機能が削除されました',
-            functionDuplicated: '機能が複製されました',
+            functionError: 'この関数を更新しようとしてエラーが発生しました',
+            newFunction: '新しい関数',
+            functionDeleted: '関数が削除されました',
+            functionDuplicated: '関数が複製されました',
             usedBy: '使用箇所',
             deleteFunctionConfirm: '"{name}"を削除してもよろしいですか？',
             deleteFunctionWithProfilesConfirm:
-                '"{name}"は現在以下のプロファイルで使用されています：{profiles}。\nこの機能を削除すると、それらのプロファイルの機能がリセットされます。\n"{name}"を削除してもよろしいですか？',
+                '"{name}"は現在以下のプロファイルで使用されています：{profiles}。\nこの関数を削除すると、それらのプロファイルの関数がリセットされます。\n"{name}"を削除してもよろしいですか？',
         },
         error: {
             accessDenied: 'アクセス拒否',
@@ -965,7 +965,8 @@ export default {
         mode: {
             activateMode: 'モードをアクティブ化',
             currentlyActive: '現在アクティブ',
-            modeHint: '注意：モードはプロファイルや機能設定を含まず、チャネル設定のみを含みます。',
+            modeHint:
+                '注意：モードはプロファイルや関数の設定を含まず、チャネル設定のみを含みます。',
         },
         lighting: {
             saveLightingSettings: '照明設定を保存',
@@ -1029,7 +1030,12 @@ export default {
         password: {
             forgotPassword: 'パスワードをお忘れですか？',
             forgotPasswordHelpIntro:
-                'このコマンドを root としてターミナルで実行し、「UI を再読み込み」をクリックしてください：',
+                'お使いのインストール方法に合ったコマンドをターミナルで実行し、「UI を再読み込み」をクリックしてください：',
+            forgotPasswordPackageLabel: 'インストール済みパッケージ',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman',
+            forgotPasswordContainerNote:
+                'Docker または Podman では、コンテナー名が coolercontrold でない場合はその名前を使用してください。',
             forgotPasswordCopyCommand: 'コマンドをコピー',
             forgotPasswordCommandCopied: 'コマンドをクリップボードにコピーしました',
             forgotPasswordReloadButton: 'UI を再読み込み',
@@ -1069,7 +1075,7 @@ export default {
                 'アプリケーションのホームページ: デーモンの状態とデバイスの健全性を一目で確認でき、ログ、アプリ情報、便利なリンク、ストレステストツールも利用できます。',
             cooling: '冷却',
             coolingDesc:
-                'ファン制御の拠点：ファン速度やポンプを調整し、任意のチャンネルにプロファイルと機能を適用できます。',
+                'ファン制御の拠点：ファン速度やポンプを調整し、任意のチャンネルにプロファイルと関数を適用できます。',
             monitoring: 'モニタリング',
             monitoringDesc:
                 'ダッシュボードを作成し、すべてのセンサーを監視し、アラートを設定してシステムをリアルタイムで追跡します。',
@@ -1175,10 +1181,10 @@ export default {
             hide: '非表示',
             jitter: 'ゆらぎ',
             jitterHelp:
-                'この期間における連続する読み取り値間の平均変化量です。温度の場合、ファンがセンサーのノイズに反応しないよう、機能の高度なヒステリシスでしきい値をこの値より大きく設定してください。デューティや RPM で値が大きい場合は、ファンが速度を変え続けていることを意味します。',
+                'この期間における連続する読み取り値間の平均変化量です。温度の場合、ファンがセンサーのノイズに反応しないよう、関数の高度なヒステリシスでしきい値をこの値より大きく設定してください。デューティや RPM で値が大きい場合は、ファンが速度を変え続けていることを意味します。',
             directionChanges: '方向転換',
             directionChangesHelp:
-                'この期間にデューティが上昇から下降、またはその逆に転じた回数です。頻繁に変わる場合はファンが速度を変え続けており、音で分かります。機能の高度なヒステリシスでしきい値や遅延を大きくすると落ち着きます。',
+                'この期間にデューティが上昇から下降、またはその逆に転じた回数です。頻繁に変わる場合はファンが速度を変え続けており、音で分かります。関数の高度なヒステリシスでしきい値や遅延を大きくすると落ち着きます。',
             changesValue: '{count} ({rate}/分)',
             stopped: '停止',
             stoppedHelp: '期間のうち 0 RPM だった割合です。ゼロ RPM モードのファンでは正常です。',
@@ -1252,7 +1258,7 @@ export default {
             fanControl: {
                 fanControlWizard: 'ファン制御ウィザード',
                 editCurrentProfile: 'プロファイルを編集',
-                editCurrentFunction: '機能を編集',
+                editCurrentFunction: '関数を編集',
                 currentSettings: '現在の設定',
                 manualSpeed: '手動速度',
                 createNewProfile: '新規プロファイル',
@@ -1268,17 +1274,17 @@ export default {
                 newMixProfile: '新しいミックスプロファイル',
                 newGraphProfile: '新しいグラフプロファイル',
                 newOverlayProfile: '新しいオーバーレイプロファイル',
-                functionFor: '適用する機能を選択：',
+                functionFor: '適用する関数を選択：',
                 functionDescription:
-                    '機能は応答時間や最小デューティなど、プロファイルの適用方法を微調整します。',
-                createNewFunction: '新規機能',
-                existingFunction: '機能を選択',
-                defaultFunction: 'デフォルト機能',
-                chooseFunctionName: 'ファンクション名を選択',
-                newFunctionName: '{profileName}の機能',
+                    '関数は応答時間や最小デューティなど、プロファイルの適用方法を微調整します。',
+                createNewFunction: '新規関数',
+                existingFunction: '関数を選択',
+                defaultFunction: 'デフォルト関数',
+                chooseFunctionName: '関数名を選択',
+                newFunctionName: '{profileName}の関数',
                 summary: '概要',
                 aNewProfile: '新しいプロファイル',
-                andFunction: 'と機能',
+                andFunction: 'と関数',
             },
             profile: {
                 willCreated: '作成されます。',
@@ -1294,10 +1300,10 @@ export default {
                 noTags: 'タグが設定されていません。',
             },
             functionApply: {
-                applyFunction: '機能を適用',
-                profilesApply: '機能を適用するプロファイル',
+                applyFunction: '関数を適用',
+                profilesApply: '関数を適用するプロファイル',
                 selectProfiles: 'プロファイルを選択',
-                profilesTooltip: '機能を適用するプロファイルを選択してください。',
+                profilesTooltip: 'この関数を適用するプロファイルを選択してください。',
             },
             generate: {
                 title: 'プロファイルの自動作成',
@@ -1344,7 +1350,7 @@ export default {
             title: 'デバイスチャンネルの設定',
             firmwareControlledProfile: 'ファームウェア制御プロファイル',
             firmwareControlledProfileDesc:
-                '有効にすると、デバイスのファームウェアがファンプロファイルを管理します。\nソフトウェアによる頻繁な速度変更にうまく反応しないハードウェアに有効です。\nデバイス内蔵の温度センサーを使用するグラフプロファイルでのみ利用できます。\n機能設定は適用されません。\nキャリブレーション済みのチャンネルではカーブの各点がキャリブレーションを通して変換されますが、起動キックは適用されません。',
+                '有効にすると、デバイスのファームウェアがファンプロファイルを管理します。\nソフトウェアによる頻繁な速度変更にうまく反応しないハードウェアに有効です。\nデバイス内蔵の温度センサーを使用するグラフプロファイルでのみ利用できます。\n関数の設定は適用されません。\nキャリブレーション済みのチャンネルではカーブの各点がキャリブレーションを通して変換されますが、起動キックは適用されません。',
             saveError: 'チャンネル拡張設定の保存に失敗しました',
             firmwareControlDisabled:
                 '現在の設定ではファームウェア制御は利用できません。\nこのデバイス向けの、対応する内蔵温度センサーを使用するグラフプロファイルを使用してください。',
@@ -1763,6 +1769,7 @@ export default {
             stopped: '停止',
             unmanaged: '非管理',
             disabled: '無効',
+            restartRequired: '再起動が必要',
         },
         deviceType: {
             customSensors: 'カスタムセンサー',

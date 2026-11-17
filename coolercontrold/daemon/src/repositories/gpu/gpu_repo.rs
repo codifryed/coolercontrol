@@ -26,7 +26,7 @@ use crate::device::{ChannelAttribute, DeviceType, Duty, MAX_CHANNEL_ATTRIBUTES, 
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{AMDDriverInfo, GpuAMD, TEMP_FOR_FAN_CURVE};
-use crate::repositories::gpu::nvidia::{self, GpuNVidia, NvmlInitResult};
+use crate::repositories::gpu::nvidia::{self, GpuNVidia, NvidiaPresence, NvmlInitResult};
 use crate::repositories::hwmon::attributes;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
@@ -65,6 +65,38 @@ fn device_write_permit_timeout_for(poll_rate: f64) -> Duration {
     debug_assert!(poll_rate >= 0.5);
     debug_assert!(poll_rate <= 5.0);
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
+}
+
+/// The NVIDIA detection path, decided before anything is probed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NvidiaPath {
+    /// No NVIDIA GPU or driver.
+    Skip,
+    /// musl build: NVML is a glibc library and segfaults under musl. The CLI tools need glibc,
+    /// and fan control through them also needs X.
+    MuslUnsupported,
+    /// `nvidia-smi` only: forced, or NVML disabled.
+    Cli,
+    /// NVML, with `nvidia-smi` as the fallback.
+    Nvml,
+}
+
+/// Pure helper so the order of the checks is testable without constructing a full `GpuRepo`.
+fn nvidia_path(presence: NvidiaPresence, force_cli: bool, nvml_enabled: bool) -> NvidiaPath {
+    if presence == NvidiaPresence::Absent {
+        NvidiaPath::Skip
+    } else if cfg!(target_env = "musl") {
+        NvidiaPath::MuslUnsupported
+    } else if force_cli || nvml_enabled.not() {
+        NvidiaPath::Cli
+    } else {
+        NvidiaPath::Nvml
+    }
+}
+
+/// nvidia-smi output is external input, so the count saturates instead of asserting.
+fn nvidia_smi_gpu_count_u8(len: usize) -> u8 {
+    u8::try_from(len).unwrap_or(u8::MAX)
 }
 
 #[allow(clippy::upper_case_acronyms)]
@@ -231,16 +263,29 @@ impl GpuRepo {
                     .or_else(|| Some(env_nvml.trim().to_lowercase() != "off"))
             })
             .unwrap_or(true);
-        let nvidia_dev_count = if nvidia::nvidia_gpu_may_be_present().await.not() {
-            info!("No NVIDIA GPU or driver found, skipping NVML and nvidia-smi.");
-            0
-        } else if self.force_nvidia_cli || nvml_enabled.not() {
-            self.gpus_nvidia
-                .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
-                .await
-                .len() as u8
-        } else {
-            match self
+        let nvidia_presence = nvidia::nvidia_presence().await;
+        let path = nvidia_path(nvidia_presence, self.force_nvidia_cli, nvml_enabled);
+        let nvidia_dev_count = match path {
+            NvidiaPath::Skip => {
+                info!("No NVIDIA GPU or driver found, skipping NVML and nvidia-smi.");
+                0
+            }
+            NvidiaPath::MuslUnsupported => {
+                if nvidia_presence == NvidiaPresence::DriverLoaded {
+                    warn!(
+                        "NVIDIA GPUs are not supported in musl builds, such as the Alpine Docker \
+                         image. Use a glibc build, such as the default Docker image."
+                    );
+                } else {
+                    info!(
+                        "NVIDIA GPUs on the proprietary driver are not supported in musl builds. \
+                         GPUs on nouveau show as hwmon devices instead."
+                    );
+                }
+                0
+            }
+            NvidiaPath::Cli => self.nvidia_smi_gpu_count().await,
+            NvidiaPath::Nvml => match self
                 .gpus_nvidia
                 .init_nvml_devices(starting_nvidia_index)
                 .await
@@ -250,16 +295,30 @@ impl GpuRepo {
                     num_nvml_devices
                 }
                 NvmlInitResult::Released => 0,
-                NvmlInitResult::Unavailable => self
-                    .gpus_nvidia
-                    .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
-                    .await
-                    .len() as u8,
-            }
+                NvmlInitResult::Unavailable => self.nvidia_smi_gpu_count().await,
+            },
         };
         self.gpu_type_count
             .insert(GpuType::Nvidia, nvidia_dev_count);
         amd_drivers
+    }
+
+    /// Counts the GPUs `nvidia-smi` reports. Only called once NVML is unavailable or disabled, so
+    /// zero means no NVIDIA path works.
+    async fn nvidia_smi_gpu_count(&self) -> u8 {
+        let gpu_count = self
+            .gpus_nvidia
+            .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
+            .await
+            .len();
+        if gpu_count == 0 {
+            info!(
+                "An NVIDIA GPU or driver was found, but neither NVML nor nvidia-smi can reach it, \
+                 so it is not shown. With the proprietary driver, check that NVML and nvidia-smi \
+                 are installed and accessible. GPUs on nouveau show as hwmon devices instead."
+            );
+        }
+        nvidia_smi_gpu_count_u8(gpu_count)
     }
 
     pub async fn load_amd_statuses(&self) {
@@ -659,6 +718,64 @@ impl Repository for GpuRepo {
         let attributes = attributes::read_channel_attributes(driver, channel).await;
         debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
         Ok(attributes)
+    }
+}
+
+#[cfg(test)]
+mod nvidia_path_tests {
+    use super::*;
+
+    const PRESENT: [NvidiaPresence; 2] =
+        [NvidiaPresence::MaybePresent, NvidiaPresence::DriverLoaded];
+    const FLAGS: [(bool, bool); 4] = [(false, false), (false, true), (true, false), (true, true)];
+
+    /// Goal: with no NVIDIA GPU or driver, nothing is probed, whatever the flags.
+    /// Method: every flag combination with `Absent`.
+    #[test]
+    fn absent_skips_every_probe() {
+        for (force_cli, nvml_enabled) in FLAGS {
+            assert_eq!(
+                nvidia_path(NvidiaPresence::Absent, force_cli, nvml_enabled),
+                NvidiaPath::Skip
+            );
+        }
+    }
+
+    /// Goal: a musl build never reaches NVML, which segfaults there, or the CLI tools. Method:
+    /// every present state and flag combination, including a forced CLI and NVML enabled.
+    #[cfg(target_env = "musl")]
+    #[test]
+    fn musl_never_probes_nvidia() {
+        for presence in PRESENT {
+            for (force_cli, nvml_enabled) in FLAGS {
+                assert_eq!(
+                    nvidia_path(presence, force_cli, nvml_enabled),
+                    NvidiaPath::MuslUnsupported
+                );
+            }
+        }
+    }
+
+    /// Goal: a glibc build uses NVML unless the CLI is forced or NVML is disabled.
+    /// Method: every present state and flag combination.
+    #[cfg(not(target_env = "musl"))]
+    #[test]
+    fn glibc_picks_nvml_unless_cli_forced_or_nvml_disabled() {
+        for presence in PRESENT {
+            assert_eq!(nvidia_path(presence, false, true), NvidiaPath::Nvml);
+            assert_eq!(nvidia_path(presence, true, true), NvidiaPath::Cli);
+            assert_eq!(nvidia_path(presence, false, false), NvidiaPath::Cli);
+            assert_eq!(nvidia_path(presence, true, false), NvidiaPath::Cli);
+        }
+    }
+
+    /// Goal: an nvidia-smi GPU count past `u8::MAX` saturates instead of panicking or wrapping.
+    /// Method: convert counts at zero, the `u8` limit, and one past it.
+    #[test]
+    fn nvidia_smi_gpu_count_saturates() {
+        assert_eq!(nvidia_smi_gpu_count_u8(0), 0);
+        assert_eq!(nvidia_smi_gpu_count_u8(255), 255);
+        assert_eq!(nvidia_smi_gpu_count_u8(256), u8::MAX);
     }
 }
 

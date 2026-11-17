@@ -2,7 +2,7 @@
 name = "cc-stress"
 version = "0.2.1"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.95"
 description = "CPU, GPU, and RAM stress testing for thermal validation"
 categories = ["hardware-support"]
 keywords = ["stress", "hardware", "thermal", "benchmark"]
@@ -36,4 +36,4 @@ wgpu = { version = "24", default-features = false, features = [
 ] }
 # Only for block_on: wgpu's device request is the one async step, and it
 # resolves without a reactor. The stress loops themselves are plain threads.
-tokio = { version = "1.53", default-features = false, features = ["rt"] }
+tokio = { version = "1.54", default-features = false, features = ["rt"] }

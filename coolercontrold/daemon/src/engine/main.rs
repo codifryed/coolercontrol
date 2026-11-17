@@ -38,7 +38,6 @@ use crate::setting::{
 };
 use crate::{cc_fs, repositories, AllDevices, Repos};
 use anyhow::{anyhow, Context, Result};
-use chrono::Local;
 use log::{debug, error, info, log, trace, warn, Level};
 use mime::Mime;
 use moro_local::Scope;
@@ -1230,13 +1229,10 @@ impl Engine {
 
     /// This reinitialized the status history for all devices. This is helpful for example when
     /// waking from sleep, as the status history is no longer sequential.
-    pub fn reinitialize_all_status_histories(&self) -> Result<()> {
+    pub async fn reinitialize_all_status_histories(&self) -> Result<()> {
         let poll_rate = self.config.get_settings()?.poll_rate;
-        for device in self.all_devices.values() {
-            // The next snapshot will most likely be after another loop interval:
-            device
-                .borrow_mut()
-                .zero_status_history(Local::now(), poll_rate);
+        for repo in self.repos.values() {
+            repo.zero_status_histories(poll_rate).await;
         }
         Ok(())
     }

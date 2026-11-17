@@ -3117,6 +3117,7 @@ fn write_trusted_proxies(base_settings: &mut Item, trusted_proxies: &[String]) {
 mod tests {
     use crate::cc_fs;
     use crate::config::{Config, POWER_PROFILE_MODES_KEY};
+    use crate::device::{Device, DeviceInfo, DeviceType};
     use crate::paths;
     use crate::setting::{
         CCDeviceSettings, LcdCarouselSettings, LcdModeKind, LcdSettings, LightingSettings, Setting,
@@ -3126,6 +3127,7 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
     use std::ops::Not;
+    use std::rc::Rc;
     use toml_edit::{DocumentMut, Item};
 
     #[test]
@@ -3157,6 +3159,45 @@ mod tests {
         };
         assert_eq!(config.device_name("uid1"), Some("NZXT Kraken".to_string()));
         assert_eq!(config.device_name("unknown"), None);
+    }
+
+    #[test]
+    fn device_list_writes_control_chars_as_toml_1_0_escapes() {
+        // Goal: a saved config must still load in older daemons, whose toml_edit reads TOML 1.0
+        // only. TOML 1.1 added the `\e` and `\xHH` escapes, so a control character in a
+        // hardware-reported name must still be written as a 1.0 `\uXXXX` escape. Method: list a
+        // device whose name holds ESC and DEL, check the written line, then parse it back.
+        let name = "Fan\u{1b}[0m Hub\u{7f}";
+        let info = DeviceInfo::default();
+        let device = Device::new(
+            name.to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            info,
+            None,
+            1.0,
+        );
+        let uid = device.uid.clone();
+        let devices = Rc::new(HashMap::from([(
+            uid.clone(),
+            Rc::new(RefCell::new(device)),
+        )]));
+        let config = config_from("[devices]\n");
+
+        config.create_device_list(&devices);
+
+        let rendered = config.document.borrow().to_string();
+        let line = rendered
+            .lines()
+            .find(|line| line.starts_with(uid.as_str()))
+            .unwrap();
+        assert!(line.contains(r"\u001B"));
+        assert!(line.contains(r"\u007F"));
+        assert!(line.contains(r"\e").not());
+        assert!(line.contains(r"\x").not());
+        let reparsed = rendered.parse::<DocumentMut>().unwrap();
+        assert_eq!(reparsed["devices"][uid.as_str()].as_str(), Some(name));
     }
 
     #[test]

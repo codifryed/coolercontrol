@@ -324,6 +324,18 @@ pub enum EnvironmentBlocker {
     NoDevPort,
 }
 
+impl EnvironmentBlocker {
+    /// What stopped the probe, as a clause for a log line. States the
+    /// observation only: what to do about it is for the docs.
+    pub fn cause(self) -> &'static str {
+        match self {
+            Self::SecureBoot => "kernel lockdown (usually from Secure Boot) blocks I/O port access",
+            Self::Container => "the daemon runs in a container",
+            Self::NoDevPort => "/dev/port is not available",
+        }
+    }
+}
+
 /// A fact about the machine rather than about one channel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -335,6 +347,9 @@ pub enum SystemFinding {
     },
     /// modprobe refused because the driver is blacklisted.
     Blacklisted { driver: String },
+    /// The kernel refused the driver's module signature, as it does under
+    /// Secure Boot for a module signed with no enrolled key.
+    SignatureRejected { driver: String },
     /// The probe could not run at all.
     BlockedByEnvironment { reason: EnvironmentBlocker },
     /// Not an `x86_64` target, so no probe was ever attempted. Distinct from
@@ -375,10 +390,96 @@ pub struct DetectedChipRef<'a> {
 }
 
 /// The environment the probe ran in.
+#[allow(clippy::struct_excessive_bools)] // Independent observations, not a state machine.
 pub struct ProbeEnvironment {
     pub is_container: bool,
     pub is_secure_boot: bool,
     pub has_dev_port: bool,
+    /// DMI names a laptop or other portable chassis.
+    pub is_portable_chassis: bool,
+}
+
+/// SMBIOS chassis types for portable machines: Portable, Laptop, Notebook,
+/// Hand Held, Sub Notebook, Tablet, Convertible and Detachable.
+const PORTABLE_CHASSIS_TYPES: [u8; 8] = [8, 9, 10, 11, 14, 30, 31, 32];
+
+/// Whether a DMI `chassis_type` value names a portable machine.
+///
+/// An unreadable or unknown value counts as not portable, which keeps any
+/// blocked-probe finding rather than hiding it.
+pub fn is_portable_chassis(chassis_type: &str) -> bool {
+    chassis_type
+        .trim()
+        .parse::<u8>()
+        .is_ok_and(|value| PORTABLE_CHASSIS_TYPES.contains(&value))
+}
+
+/// Blocking DMI read, for the blocking pool.
+pub fn read_is_portable_chassis() -> bool {
+    is_portable_chassis(&crate::logger::read_dmi_system_info("chassis_type"))
+}
+
+/// The machine-scope findings for one detection run. Shared by the health
+/// snapshot and the report so the two cannot disagree.
+pub fn findings_from_detection(
+    detection_supported: bool,
+    results: &cc_detect::DetectionResults,
+    bound_drivers: &HashSet<String>,
+    is_portable_chassis: bool,
+) -> Vec<SystemFinding> {
+    let chips = results
+        .detected_chips
+        .iter()
+        .map(|chip| DetectedChipRef {
+            name: &chip.name,
+            driver: &chip.driver,
+        })
+        .collect::<Vec<_>>();
+    let environment = ProbeEnvironment {
+        is_container: results.environment.is_container,
+        is_secure_boot: results.environment.is_secure_boot,
+        has_dev_port: results.environment.has_dev_port,
+        is_portable_chassis,
+    };
+    let mut findings = derive_system_findings(
+        detection_supported,
+        &chips,
+        &results.blacklisted,
+        &environment,
+        bound_drivers,
+    );
+    if detection_supported.not() {
+        assert!(matches!(
+            findings.as_slice(),
+            [SystemFinding::DetectionUnsupported]
+        ));
+        return findings;
+    }
+    apply_signature_rejections(&mut findings, &results.signature_rejected);
+    assert!(findings.len() >= results.signature_rejected.len());
+    findings
+}
+
+/// Adds a finding per driver the kernel refused to load for its signature.
+///
+/// A refusal is the precise reason a chip went missing, so it replaces the
+/// blocked-probe finding, which would only point at the probe.
+fn apply_signature_rejections(findings: &mut Vec<SystemFinding>, signature_rejected: &[String]) {
+    if signature_rejected.is_empty() {
+        return;
+    }
+    let is_blocked =
+        |finding: &SystemFinding| matches!(finding, SystemFinding::BlockedByEnvironment { .. });
+    findings.retain(|finding| is_blocked(finding).not());
+    assert!(findings.iter().any(is_blocked).not());
+    findings.extend(
+        signature_rejected
+            .iter()
+            .map(|driver| SystemFinding::SignatureRejected {
+                driver: driver.clone(),
+            }),
+    );
+    assert!(findings.iter().any(is_blocked).not());
 }
 
 /// Derives the machine-scope findings.
@@ -398,7 +499,9 @@ pub fn derive_system_findings(
     }
     let mut findings = Vec::with_capacity(chips.len() + blacklisted.len() + 1);
     if let Some(reason) = environment_blocker(environment) {
-        findings.push(SystemFinding::BlockedByEnvironment { reason });
+        if blocked_probe_matters(environment, bound_drivers) {
+            findings.push(SystemFinding::BlockedByEnvironment { reason });
+        }
     }
     for driver in blacklisted {
         findings.push(SystemFinding::Blacklisted {
@@ -417,8 +520,29 @@ pub fn derive_system_findings(
     findings
 }
 
+/// Whether a probe could have found something the machine does not already show.
+///
+/// A bound Super-I/O driver means the chip is served, and its channels carry
+/// their own verdicts, including the out-of-tree one. Laptops usually keep
+/// their fans behind an embedded controller instead. In both cases a blocked
+/// probe explains nothing and only sends the user the wrong way.
+fn blocked_probe_matters(environment: &ProbeEnvironment, bound_drivers: &HashSet<String>) -> bool {
+    if environment.is_portable_chassis {
+        return false;
+    }
+    let superio_drivers = cc_detect::chip_db::compiled_drivers();
+    assert!(superio_drivers.is_empty().not());
+    let superio_driver_bound = superio_drivers
+        .iter()
+        .any(|driver| is_chip_served(driver, bound_drivers));
+    if superio_driver_bound {
+        assert!(bound_drivers.is_empty().not());
+    }
+    superio_driver_bound.not()
+}
+
 /// Secure Boot is checked first because it is the cause users are least likely
-/// to suspect and it silently defeats module loading.
+/// to suspect: its kernel lockdown blocks the I/O port probe.
 fn environment_blocker(environment: &ProbeEnvironment) -> Option<EnvironmentBlocker> {
     if environment.is_secure_boot {
         return Some(EnvironmentBlocker::SecureBoot);
@@ -550,7 +674,9 @@ impl HardwareSupportController {
         detection_supported: bool,
     ) -> Self {
         let system_info = SystemInfo::read().await;
-        let system_findings = Self::compute_findings(detection.as_ref(), detection_supported).await;
+        let system_findings = Self::compute_findings(detection.as_ref(), detection_supported)
+            .await
+            .unwrap_or_default();
         Self {
             system_info,
             detection: RefCell::new(detection),
@@ -577,7 +703,9 @@ impl HardwareSupportController {
     /// the findings from them so the health snapshot cannot keep asserting a
     /// driver is unbound after the same request loaded it.
     pub async fn refresh_detection(&self, results: cc_detect::DetectionResults) {
-        let findings = Self::compute_findings(Some(&results), self.detection_supported).await;
+        let findings = Self::compute_findings(Some(&results), self.detection_supported)
+            .await
+            .unwrap_or_default();
         *self.detection.borrow_mut() = Some(results);
         *self.system_findings.borrow_mut() = findings;
     }
@@ -729,45 +857,37 @@ impl HardwareSupportController {
 
     /// `None` detection means the probe was switched off by config or
     /// environment, which is not an observation and therefore yields no
-    /// findings.
-    async fn compute_findings(
+    /// findings. `None` when the bound drivers could not be resolved, which
+    /// the report tells apart from an empty list.
+    pub(crate) async fn compute_findings(
         detection: Option<&cc_detect::DetectionResults>,
         detection_supported: bool,
-    ) -> Vec<SystemFinding> {
+    ) -> Option<Vec<SystemFinding>> {
         if detection_supported.not() {
-            return vec![SystemFinding::DetectionUnsupported];
+            return Some(vec![SystemFinding::DetectionUnsupported]);
         }
         let Some(results) = detection else {
-            return Vec::new();
+            return Some(Vec::new());
         };
-        // A walk of the hwmon class, on the blocking pool like the probe before it.
-        let resolved =
-            rt::spawn_blocking(|| resolve_bound_drivers(Path::new(HWMON_CLASS_PATH))).await;
-        let Ok(bound_drivers) = resolved else {
+        // Sysfs walks, on the blocking pool like the probe before them.
+        let resolved = rt::spawn_blocking(|| {
+            (
+                resolve_bound_drivers(Path::new(HWMON_CLASS_PATH)),
+                read_is_portable_chassis(),
+            )
+        })
+        .await;
+        let Ok((bound_drivers, is_portable_chassis)) = resolved else {
             // An empty set would report every detected chip as unbound, so report nothing.
             warn!("Could not resolve the bound hwmon drivers; no hardware findings this time");
-            return Vec::new();
+            return None;
         };
-        let chips = results
-            .detected_chips
-            .iter()
-            .map(|chip| DetectedChipRef {
-                name: &chip.name,
-                driver: &chip.driver,
-            })
-            .collect::<Vec<_>>();
-        let environment = ProbeEnvironment {
-            is_container: results.environment.is_container,
-            is_secure_boot: results.environment.is_secure_boot,
-            has_dev_port: results.environment.has_dev_port,
-        };
-        derive_system_findings(
+        Some(findings_from_detection(
             true,
-            &chips,
-            &results.blacklisted,
-            &environment,
+            results,
             &bound_drivers,
-        )
+            is_portable_chassis,
+        ))
     }
 
     /// Secure Boot silently defeating module loading is invisible in the app
@@ -789,9 +909,14 @@ impl HardwareSupportController {
                 SystemFinding::Blacklisted { driver } => {
                     warn!("Hardware support: driver {driver} is blacklisted and was not loaded");
                 }
+                SystemFinding::SignatureRejected { driver } => warn!(
+                    "Hardware support: driver {driver} is installed, but the kernel rejected \
+                     its module signature, so it was not loaded"
+                ),
                 SystemFinding::BlockedByEnvironment { reason } => warn!(
-                    "Hardware support: Super-I/O detection could not run ({reason:?}); \
-                     chips needing a Super-I/O probe will not be found"
+                    "Hardware support: Super-I/O chips could not be probed because {} and no \
+                     Super-I/O driver is loaded, so a chip that needs one will not be found",
+                    reason.cause()
                 ),
                 SystemFinding::DetectionUnsupported => {
                     info!("Hardware support: Super-I/O detection is x86_64 only");
@@ -860,6 +985,8 @@ mod tests {
                         module_status: "detection_only".to_string(),
                     }],
                     blacklisted: Vec::new(),
+                    signature_rejected: Vec::new(),
+                    kernel_probed: Vec::new(),
                     environment: cc_detect::EnvironmentInfo {
                         is_container: false,
                         is_secure_boot: false,
@@ -904,6 +1031,8 @@ mod tests {
                         module_status: "detection_only".to_string(),
                     }],
                     blacklisted: Vec::new(),
+                    signature_rejected: Vec::new(),
+                    kernel_probed: Vec::new(),
                     environment: cc_detect::EnvironmentInfo {
                         is_container: false,
                         is_secure_boot: false,
@@ -1092,9 +1221,8 @@ mod tests {
     #[test]
     fn unsupported_detection_never_reports_blockers() {
         let environment = ProbeEnvironment {
-            is_container: false,
-            is_secure_boot: false,
             has_dev_port: false,
+            ..clear_environment()
         };
         let findings = derive_system_findings(false, &[], &[], &environment, &HashSet::new());
         assert_eq!(findings, vec![SystemFinding::DetectionUnsupported]);
@@ -1108,6 +1236,7 @@ mod tests {
             is_container: true,
             is_secure_boot: true,
             has_dev_port: false,
+            is_portable_chassis: false,
         };
         let findings = derive_system_findings(true, &[], &[], &environment, &HashSet::new());
         assert_eq!(
@@ -1116,6 +1245,117 @@ mod tests {
                 reason: EnvironmentBlocker::SecureBoot
             }]
         );
+    }
+
+    /// Goal: a blocked probe is reported only where it could have found a chip
+    /// nothing serves. Method: Secure Boot on a desktop, once with only
+    /// non-Super-I/O drivers bound (reported) and once per Super-I/O family
+    /// bound, in-tree and out-of-tree (silent). The bound in-tree case is the
+    /// MSI and ASUS one: its channels already carry the out-of-tree verdict.
+    #[test]
+    fn bound_superio_driver_silences_a_blocked_probe() {
+        let environment = secure_boot_environment();
+        let unrelated = HashSet::from(["k10temp".to_string(), "amdgpu".to_string()]);
+        assert_eq!(
+            derive_system_findings(true, &[], &[], &environment, &unrelated),
+            vec![SystemFinding::BlockedByEnvironment {
+                reason: EnvironmentBlocker::SecureBoot
+            }]
+        );
+        for superio_driver in ["nct6683", "nct6687", "nct6775", "it87", "f71882fg"] {
+            let bound = HashSet::from(["k10temp".to_string(), superio_driver.to_string()]);
+            let findings = derive_system_findings(true, &[], &[], &environment, &bound);
+            assert!(findings.is_empty(), "{superio_driver}: {findings:?}");
+        }
+    }
+
+    /// Goal: laptops get no blocked-probe finding, since their fans usually sit
+    /// behind an embedded controller. Method: the same unserved Secure Boot
+    /// machine as a desktop and as a laptop. Blacklisted drivers are still
+    /// reported on the laptop: the gate covers only the blocked probe.
+    #[test]
+    fn portable_chassis_silences_a_blocked_probe() {
+        let desktop = secure_boot_environment();
+        let laptop = ProbeEnvironment {
+            is_portable_chassis: true,
+            ..secure_boot_environment()
+        };
+        let bound = HashSet::new();
+        assert_eq!(
+            derive_system_findings(true, &[], &[], &desktop, &bound).len(),
+            1
+        );
+        assert!(derive_system_findings(true, &[], &[], &laptop, &bound).is_empty());
+        let blacklisted = vec!["it87".to_string()];
+        assert_eq!(
+            derive_system_findings(true, &[], &blacklisted, &laptop, &bound),
+            vec![SystemFinding::Blacklisted {
+                driver: "it87".to_string()
+            }]
+        );
+    }
+
+    /// Goal: a driver the kernel refused for its signature becomes its own
+    /// finding and replaces the blocked-probe one, which would only point at
+    /// the probe. Method: a locked-down, unserved desktop whose fallback had
+    /// one driver rejected, with a blacklisted driver alongside.
+    #[test]
+    fn signature_rejection_replaces_the_blocked_probe() {
+        let mut results = cc_detect::DetectionResults::empty(cc_detect::EnvironmentInfo {
+            is_container: false,
+            is_secure_boot: true,
+            has_dev_port: true,
+        });
+        let bound = HashSet::from(["k10temp".to_string()]);
+        assert_eq!(
+            findings_from_detection(true, &results, &bound, false),
+            vec![SystemFinding::BlockedByEnvironment {
+                reason: EnvironmentBlocker::SecureBoot
+            }]
+        );
+
+        results.blacklisted.push("it87".to_string());
+        results.signature_rejected.push("nct6687".to_string());
+        assert_eq!(
+            findings_from_detection(true, &results, &bound, false),
+            vec![
+                SystemFinding::Blacklisted {
+                    driver: "it87".to_string()
+                },
+                SystemFinding::SignatureRejected {
+                    driver: "nct6687".to_string()
+                },
+            ]
+        );
+    }
+
+    /// Goal: off `x86_64` nothing was loaded, so a rejection list cannot add
+    /// findings to the unsupported one. Method: a populated list, unsupported.
+    #[test]
+    fn unsupported_detection_ignores_signature_rejections() {
+        let mut results = cc_detect::DetectionResults::empty(cc_detect::EnvironmentInfo {
+            is_container: false,
+            is_secure_boot: false,
+            has_dev_port: false,
+        });
+        results.signature_rejected.push("nct6687".to_string());
+        assert_eq!(
+            findings_from_detection(false, &results, &HashSet::new(), false),
+            vec![SystemFinding::DetectionUnsupported]
+        );
+    }
+
+    /// Goal: only the SMBIOS portable chassis types count, and anything
+    /// unreadable keeps the finding. Method: portable, desktop and malformed
+    /// sysfs values, with the trailing newline sysfs adds.
+    #[test]
+    fn portable_chassis_types_are_recognized() {
+        for portable in ["8", "9", "10\n", "14", "31", "32"] {
+            assert!(is_portable_chassis(portable), "{portable:?}");
+        }
+        for not_portable in ["3", "4", "35", "", "laptop", "-9", "900"] {
+            assert!(is_portable_chassis(not_portable).not(), "{not_portable:?}");
+        }
     }
 
     /// A blacklisted driver is strongly actionable and must survive alongside
@@ -1152,6 +1392,14 @@ mod tests {
             is_container: false,
             is_secure_boot: false,
             has_dev_port: true,
+            is_portable_chassis: false,
+        }
+    }
+
+    fn secure_boot_environment() -> ProbeEnvironment {
+        ProbeEnvironment {
+            is_secure_boot: true,
+            ..clear_environment()
         }
     }
 }

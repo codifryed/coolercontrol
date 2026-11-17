@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::api::Json;
 use anyhow::Result;
 use axum::extract::{Path, Query, State};
-use axum::Json;
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};

@@ -7,8 +7,8 @@ use crate::device::UID;
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 use crate::repositories::hwmon::identity::{IdentityReader, Stalled};
 use crate::rt;
+use glob::{glob, GlobResult};
 use log::{debug, info, warn};
-use nu_glob::{glob, GlobResult, Uninterruptible};
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -81,9 +81,9 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
 /// Note: checking for both path types works because we are specifically looking for pwm and
 /// temp files. Just checking base paths would not work due to the same "device" directory.
 fn find_all_hwmon_device_paths_inner(glob_paths: &GlobPaths) -> Vec<PathBuf> {
-    let pwm_glob_results = glob(&glob_paths.pwm, Uninterruptible)
+    let pwm_glob_results = glob(&glob_paths.pwm)
         .unwrap()
-        .chain(glob(&glob_paths.pwm_centos, Uninterruptible).unwrap())
+        .chain(glob(&glob_paths.pwm_centos).unwrap())
         .collect::<Vec<GlobResult>>();
     let regex_pwm_path = Regex::new(PATTERN_PWN_PATH_NUMBER).unwrap();
     let mut base_paths = pwm_glob_results
@@ -94,13 +94,13 @@ fn find_all_hwmon_device_paths_inner(glob_paths: &GlobPaths) -> Vec<PathBuf> {
         .filter(|path| regex_pwm_path.is_match(path.to_str().expect("Path should be UTF-8")))
         .map(|path| path.parent().unwrap().to_path_buf())
         .collect::<Vec<PathBuf>>();
-    let temp_glob_results = glob(&glob_paths.temp, Uninterruptible)
+    let temp_glob_results = glob(&glob_paths.temp)
         .unwrap()
-        .chain(glob(&glob_paths.temp_centos, Uninterruptible).unwrap())
+        .chain(glob(&glob_paths.temp_centos).unwrap())
         .collect::<Vec<GlobResult>>();
-    let fan_glob_results = glob(&glob_paths.fan, Uninterruptible)
+    let fan_glob_results = glob(&glob_paths.fan)
         .unwrap()
-        .chain(glob(&glob_paths.fan_centos, Uninterruptible).unwrap())
+        .chain(glob(&glob_paths.fan_centos).unwrap())
         .collect::<Vec<GlobResult>>();
     base_paths.append(&mut convert_glob_results_to_valid_paths(temp_glob_results));
     base_paths.append(&mut convert_glob_results_to_valid_paths(fan_glob_results));
@@ -535,7 +535,7 @@ pub fn get_platform_device_id(base_path: &Path) -> Option<u8> {
 /// CPU hotplug, so this counts the zones that exist rather than the ones with an online CPU.
 pub fn count_platform_devices(driver_name: &str) -> usize {
     let pattern = format!("/sys/devices/platform/{driver_name}.*");
-    glob(&pattern, Uninterruptible).map_or(0, |paths| paths.filter_map(Result::ok).count())
+    glob(&pattern).map_or(0, |paths| paths.filter_map(Result::ok).count())
 }
 
 /// Only a direct child of the platform bus has an instance id we can read. A PCI address ends in

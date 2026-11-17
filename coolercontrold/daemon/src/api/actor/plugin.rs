@@ -46,10 +46,6 @@ enum PluginMessage {
         plugin_id: String,
         respond_to: oneshot::Sender<Result<()>>,
     },
-    ReloadPlugin {
-        plugin_id: String,
-        respond_to: oneshot::Sender<Result<()>>,
-    },
     GetStatus {
         plugin_id: String,
         respond_to: oneshot::Sender<Result<PluginStatusDto>>,
@@ -86,6 +82,7 @@ impl PluginActor {
         let manifests = self.plugin_controller.manifests();
         let mut plugins = Vec::with_capacity(manifests.len());
         for manifest in manifests {
+            let restart_required = self.plugin_controller.is_restart_required(&manifest);
             let address = match manifest.address {
                 ConnectionType::None => String::new(),
                 ConnectionType::Uds(uds_path) => uds_path.display().to_string(),
@@ -93,6 +90,7 @@ impl PluginActor {
             };
             plugins.push(PluginDto {
                 disabled: self.plugin_controller.is_plugin_disabled(&manifest.id),
+                restart_required,
                 id: manifest.id,
                 service_type: manifest.service_type.to_string(),
                 description: manifest.description,
@@ -171,13 +169,6 @@ impl ApiActor<PluginMessage> for PluginActor {
                 respond_to,
             } => {
                 let result = self.plugin_controller.restart_plugin(&plugin_id).await;
-                let _ = respond_to.send(result);
-            }
-            PluginMessage::ReloadPlugin {
-                plugin_id,
-                respond_to,
-            } => {
-                let result = self.plugin_controller.reload_plugin(&plugin_id).await;
                 let _ = respond_to.send(result);
             }
             PluginMessage::GetStatus {
@@ -301,16 +292,6 @@ impl PluginHandle {
     pub async fn restart_plugin(&self, plugin_id: String) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let msg = PluginMessage::RestartPlugin {
-            plugin_id,
-            respond_to: tx,
-        };
-        let _ = self.sender.send(msg).await;
-        rx.await?
-    }
-
-    pub async fn reload_plugin(&self, plugin_id: String) -> Result<()> {
-        let (tx, rx) = oneshot::channel();
-        let msg = PluginMessage::ReloadPlugin {
             plugin_id,
             respond_to: tx,
         };

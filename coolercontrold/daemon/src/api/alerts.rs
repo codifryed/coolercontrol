@@ -4,11 +4,11 @@
 use crate::alerts::{
     Alert, AlertLog, AlertName, AlertState, MAX_ALERT_SOURCES, MIN_REPEAT_INTERVAL_SECONDS,
 };
+use crate::api::Json;
 use crate::api::{handle_error, validate_name_string, AppState, CCError};
 use crate::device::UID;
 use crate::setting::ChannelSource;
 use axum::extract::{Path, State};
-use axum::Json;
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

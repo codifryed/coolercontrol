@@ -3,13 +3,13 @@
 
 use crate::api::actor::{CalibrationBatchStatus, CalibrationStatus};
 use crate::api::devices::DeviceChannelPath;
+use crate::api::Json;
 use crate::api::{AppState, CCError};
 use crate::calibration::{Calibration, CalibrationEntry};
 use crate::device::{ChannelName, DeviceUID, Duty};
 use aide::NoApi;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

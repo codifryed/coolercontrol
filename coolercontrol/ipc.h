@@ -53,6 +53,8 @@ class IPC final : public QObject {
 
   void setZoomFactor(double zoomFactor) const;
 
+  void setFullScreen(bool fullScreen) const;
+
   void setModes(const QString& modesJson) const;
 
   void saveWindowGeometry(const QByteArray& geometry) const;

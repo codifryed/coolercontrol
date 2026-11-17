@@ -27,7 +27,7 @@ class DBusListener final : public QDBusAbstractAdaptor {
   Q_NOREPLY void showInstance() const {
     qInfo() << "Request from dbus to force show main window";
     m_mainWindow->hide();
-    m_mainWindow->show();
+    m_mainWindow->showWindow();
   }
 };
 #endif  // DBUS_LISTENER_H

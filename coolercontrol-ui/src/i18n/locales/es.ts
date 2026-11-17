@@ -506,7 +506,10 @@ export default {
                 'Los plugins amplían CoolerControl con soporte adicional de dispositivos, integraciones y automatización. Pueden proporcionar nuevos sensores y controles de dispositivos, conectarse a servicios externos o agregar páginas de interfaz personalizadas.',
             findPlugins: 'Buscar e instalar Plugins',
             restartNote:
-                'Un plugin recién agregado aparece aquí al abrir esta página. Un plugin de dispositivo también necesita reiniciar el demonio de CoolerControl antes de que se carguen sus dispositivos.',
+                'Volver a buscar, o abrir esta página, detecta los plugins recién agregados y los cambios de manifiesto. Los cambios de un plugin de dispositivo se aplican tras reiniciar el demonio de CoolerControl.',
+            restartRequiredBanner:
+                'Reinicie el demonio para aplicar los cambios de estos plugins: {plugins}',
+            rescan: 'Volver a buscar plugins',
             containerNote:
                 'Al ejecutar CoolerControl en un contenedor, los plugins deben colocarse en la carpeta compartida virtual persistente para que sobrevivan a los reinicios del contenedor.',
             installedPlugins: 'Plugins Instalados',
@@ -521,10 +524,6 @@ export default {
             pluginEnabledRestart: 'Plugin habilitado. Reinicie el daemon para aplicar.',
             disableFailed: 'Error al deshabilitar el plugin',
             enableFailed: 'Error al habilitar el plugin',
-            reloadManifest: 'Recargar manifiesto',
-            manifestReloaded: 'Manifiesto recargado.',
-            manifestValidRestart: 'El manifiesto es válido. Reinicie el daemon para aplicar.',
-            reloadFailed: 'Error al recargar el manifiesto',
             serviceLogs: 'Registros del servicio',
             commandCopied: 'Comando copiado al portapapeles',
             openLinkHeader: '¿Abrir enlace externo?',
@@ -688,6 +687,8 @@ export default {
             hardwareReportCopied: 'Copiado',
             findingNoDriverBound: 'Se detectó un chip, pero ningún controlador cargado lo atiende.',
             findingBlacklisted: 'Este controlador está en la lista negra y no se cargó.',
+            findingSignatureRejected:
+                'Este controlador está instalado, pero el kernel rechazó la firma de su módulo, por lo que no se cargó.',
             findingBlockedByEnvironment:
                 'La detección de hardware no pudo ejecutarse en este entorno.',
             findingBlockedBySecureBoot:
@@ -1037,7 +1038,12 @@ export default {
         password: {
             forgotPassword: '¿Olvidó su contraseña?',
             forgotPasswordHelpIntro:
-                'Ejecute este comando en una terminal como root y luego haga clic en Recargar UI:',
+                'Ejecute el comando de su instalación en una terminal y luego haga clic en Recargar UI:',
+            forgotPasswordPackageLabel: 'Paquete instalado',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman',
+            forgotPasswordContainerNote:
+                'Con Docker o Podman, use el nombre de su contenedor si no es coolercontrold.',
             forgotPasswordCopyCommand: 'Copiar comando',
             forgotPasswordCommandCopied: 'Comando copiado al portapapeles',
             forgotPasswordReloadButton: 'Recargar UI',
@@ -1783,6 +1789,7 @@ export default {
             stopped: 'Detenido',
             unmanaged: 'No gestionado',
             disabled: 'Deshabilitado',
+            restartRequired: 'Reinicio necesario',
         },
         deviceType: {
             customSensors: 'Sensores Personalizados',

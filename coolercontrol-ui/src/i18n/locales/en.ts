@@ -498,7 +498,10 @@ export default {
                 'Plugins extend CoolerControl with additional device support, integrations, and automation. They can provide new device sensors and controls, connect to external services, or add custom UI pages.',
             findPlugins: 'Find and install Plugins',
             restartNote:
-                'A newly added plugin appears here when this page is opened. A device plugin also needs a restart of the CoolerControl daemon before its devices are loaded.',
+                "Rescan, or opening this page, picks up newly added plugins and manifest changes. A device plugin's changes take effect after a restart of the CoolerControl daemon.",
+            restartRequiredBanner:
+                'Restart the daemon to apply the changes of these plugins: {plugins}',
+            rescan: 'Rescan plugins',
             containerNote:
                 'When running CoolerControl in a container, plugins must be placed in the persisted virtual shared folder so they survive container restarts.',
             installedPlugins: 'Installed Plugins',
@@ -513,10 +516,6 @@ export default {
             pluginEnabledRestart: 'Plugin enabled. Restart the daemon to apply.',
             disableFailed: 'Failed to disable plugin',
             enableFailed: 'Failed to enable plugin',
-            reloadManifest: 'Reload manifest',
-            manifestReloaded: 'Manifest reloaded.',
-            manifestValidRestart: 'Manifest is valid. Restart the daemon to apply.',
-            reloadFailed: 'Failed to reload manifest',
             serviceLogs: 'Service Logs',
             commandCopied: 'Command copied to clipboard',
             openLinkHeader: 'Open external link?',
@@ -678,6 +677,8 @@ export default {
             hardwareReportCopied: 'Copied',
             findingNoDriverBound: 'A chip was detected, but no loaded driver is serving it.',
             findingBlacklisted: 'This driver is blacklisted and was not loaded.',
+            findingSignatureRejected:
+                'This driver is installed, but the kernel rejected its module signature, so it was not loaded.',
             findingBlockedByEnvironment: 'Hardware detection could not run in this environment.',
             findingBlockedBySecureBoot:
                 'Hardware detection could not run because Secure Boot is enabled.',
@@ -1020,7 +1021,12 @@ export default {
         password: {
             forgotPassword: 'Forgot password?',
             forgotPasswordHelpIntro:
-                'Run this command in a terminal as root, then click Reload UI:',
+                'Run the command for your installation in a terminal, then click Reload UI:',
+            forgotPasswordPackageLabel: 'Installed package',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman',
+            forgotPasswordContainerNote:
+                "For Docker or Podman, use your container's name if it is not coolercontrold.",
             forgotPasswordCopyCommand: 'Copy command',
             forgotPasswordCommandCopied: 'Command copied to clipboard',
             forgotPasswordReloadButton: 'Reload UI',
@@ -1752,6 +1758,7 @@ export default {
             stopped: 'Stopped',
             unmanaged: 'Unmanaged',
             disabled: 'Disabled',
+            restartRequired: 'Restart Required',
         },
         deviceType: {
             customSensors: 'Custom Sensors',

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::api::Json;
 use axum::extract::State;
-use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,9 @@ pub struct DetectRequest {
 pub struct DetectResponse {
     pub detected_chips: Vec<DetectedChipDto>,
     pub blacklisted: Vec<String>,
+    /// Drivers loaded without a chip id because the probe could not run, as
+    /// under kernel lockdown. Only installed out-of-tree drivers are tried.
+    pub kernel_probed: Vec<KernelProbedDto>,
     pub environment: EnvironmentDto,
     /// False when no probe was made at all, so an empty `detected_chips` means
     /// "not looked for" rather than "none present". Detection can be switched
@@ -37,6 +40,14 @@ pub struct DetectedChipDto {
     /// can be matched against a pasted log.
     pub device_id: String,
     pub features: Vec<String>,
+    pub module_status: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct KernelProbedDto {
+    pub driver: String,
+    /// One of `loaded`, `already_loaded`, `no_device`, `signature_rejected`,
+    /// `blacklisted`, or `failed: <modprobe error>`.
     pub module_status: String,
 }
 
@@ -64,6 +75,14 @@ impl From<cc_detect::DetectionResults> for DetectResponse {
                 })
                 .collect(),
             blacklisted: results.blacklisted,
+            kernel_probed: results
+                .kernel_probed
+                .into_iter()
+                .map(|probed| KernelProbedDto {
+                    driver: probed.driver,
+                    module_status: probed.module_status,
+                })
+                .collect(),
             environment: EnvironmentDto {
                 is_container: results.environment.is_container,
                 is_secure_boot: results.environment.is_secure_boot,
@@ -81,6 +100,7 @@ impl DetectResponse {
         Self {
             detected_chips: Vec::new(),
             blacklisted: Vec::new(),
+            kernel_probed: Vec::new(),
             environment: EnvironmentDto {
                 is_container: false,
                 is_secure_boot: false,

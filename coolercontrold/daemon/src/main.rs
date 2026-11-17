@@ -1029,7 +1029,7 @@ async fn init_liquidctl_repo(
     lc_repo.initialize_devices().await?;
     let lc_locations = lc_repo.get_all_driver_locations();
     let lc_repo = Rc::new(lc_repo);
-    Rc::clone(&lc_repo).preload_statuses().await;
+    // initialize_devices already read every kept device's first status.
     lc_repo.update_infos_from_first_status();
     lc_repo.update_statuses(chrono::Local::now())?;
     lc_repo.initialize_all_device_status_histories_with_current_status()?;

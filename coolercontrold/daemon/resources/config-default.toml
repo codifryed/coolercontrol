@@ -133,6 +133,9 @@ drivetemp_suspend = false
 # Custom origins to allow in CORS requests. This is useful when accessing CoolerControl through
 # a reverse proxy with a custom domain, or via port forwarding with a public IP. Add the full
 # origin URL (scheme + host + port if non-standard). Only read from this file, at startup.
+# Listed origins may also write, not only read via CORS. A plain-HTTP reverse proxy must list its
+# origin here, written exactly as the browser shows it (port only if non-standard), or forward the
+# original Host header (nginx: proxy_set_header Host $http_host).
 # origins = ["https://coolercontrol.mydomain.com", "http://192.168.1.1:8080"]
 
 # Embedding the UI in another page:

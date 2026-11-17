@@ -17,8 +17,11 @@ mod dual_protocol;
 mod frame_policy;
 mod functions;
 mod hardware_report;
+mod json;
+mod last_modified;
 mod metrics;
 pub mod modes;
+mod origin_guard;
 pub mod peer;
 mod plugins;
 mod power_profiles;
@@ -74,9 +77,10 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::{Json, Router, ServiceExt};
+use axum::{Router, ServiceExt};
 use axum_server::accept::DefaultAcceptor;
 use axum_server::tls_rustls::RustlsConfig;
+pub use json::Json;
 use log::{debug, info, warn, Level};
 use moro_local::Scope;
 use schemars::JsonSchema;
@@ -355,11 +359,13 @@ async fn security_headers_middleware(req: Request, next: middleware::Next) -> Re
 
 async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<()> {
     let router = api_router(config.app_state, config.trusted_proxies).await;
+    let configured_origins = origin_guard::configured_origins(config.cors_origins);
     let base_router = with_base_layers(
         router,
         config.compression_layer,
         config.session_layer,
-        cors_layer(config.ipv4, config.ipv6, config.cors_origins),
+        cors_layer(config.ipv4, config.ipv6, Arc::clone(&configured_origins)),
+        configured_origins,
     );
     let connection_limiter = config.connection_limiter;
 
@@ -454,15 +460,24 @@ async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxi
 #[cfg(debug_assertions)]
 fn finish_api(router: ApiRouter) -> Router {
     let mut open_api = OpenApi::default();
-    router
-        .finish_api_with(&mut open_api, api_docs)
-        .layer(axum::Extension(Arc::new(open_api)))
+    let router = router.finish_api_with(&mut open_api, api_docs);
+    json::finish_spec(&mut open_api);
+    router.layer(axum::Extension(Arc::new(open_api)))
 }
 
 /// Release builds have no `/api.json` route, so nothing would read the document. Each
 /// listener's copy holds about 3 MB.
 #[cfg(not(debug_assertions))]
 fn finish_api(router: ApiRouter) -> Router {
+    finish_api_release(router)
+}
+
+/// Declaring routes fills aide's thread-local schema state and ours. Only document builds
+/// drain it, so without the discard a release daemon keeps it for its whole life.
+#[cfg(any(test, not(debug_assertions)))]
+fn finish_api_release<S: Clone + Send + Sync + 'static>(router: ApiRouter<S>) -> Router<S> {
+    aide::generate::reset_context();
+    json::discard_response_schemas();
     Router::from(router)
 }
 
@@ -501,6 +516,7 @@ fn with_base_layers(
     compression_layer: Option<ApiCompressionLayer>,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     cors_layer: cors::CorsLayer,
+    configured_origins: origin_guard::ConfiguredOrigins,
 ) -> impl tower::Service<
     Request,
     Response = Response,
@@ -546,6 +562,8 @@ fn with_base_layers(
         ))
         .layer(middleware::from_fn(security_headers_middleware))
         .layer(cors_layer)
+        // Inside CORS, which answers preflights itself and adds its headers to a refusal.
+        .layer(origin_guard::OriginGuardLayer::new(configured_origins))
         .option_layer(compression_layer)
         .service(service)
 }
@@ -557,6 +575,7 @@ fn with_base_layers(
 pub fn openapi_spec() -> OpenApi {
     let mut open_api = OpenApi::default();
     let _ = router::documented_routes().finish_api_with(&mut open_api, api_docs);
+    json::finish_spec(&mut open_api);
     open_api
 }
 
@@ -591,7 +610,7 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             "BasicAuth",
             SecurityScheme::Http {
                 scheme: "basic".to_string(),
-                bearer_format: Some(String::new()),
+                bearer_format: None,
                 description: Some(
                     "HTTP Basic authentication, mostly used to generate a secure authentication cookie."
                         .to_string(),
@@ -912,7 +931,7 @@ impl Predicate for NotStaticAsset {
 fn cors_layer(
     ipv4: Option<SocketAddrV4>,
     ipv6: Option<SocketAddrV6>,
-    custom_origins: Vec<String>,
+    exact_origins: origin_guard::ConfiguredOrigins,
 ) -> cors::CorsLayer {
     // Allowed hosts for localhost and bound IPs (matched against parsed origin host)
     let mut allowed_hosts = vec![
@@ -920,18 +939,18 @@ fn cors_layer(
         "127.0.0.1".to_string(),
         "[::1]".to_string(),
     ];
+    // Only on the daemon's own port: another port of this host is another web app, and the
+    // session cookie, which is not port-scoped, would let it act as the logged-in user.
+    let mut listener_ports = Vec::with_capacity(2);
     if let Some(addr) = ipv4 {
         allowed_hosts.push(addr.ip().to_string());
+        listener_ports.push(addr.port());
     }
     if let Some(addr) = ipv6 {
         allowed_hosts.push(format!("[{}]", addr.ip()));
+        listener_ports.push(addr.port());
     }
-
-    // Custom origins from settings - exact match only
-    let exact_origins: Vec<String> = custom_origins
-        .into_iter()
-        .filter(|o| o.starts_with("http://") || o.starts_with("https://"))
-        .collect();
+    assert!(listener_ports.len() <= 2);
 
     cors::CorsLayer::new()
         .allow_credentials(true)
@@ -939,40 +958,71 @@ fn cors_layer(
         .allow_methods(cors::AllowMethods::mirror_request())
         .allow_origin(cors::AllowOrigin::predicate(
             move |origin: &HeaderValue, _req: &Parts| {
-                origin
-                    .to_str()
-                    .is_ok_and(|s| is_origin_allowed(s, &allowed_hosts, &exact_origins))
+                origin.to_str().is_ok_and(|s| {
+                    is_origin_allowed(s, &allowed_hosts, &listener_ports, &exact_origins)
+                })
             },
         ))
         .max_age(Duration::from_secs(60) * 5)
 }
 
-/// Checks if an origin is allowed based on allowed hosts and exact origins.
-fn is_origin_allowed(origin: &str, allowed_hosts: &[String], exact_origins: &[String]) -> bool {
+/// Checks if an origin is an exact origin, or an allowed host on one of the daemon's ports.
+fn is_origin_allowed(
+    origin: &str,
+    allowed_hosts: &[String],
+    listener_ports: &[u16],
+    exact_origins: &[String],
+) -> bool {
     // Check exact custom origins first (e.g., "https://coolercontrol.example.com")
     if exact_origins.iter().any(|o| origin == o) {
         return true;
     }
-
-    // Parse origin and check host against allowed hosts
-    // Origin format: scheme://host[:port]
-    let Some(host_start) = origin.find("://") else {
+    let Some((host, port)) = origin_host_and_port(origin) else {
         return false;
     };
-    let after_scheme = &origin[host_start + 3..];
-
-    // Extract host, handling IPv6 addresses in brackets
-    let host = if after_scheme.starts_with('[') {
-        // IPv6: find closing bracket, host includes brackets
-        after_scheme
-            .find(']')
-            .map_or(after_scheme, |i| &after_scheme[..=i])
-    } else {
-        // IPv4 or hostname: everything before the port
-        after_scheme.split(':').next().unwrap_or(after_scheme)
-    };
-
+    if listener_ports.contains(&port).not() {
+        return false;
+    }
     allowed_hosts.iter().any(|h| h == host)
+}
+
+/// Splits an `Origin` (`scheme://host[:port]`) into its host and its port, the scheme's
+/// default when none is written. `None` for anything else, including a path.
+fn origin_host_and_port(origin: &str) -> Option<(&str, u16)> {
+    let (scheme, after_scheme) = origin.split_once("://")?;
+    let default_port = match scheme {
+        "http" => 80,
+        "https" => 443,
+        _ => return None,
+    };
+    // An IPv6 host keeps its brackets.
+    let host_len = if after_scheme.starts_with('[') {
+        after_scheme.find(']')? + 1
+    } else {
+        after_scheme.find(':').unwrap_or(after_scheme.len())
+    };
+    let (host, rest) = after_scheme.split_at(host_len);
+    if host.is_empty() {
+        return None;
+    }
+    if host.contains(['/', '?', '#', '@']) {
+        return None;
+    }
+    debug_assert!(after_scheme.starts_with(host));
+    if rest.is_empty() {
+        return Some((host, default_port));
+    }
+    let port = rest.strip_prefix(':')?;
+    if port.is_empty() {
+        return None;
+    }
+    // `parse` alone would also take a leading '+'.
+    if port.bytes().all(|b| b.is_ascii_digit()).not() {
+        return None;
+    }
+    let port = port.parse().ok()?;
+    debug_assert!(host.is_empty().not());
+    Some((host, port))
 }
 
 /// TLS Configuration
@@ -1484,6 +1534,7 @@ impl FromRef<AppState> for DeviceHandle {
 mod tests {
     use super::*;
     use axum::Extension;
+    use std::collections::HashSet;
     use tower::ServiceExt as _;
 
     /// Goal: only debug builds build and keep the `OpenAPI` document. Release builds have no
@@ -1754,6 +1805,166 @@ mod tests {
         );
     }
 
+    /// Goal: `OpenAPI` 3.1 allows `bearerFormat` only on the bearer scheme, so a validator
+    /// rejected the whole spec over the basic one.
+    /// Method: check which schemes carry it.
+    #[test]
+    fn only_bearer_scheme_has_bearer_format() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let schemes = &spec["components"]["securitySchemes"];
+        assert!(schemes["BasicAuth"].is_object());
+        assert!(schemes["BasicAuth"].get("bearerFormat").is_none());
+        assert_eq!(schemes["BearerAuth"]["bearerFormat"], "cc_<uuid>");
+    }
+
+    /// Goal: exactly the legacy per-stream SSE routes are marked deprecated, which is how
+    /// generated clients know to leave them out.
+    /// Method: collect every deprecated operation in the generated spec.
+    #[test]
+    fn only_legacy_sse_routes_are_deprecated() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let paths = spec["paths"].as_object().expect("the spec has paths");
+        let mut deprecated = Vec::new();
+        for (path, item) in paths {
+            let item = item.as_object().expect("a path item is an object");
+            for (method, operation) in item {
+                if operation["deprecated"] == serde_json::Value::Bool(true) {
+                    deprecated.push(format!("{method} {path}"));
+                }
+            }
+        }
+        deprecated.sort();
+        assert_eq!(
+            deprecated,
+            [
+                "get /sse/alerts",
+                "get /sse/logs",
+                "get /sse/modes",
+                "get /sse/notifications",
+                "get /sse/status",
+            ]
+        );
+        assert!(paths["/sse"]["get"].get("deprecated").is_none());
+    }
+
+    /// Goal: generated API clients name their methods after `operationId`, so every operation
+    /// needs one, unique and stable. A missing id makes some generators refuse the spec.
+    /// Method: walk every operation in the generated spec and check its id.
+    #[test]
+    fn every_operation_has_a_unique_camel_case_id() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let paths = spec["paths"].as_object().expect("the spec has paths");
+        let mut ids = HashSet::new();
+        for (path, item) in paths {
+            let item = item.as_object().expect("a path item is an object");
+            for method in [
+                "get", "put", "post", "delete", "options", "head", "patch", "trace",
+            ] {
+                let Some(operation) = item.get(method) else {
+                    continue;
+                };
+                let id = operation["operationId"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{method} {path} has no operationId"));
+                let mut chars = id.chars();
+                assert!(
+                    chars.next().is_some_and(|c| c.is_ascii_lowercase()),
+                    "{method} {path}: {id} must start with a lowercase letter"
+                );
+                assert!(
+                    chars.all(|c| c.is_ascii_alphanumeric()),
+                    "{method} {path}: {id} must be camelCase"
+                );
+                assert!(ids.insert(id.to_string()), "duplicate operationId {id}");
+            }
+        }
+        assert!(ids.is_empty().not());
+    }
+
+    /// Goal: merging the two schema directions leaves no ref dangling or still pointing at
+    /// the response generator's temporary path, and pruning leaves no schema unused.
+    /// Method: collect every `$ref` in the generated spec and resolve it, then check that
+    /// every component schema was the target of one.
+    #[test]
+    fn every_schema_ref_resolves_and_every_schema_is_used() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let schemas = spec["components"]["schemas"]
+            .as_object()
+            .expect("the spec has schemas");
+        let mut stack = vec![&spec];
+        let mut ref_count = 0_usize;
+        let mut referenced = HashSet::new();
+        while let Some(node) = stack.pop() {
+            match node {
+                serde_json::Value::Object(object) => {
+                    for (key, child) in object {
+                        if key != "$ref" {
+                            stack.push(child);
+                            continue;
+                        }
+                        let reference = child.as_str().expect("a ref is a string");
+                        let name = reference
+                            .strip_prefix("#/components/schemas/")
+                            .unwrap_or_else(|| panic!("{reference} is not a component ref"));
+                        assert!(schemas.contains_key(name), "{reference} dangles");
+                        referenced.insert(name);
+                        ref_count += 1;
+                    }
+                }
+                serde_json::Value::Array(items) => stack.extend(items),
+                _ => {}
+            }
+        }
+        assert!(ref_count > 0);
+        for name in schemas.keys() {
+            assert!(
+                referenced.contains(name.as_str()),
+                "{name} is never referenced"
+            );
+        }
+    }
+
+    /// Goal: release builds keep no schema state once routes are declared, since nothing
+    /// builds a document from it.
+    /// Method: declare the routes, then check both generators are empty after the release
+    /// finish, which every build compiles under test.
+    #[test]
+    fn release_finish_frees_schema_definitions() {
+        let aide_count = || aide::generate::in_context(|ctx| ctx.schema.definitions().len());
+        let routes = router::documented_routes();
+        assert!(aide_count() > 0);
+        assert!(json::response_schema_count() > 0);
+        let _router = finish_api_release(routes);
+        assert_eq!(aide_count(), 0);
+        assert_eq!(json::response_schema_count(), 0);
+    }
+
+    /// Goal: response schemas describe what the daemon sends. These fields were documented
+    /// by their deserialize shape, which no client receives.
+    /// Method: build the full spec, then check field names and `required` lists of types
+    /// whose serialize and deserialize shapes differ.
+    #[test]
+    fn response_schemas_follow_the_serialize_contract() {
+        let spec = serde_json::to_value(openapi_spec()).expect("the spec serializes");
+        let schemas = &spec["components"]["schemas"];
+        let device = &schemas["DeviceDto"]["properties"];
+        assert!(device.get("type").is_some());
+        assert!(device.get("d_type").is_none());
+        let required = |name: &str| -> Vec<String> {
+            assert!(schemas[name].is_object(), "{name} is in the spec");
+            serde_json::from_value(schemas[name]["required"].clone()).unwrap_or_default()
+        };
+        // Always sent.
+        assert!(required("Status").contains(&"timestamp".to_string()));
+        // Sent only when non-empty.
+        assert!(required("Status").contains(&"temps".to_string()).not());
+        assert!(required("Status").contains(&"channels".to_string()).not());
+        // Always sent, but optional in a PATCH body.
+        assert!(required("CoolerControlSettingsDto-Output").contains(&"poll_rate".to_string()));
+        let input = required("CoolerControlSettingsDto-Input");
+        assert!(input.contains(&"poll_rate".to_string()).not());
+    }
+
     /// An empty or blank address is the documented way to turn an address family off,
     /// so it must resolve to `Disabled` and never reach the parser.
     #[test]
@@ -1857,6 +2068,8 @@ mod tests {
         );
     }
 
+    const DAEMON_PORTS: [u16; 1] = [11987];
+
     fn default_allowed_hosts() -> Vec<String> {
         vec![
             "localhost".to_string(),
@@ -1868,43 +2081,153 @@ mod tests {
     #[test]
     fn test_origin_localhost_http() {
         let hosts = default_allowed_hosts();
-        assert!(is_origin_allowed("http://localhost:11987", &hosts, &[]));
+        assert!(is_origin_allowed(
+            "http://localhost:11987",
+            &hosts,
+            &DAEMON_PORTS,
+            &[]
+        ));
     }
 
     #[test]
     fn test_origin_localhost_https() {
         let hosts = default_allowed_hosts();
-        assert!(is_origin_allowed("https://localhost:11987", &hosts, &[]));
+        assert!(is_origin_allowed(
+            "https://localhost:11987",
+            &hosts,
+            &DAEMON_PORTS,
+            &[]
+        ));
     }
 
+    /// Goal: an allowed host on any other port is refused, since that is another web app on
+    /// this host. Method: loopback and bound hosts on other ports, written and implied.
     #[test]
-    fn test_origin_localhost_no_port() {
+    fn test_origin_rejects_allowed_host_on_another_port() {
+        let mut hosts = default_allowed_hosts();
+        hosts.push("192.168.1.100".to_string());
+        for origin in [
+            "http://localhost",
+            "https://localhost",
+            "http://localhost:9090",
+            "http://localhost:5173",
+            "http://127.0.0.1:8080",
+            "http://[::1]:9090",
+            "https://192.168.1.100:443",
+            "http://localhost:119870",
+        ] {
+            assert!(
+                is_origin_allowed(origin, &hosts, &DAEMON_PORTS, &[]).not(),
+                "{origin}"
+            );
+        }
+    }
+
+    /// Goal: the implied port follows the scheme. Method: a daemon on 80 and 443 accepts
+    /// the port-less origins, and each only for its own scheme's default.
+    #[test]
+    fn test_origin_default_port_follows_scheme() {
         let hosts = default_allowed_hosts();
-        assert!(is_origin_allowed("http://localhost", &hosts, &[]));
+        assert!(is_origin_allowed("http://localhost", &hosts, &[80], &[]));
+        assert!(is_origin_allowed("https://localhost", &hosts, &[443], &[]));
+        assert!(is_origin_allowed("https://localhost", &hosts, &[80], &[]).not());
+        assert!(is_origin_allowed("http://localhost", &hosts, &[443], &[]).not());
+    }
+
+    /// Goal: only `scheme://host[:digits]` parses. Method: malformed ports, paths, other
+    /// schemes and an unclosed IPv6 bracket.
+    #[test]
+    fn test_origin_host_and_port_parsing() {
+        assert_eq!(
+            origin_host_and_port("http://localhost:11987"),
+            Some(("localhost", 11987))
+        );
+        assert_eq!(origin_host_and_port("https://[::1]"), Some(("[::1]", 443)));
+        assert_eq!(
+            origin_host_and_port("http://[fe80::1]:80"),
+            Some(("[fe80::1]", 80))
+        );
+        for origin in [
+            "http://localhost:",
+            "http://localhost:+11987",
+            "http://localhost:11987/",
+            "http://localhost/path",
+            "http://user@localhost:11987",
+            "http://:11987",
+            "http://",
+            "http://[::1",
+            "http://[::1]x",
+            "ftp://localhost:11987",
+            "localhost:11987",
+            "",
+        ] {
+            assert_eq!(origin_host_and_port(origin), None, "{origin}");
+        }
+    }
+
+    /// Goal: no listener, no host match. Method: an empty port list refuses even the
+    /// daemon's usual origin, while an exact origin still passes.
+    #[test]
+    fn test_origin_without_listener_ports_needs_an_exact_origin() {
+        let hosts = default_allowed_hosts();
+        let exact = vec!["http://localhost:11987".to_string()];
+        assert!(is_origin_allowed("http://localhost:11987", &hosts, &[], &[]).not());
+        assert!(is_origin_allowed(
+            "http://localhost:11987",
+            &hosts,
+            &[],
+            &exact
+        ));
     }
 
     #[test]
     fn test_origin_ipv4_loopback() {
         let hosts = default_allowed_hosts();
-        assert!(is_origin_allowed("http://127.0.0.1:11987", &hosts, &[]));
-        assert!(is_origin_allowed("https://127.0.0.1:11987", &hosts, &[]));
+        assert!(is_origin_allowed(
+            "http://127.0.0.1:11987",
+            &hosts,
+            &DAEMON_PORTS,
+            &[]
+        ));
+        assert!(is_origin_allowed(
+            "https://127.0.0.1:11987",
+            &hosts,
+            &DAEMON_PORTS,
+            &[]
+        ));
     }
 
     #[test]
     fn test_origin_ipv6_loopback() {
         let hosts = default_allowed_hosts();
-        assert!(is_origin_allowed("http://[::1]:11987", &hosts, &[]));
-        assert!(is_origin_allowed("https://[::1]:11987", &hosts, &[]));
+        assert!(is_origin_allowed(
+            "http://[::1]:11987",
+            &hosts,
+            &DAEMON_PORTS,
+            &[]
+        ));
+        assert!(is_origin_allowed(
+            "https://[::1]:11987",
+            &hosts,
+            &DAEMON_PORTS,
+            &[]
+        ));
     }
 
     #[test]
     fn test_origin_bound_ipv4() {
         let mut hosts = default_allowed_hosts();
         hosts.push("192.168.1.100".to_string());
-        assert!(is_origin_allowed("http://192.168.1.100:11987", &hosts, &[]));
+        assert!(is_origin_allowed(
+            "http://192.168.1.100:11987",
+            &hosts,
+            &DAEMON_PORTS,
+            &[]
+        ));
         assert!(is_origin_allowed(
             "https://192.168.1.100:11987",
             &hosts,
+            &DAEMON_PORTS,
             &[]
         ));
     }
@@ -1913,8 +2236,18 @@ mod tests {
     fn test_origin_bound_ipv6() {
         let mut hosts = default_allowed_hosts();
         hosts.push("[fe80::1]".to_string());
-        assert!(is_origin_allowed("http://[fe80::1]:11987", &hosts, &[]));
-        assert!(is_origin_allowed("https://[fe80::1]:11987", &hosts, &[]));
+        assert!(is_origin_allowed(
+            "http://[fe80::1]:11987",
+            &hosts,
+            &DAEMON_PORTS,
+            &[]
+        ));
+        assert!(is_origin_allowed(
+            "https://[fe80::1]:11987",
+            &hosts,
+            &DAEMON_PORTS,
+            &[]
+        ));
     }
 
     #[test]
@@ -1924,6 +2257,7 @@ mod tests {
         assert!(is_origin_allowed(
             "https://coolercontrol.example.com",
             &hosts,
+            &DAEMON_PORTS,
             &exact
         ));
     }
@@ -1935,6 +2269,7 @@ mod tests {
         assert!(is_origin_allowed(
             "https://coolercontrol.example.com:8443",
             &hosts,
+            &DAEMON_PORTS,
             &exact
         ));
     }
@@ -1944,63 +2279,63 @@ mod tests {
         let hosts = default_allowed_hosts();
         let exact = vec!["https://coolercontrol.example.com".to_string()];
         // Different port should not match exact origin
-        assert!(!is_origin_allowed(
+        assert!(is_origin_allowed(
             "https://coolercontrol.example.com:8443",
             &hosts,
+            &DAEMON_PORTS,
             &exact
-        ));
+        )
+        .not());
     }
 
     #[test]
     fn test_origin_rejects_evil_localhost_subdomain() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed(
-            "https://localhost.evil.com:443",
-            &hosts,
-            &[]
-        ));
+        assert!(
+            is_origin_allowed("https://localhost.evil.com:443", &hosts, &DAEMON_PORTS, &[]).not()
+        );
     }
 
     #[test]
     fn test_origin_rejects_evil_with_localhost_path() {
         let hosts = default_allowed_hosts();
         // This was vulnerable with contains() matching
-        assert!(!is_origin_allowed(
+        assert!(is_origin_allowed(
             "https://evil.com//localhost:fake",
             &hosts,
+            &DAEMON_PORTS,
             &[]
-        ));
+        )
+        .not());
     }
 
     #[test]
     fn test_origin_rejects_lookalike_ip() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed(
-            "https://127.0.0.1.evil.com:443",
-            &hosts,
-            &[]
-        ));
+        assert!(
+            is_origin_allowed("https://127.0.0.1.evil.com:443", &hosts, &DAEMON_PORTS, &[]).not()
+        );
     }
 
     #[test]
     fn test_origin_rejects_arbitrary_domain() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed("https://evil.com:443", &hosts, &[]));
-        assert!(!is_origin_allowed("https://attacker.org", &hosts, &[]));
+        assert!(is_origin_allowed("https://evil.com:443", &hosts, &DAEMON_PORTS, &[]).not());
+        assert!(is_origin_allowed("https://attacker.org", &hosts, &DAEMON_PORTS, &[]).not());
     }
 
     #[test]
     fn test_origin_rejects_invalid_format() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed("not-a-url", &hosts, &[]));
-        assert!(!is_origin_allowed("localhost:11987", &hosts, &[]));
-        assert!(!is_origin_allowed("//localhost:11987", &hosts, &[]));
+        assert!(is_origin_allowed("not-a-url", &hosts, &DAEMON_PORTS, &[]).not());
+        assert!(is_origin_allowed("localhost:11987", &hosts, &DAEMON_PORTS, &[]).not());
+        assert!(is_origin_allowed("//localhost:11987", &hosts, &DAEMON_PORTS, &[]).not());
     }
 
     #[test]
     fn test_origin_rejects_empty() {
         let hosts = default_allowed_hosts();
-        assert!(!is_origin_allowed("", &hosts, &[]));
+        assert!(is_origin_allowed("", &hosts, &DAEMON_PORTS, &[]).not());
     }
 
     #[test]
@@ -2013,10 +2348,16 @@ mod tests {
         assert!(is_origin_allowed(
             "https://coolercontrol.home.lan",
             &hosts,
+            &DAEMON_PORTS,
             &exact
         ));
-        assert!(is_origin_allowed("http://192.168.1.1:8080", &hosts, &exact));
-        assert!(!is_origin_allowed("https://other.com", &hosts, &exact));
+        assert!(is_origin_allowed(
+            "http://192.168.1.1:8080",
+            &hosts,
+            &DAEMON_PORTS,
+            &exact
+        ));
+        assert!(is_origin_allowed("https://other.com", &hosts, &DAEMON_PORTS, &exact).not());
     }
 
     // validate_name_string tests
@@ -2257,7 +2598,8 @@ mod tests {
                 api_router(state, Arc::default()).await,
                 compression,
                 session_layer,
-                cors_layer(None, None, Vec::new()),
+                cors_layer(None, None, Arc::default()),
+                Arc::default(),
             );
             let mut heads = Vec::with_capacity(requests.len());
             for request in requests {
@@ -2269,6 +2611,63 @@ mod tests {
         let heads = crate::sidecar::handle().run(serve).await.unwrap();
         assert_eq!(heads.len(), request_count);
         heads
+    }
+
+    /// Goal: the origin guard sits in the production stack ahead of authentication, and its
+    /// refusal still carries the security headers. Method: `POST /shutdown`, a session-only
+    /// route, with no session, so nothing can shut down. A same-site browser write must be
+    /// refused 403 by the guard, as must a plain HTTP write from another origin; a same-origin
+    /// one and a header-less client must get past it to the session check's 401.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    #[cfg(feature = "gated-tests")]
+    fn the_origin_guard_refuses_before_authentication() {
+        let request = |site: Option<&str>, origin: Option<&str>| {
+            let mut builder = axum::http::Request::post("/shutdown");
+            if let Some(origin) = origin {
+                builder = builder.header(axum::http::header::ORIGIN, origin);
+            }
+            if let Some(site) = site {
+                builder = builder.header("sec-fetch-site", site);
+            }
+            let mut request = builder.body(axum::body::Body::empty()).unwrap();
+            request
+                .extensions_mut()
+                .insert(axum::extract::ConnectInfo(SocketAddr::from((
+                    [127, 0, 0, 1],
+                    40000,
+                ))));
+            request
+        };
+        let other = Some("http://localhost:9090");
+        let requests = vec![
+            request(Some("same-site"), other),
+            request(Some("cross-site"), other),
+            request(None, other),
+            request(Some("same-origin"), other),
+            request(None, None),
+        ];
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = empty_app_state(&cancel_token, main_scope).await;
+                let heads = served_heads(state, None, requests).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+
+                assert_eq!(heads.len(), 5);
+                for refused in &heads[..3] {
+                    assert_eq!(refused.status, StatusCode::FORBIDDEN);
+                    assert_eq!(refused.headers["x-frame-options"], "SAMEORIGIN");
+                }
+                for passed in &heads[3..] {
+                    assert_eq!(passed.status, StatusCode::UNAUTHORIZED);
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
     }
 
     /// A read-only bearer token: the raw value a client sends and the record that accepts it.
@@ -2353,17 +2752,21 @@ mod tests {
     }
 
     /// Goal: the production compression arm of `with_base_layers` compresses API responses
-    /// and leaves the embedded web app alone. Method: the real stack with the API
-    /// compression layer, a deflate offer to an authenticated `/health` and to the `/`
-    /// fallback document. Deflate, since the fallback serves its build-time gzip copies to
-    /// a gzip offer itself.
+    /// and leaves the embedded web app and the plugin lib alone. Method: the real stack with
+    /// the API compression layer, a deflate offer to an authenticated `/health`, to the `/`
+    /// fallback document, and to the plugin lib. Deflate, since the fallback serves its
+    /// build-time gzip copies to a gzip offer itself.
     #[test]
     #[serial_test::serial(modes_file)]
     #[cfg(feature = "gated-tests")]
     fn the_served_stack_compresses_api_responses_only() {
         let (raw_token, stored) = read_only_token();
-        let mut requests = Vec::with_capacity(2);
-        for (path, bearer) in [("/health", true), ("/", false)] {
+        let mut requests = Vec::with_capacity(3);
+        for (path, bearer) in [
+            ("/health", true),
+            ("/", false),
+            ("/plugins/lib/cc-plugin-lib.js", false),
+        ] {
             let mut builder = axum::http::Request::get(path)
                 .header(axum::http::header::ACCEPT_ENCODING, "deflate");
             if bearer {
@@ -2392,7 +2795,7 @@ mod tests {
                 // Stops the actors so the scope can finish.
                 cancel_token.cancel();
 
-                let (api, document) = (&heads[0], &heads[1]);
+                let (api, document, plugin_lib) = (&heads[0], &heads[1], &heads[2]);
                 assert!(api.status.is_success(), "{}", api.status);
                 assert_eq!(api.headers[axum::http::header::CONTENT_ENCODING], "deflate");
                 // Built with or without the UI, the fallback's answer stays uncompressed.
@@ -2400,6 +2803,13 @@ mod tests {
                     .headers
                     .get(axum::http::header::CONTENT_ENCODING)
                     .is_none());
+                // The daemon embeds the plugin lib itself, so it is served in every build.
+                assert_eq!(plugin_lib.status, StatusCode::OK);
+                assert!(plugin_lib
+                    .headers
+                    .get(axum::http::header::CONTENT_ENCODING)
+                    .is_none());
+                assert!(plugin_lib.headers.contains_key(axum::http::header::ETAG));
                 Ok(())
             })
             .await
@@ -2483,7 +2893,8 @@ mod tests {
                 api_router(state, Arc::default()).await,
                 None,
                 session_layer,
-                cors_layer(None, None, Vec::new()),
+                cors_layer(None, None, Arc::default()),
+                Arc::default(),
             );
             for _ in 0..2 {
                 let response = app.clone().oneshot(request()).await.unwrap();

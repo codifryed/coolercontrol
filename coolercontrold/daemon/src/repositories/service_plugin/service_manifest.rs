@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use strum::{Display, EnumString};
 use toml_edit::DocumentMut;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ServiceManifest {
     pub id: String,                // required for all service plugins
     pub service_type: ServiceType, // required for all service plugins
@@ -258,7 +258,7 @@ impl ServiceManifest {
 }
 
 /// Configuration for a plugin's local HTTP proxy.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProxyConfig {
     /// The loopback port the plugin's HTTP server listens on.
     pub port: u16,

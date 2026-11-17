@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
 use zbus::proxy::{Builder as ProxyBuilder, CacheProperties, OwnerChangedStream, PropertyChanged};
-use zbus::zvariant::OwnedValue;
+use zbus::OwnedVariant;
 use zbus::{Connection, Proxy};
 
 /// `power-profiles-daemon` and the `tuned-ppd` shim both publish this interface. The freedesktop
@@ -449,7 +449,7 @@ impl Listener {
             .await;
         // A daemon can change what it offers without restarting.
         let mut profiles_changes = proxy
-            .receive_property_changed::<OwnedValue>(PROFILES_PROPERTY)
+            .receive_property_changed::<OwnedVariant>(PROFILES_PROPERTY)
             .await;
         self.catch_up(observed).await;
         debug_assert!(self.seeded, "Every connect leaves the listener seeded");
@@ -813,10 +813,11 @@ async fn is_served(
         return Ok(false);
     }
     // The interface name matches the bus name for both variants.
+    // Invalid names surface from `build()`.
     let probe: Proxy<'static> = ProxyBuilder::new(connection)
-        .destination(bus_name)?
-        .path(object_path)?
-        .interface(bus_name)?
+        .destination(bus_name)
+        .path(object_path)
+        .interface(bus_name)
         .cache_properties(CacheProperties::No)
         .build()
         .await?;
@@ -830,7 +831,7 @@ async fn is_served(
 /// fatal: the mapping still works, and a client keeps whatever list it had.
 async fn available_profiles(proxy: &Proxy<'static>) -> Option<Vec<String>> {
     let Ok(profiles) = proxy
-        .get_property::<Vec<HashMap<String, OwnedValue>>>(PROFILES_PROPERTY)
+        .get_property::<Vec<HashMap<String, OwnedVariant>>>(PROFILES_PROPERTY)
         .await
     else {
         warn!("Could not read the list of available power profiles.");
@@ -840,7 +841,7 @@ async fn available_profiles(proxy: &Proxy<'static>) -> Option<Vec<String>> {
 }
 
 /// Picks the names out of the `Profiles` array of dicts.
-fn profile_names(profiles: &[HashMap<String, OwnedValue>]) -> Vec<String> {
+fn profile_names(profiles: &[HashMap<String, OwnedVariant>]) -> Vec<String> {
     let names: Vec<String> = profiles
         .iter()
         .filter_map(|entry| entry.get(PROFILE_NAME_KEY))
@@ -1232,10 +1233,10 @@ mod tests {
     /// with one that has no name, one whose name is not a string, and one whose name is blank.
     #[test]
     fn profile_names_are_decoded_and_unusable_entries_skipped() {
-        fn owned(value: zbus::zvariant::Value<'_>) -> OwnedValue {
+        fn owned(value: zbus::Variant<'_>) -> OwnedVariant {
             value.try_to_owned().unwrap()
         }
-        fn named(name: &str) -> HashMap<String, OwnedValue> {
+        fn named(name: &str) -> HashMap<String, OwnedVariant> {
             HashMap::from([
                 (PROFILE_NAME_KEY.to_string(), owned(name.into())),
                 ("Driver".to_string(), owned("placeholder".into())),

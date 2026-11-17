@@ -31,29 +31,31 @@ describe('support wizard taps', () => {
 
     it('stays off until the run completes', async () => {
         const wiz = await load()
-        for (let i = 1; i < 7; i++) {
+        for (let i = 1; i < wiz.TAPS_REQUIRED; i++) {
             expect(wiz.registerLogoTap(START + i * 100)).toBe(false)
             expect(wiz.wizardsActive.value).toBe(false)
         }
-        expect(wiz.registerLogoTap(START + 700)).toBe(true)
+        expect(wiz.registerLogoTap(START + wiz.TAPS_REQUIRED * 100)).toBe(true)
         expect(wiz.wizardsActive.value).toBe(true)
     })
 
     it('drops a run when a tap lands outside the window', async () => {
         const wiz = await load()
-        for (let i = 1; i <= 6; i++) wiz.registerLogoTap(START + i * 100)
-        // Restarts the count at one, so this is the seventh tap by wall clock
-        // but only the first of its run.
-        expect(wiz.registerLogoTap(START + 600 + 1501)).toBe(false)
+        const last = wiz.TAPS_REQUIRED - 1
+        for (let i = 1; i <= last; i++) wiz.registerLogoTap(START + i * 100)
+        // Restarts the count at one, so this completes the run by wall clock
+        // but is only the first tap of its own.
+        expect(wiz.registerLogoTap(START + last * 100 + 1501)).toBe(false)
         expect(wiz.wizardsActive.value).toBe(false)
     })
 
     it('turns back off on a second run, silently', async () => {
         const wiz = await load()
-        for (let i = 1; i <= 7; i++) wiz.registerLogoTap(START + i * 100)
+        const run = wiz.TAPS_REQUIRED * 100
+        for (let i = 1; i <= wiz.TAPS_REQUIRED; i++) wiz.registerLogoTap(START + i * 100)
         expect(wiz.wizardsActive.value).toBe(true)
-        for (let i = 1; i <= 6; i++) wiz.registerLogoTap(START + 700 + i * 100)
-        expect(wiz.registerLogoTap(START + 1400)).toBe(false)
+        for (let i = 1; i < wiz.TAPS_REQUIRED; i++) wiz.registerLogoTap(START + run + i * 100)
+        expect(wiz.registerLogoTap(START + 2 * run)).toBe(false)
         expect(wiz.wizardsActive.value).toBe(false)
     })
 })

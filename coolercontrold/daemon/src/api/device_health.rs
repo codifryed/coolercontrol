@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::AppState;
+use crate::api::Json;
 use crate::device::health::DeviceHealthDto;
 use axum::extract::State;
-use axum::Json;
 
 /// Retrieves the current device-health snapshot: failsafe channels and missing
 /// temp-source references. Clients fetch this once on startup, then track

@@ -20,16 +20,29 @@ const { t } = useI18n()
 const toast = useToast()
 const deviceStore = useDeviceStore()
 
-const RESET_COMMAND = 'sudo coolercontrold --reset-password'
+const RESET_COMMANDS: ReadonlyArray<{ labelKey: string; command: string }> = [
+    {
+        labelKey: 'components.password.forgotPasswordPackageLabel',
+        command: 'sudo coolercontrold --reset-password',
+    },
+    {
+        labelKey: 'components.password.forgotPasswordDockerLabel',
+        command: 'sudo docker exec coolercontrold coolercontrold --reset-password',
+    },
+    {
+        labelKey: 'components.password.forgotPasswordPodmanLabel',
+        command: 'sudo podman exec coolercontrold coolercontrold --reset-password',
+    },
+]
 const showForgotPasswordHelp: Ref<boolean> = ref(false)
 
 const toggleForgotPasswordHelp = (): void => {
     showForgotPasswordHelp.value = !showForgotPasswordHelp.value
 }
 
-const copyResetCommand = async (): Promise<void> => {
+const copyResetCommand = async (command: string): Promise<void> => {
     try {
-        await navigator.clipboard.writeText(RESET_COMMAND)
+        await navigator.clipboard.writeText(command)
         toast.add({
             severity: 'success',
             summary: t('components.password.forgotPasswordCommandCopied'),
@@ -313,22 +326,30 @@ nextTick(async () => {
                 <p class="text-text-color-secondary text-sm">
                     {{ t('components.password.forgotPasswordHelpIntro') }}
                 </p>
-                <div
-                    class="flex items-center gap-2 bg-bg-two border border-border-one rounded px-2 py-1"
-                >
-                    <code class="flex-1 font-mono text-sm select-all break-all">{{
-                        RESET_COMMAND
-                    }}</code>
-                    <UiButton
-                        variant="ghost"
-                        size="icon"
-                        :aria-label="t('components.password.forgotPasswordCopyCommand')"
-                        v-tooltip.top="t('components.password.forgotPasswordCopyCommand')"
-                        @click="copyResetCommand"
+                <div v-for="reset in RESET_COMMANDS" :key="reset.command">
+                    <p class="text-text-color-secondary text-xs mb-1">
+                        {{ t(reset.labelKey) }}
+                    </p>
+                    <div
+                        class="flex items-center gap-2 bg-bg-two border border-border-one rounded px-2 py-1"
                     >
-                        <svg-icon type="mdi" :path="mdiContentCopy" :size="18" />
-                    </UiButton>
+                        <code class="flex-1 font-mono text-sm select-all break-all">{{
+                            reset.command
+                        }}</code>
+                        <UiButton
+                            variant="ghost"
+                            size="icon"
+                            :aria-label="t('components.password.forgotPasswordCopyCommand')"
+                            v-tooltip.top="t('components.password.forgotPasswordCopyCommand')"
+                            @click="copyResetCommand(reset.command)"
+                        >
+                            <svg-icon type="mdi" :path="mdiContentCopy" :size="18" />
+                        </UiButton>
+                    </div>
                 </div>
+                <p class="text-text-color-secondary text-xs">
+                    {{ t('components.password.forgotPasswordContainerNote') }}
+                </p>
                 <UiButton class="mt-1" @click="reloadAfterReset">
                     {{ t('components.password.forgotPasswordReloadButton') }}
                 </UiButton>

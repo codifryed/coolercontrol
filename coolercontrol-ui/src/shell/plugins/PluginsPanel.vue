@@ -17,7 +17,7 @@ import {
 import { VueDraggable } from 'vue-draggable-plus'
 import { onMounted, ref, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PluginStatus } from '@/models/Plugins.ts'
+import { getPluginStatusTag, PluginStatus, type PluginTagSeverity } from '@/models/Plugins.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { usePluginActions } from '@/composables/usePluginActions.ts'
@@ -33,6 +33,7 @@ const pluginActions = usePluginActions()
 interface PluginRow {
     id: string
     disabled: boolean
+    restart_required: boolean
 }
 
 // Plugins get their own order group; no overlap with device/entity orders.
@@ -44,6 +45,7 @@ watchEffect(() => {
         deviceStore.plugins.map((plugin) => ({
             id: plugin.id,
             disabled: plugin.disabled === true,
+            restart_required: plugin.restart_required === true,
         })),
         (row) => row.id,
     )
@@ -61,17 +63,15 @@ const statusOf = (pluginId: string): PluginStatus | undefined =>
     pluginActions.statuses.value.get(pluginId)?.status
 onMounted(pluginActions.refreshStatuses)
 
-const statusDotClass = (row: PluginRow): string => {
-    if (row.disabled) return 'bg-warning'
-    switch (statusOf(row.id)) {
-        case PluginStatus.Running:
-            return 'bg-success'
-        case PluginStatus.Stopped:
-            return 'bg-error'
-        default:
-            return 'bg-text-color-secondary'
-    }
+// Same colors as the state tag on the plugin pages.
+const dotClasses: Record<PluginTagSeverity, string> = {
+    success: 'bg-success',
+    danger: 'bg-error',
+    warn: 'bg-warning',
+    secondary: 'bg-text-color-secondary',
 }
+const statusDotClass = (row: PluginRow): string =>
+    dotClasses[getPluginStatusTag(row, statusOf(row.id) ?? PluginStatus.Unmanaged).severity]
 
 const busy = ref<Set<string>>(new Set())
 const runAction = async (
@@ -158,7 +158,8 @@ const isRouteActive = useRouteActive()
                 <div
                     class="ml-auto hidden items-center gap-0.5 pr-1 group-hover:flex group-has-[:focus-visible]:flex"
                 >
-                    <template v-if="!plugin.disabled">
+                    <!-- A plugin awaiting a daemon restart reports Stopped, but has nothing to start. -->
+                    <template v-if="!plugin.disabled && !plugin.restart_required">
                         <button
                             v-if="statusOf(plugin.id) === PluginStatus.Stopped"
                             type="button"

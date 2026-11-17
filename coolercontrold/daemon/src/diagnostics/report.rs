@@ -13,8 +13,8 @@
 
 use crate::device::{ChannelName, Device, DeviceInfo, DeviceType};
 use crate::diagnostics::support::{
-    self, ChannelExclusion, ChannelVerdict, DetectedChipRef, HiddenHardware, HwmonExclusion,
-    ProbeEnvironment, SystemFinding, SystemInfo,
+    ChannelExclusion, ChannelVerdict, HardwareSupportController, HiddenHardware, HwmonExclusion,
+    SystemFinding, SystemInfo,
 };
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -193,7 +193,15 @@ pub async fn generate(
     write_probe_summary(&mut report, detection, full, cc_detect::DETECTION_SUPPORTED);
     write_fan_summary(&mut report, &devices, budget).await;
     write_device_sections(&mut report, devices_other);
-    write_findings(&mut report, detection, cc_detect::DETECTION_SUPPORTED);
+    let findings =
+        HardwareSupportController::compute_findings(detection, cc_detect::DETECTION_SUPPORTED)
+            .await;
+    write_findings(
+        &mut report,
+        detection,
+        cc_detect::DETECTION_SUPPORTED,
+        findings.as_deref(),
+    );
     if full {
         write_full_tree(&mut report, &devices, budget).await;
         return report;
@@ -218,7 +226,7 @@ fn write_header(report: &mut String, system_info: &SystemInfo) {
     let _ = writeln!(
         report,
         "Kernel   {} ({})",
-        sysinfo::System::kernel_version().unwrap_or_else(|| "unknown".to_string()),
+        sysinfo::System::kernel_version().unwrap_or_else(|_| "unknown".to_string()),
         sysinfo::System::cpu_arch()
     );
 }
@@ -260,6 +268,13 @@ fn write_probe_summary(
         if full {
             let _ = writeln!(report, "           base address {}", chip.base_address);
         }
+    }
+    for probed in &detection.kernel_probed {
+        let _ = writeln!(
+            report,
+            "         no probe -> {} ({})",
+            probed.driver, probed.module_status
+        );
     }
 }
 
@@ -496,56 +511,33 @@ fn write_device_section(
 }
 
 /// See `write_probe_summary` for why `detection_supported` is a parameter.
+/// `findings` come from `HardwareSupportController::compute_findings` for the same `detection`.
 fn write_findings(
     report: &mut String,
     detection: Option<&cc_detect::DetectionResults>,
     detection_supported: bool,
+    findings: Option<&[SystemFinding]>,
 ) {
     let _ = writeln!(report, "\nSystem findings");
     if detection_supported.not() {
         let _ = writeln!(report, "  detection unsupported on this architecture");
         return;
     }
-    let Some(detection) = detection else {
+    if detection.is_none() {
         let _ = writeln!(report, "  not determined (detection disabled)");
         return;
+    }
+    let Some(findings) = findings else {
+        let _ = writeln!(report, "  not determined (findings could not be derived)");
+        return;
     };
-    let findings = derive_findings(detection, detection_supported);
     if findings.is_empty() {
         let _ = writeln!(report, "  none");
         return;
     }
-    for finding in &findings {
+    for finding in findings {
         let _ = writeln!(report, "  {}", finding_label(finding));
     }
-}
-
-/// See `write_probe_summary` for why `detection_supported` is a parameter.
-fn derive_findings(
-    detection: &cc_detect::DetectionResults,
-    detection_supported: bool,
-) -> Vec<SystemFinding> {
-    let bound_drivers = support::resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
-    let chips = detection
-        .detected_chips
-        .iter()
-        .map(|chip| DetectedChipRef {
-            name: &chip.name,
-            driver: &chip.driver,
-        })
-        .collect::<Vec<_>>();
-    let environment = ProbeEnvironment {
-        is_container: detection.environment.is_container,
-        is_secure_boot: detection.environment.is_secure_boot,
-        has_dev_port: detection.environment.has_dev_port,
-    };
-    support::derive_system_findings(
-        detection_supported,
-        &chips,
-        &detection.blacklisted,
-        &environment,
-        &bound_drivers,
-    )
 }
 
 async fn write_full_tree(report: &mut String, devices: &[ReportDevice], budget: ReadBudget) {
@@ -1061,6 +1053,9 @@ fn finding_label(finding: &SystemFinding) -> String {
             "{chip_name}: detected, but no loaded driver serves it (expected {expected_driver})"
         ),
         SystemFinding::Blacklisted { driver } => format!("{driver}: blacklisted, not loaded"),
+        SystemFinding::SignatureRejected { driver } => {
+            format!("{driver}: installed, module signature rejected by the kernel")
+        }
         SystemFinding::BlockedByEnvironment { reason } => {
             format!("Super-I/O probe blocked: {reason:?}")
         }
@@ -1530,6 +1525,29 @@ mod tests {
         assert_eq!(report.matches("no devices").count(), 3, "{report}");
     }
 
+    /// Goal: a driver loaded without a probe shows up with its outcome, so a
+    /// locked-down report explains why a chip appeared or did not. Method: a
+    /// Secure Boot run with one attempt, read from the compact summary.
+    #[test]
+    fn kernel_probed_drivers_are_listed() {
+        let mut detection = cc_detect::DetectionResults::empty(cc_detect::EnvironmentInfo {
+            is_container: false,
+            is_secure_boot: true,
+            has_dev_port: true,
+        });
+        detection.kernel_probed.push(cc_detect::KernelProbedDriver {
+            driver: "nct6687".to_string(),
+            module_status: "signature_rejected".to_string(),
+        });
+        let mut report = String::new();
+        write_probe_summary(&mut report, Some(&detection), false, true);
+        assert!(report.contains("Secure Boot on"), "{report}");
+        assert!(
+            report.contains("no probe -> nct6687 (signature_rejected)"),
+            "{report}"
+        );
+    }
+
     /// Goal: a chip line carries the address and device id, matching the
     /// startup detection log, so a pasted report and a pasted log can be lined
     /// up against each other. Base address is detail for `--full` only, to keep
@@ -1547,6 +1565,8 @@ mod tests {
                 module_status: "already_loaded".to_string(),
             }],
             blacklisted: Vec::new(),
+            signature_rejected: Vec::new(),
+            kernel_probed: Vec::new(),
             environment: cc_detect::EnvironmentInfo {
                 is_container: false,
                 is_secure_boot: false,
@@ -1820,9 +1840,33 @@ mod tests {
         write_probe_summary(&mut report, None, false, true);
         assert!(report.contains("skipped"));
         let mut findings = String::new();
-        write_findings(&mut findings, None, true);
+        write_findings(&mut findings, None, true, None);
         assert!(findings.contains("not determined"));
         assert!(findings.contains("Secure Boot").not());
+    }
+
+    /// Goal: when detection ran but its findings could not be derived, the
+    /// report says so rather than claiming there are no findings. An empty
+    /// finding list is the only case that prints "none".
+    #[test]
+    fn unreadable_machine_facts_are_not_reported_as_none() {
+        let detection = cc_detect::DetectionResults::empty(cc_detect::EnvironmentInfo {
+            is_container: false,
+            is_secure_boot: false,
+            has_dev_port: true,
+        });
+        let mut unreadable = String::new();
+        write_findings(&mut unreadable, Some(&detection), true, None);
+        assert!(
+            unreadable.contains("not determined (findings could not be derived)"),
+            "{unreadable}"
+        );
+        assert!(unreadable.contains("  none").not(), "{unreadable}");
+
+        let mut empty = String::new();
+        write_findings(&mut empty, Some(&detection), true, Some(&[]));
+        assert!(empty.contains("  none"), "{empty}");
+        assert!(empty.contains("not determined").not(), "{empty}");
     }
 
     /// Goal: a fresh budget hands a device its own cap, not the whole report's.
@@ -1982,7 +2026,7 @@ mod tests {
         assert!(report.contains("skipped").not());
 
         let mut findings = String::new();
-        write_findings(&mut findings, None, false);
+        write_findings(&mut findings, None, false, None);
         assert!(findings.contains("detection unsupported on this architecture"));
         assert!(findings.contains("Secure Boot").not());
         assert!(findings.contains("not determined").not());

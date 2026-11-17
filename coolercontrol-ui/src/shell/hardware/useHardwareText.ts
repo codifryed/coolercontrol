@@ -32,6 +32,8 @@ export function useHardwareText() {
                 return t('views.appInfo.findingNoDriverBound')
             case SystemFindingKind.Blacklisted:
                 return t('views.appInfo.findingBlacklisted')
+            case SystemFindingKind.SignatureRejected:
+                return t('views.appInfo.findingSignatureRejected')
             case SystemFindingKind.BlockedByEnvironment:
                 return blockerDetail(finding.reason)
             default:

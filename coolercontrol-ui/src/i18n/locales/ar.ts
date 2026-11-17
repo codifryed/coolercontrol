@@ -496,7 +496,9 @@ export default {
                 'توسع الإضافات CoolerControl بدعم إضافي للأجهزة والتكاملات والأتمتة. يمكنها توفير مستشعرات وعناصر تحكم جديدة للأجهزة، والاتصال بالخدمات الخارجية، أو إضافة صفحات واجهة مخصصة.',
             findPlugins: 'البحث عن الإضافات وتثبيتها',
             restartNote:
-                'تظهر الإضافة المضافة حديثًا هنا عند فتح هذه الصفحة. تحتاج إضافة الأجهزة أيضًا إلى إعادة تشغيل خدمة CoolerControl قبل تحميل أجهزتها.',
+                'تكتشف إعادة الفحص، أو فتح هذه الصفحة، الإضافات المضافة حديثًا وتغييرات ملف البيان. تسري تغييرات إضافة الأجهزة بعد إعادة تشغيل خدمة CoolerControl.',
+            restartRequiredBanner: 'أعد تشغيل الخدمة لتطبيق تغييرات هذه الإضافات: {plugins}',
+            rescan: 'إعادة فحص الإضافات',
             containerNote:
                 'عند تشغيل CoolerControl في حاوية، يجب وضع الإضافات في المجلد المشترك الافتراضي المستمر حتى تبقى بعد إعادة تشغيل الحاوية.',
             installedPlugins: 'الإضافات المثبتة',
@@ -511,10 +513,6 @@ export default {
             pluginEnabledRestart: 'تم تفعيل الإضافة. أعد تشغيل الخدمة للتطبيق.',
             disableFailed: 'فشل في تعطيل الإضافة',
             enableFailed: 'فشل في تفعيل الإضافة',
-            reloadManifest: 'إعادة تحميل ملف البيان',
-            manifestReloaded: 'تمت إعادة تحميل ملف البيان.',
-            manifestValidRestart: 'ملف البيان صالح. أعد تشغيل الخدمة للتطبيق.',
-            reloadFailed: 'فشل في إعادة تحميل ملف البيان',
             serviceLogs: 'سجلات الخدمة',
             commandCopied: 'تم نسخ الأمر إلى الحافظة',
             openLinkHeader: 'فتح رابط خارجي؟',
@@ -675,6 +673,8 @@ export default {
             hardwareReportCopied: 'تم النسخ',
             findingNoDriverBound: 'تم اكتشاف شريحة، لكن لا يوجد برنامج تشغيل محمَّل يخدمها.',
             findingBlacklisted: 'برنامج التشغيل هذا محظور ولم يتم تحميله.',
+            findingSignatureRejected:
+                'برنامج التشغيل هذا مثبّت، لكن النواة رفضت توقيع الوحدة الخاص به، لذا لم يتم تحميله.',
             findingBlockedByEnvironment: 'تعذّر تشغيل اكتشاف الأجهزة في هذه البيئة.',
             findingBlockedBySecureBoot: 'تعذّر تشغيل اكتشاف الأجهزة لأن الإقلاع الآمن مُفعّل.',
             findingBlockedByContainer: 'تعذّر تشغيل اكتشاف الأجهزة داخل حاوية.',
@@ -1012,7 +1012,12 @@ export default {
         password: {
             forgotPassword: 'هل نسيت كلمة المرور؟',
             forgotPasswordHelpIntro:
-                'قم بتشغيل هذا الأمر في الطرفية كمستخدم جذر، ثم انقر على إعادة تحميل واجهة المستخدم:',
+                'قم بتشغيل الأمر المناسب لطريقة التثبيت في الطرفية، ثم انقر على إعادة تحميل واجهة المستخدم:',
+            forgotPasswordPackageLabel: 'الحزمة المثبتة',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman',
+            forgotPasswordContainerNote:
+                'في Docker أو Podman، استخدم اسم الحاوية الخاصة بك إذا لم يكن coolercontrold.',
             forgotPasswordCopyCommand: 'نسخ الأمر',
             forgotPasswordCommandCopied: 'تم نسخ الأمر إلى الحافظة',
             forgotPasswordReloadButton: 'إعادة تحميل واجهة المستخدم',
@@ -1737,6 +1742,7 @@ export default {
             stopped: 'متوقف',
             unmanaged: 'غير مُدار',
             disabled: 'معطّل',
+            restartRequired: 'يلزم إعادة التشغيل',
         },
         deviceType: {
             customSensors: 'مستشعرات مخصصة',

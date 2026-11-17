@@ -86,17 +86,6 @@ export function usePluginActions() {
             'layout.plugins.restartFailed',
         )
 
-    // A device plugin's manifest is only checked: its devices load when the daemon starts.
-    const reloadPlugin = (pluginId: string, isDevicePlugin: boolean): Promise<void> =>
-        runAction(
-            (id) => deviceStore.daemonClient.reloadPlugin(id),
-            pluginId,
-            isDevicePlugin
-                ? 'layout.plugins.manifestValidRestart'
-                : 'layout.plugins.manifestReloaded',
-            'layout.plugins.reloadFailed',
-        )
-
     // A device plugin is only loaded or dropped when the daemon restarts.
     const enablePlugin = (pluginId: string, isDevicePlugin: boolean): Promise<void> =>
         runAction(
@@ -124,7 +113,6 @@ export function usePluginActions() {
         startPlugin,
         stopPlugin,
         restartPlugin,
-        reloadPlugin,
         enablePlugin,
         disablePlugin,
     }

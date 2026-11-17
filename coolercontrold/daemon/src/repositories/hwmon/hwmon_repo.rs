@@ -812,7 +812,7 @@ impl HwmonRepo {
                 driver_info: DriverInfo {
                     drv_type: DriverType::Kernel,
                     name: devices::get_device_driver_name(&driver.path),
-                    version: sysinfo::System::kernel_version(),
+                    version: sysinfo::System::kernel_version().ok(),
                     locations: Self::get_driver_locations(&driver.path, identity).await,
                 },
                 ..Default::default()

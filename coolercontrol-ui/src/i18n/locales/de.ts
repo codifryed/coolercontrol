@@ -510,7 +510,10 @@ export default {
                 'Plugins erweitern CoolerControl um zusätzliche Geräteunterstützung, Integrationen und Automatisierung. Sie können neue Gerätesensoren und -steuerungen bereitstellen, sich mit externen Diensten verbinden oder benutzerdefinierte UI-Seiten hinzufügen.',
             findPlugins: 'Plugins finden und installieren',
             restartNote:
-                'Ein neu hinzugefügtes Plugin erscheint hier, sobald diese Seite geöffnet wird. Ein Geräte-Plugin benötigt zusätzlich einen Neustart des CoolerControl-Daemons, bevor seine Geräte geladen werden.',
+                'Erneutes Suchen oder das Öffnen dieser Seite erkennt neu hinzugefügte Plugins und Manifeständerungen. Änderungen an einem Geräte-Plugin werden erst nach einem Neustart des CoolerControl-Daemons wirksam.',
+            restartRequiredBanner:
+                'Starten Sie den Daemon neu, um die Änderungen dieser Plugins zu übernehmen: {plugins}',
+            rescan: 'Plugins erneut suchen',
             containerNote:
                 'Wenn CoolerControl in einem Container ausgeführt wird, müssen Plugins im persistierten virtuellen freigegebenen Ordner abgelegt werden, damit sie Container-Neustarts überstehen.',
             installedPlugins: 'Installierte Plugins',
@@ -525,10 +528,6 @@ export default {
             pluginEnabledRestart: 'Plugin aktiviert. Daemon neu starten, um anzuwenden.',
             disableFailed: 'Plugin konnte nicht deaktiviert werden',
             enableFailed: 'Plugin konnte nicht aktiviert werden',
-            reloadManifest: 'Manifest neu laden',
-            manifestReloaded: 'Manifest neu geladen.',
-            manifestValidRestart: 'Manifest ist gültig. Daemon neu starten, um anzuwenden.',
-            reloadFailed: 'Manifest konnte nicht neu geladen werden',
             serviceLogs: 'Dienst-Protokolle',
             commandCopied: 'Befehl in die Zwischenablage kopiert',
             openLinkHeader: 'Externen Link öffnen?',
@@ -697,6 +696,8 @@ export default {
             findingNoDriverBound:
                 'Ein Chip wurde erkannt, aber kein geladener Treiber bedient ihn.',
             findingBlacklisted: 'Dieser Treiber steht auf der Blockliste und wurde nicht geladen.',
+            findingSignatureRejected:
+                'Dieser Treiber ist installiert, aber der Kernel hat seine Modulsignatur abgelehnt, daher wurde er nicht geladen.',
             findingBlockedByEnvironment:
                 'Die Hardware-Erkennung konnte in dieser Umgebung nicht ausgeführt werden.',
             findingBlockedBySecureBoot:
@@ -1049,7 +1050,12 @@ export default {
         password: {
             forgotPassword: 'Passwort vergessen?',
             forgotPasswordHelpIntro:
-                'Führen Sie diesen Befehl als Root im Terminal aus und klicken Sie dann auf "UI neu laden":',
+                'Führen Sie den Befehl für Ihre Installation in einem Terminal aus und klicken Sie dann auf "UI neu laden":',
+            forgotPasswordPackageLabel: 'Installiertes Paket',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman',
+            forgotPasswordContainerNote:
+                'Bei Docker oder Podman verwenden Sie den Namen Ihres Containers, falls er nicht coolercontrold lautet.',
             forgotPasswordCopyCommand: 'Befehl kopieren',
             forgotPasswordCommandCopied: 'Befehl in die Zwischenablage kopiert',
             forgotPasswordReloadButton: 'UI neu laden',
@@ -1796,6 +1802,7 @@ export default {
             stopped: 'Gestoppt',
             unmanaged: 'Nicht verwaltet',
             disabled: 'Deaktiviert',
+            restartRequired: 'Neustart erforderlich',
         },
         deviceType: {
             customSensors: 'Benutzerdefinierte Sensoren',

@@ -51,9 +51,12 @@ impl ApiActor<HealthMessage> for HealthActor {
                 respond_to,
             } => {
                 let response = async {
-                    let (pid, sys_info) =
-                        own_process(sysinfo::ProcessRefreshKind::nothing().with_memory());
-                    let daemon_process = sys_info.process(pid);
+                    let own = own_process(sysinfo::ProcessRefreshKind::nothing().with_memory());
+                    // A System that cannot be built reads as a missing process: the defaults.
+                    let daemon_process = own
+                        .as_ref()
+                        .ok()
+                        .and_then(|(pid, sys_info)| sys_info.process(*pid));
                     let status =
                         daemon_process.map_or_else(|| "UP".to_string(), |p| p.status().to_string());
                     let uptime = daemon_process.map_or_else(
@@ -80,7 +83,7 @@ impl ApiActor<HealthMessage> for HealthActor {
                         details: HealthDetails {
                             uptime,
                             version,
-                            pid: pid.as_u32(),
+                            pid: std::process::id(),
                             memory_mb,
                             warnings,
                             errors,
@@ -146,26 +149,31 @@ impl HealthHandle {
 
 /// Refreshes only the daemon's own process. A `System` built with a process refresh reads
 /// every process and thread on the host instead.
-pub fn own_process(refresh_kind: sysinfo::ProcessRefreshKind) -> (sysinfo::Pid, sysinfo::System) {
+pub fn own_process(
+    refresh_kind: sysinfo::ProcessRefreshKind,
+) -> Result<(sysinfo::Pid, sysinfo::System), sysinfo::Error> {
     let pid = sysinfo::Pid::from_u32(std::process::id());
-    let mut system = sysinfo::System::new();
+    let mut system = sysinfo::System::new()?;
     system.refresh_processes_specifics(
         sysinfo::ProcessesToUpdate::Some(&[pid]),
         false,
         refresh_kind.without_tasks(),
     );
-    (pid, system)
+    Ok((pid, system))
 }
 
 #[cfg(all(test, feature = "gated-tests"))]
 mod tests {
     use super::*;
 
-    /// Goal: a health check reads one process, not the whole host. Method: the refreshed
-    /// process table holds only the daemon, with its memory filled in.
+    /// Goal: a health check reads one process, not the whole host, and it is the PID the check
+    /// reports. Method: the refreshed process table holds only the daemon, with its memory
+    /// filled in.
     #[test]
     fn own_process_refreshes_only_this_process() {
-        let (pid, system) = own_process(sysinfo::ProcessRefreshKind::nothing().with_memory());
+        let (pid, system) =
+            own_process(sysinfo::ProcessRefreshKind::nothing().with_memory()).unwrap();
+        assert_eq!(pid.as_u32(), std::process::id());
         assert_eq!(system.processes().len(), 1);
         let process = system.process(pid).expect("own process refreshed");
         assert!(process.memory() > 0);

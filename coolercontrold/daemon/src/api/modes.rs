@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::api::Json;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::UID;
 use crate::modes::Mode;
 use crate::setting::Setting;
 use axum::extract::Path;
 use axum::extract::State;
-use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

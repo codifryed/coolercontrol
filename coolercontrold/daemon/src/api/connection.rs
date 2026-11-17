@@ -638,7 +638,7 @@ impl<S: AsyncWrite> AsyncWrite for GuardedStream<S> {
 mod tests {
     use super::*;
     #[cfg(feature = "gated-tests")]
-    use crate::api::dual_protocol::DualProtocolAcceptor;
+    use crate::api::dual_protocol::{DualProtocolAcceptor, Protocol};
     #[cfg(feature = "gated-tests")]
     use crate::grpc_api;
     use axum::body::Body;
@@ -652,11 +652,15 @@ mod tests {
     #[cfg(feature = "gated-tests")]
     use nix::sys::socket::getsockopt;
     #[cfg(feature = "gated-tests")]
+    use rustls::pki_types::{CertificateDer, ServerName};
+    #[cfg(feature = "gated-tests")]
     use std::net::Ipv6Addr;
     #[cfg(feature = "gated-tests")]
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     #[cfg(feature = "gated-tests")]
     use tokio::time::timeout;
+    #[cfg(feature = "gated-tests")]
+    use tokio_rustls::TlsConnector;
     #[cfg(feature = "gated-tests")]
     use tonic_health::pb::health_client::HealthClient;
     #[cfg(feature = "gated-tests")]
@@ -816,9 +820,11 @@ mod tests {
     }
 
     /// Serves `router` behind TLS, the way `create_api_server` does when TLS is enabled.
+    /// Returns the address and the self-signed certificate, for a client to trust.
     #[cfg(feature = "gated-tests")]
-    async fn serve_tls(router: Router) -> SocketAddr {
+    async fn serve_tls(router: Router) -> (SocketAddr, CertificateDer<'static>) {
         let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let certificate = certified.cert.der().clone();
         let config = RustlsConfig::from_pem(
             certified.cert.pem().into_bytes(),
             certified.signing_key.serialize_pem().into_bytes(),
@@ -837,7 +843,7 @@ mod tests {
                 .await
                 .unwrap();
         });
-        address
+        (address, certificate)
     }
 
     /// Writes `bytes`, then waits for the server to close the connection.
@@ -942,7 +948,56 @@ mod tests {
     #[tokio::test]
     #[cfg(feature = "gated-tests")]
     async fn silent_tls_connection_is_closed() {
-        closed_after(serve_tls(app()).await, b"").await;
+        closed_after(serve_tls(app()).await.0, b"").await;
+    }
+
+    /// Goal: the dual-protocol port serves both TLS and plain HTTP, tagging each request
+    /// with its protocol. The TLS acceptor wraps the service it is given, so the two take
+    /// different service types. Method: one HTTPS and one loopback HTTP request to a route
+    /// that echoes the tag.
+    #[tokio::test]
+    #[cfg(feature = "gated-tests")]
+    async fn dual_protocol_port_tags_tls_and_plain_requests() {
+        let router = Router::new().route(
+            "/protocol",
+            get(|Extension(protocol): Extension<Protocol>| async move { format!("{protocol:?}") }),
+        );
+        let (address, certificate) = serve_tls(router).await;
+        let request = b"GET /protocol HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(certificate).unwrap();
+        let client = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        let tcp = TcpStream::connect(address).await.unwrap();
+        let server_name = ServerName::try_from("localhost").unwrap();
+        let mut tls = TlsConnector::from(Arc::new(client))
+            .connect(server_name, tcp)
+            .await
+            .unwrap();
+        tls.write_all(request).await.unwrap();
+        let tls_response = read_response(&mut tls).await;
+
+        let mut plain = TcpStream::connect(address).await.unwrap();
+        plain.write_all(request).await.unwrap();
+        let plain_response = read_response(&mut plain).await;
+
+        assert!(tls_response.starts_with("HTTP/1.1 200"));
+        assert!(tls_response.ends_with("Https"));
+        assert!(plain_response.starts_with("HTTP/1.1 200"));
+        assert!(plain_response.ends_with("Http"));
+    }
+
+    /// Reads a `Connection: close` response to its end. A missing TLS close_notify is not an
+    /// error here: the server has already sent everything.
+    #[cfg(feature = "gated-tests")]
+    async fn read_response(stream: &mut (impl AsyncRead + Unpin)) -> String {
+        let mut received = Vec::new();
+        let _ = timeout(NEVER, stream.read_to_end(&mut received))
+            .await
+            .expect("the response must end");
+        String::from_utf8(received).unwrap()
     }
 
     /// Goal: the guard lets a real HTTP/2 client through: gRPC over h2c prior knowledge, whose

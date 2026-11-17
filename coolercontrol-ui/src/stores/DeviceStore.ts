@@ -198,7 +198,8 @@ export const useDeviceStore = defineStore('device', () => {
                 script.async = false
                 document.head.appendChild(script)
             }
-            loadScript('qrc:///qtwebchannel/qwebchannel.js', (): void => {
+            // Served by the daemon: Qt WebEngine 6.140+ blocks remote pages from loading qrc.
+            loadScript('/qwebchannel.js', (): void => {
                 // @ts-ignore
                 new QWebChannel(qt.webChannelTransport, async function (channel: any) {
                     // @ts-ignore

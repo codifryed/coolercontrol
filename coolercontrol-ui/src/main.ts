@@ -12,8 +12,6 @@ import App from './App.vue'
 import router from './router'
 import i18n from './i18n'
 
-import VueFullscreen from 'vue-fullscreen'
-
 import { tooltipDirective } from '@/shell/tooltipDirective.ts'
 import mitt from 'mitt'
 
@@ -37,7 +35,6 @@ app.provide('startedAtRoot', ['', '#', '#/'].includes(window.location.hash))
 app.use(createPinia())
 app.use(router)
 app.use(i18n)
-app.use(VueFullscreen)
 
 app.directive('tooltip', tooltipDirective)
 

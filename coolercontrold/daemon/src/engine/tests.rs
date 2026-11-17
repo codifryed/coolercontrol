@@ -15,7 +15,9 @@ mod engine_tests {
         DeviceUID, Duty, SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus, UID,
     };
     use crate::engine::main::Engine;
-    use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
+    use crate::repositories::repository::{
+        DeviceList, DeviceLock, Repositories, Repository, StubRepo,
+    };
     use crate::setting::{
         Function, FunctionKind, FunctionUID, LcdModeKind, LcdSettings, LightingSettings, Profile,
         ProfileKind, ProfileUID, Setting, SettingKind, TempSource,
@@ -585,6 +587,40 @@ mod engine_tests {
             Rc::new(crate::overrides::OverridesController::empty()),
         );
         (engine, cs_uid, hwmon_uid)
+    }
+
+    #[test]
+    #[serial]
+    fn status_history_zeroing_goes_through_each_repository() {
+        // Goal: the engine zeroes histories through each repository's override, so a
+        // repository deriving state from history age (Custom Sensors windows) resets it too.
+        // Method: two stub repositories counting their zeroings, then one engine zeroing.
+        cc_fs::test_runtime(async {
+            let hwmon = Rc::new(StubRepo::new(DeviceType::Hwmon));
+            let custom_sensors = Rc::new(StubRepo::new(DeviceType::CustomSensors));
+            let hwmon_zeroed = Rc::clone(&hwmon.zeroed);
+            let custom_sensors_zeroed = Rc::clone(&custom_sensors.zeroed);
+            let repos = Repositories {
+                hwmon: Some(hwmon),
+                custom_sensors: Some(custom_sensors),
+                ..Default::default()
+            };
+            let engine = Engine::new(
+                Rc::new(HashMap::new()),
+                &Rc::new(repos),
+                Rc::new(Config::init_default_config().unwrap()),
+                Rc::new(crate::calibration::CalibrationStore::empty()),
+                Rc::new(crate::calibration::FanStateMap::new()),
+                Rc::new(crate::overrides::OverridesController::empty()),
+            );
+            assert_eq!(hwmon_zeroed.get(), 0);
+            assert_eq!(custom_sensors_zeroed.get(), 0);
+
+            engine.reinitialize_all_status_histories().await.unwrap();
+
+            assert_eq!(hwmon_zeroed.get(), 1);
+            assert_eq!(custom_sensors_zeroed.get(), 1);
+        });
     }
 
     #[test]

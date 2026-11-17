@@ -23,6 +23,8 @@ export type HardwareNoticeKind = 'blockedByEnvironment' | 'noChannels' | 'noneCo
  * machine whose fans all work has nothing to be told, even if a probe was
  * blocked on the way there. When one is raised, a blocked probe wins the
  * headline because it explains the channel count rather than restating it.
+ * Findings that name a chip or driver keep the count headline, since the
+ * notice lists each of them with its own cause.
  */
 export function hardwareNoticeKind(
     findings: Array<SystemFinding>,
@@ -30,9 +32,8 @@ export function hardwareNoticeKind(
     controllableCount: number,
 ): HardwareNoticeKind | undefined {
     if (channelCount > 0 && controllableCount > 0) return undefined
-    const blocked = actionableFindings(findings).some(
-        (finding) => finding.kind === SystemFindingKind.BlockedByEnvironment,
-    )
-    if (blocked) return 'blockedByEnvironment'
+    const actionable = actionableFindings(findings)
+    const hasKind = (kind: SystemFindingKind) => actionable.some((finding) => finding.kind === kind)
+    if (hasKind(SystemFindingKind.BlockedByEnvironment)) return 'blockedByEnvironment'
     return channelCount === 0 ? 'noChannels' : 'noneControllable'
 }

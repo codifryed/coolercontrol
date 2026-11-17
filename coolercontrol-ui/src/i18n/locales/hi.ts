@@ -500,7 +500,10 @@ export default {
                 'प्लगइन्स CoolerControl को अतिरिक्त डिवाइस समर्थन, एकीकरण और स्वचालन के साथ विस्तारित करते हैं। वे नए डिवाइस सेंसर और नियंत्रण प्रदान कर सकते हैं, बाहरी सेवाओं से जुड़ सकते हैं, या कस्टम UI पृष्ठ जोड़ सकते हैं।',
             findPlugins: 'प्लगइन्स खोजें और इंस्टॉल करें',
             restartNote:
-                'नया जोड़ा गया प्लगइन इस पेज को खोलने पर यहाँ दिखाई देता है। डिवाइस प्लगइन के उपकरण लोड होने से पहले CoolerControl डेमॉन को पुनः आरंभ करना भी आवश्यक है।',
+                'फिर से स्कैन करने या यह पेज खोलने पर नए जोड़े गए प्लगइन्स और मैनिफेस्ट बदलाव मिल जाते हैं। डिवाइस प्लगइन के बदलाव CoolerControl डेमॉन को पुनः आरंभ करने के बाद लागू होते हैं।',
+            restartRequiredBanner:
+                'इन प्लगइन्स के बदलाव लागू करने के लिए डेमॉन को पुनः आरंभ करें: {plugins}',
+            rescan: 'प्लगइन्स फिर से स्कैन करें',
             containerNote:
                 'कंटेनर में CoolerControl चलाते समय, प्लगइन्स को स्थायी वर्चुअल साझा फ़ोल्डर में रखना होगा ताकि वे कंटेनर पुनः आरंभ के बाद भी बने रहें।',
             installedPlugins: 'इंस्टॉल किए गए प्लगइन्स',
@@ -515,10 +518,6 @@ export default {
             pluginEnabledRestart: 'प्लगइन सक्षम किया गया। लागू करने के लिए डेमन पुनः आरंभ करें।',
             disableFailed: 'प्लगइन अक्षम करने में विफल',
             enableFailed: 'प्लगइन सक्षम करने में विफल',
-            reloadManifest: 'मैनिफेस्ट पुनः लोड करें',
-            manifestReloaded: 'मैनिफेस्ट पुनः लोड किया गया।',
-            manifestValidRestart: 'मैनिफेस्ट मान्य है। लागू करने के लिए डेमन पुनः आरंभ करें।',
-            reloadFailed: 'मैनिफेस्ट पुनः लोड करने में विफल',
             serviceLogs: 'सेवा लॉग',
             commandCopied: 'कमांड क्लिपबोर्ड पर कॉपी किया गया',
             openLinkHeader: 'बाहरी लिंक खोलें?',
@@ -680,6 +679,8 @@ export default {
             hardwareReportCopied: 'कॉपी हो गया',
             findingNoDriverBound: 'एक चिप मिली, पर कोई लोड किया गया ड्राइवर उसे नहीं चला रहा।',
             findingBlacklisted: 'यह ड्राइवर ब्लैकलिस्ट में है और लोड नहीं किया गया।',
+            findingSignatureRejected:
+                'यह ड्राइवर इंस्टॉल है, पर कर्नेल ने इसके मॉड्यूल सिग्नेचर को अस्वीकार कर दिया, इसलिए इसे लोड नहीं किया गया।',
             findingBlockedByEnvironment: 'इस परिवेश में हार्डवेयर पहचान नहीं चल सकी।',
             findingBlockedBySecureBoot:
                 'सिक्योर बूट सक्षम होने के कारण हार्डवेयर पहचान नहीं चल सकी।',
@@ -1020,7 +1021,12 @@ export default {
         password: {
             forgotPassword: 'पासवर्ड भूल गए?',
             forgotPasswordHelpIntro:
-                'इस कमांड को टर्मिनल में रूट के रूप में चलाएं, फिर UI रीलोड पर क्लिक करें:',
+                'अपने इंस्टॉलेशन के अनुसार कमांड को टर्मिनल में चलाएं, फिर UI रीलोड पर क्लिक करें:',
+            forgotPasswordPackageLabel: 'इंस्टॉल किया गया पैकेज',
+            forgotPasswordDockerLabel: 'Docker',
+            forgotPasswordPodmanLabel: 'Podman',
+            forgotPasswordContainerNote:
+                'Docker या Podman में, यदि आपके कंटेनर का नाम coolercontrold नहीं है तो उसका नाम उपयोग करें।',
             forgotPasswordCopyCommand: 'कमांड कॉपी करें',
             forgotPasswordCommandCopied: 'कमांड क्लिपबोर्ड पर कॉपी हो गया',
             forgotPasswordReloadButton: 'UI रीलोड',
@@ -1756,6 +1762,7 @@ export default {
             stopped: 'रुका हुआ',
             unmanaged: 'अप्रबंधित',
             disabled: 'अक्षम',
+            restartRequired: 'पुनः आरंभ आवश्यक',
         },
         deviceType: {
             customSensors: 'कस्टम सेंसर',

@@ -1,0 +1,4 @@
+# Responses must document what the daemon sends. See src/api/json.rs.
+disallowed-types = [
+  { path = "axum::Json", reason = "use crate::api::Json so response schemas follow the serialize contract" },
+]

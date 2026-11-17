@@ -7,8 +7,8 @@ use crate::repositories::cpu::CPU_POWER_NAME;
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
 use anyhow::{Context, Result};
+use glob::glob;
 use log::{debug, info, trace};
-use nu_glob::{glob, Uninterruptible};
 use regex::Regex;
 use std::path::{Path, PathBuf};
 
@@ -36,7 +36,7 @@ const PATTERN_RAPL_PACKAGE_NUMBER: &str = r"^package-(?P<number>\d+)$";
 /// IPI to the package.
 pub async fn find_power_cap_paths(io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
     let mut power_cap_devices = Vec::new();
-    let base_paths = glob(GLOB_RAPL_ENERGY_PATH, Uninterruptible)?
+    let base_paths = glob(GLOB_RAPL_ENERGY_PATH)?
         .filter_map(Result::ok)
         .filter(|path| path.is_absolute())
         .map(|path| path.parent().unwrap().to_path_buf())

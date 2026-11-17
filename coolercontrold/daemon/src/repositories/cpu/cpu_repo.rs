@@ -312,7 +312,7 @@ impl CpuRepo {
     /// already has two of.
     async fn any_cpu_on_a_later_die(identity: &IdentityReader) -> Result<bool, Stalled> {
         let pattern = "/sys/devices/system/cpu/cpu[0-9]*/topology/die_id";
-        let Ok(paths) = nu_glob::glob(pattern, nu_glob::Uninterruptible) else {
+        let Ok(paths) = glob::glob(pattern) else {
             return Ok(false);
         };
         for path in paths.filter_map(Result::ok) {
@@ -1084,14 +1084,14 @@ impl CpuRepo {
             DriverInfo {
                 drv_type: DriverType::Kernel,
                 name: apple_silicon::scaling_driver(&driver.io).await,
-                version: sysinfo::System::kernel_version(),
+                version: sysinfo::System::kernel_version().ok(),
                 locations: vec![driver.path.display().to_string()],
             }
         } else {
             DriverInfo {
                 drv_type: DriverType::Kernel,
                 name: devices::get_device_driver_name(&driver.path),
-                version: sysinfo::System::kernel_version(),
+                version: sysinfo::System::kernel_version().ok(),
                 locations: Self::get_driver_locations(&driver.path, identity).await,
             }
         }

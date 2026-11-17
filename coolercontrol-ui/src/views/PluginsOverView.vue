@@ -6,16 +6,26 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiAlertCircleOutline, mdiLinkVariant, mdiPowerPlugOutline } from '@mdi/js'
+import {
+    mdiAlertCircle,
+    mdiAlertCircleOutline,
+    mdiLinkVariant,
+    mdiPowerPlugOutline,
+    mdiRefresh,
+    mdiRestart,
+    mdiViewListOutline,
+} from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
+import UiButton from '@/shell/ui/UiButton.vue'
 import UiTable from '@/shell/ui/UiTable.vue'
 import UiTag from '@/shell/ui/UiTag.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { usePluginActions } from '@/composables/usePluginActions.ts'
+import { useSystemActions } from '@/composables/useSystemActions.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { computed, onMounted, onUnmounted } from 'vue'
-import { getPluginStatusDisplayName, PluginStatus } from '@/models/Plugins.ts'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { getPluginStatusTag, PluginStatus } from '@/models/Plugins.ts'
 
 const STATUS_POLL_INTERVAL_MS = 30_000
 
@@ -23,34 +33,36 @@ const deviceStore = useDeviceStore()
 const router = useRouter()
 const { t } = useI18n()
 const { statuses, refreshStatuses } = usePluginActions()
+const { restartDaemonAndUI } = useSystemActions()
 
 let statusPollTimer: ReturnType<typeof setInterval> | undefined
+const rescanning = ref(false)
 
 const pluginsList = computed(() => {
     return deviceStore.plugins.map((plugin) => ({
         ...plugin,
-        status: statuses.value.get(plugin.id)?.status ?? PluginStatus.Unmanaged,
+        tag: getPluginStatusTag(
+            plugin,
+            statuses.value.get(plugin.id)?.status ?? PluginStatus.Unmanaged,
+        ),
     }))
 })
 
-const statusSeverity = (
-    status: PluginStatus,
-    disabled: boolean,
-): 'success' | 'danger' | 'secondary' | 'warn' => {
-    if (disabled) return 'warn'
-    switch (status) {
-        case PluginStatus.Running:
-            return 'success'
-        case PluginStatus.Stopped:
-            return 'danger'
-        default:
-            return 'secondary'
-    }
-}
+// Plugins whose changes only a daemon restart applies.
+const restartRequiredIds = computed((): string[] =>
+    deviceStore.plugins.filter((plugin) => plugin.restart_required).map((plugin) => plugin.id),
+)
 
-const statusDisplayName = (status: PluginStatus, disabled: boolean): string => {
-    if (disabled) return t('models.pluginStatus.disabled')
-    return getPluginStatusDisplayName(status)
+// The daemon rescans the plugins folder on each plugin list request: new plugins and
+// manifest edits.
+const rescan = async (): Promise<void> => {
+    rescanning.value = true
+    try {
+        await deviceStore.loadAllPlugins()
+        await refreshStatuses()
+    } finally {
+        rescanning.value = false
+    }
 }
 
 const onRowSelect = (plugin: { id: string }) => {
@@ -58,8 +70,7 @@ const onRowSelect = (plugin: { id: string }) => {
 }
 
 onMounted(async () => {
-    await deviceStore.loadAllPlugins()
-    await refreshStatuses()
+    await rescan()
     statusPollTimer = setInterval(refreshStatuses, STATUS_POLL_INTERVAL_MS)
 })
 
@@ -72,13 +83,60 @@ onUnmounted(() => {
 
 <template>
     <div class="flex h-full flex-col">
-        <div class="flex shrink-0 flex-wrap items-center gap-3 px-4 pt-4">
-            <h1 class="text-xl font-semibold text-text-color">
-                {{ t('layout.plugins.overview') }}
-            </h1>
+        <!-- Header toolbar, styled as a plugin page's -->
+        <div class="flex shrink-0 items-center justify-between p-4">
+            <div class="flex items-center gap-3">
+                <svg-icon
+                    type="mdi"
+                    :path="mdiViewListOutline"
+                    :size="deviceStore.getREMSize(1.75)"
+                />
+                <h1 class="text-xl font-semibold text-text-color">
+                    {{ t('layout.plugins.overview') }}
+                </h1>
+            </div>
+            <div class="flex items-center gap-2">
+                <UiButton
+                    v-tooltip.top="t('layout.plugins.rescan')"
+                    :aria-label="t('layout.plugins.rescan')"
+                    variant="solid"
+                    size="icon"
+                    :disabled="rescanning"
+                    @click="rescan"
+                >
+                    <svg-icon
+                        type="mdi"
+                        :class="{ 'animate-spin': rescanning }"
+                        :path="mdiRefresh"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
+                </UiButton>
+            </div>
         </div>
         <ScrollAreaRoot class="min-h-0 flex-1" style="--scrollbar-size: 10px">
-            <ScrollAreaViewport class="p-4 h-full w-full whitespace-normal">
+            <ScrollAreaViewport class="px-4 pb-4 h-full w-full whitespace-normal">
+                <div
+                    v-if="restartRequiredIds.length > 0"
+                    class="flex flex-row flex-wrap items-center gap-3 rounded-lg border border-warning bg-warning/10 p-3 max-w-3xl"
+                >
+                    <svg-icon
+                        type="mdi"
+                        class="text-warning min-w-6"
+                        :path="mdiAlertCircle"
+                        :size="deviceStore.getREMSize(1.25)"
+                    />
+                    <span class="flex-1 min-w-48">
+                        {{
+                            t('layout.plugins.restartRequiredBanner', {
+                                plugins: restartRequiredIds.join(', '),
+                            })
+                        }}
+                    </span>
+                    <UiButton size="sm" @click="restartDaemonAndUI">
+                        <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1)" />
+                        {{ t('layout.topbar.restartDaemonAndUI') }}
+                    </UiButton>
+                </div>
                 <!-- Getting Started -->
                 <div class="mt-8 flex flex-col max-w-3xl">
                     <span class="pb-3 ml-1 font-semibold text-xl text-text-color">
@@ -166,10 +224,7 @@ onUnmounted(() => {
                             <td class="underline">{{ plugin.id }}</td>
                             <td>{{ plugin.service_type }}</td>
                             <td>
-                                <UiTag
-                                    :value="statusDisplayName(plugin.status, plugin.disabled)"
-                                    :severity="statusSeverity(plugin.status, plugin.disabled)"
-                                />
+                                <UiTag :value="plugin.tag.label" :severity="plugin.tag.severity" />
                             </td>
                             <td>{{ plugin.version ?? '-' }}</td>
                             <td>

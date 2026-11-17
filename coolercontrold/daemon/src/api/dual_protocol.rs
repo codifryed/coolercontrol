@@ -24,8 +24,10 @@ use axum::http::{header, Request, Response, StatusCode};
 use axum::middleware::AddExtension;
 use axum::Extension;
 use axum_server::accept::Accept;
+use axum_server::tls::TlsService;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use futures_util::future::BoxFuture;
+use hyper::body::Incoming;
 use log::trace;
 use pin_project_lite::pin_project;
 use std::future::Future;
@@ -70,7 +72,7 @@ where
     S: Send + 'static,
 {
     type Stream = DualProtocolStream<I>;
-    type Service = AddExtension<S, Protocol>;
+    type Service = DualProtocolService<S>;
     type Future = BoxFuture<'static, io::Result<(Self::Stream, Self::Service)>>;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {
@@ -95,16 +97,48 @@ where
                     // Handle TLS connection
                     let (tls_stream, service) = acceptor.accept(peekable, service).await?;
                     // Add protocol extension to service
-                    let service = Extension(Protocol::Https).layer(service);
+                    let service = DualProtocolService::Tls(Extension(protocol).layer(service));
                     Ok((DualProtocolStream::Tls { inner: tls_stream }, service))
                 }
                 Protocol::Http => {
                     // Pass through plain HTTP with protocol extension
-                    let service = Extension(protocol).layer(service);
+                    let service = DualProtocolService::Plain(Extension(protocol).layer(service));
                     Ok((DualProtocolStream::Plain { inner: peekable }, service))
                 }
             }
         })
+    }
+}
+
+/// The service for one connection. The TLS acceptor wraps the service it is given, so each
+/// protocol hands back its own type. Both only add extensions before calling the same inner
+/// service, so they share its future and need no boxing.
+#[derive(Clone)]
+pub enum DualProtocolService<S> {
+    Tls(AddExtension<TlsService<S>, Protocol>),
+    Plain(AddExtension<S, Protocol>),
+}
+
+impl<S> Service<Request<Incoming>> for DualProtocolService<S>
+where
+    S: Service<Request<Incoming>>,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        match self {
+            Self::Tls(service) => service.poll_ready(cx),
+            Self::Plain(service) => service.poll_ready(cx),
+        }
+    }
+
+    fn call(&mut self, request: Request<Incoming>) -> Self::Future {
+        match self {
+            Self::Tls(service) => service.call(request),
+            Self::Plain(service) => service.call(request),
+        }
     }
 }
 

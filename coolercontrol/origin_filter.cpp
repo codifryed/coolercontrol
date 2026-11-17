@@ -11,8 +11,7 @@ namespace {
 /*
   Schemes the engine needs for its own plumbing, none of which reach the network:
 
-    qrc      Qt resources. qwebchannel.js is served this way, and the daemon's own CSP
-             lists qrc: in script-src for exactly that reason.
+    qrc      Qt resources. Older daemon UIs load qwebchannel.js this way.
     data     inline images and fonts, allowed by the daemon's CSP.
     blob     generated in-page, e.g. chart exports.
     about    about:blank, used between loads.

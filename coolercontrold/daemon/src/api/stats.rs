@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::AppState;
+use crate::api::Json;
 use crate::device::{ChannelDataType, ChannelName, ChannelStats, TempName, UID};
 use axum::extract::State;
-use axum::Json;
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::collections::HashMap;
