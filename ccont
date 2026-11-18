@@ -92,6 +92,7 @@ run_container() {
         -e CC_CARGO_BUILD="cargo zigbuild --target ${rust_triple}.${glibc}" \
         -e CC_TARGET_DIR="target/${rust_triple}" \
         -e CC_GLIBC="${glibc}" \
+        -e CC_QT_BUILD_DIR=build-ccont \
         -v coolercontrol-dev-cargo:/root/.cargo \
         -v coolercontrol-dev-npm:/root/.npm \
         -v coolercontrol-dev-trunk:/root/.cache/trunk \
@@ -130,7 +131,7 @@ fi
 
 gui() {
     run_container "${IMAGE}" make build-qt
-    run_container "${IMAGE}" ./coolercontrol/build/coolercontrol
+    run_container "${IMAGE}" ./coolercontrol/build-ccont/coolercontrol
 }
 
 run_make() {
