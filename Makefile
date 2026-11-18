@@ -264,6 +264,7 @@ dev-gui:
 ci-local: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
 
 # pre-PR gate: lints the committed branch diff only, then UI and daemon tests, clippy pedantic, Qt build
+# The release clippy and tests refuse to build without the embedded UI, which a fresh worktree lacks.
 # usage: make pr-check [base=<ref>]
 base ?= main
 pr-check: validate-metadata
@@ -273,6 +274,8 @@ pr-check: validate-metadata
 	@git merge-base $(base) HEAD > /dev/null
 	@git diff -z --name-only --diff-filter=d $(base)...HEAD | xargs -0 -r ./trunk check --ci
 	@$(MAKE) -C $(ui_dir) check
+	@test -f $(daemon_dir)/daemon/resources/app/index.html || \
+		{ $(MAKE) -C $(ui_dir) dev-run && $(MAKE) -C $(daemon_dir) sync-app; }
 	@$(MAKE) -C $(daemon_dir) clippy
 	@$(MAKE) -C $(daemon_dir) clippy-tests
 	@$(MAKE) -C $(daemon_dir) clippy-tests FEATURES="--features gated-tests"
