@@ -13,7 +13,18 @@ set -euo pipefail
 CONTAINER_TOOL="$(command -v podman)"
 # shellcheck disable=SC2312
 DELLOCATION="$(dirname "$(readlink -f "$0")")"
+GIT_COMMON="$(git -C "${DELLOCATION}" rev-parse --path-format=absolute --git-common-dir)"
+# The main checkout; the setup symlink points here so it outlives any worktree.
+MAIN_REPO="$(git -C "${DELLOCATION}" worktree list --porcelain | sed -n '1s/^worktree //p')"
+
+# Build the checkout the caller is in when it is this repository (the main checkout or one of
+# its worktrees); otherwise the one ccont lives in.
 REPO="$(git -C "${DELLOCATION}" rev-parse --show-toplevel)"
+caller_common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+caller_repo="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ ${caller_common} == "${GIT_COMMON}" && -n ${caller_repo} ]]; then
+    REPO="${caller_repo}"
+fi
 
 IMAGE=coolercontrol-dev
 CACHE_VOLUMES="coolercontrol-dev-cargo coolercontrol-dev-npm coolercontrol-dev-trunk"
@@ -58,14 +69,25 @@ run_container() {
         ;;
     esac
 
+    # Git metadata is read-only. trunk opens info/exclude for writing, so info gets a throwaway
+    # overlay: writable, with the real excludes still visible.
+    local git_mounts
+    if [[ -d "${REPO}/.git" ]]; then
+        git_mounts=(-v "${REPO}/.git:/src/.git:ro" -v "${REPO}/.git/info:/src/.git/info:O")
+    else
+        # A worktree's .git file and its gitdir name each other by absolute host path, so the
+        # common dir and the worktree are also mounted at those paths (trunk follows the latter).
+        git_mounts=(-v "${GIT_COMMON}:${GIT_COMMON}:ro" -v "${GIT_COMMON}/info:${GIT_COMMON}/info:O"
+            -v "${REPO}:${REPO}")
+    fi
+
     # Host network: the vite dev server proxies the API to the daemon on host loopback,
     # and the GUI connects to it there.
     # shellcheck disable=SC2086
     ${CONTAINER_TOOL} run --rm --init "${exec_mode}" ${display_args} \
         --network host \
         -v "${REPO}:/src" \
-        -v "${REPO}/.git:/src/.git:ro" \
-        --tmpfs /src/.git/info \
+        "${git_mounts[@]}" \
         -e GIT_OPTIONAL_LOCKS=0 \
         -e CC_CARGO_BUILD="cargo zigbuild --target ${rust_triple}.${glibc}" \
         -e CC_TARGET_DIR="target/${rust_triple}" \
@@ -80,7 +102,7 @@ run_container() {
 
 setup() {
     mkdir -p "${HOME}/.local/bin" &&
-        ln -sfn "${REPO}/ccont" "${HOME}/.local/bin/ccont" &&
+        ln -sfn "${MAIN_REPO}/ccont" "${HOME}/.local/bin/ccont" &&
         echo "ccont symlinked into ${HOME}/.local/bin make sure it's in the path" >&2
 
     ${CONTAINER_TOOL} build --network host --pull -t "${IMAGE}" \
