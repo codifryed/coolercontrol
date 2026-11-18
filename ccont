@@ -44,9 +44,9 @@ display_args=""
 cd "${REPO}"
 
 run_container() {
-    exec_mode=""
-
-    # Check if file descriptor 0 (stdin) is connected to a terminal (i.e. interactive shell)
+    # Always forward stdin so piped input reaches the container; allocate a TTY only when
+    # stdin is a terminal (i.e. interactive shell).
+    exec_mode="-i"
     [[ -t 0 ]] && exec_mode="-it"
 
     local glibc="${CC_GLIBC:-$(ldd --version 2>/dev/null | sed -n 1p | awk '{print $NF}')}"
@@ -61,7 +61,7 @@ run_container() {
     # Host network: the vite dev server proxies the API to the daemon on host loopback,
     # and the GUI connects to it there.
     # shellcheck disable=SC2086
-    ${CONTAINER_TOOL} run --rm --init ${exec_mode:+"${exec_mode}"} ${display_args} \
+    ${CONTAINER_TOOL} run --rm --init "${exec_mode}" ${display_args} \
         --network host \
         -v "${REPO}:/src" \
         -v "${REPO}/.git:/src/.git:ro" \
