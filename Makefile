@@ -264,7 +264,10 @@ dev-gui:
 ci-local: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
 
 # pre-PR gate: lints the committed branch diff only, then UI and daemon tests, clippy pedantic, Qt build
-# The release clippy and tests refuse to build without the embedded UI, which a fresh worktree lacks.
+# Daemon clippy and tests run in both profiles: debug as CI does (debug_assert!, overflow checks),
+# release as distro builds do (cfg(not(debug_assertions)) code). `release=` drops the daemon
+# targets' --release. Release builds refuse to build without the embedded UI, which a fresh
+# worktree lacks.
 # usage: make pr-check [base=<ref>]
 base ?= main
 pr-check: validate-metadata
@@ -276,10 +279,12 @@ pr-check: validate-metadata
 	@$(MAKE) -C $(ui_dir) check
 	@test -f $(daemon_dir)/daemon/resources/app/index.html || \
 		{ $(MAKE) -C $(ui_dir) dev-run && $(MAKE) -C $(daemon_dir) sync-app; }
+	@$(MAKE) -C $(daemon_dir) clippy release=
 	@$(MAKE) -C $(daemon_dir) clippy
 	@$(MAKE) -C $(daemon_dir) clippy-tests
 	@$(MAKE) -C $(daemon_dir) clippy-tests FEATURES="--features gated-tests"
 	@$(MAKE) -C $(daemon_dir) test-liqctld
+	@$(MAKE) -C $(daemon_dir) test release= FEATURES="--features gated-tests"
 	@$(MAKE) -C $(daemon_dir) test FEATURES="--features gated-tests"
 	@$(MAKE) -C $(qt_dir) build
 
