@@ -38,9 +38,6 @@ lint:
     - clang-format@16.0.3
   disabled:
     - checkov
-    # Builds from source, and its deps now need a newer rustc than trunk
-    # ships. Only shell.nix would be linted, so it is not worth the churn.
-    - nixpkgs-fmt
     # Fetches a rego checks bundle at scan time and then fails to load it in CI
     # (a different check file is missing on each run; a cache clear did not help).
     - trivy

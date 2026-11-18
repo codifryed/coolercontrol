@@ -7,6 +7,12 @@ release :=
 # Detect cargo or fallback (prefer newer)
 CARGO := $(shell command -v cargo || command -v cargo-1.91 || command -v cargo-1.88)
 
+# ccont uses cargo-zigbuild so it needs to override the build commands. However, it does not take
+# any subcommands so we can't simply override cargo itself.
+CC_CARGO_BUILD ?= $(CARGO) build
+# cargo-zigbuild requires passing --target which makes cargo change the result directory.
+CC_TARGET_DIR ?= target
+
 # Extra cargo feature flags for build/test/clippy, e.g. FEATURES=--features gated-tests
 FEATURES :=
 
@@ -23,7 +29,7 @@ sync-app:
 
 build: release += --release
 build: sync-app
-	@$(CARGO) build --locked $(release) $(FEATURES)
+	@$(CC_CARGO_BUILD) --locked $(release) $(FEATURES)
 
 test: release += --release
 test:
@@ -103,8 +109,8 @@ ci-lint:
 	@$(CARGO) clippy --locked $(release) --message-format=json -- -A unknown_lints | gitlab-report -p clippy > gl-code-quality-report.json
 
 dev-run: sync-app
-	@$(CARGO) build
-	@sudo ./target/debug/coolercontrold
+	@$(CC_CARGO_BUILD)
+	@sudo ./$(CC_TARGET_DIR)/debug/coolercontrold
 
 # Some crates ship .rs files with the exec bit set, which fails Fedora's brp-mangle-shebangs
 # on the leading `#![allow(...)]`. See: https://bugzilla.redhat.com/show_bug.cgi?id=1541318#c13

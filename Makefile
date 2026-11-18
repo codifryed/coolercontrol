@@ -20,7 +20,7 @@ CARGO := $(shell command -v cargo || command -v cargo-1.91 || command -v cargo-1
 	ci-check ci-fmt ci-local pr-check validate-metadata \
 	copyright-check copyright-fix \
 	clean clean-ui install install-data install-source uninstall dev-run dev-install openapi \
-	openapi-check
+	openapi-check dev-setup dev-purge dev-shell dev-gui
 
 # Run `make help` for the common developer targets.
 help:
@@ -49,6 +49,12 @@ help:
 	@printf '    make install-source   Build + install everything from source (sudo)\n'
 	@printf '    make dev-install      Install release binaries + restart the service\n'
 	@printf '    make clean            Remove all build artifacts\n\n'
+	@printf '  \033[1mDev container\033[0m (see CONTRIBUTING.md)\n'
+	@printf '    make dev-setup        Symlink ccont into ~/.local/bin and build\n'
+	@printf '                          or update the container image (podman)\n'
+	@printf '    make dev-shell        Shell into the dev container\n'
+	@printf '    make dev-gui          Build + run the desktop app in the dev container\n'
+	@printf '    make dev-purge        Remove ccont symlinks, the dev image and its caches\n\n'
 	@printf '  Maintainer targets (appimages, docker-*, prerelease-local, bump, release, vendor, assets)\n'
 	@printf '  live in make/*.mk.\n\n'
 
@@ -236,10 +242,32 @@ dev-run:
 	@$(sudo_keepalive) \
 	$(MAKE) build-qt && $(MAKE) -C $(ui_dir) $@ && $(MAKE) -C $(daemon_dir) $@
 
+# Symlink ccont to ~/.local/bin/ccont.
+# Build or update the image; needs podman.
+dev-setup:
+	@./ccont setup
+
+# Undo the dev container setup: ccont symlinks, the image and its cache volumes.
+dev-purge:
+	@./ccont purge
+
+# Interactive shell in the dev container.
+dev-shell:
+	@./ccont shell
+
+# Incremental build, then run the Qt desktop app in the dev container with the
+# display forwarded. Needs the daemon running on the host.
+dev-gui:
+	@./ccont gui
+
 # reproduce the CI pipeline locally: full clean, CI tooling, trunk checks, junit-producing tests
 ci-local: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
 
 # pre-PR gate: lints the committed branch diff only, then UI and daemon tests, clippy pedantic, Qt build
+# Daemon clippy and tests run in both profiles: debug as CI does (debug_assert!, overflow checks),
+# release as distro builds do (cfg(not(debug_assertions)) code). `release=` drops the daemon
+# targets' --release. Release builds refuse to build without the embedded UI, which a fresh
+# worktree lacks.
 # usage: make pr-check [base=<ref>]
 base ?= main
 pr-check: validate-metadata
@@ -249,10 +277,14 @@ pr-check: validate-metadata
 	@git merge-base $(base) HEAD > /dev/null
 	@git diff -z --name-only --diff-filter=d $(base)...HEAD | xargs -0 -r ./trunk check --ci
 	@$(MAKE) -C $(ui_dir) check
+	@test -f $(daemon_dir)/daemon/resources/app/index.html || \
+		{ $(MAKE) -C $(ui_dir) dev-run && $(MAKE) -C $(daemon_dir) sync-app; }
+	@$(MAKE) -C $(daemon_dir) clippy release=
 	@$(MAKE) -C $(daemon_dir) clippy
 	@$(MAKE) -C $(daemon_dir) clippy-tests
 	@$(MAKE) -C $(daemon_dir) clippy-tests FEATURES="--features gated-tests"
 	@$(MAKE) -C $(daemon_dir) test-liqctld
+	@$(MAKE) -C $(daemon_dir) test release= FEATURES="--features gated-tests"
 	@$(MAKE) -C $(daemon_dir) test FEATURES="--features gated-tests"
 	@$(MAKE) -C $(qt_dir) build
 
