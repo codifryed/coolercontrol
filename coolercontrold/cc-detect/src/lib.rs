@@ -143,10 +143,19 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
     let mut port = match port_io::DevPort::open() {
         Ok(port) => port,
         Err(err) => {
-            // A container cannot see the lockdown state, so lockdown first shows here.
-            warn!("Failed to open /dev/port: {err}");
+            // A container cannot see the lockdown state, so lockdown first shows
+            // here. That is expected there; any other refusal is not.
             let has_raw_io_access = environment::raw_io_access_detected(Path::new("/"));
             let is_secure_boot = lockdown_inferred(&err, has_raw_io_access);
+            if is_secure_boot {
+                info!(
+                    "Kernel lockdown looks active (usually from Secure Boot): /dev/port \
+                     refused to open, so Super-I/O chips cannot be probed. Drivers loaded \
+                     by other means are not affected."
+                );
+            } else {
+                warn!("Failed to open /dev/port: {err}");
+            }
             let env = Environment {
                 is_secure_boot,
                 ..env
