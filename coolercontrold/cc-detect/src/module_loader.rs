@@ -12,7 +12,6 @@ use log::{debug, info, warn};
 use crate::shell_command::{ShellCommand, ShellCommandResult};
 
 const MODPROBE_TIMEOUT: Duration = Duration::from_secs(10);
-const UDEVADM_TIMEOUT: Duration = Duration::from_secs(30);
 const MODULES_DISABLED_PATH: &str = "/proc/sys/kernel/modules_disabled";
 
 /// Result of a module load attempt.
@@ -209,22 +208,6 @@ fn is_blacklisted_in_cmdline_content(driver: &str, cmdline: &str) -> bool {
         }
     }
     false
-}
-
-/// Run `udevadm settle` to wait for udev events to be processed.
-/// This gives hwmon devices time to appear in sysfs after module loading.
-pub fn udevadm_settle() {
-    info!("Running udevadm settle");
-    // silently fail. We try quickly, but don't want to wait forever
-    let cmd = ShellCommand::new("udevadm settle --timeout 2", UDEVADM_TIMEOUT);
-    match cmd.run() {
-        ShellCommandResult::Success { .. } => {
-            info!("udevadm settle completed successfully");
-        }
-        ShellCommandResult::Error(err) => {
-            info!("udevadm settle: {err}");
-        }
-    }
 }
 
 #[cfg(test)]

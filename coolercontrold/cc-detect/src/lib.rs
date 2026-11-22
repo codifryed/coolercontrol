@@ -245,14 +245,6 @@ fn process_results(
         });
     }
 
-    // Run udevadm settle if we loaded any modules
-    if load_modules
-        && env.can_load_modules()
-        && chip_infos.iter().any(|c| c.module_status == "loaded")
-    {
-        module_loader::udevadm_settle();
-    }
-
     debug!(
         "Detection complete: {} chips detected, {} blacklisted",
         chip_infos.len(),

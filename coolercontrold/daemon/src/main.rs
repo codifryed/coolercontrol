@@ -849,8 +849,8 @@ async fn run_sensors_detection(config: &Rc<Config>) -> Option<cc_detect::Detecti
     match config.get_settings() {
         Ok(settings) if settings.sensors_auto_detect => {
             debug!("Running Super-I/O hardware detection");
-            // Port probing, modprobe and `udevadm settle` all block, so they run on the blocking
-            // pool, as the detect API's do. Nothing else can probe yet: the API is not up.
+            // Port probing and modprobe both block, so they run on the blocking pool, as the
+            // detect API's do. Nothing else can probe yet: the API is not up.
             let detection = rt::spawn_blocking(|| {
                 cc_detect::run_detection(true, Some(paths::detect_override_file()))
             });

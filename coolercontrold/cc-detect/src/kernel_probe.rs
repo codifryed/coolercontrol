@@ -49,16 +49,11 @@ pub fn load_installed_out_of_tree(lockdown_active: bool, results: &mut Detection
         candidates.join(", ")
     );
     let attempts = candidates.len();
-    let mut any_loaded = false;
     for driver in candidates {
         let result = module_loader::load_module(&driver, lockdown_active);
-        any_loaded |= matches!(result, LoadResult::Loaded);
         record_attempt(results, driver, &result);
     }
     assert_eq!(results.kernel_probed.len(), attempts);
-    if any_loaded {
-        module_loader::udevadm_settle();
-    }
 }
 
 /// The out-of-tree Super-I/O drivers worth handing to the kernel, sorted.
