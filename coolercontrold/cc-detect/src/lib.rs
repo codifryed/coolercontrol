@@ -36,6 +36,8 @@ use serde::Serialize;
 #[cfg(target_arch = "x86_64")]
 use log::{debug, warn};
 #[cfg(target_arch = "x86_64")]
+use std::io::ErrorKind;
+#[cfg(target_arch = "x86_64")]
 use std::ops::Not;
 
 #[cfg(target_arch = "x86_64")]
@@ -143,6 +145,16 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
         Err(err) => {
             // A container cannot see the lockdown state, so lockdown first shows here.
             warn!("Failed to open /dev/port: {err}");
+            let has_raw_io_access = environment::raw_io_access_detected(Path::new("/"));
+            let is_secure_boot = lockdown_inferred(&err, has_raw_io_access);
+            let env = Environment {
+                is_secure_boot,
+                ..env
+            };
+            let env_info = EnvironmentInfo {
+                is_secure_boot,
+                ..env_info
+            };
             return detect_without_probe(&env, env_info, load_modules);
         }
     };
@@ -152,6 +164,20 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
 
     // Process results and optionally load modules
     process_results(&detected, load_modules, &env, env_info)
+}
+
+/// Whether a refused `/dev/port` open shows kernel lockdown: a permission error
+/// although the process holds what the open needs. Without that the kernel
+/// answers the same error on its own, which says nothing about lockdown.
+#[cfg(target_arch = "x86_64")]
+fn lockdown_inferred(open_error: &port_io::PortIoError, has_raw_io_access: bool) -> bool {
+    if has_raw_io_access.not() {
+        return false;
+    }
+    match open_error {
+        port_io::PortIoError::OpenFailed(err) => err.kind() == ErrorKind::PermissionDenied,
+        port_io::PortIoError::IoFailed(_) => false,
+    }
 }
 
 /// The results of a detection whose probe could not run: no chips, and the
@@ -408,6 +434,26 @@ mod tests {
         assert!(should_load_without_probe(&open_refused, false).not());
         assert!(should_load_without_probe(&container, true).not());
         assert!(should_load_without_probe(&no_modprobe, true).not());
+    }
+
+    /// Goal: a refused `/dev/port` open counts as lockdown only for a
+    /// permission error met while holding raw I/O access. Method: each error
+    /// kind with and without the access.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn lockdown_is_inferred_from_a_refused_open() {
+        use port_io::PortIoError;
+        let open_failed = |kind: ErrorKind| PortIoError::OpenFailed(kind.into());
+        assert!(lockdown_inferred(
+            &open_failed(ErrorKind::PermissionDenied),
+            true
+        ));
+        // Without the capability the kernel refuses regardless of lockdown.
+        assert!(lockdown_inferred(&open_failed(ErrorKind::PermissionDenied), false).not());
+        assert!(lockdown_inferred(&open_failed(ErrorKind::NotFound), true).not());
+        assert!(lockdown_inferred(&open_failed(ErrorKind::NotFound), false).not());
+        let io_failed = PortIoError::IoFailed(ErrorKind::PermissionDenied.into());
+        assert!(lockdown_inferred(&io_failed, true).not());
     }
 
     #[test]

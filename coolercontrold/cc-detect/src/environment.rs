@@ -15,6 +15,9 @@ const LOCKDOWN_PATH: &str = "/sys/kernel/security/lockdown";
 /// Bit of `CAP_SYS_MODULE` in a capability mask, from `linux/capability.h`.
 const CAP_SYS_MODULE_BIT: u32 = 16;
 const _: () = assert!(CAP_SYS_MODULE_BIT < u64::BITS);
+/// Bit of `CAP_SYS_RAWIO` in a capability mask, from `linux/capability.h`.
+const CAP_SYS_RAWIO_BIT: u32 = 17;
+const _: () = assert!(CAP_SYS_RAWIO_BIT < u64::BITS);
 /// `/proc/self/uid_map` of the initial user namespace: every ID maps to itself.
 const INITIAL_USER_NAMESPACE_UID_MAP: [&str; 3] = ["0", "0", "4294967295"];
 
@@ -153,6 +156,28 @@ pub fn module_access_detected(root: &Path) -> bool {
         return false;
     }
     module_tree(root).is_some()
+}
+
+/// Whether the process under `root` (`/` outside tests) holds what opening
+/// `/dev/port` needs: `CAP_SYS_RAWIO` in the initial user namespace. Without
+/// it the kernel refuses the open whether or not it is locked down. Blocking.
+///
+/// # Panics
+///
+/// If `root` is relative.
+#[must_use]
+pub fn raw_io_access_detected(root: &Path) -> bool {
+    assert!(root.is_absolute());
+    let Ok(status) = std::fs::read_to_string(root.join("proc/self/status")) else {
+        return false;
+    };
+    if has_effective_capability(&status, CAP_SYS_RAWIO_BIT).not() {
+        return false;
+    }
+    let Ok(uid_map) = std::fs::read_to_string(root.join("proc/self/uid_map")) else {
+        return false;
+    };
+    is_initial_user_namespace(&uid_map)
 }
 
 /// The running kernel's module directory under `root` (`/` outside tests).
@@ -351,6 +376,25 @@ mod tests {
     fn module_access_is_denied_without_proc() {
         let root = tempfile::tempdir().unwrap();
         assert!(!module_access_detected(root.path()));
+    }
+
+    /// Goal: raw I/O access needs `CAP_SYS_RAWIO` and the initial user
+    /// namespace, both. Method: a tree with both, one with each taken away, and
+    /// an empty root.
+    #[test]
+    fn raw_io_access_needs_capability_and_namespace() {
+        let granted = root_tree(STATUS_ALL_CAPABILITIES, UID_MAP_INITIAL, false);
+        assert!(raw_io_access_detected(granted.path()));
+
+        // Podman's default set leaves out `CAP_SYS_RAWIO` too.
+        let no_capability = root_tree(STATUS_DEFAULT_CAPABILITIES, UID_MAP_INITIAL, false);
+        assert!(raw_io_access_detected(no_capability.path()).not());
+
+        let rootless = root_tree(STATUS_ALL_CAPABILITIES, UID_MAP_ROOTLESS, false);
+        assert!(raw_io_access_detected(rootless.path()).not());
+
+        let no_proc = tempfile::tempdir().unwrap();
+        assert!(raw_io_access_detected(no_proc.path()).not());
     }
 
     /// Goal: the module tree is found only for a usable release with its
