@@ -324,6 +324,7 @@ mod tests {
             is_secure_boot: false,
             has_dev_port: true,
             has_modprobe: true,
+            has_module_access: false,
         };
         let env_info = EnvironmentInfo {
             is_container: false,
@@ -344,6 +345,7 @@ mod tests {
             is_secure_boot: false,
             has_dev_port: true,
             has_modprobe: true,
+            has_module_access: false,
         };
         let env_info = EnvironmentInfo {
             is_container: false,
@@ -358,7 +360,8 @@ mod tests {
 
     /// Goal: the no-probe fallback runs under lockdown or without `/dev/port`,
     /// and never when the probe can run, loading is off, or modprobe cannot
-    /// run. Method: each gate flipped from a locked-down base.
+    /// run. A container counts only with module access. Method: each gate
+    /// flipped from a locked-down base.
     #[cfg(target_arch = "x86_64")]
     #[test]
     fn fallback_runs_only_when_the_probe_cannot() {
@@ -367,6 +370,7 @@ mod tests {
             is_secure_boot: true,
             has_dev_port: true,
             has_modprobe: true,
+            has_module_access: false,
         };
         let no_dev_port = Environment {
             is_secure_boot: false,
@@ -381,11 +385,16 @@ mod tests {
             is_container: true,
             ..locked_down.clone()
         };
+        let container_with_access = Environment {
+            has_module_access: true,
+            ..container.clone()
+        };
         let no_modprobe = Environment {
             has_modprobe: false,
             ..locked_down.clone()
         };
         assert!(should_load_without_probe(&locked_down, true));
+        assert!(should_load_without_probe(&container_with_access, true));
         assert!(should_load_without_probe(&no_dev_port, true));
         assert!(should_load_without_probe(&locked_down, false).not());
         assert!(should_load_without_probe(&can_probe, true).not());
