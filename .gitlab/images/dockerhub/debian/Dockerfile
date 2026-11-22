@@ -60,7 +60,6 @@ RUN apt update && apt install -y --no-install-recommends \
     libusb-1.0-0 \
     libdrm-amdgpu1 \
     openrc \
-    # modprobe, for loading host kernel modules
     kmod && \
     sed -i 's/#rc_sys=""/rc_sys="docker"/' /etc/rc.conf && \
     sed -i 's/#rc_depend_strict="YES"/rc_depend_strict="NO"/' /etc/rc.conf && \

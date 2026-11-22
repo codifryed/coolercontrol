@@ -37,7 +37,6 @@ ENV CC_DEVICE_EVENTS=OFF
 ENV CC_TLS=OFF
 ENV CC_DATA_DIR=/etc/coolercontrol
 
-# kmod: its modprobe loads host kernel modules, and the daemon reads its error text.
 RUN apk add --update python3 libusb libgcc libdrm openrc kmod && \
     sed -i 's/#rc_sys=""/rc_sys="docker"/' /etc/rc.conf && \
     sed -i 's/#rc_depend_strict="YES"/rc_depend_strict="NO"/' /etc/rc.conf
