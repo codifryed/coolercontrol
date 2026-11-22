@@ -36,8 +36,6 @@ use serde::Serialize;
 #[cfg(target_arch = "x86_64")]
 use log::{debug, warn};
 #[cfg(target_arch = "x86_64")]
-use std::io::ErrorKind;
-#[cfg(target_arch = "x86_64")]
 use std::ops::Not;
 
 #[cfg(target_arch = "x86_64")]
@@ -175,16 +173,20 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
     process_results(&detected, load_modules, &env, env_info)
 }
 
-/// Whether a refused `/dev/port` open shows kernel lockdown: a permission error
-/// although the process holds what the open needs. Without that the kernel
-/// answers the same error on its own, which says nothing about lockdown.
+/// Whether a refused `/dev/port` open shows kernel lockdown: `EPERM` although
+/// the process holds what the open needs. Without that the kernel answers the
+/// same error on its own, which says nothing about lockdown. `EACCES` comes
+/// from file permissions or an LSM, never from lockdown.
+/// Known limit: a device cgroup denial is also `EPERM` and reads as lockdown.
 #[cfg(target_arch = "x86_64")]
 fn lockdown_inferred(open_error: &port_io::PortIoError, has_raw_io_access: bool) -> bool {
+    // cc-detect has no libc dependency.
+    const EPERM: i32 = 1;
     if has_raw_io_access.not() {
         return false;
     }
     match open_error {
-        port_io::PortIoError::OpenFailed(err) => err.kind() == ErrorKind::PermissionDenied,
+        port_io::PortIoError::OpenFailed(err) => err.raw_os_error() == Some(EPERM),
         port_io::PortIoError::IoFailed(_) => false,
     }
 }
@@ -445,23 +447,28 @@ mod tests {
         assert!(should_load_without_probe(&no_modprobe, true).not());
     }
 
-    /// Goal: a refused `/dev/port` open counts as lockdown only for a
-    /// permission error met while holding raw I/O access. Method: each error
-    /// kind with and without the access.
+    /// Goal: a refused `/dev/port` open counts as lockdown only for `EPERM`
+    /// met while holding raw I/O access. Method: each errno with and without
+    /// the access.
     #[cfg(target_arch = "x86_64")]
     #[test]
     fn lockdown_is_inferred_from_a_refused_open() {
+        use std::io::Error;
+
         use port_io::PortIoError;
-        let open_failed = |kind: ErrorKind| PortIoError::OpenFailed(kind.into());
-        assert!(lockdown_inferred(
-            &open_failed(ErrorKind::PermissionDenied),
-            true
-        ));
+        const EPERM: i32 = 1;
+        const ENOENT: i32 = 2;
+        const EACCES: i32 = 13;
+        let open_failed = |errno: i32| PortIoError::OpenFailed(Error::from_raw_os_error(errno));
+        assert!(lockdown_inferred(&open_failed(EPERM), true));
         // Without the capability the kernel refuses regardless of lockdown.
-        assert!(lockdown_inferred(&open_failed(ErrorKind::PermissionDenied), false).not());
-        assert!(lockdown_inferred(&open_failed(ErrorKind::NotFound), true).not());
-        assert!(lockdown_inferred(&open_failed(ErrorKind::NotFound), false).not());
-        let io_failed = PortIoError::IoFailed(ErrorKind::PermissionDenied.into());
+        assert!(lockdown_inferred(&open_failed(EPERM), false).not());
+        // File permissions or an LSM refused, not lockdown.
+        assert!(lockdown_inferred(&open_failed(EACCES), true).not());
+        assert!(lockdown_inferred(&open_failed(EACCES), false).not());
+        assert!(lockdown_inferred(&open_failed(ENOENT), true).not());
+        assert!(lockdown_inferred(&open_failed(ENOENT), false).not());
+        let io_failed = PortIoError::IoFailed(Error::from_raw_os_error(EPERM));
         assert!(lockdown_inferred(&io_failed, true).not());
     }
 
