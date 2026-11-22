@@ -323,7 +323,7 @@ mod tests {
             has_modprobe: false,
             ..env_container_with_access.clone()
         };
-        assert!(!env_container_no_modprobe.can_load_modules());
+        assert!(env_container_no_modprobe.can_load_modules().not());
     }
 
     const RELEASE: &str = "6.17.0-test";
@@ -361,13 +361,13 @@ mod tests {
         assert!(module_access_detected(granted.path()));
 
         let no_capability = root_tree(STATUS_DEFAULT_CAPABILITIES, UID_MAP_INITIAL, true);
-        assert!(!module_access_detected(no_capability.path()));
+        assert!(module_access_detected(no_capability.path()).not());
 
         let rootless = root_tree(STATUS_ALL_CAPABILITIES, UID_MAP_ROOTLESS, true);
-        assert!(!module_access_detected(rootless.path()));
+        assert!(module_access_detected(rootless.path()).not());
 
         let no_tree = root_tree(STATUS_ALL_CAPABILITIES, UID_MAP_INITIAL, false);
-        assert!(!module_access_detected(no_tree.path()));
+        assert!(module_access_detected(no_tree.path()).not());
     }
 
     /// Goal: an unreadable `/proc` denies access instead of assuming it.
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn module_access_is_denied_without_proc() {
         let root = tempfile::tempdir().unwrap();
-        assert!(!module_access_detected(root.path()));
+        assert!(module_access_detected(root.path()).not());
     }
 
     /// Goal: raw I/O access needs `CAP_SYS_RAWIO` and the initial user
@@ -417,52 +417,47 @@ mod tests {
         assert_eq!(module_tree(present.path()), None);
     }
 
+    /// Goal: a capability counts only when its bit is set in the effective set.
+    /// Method: full and default masks, a permitted-only mask, and the lone bit.
     #[test]
     fn test_effective_capability_bit() {
         assert!(has_effective_capability(
             STATUS_ALL_CAPABILITIES,
             CAP_SYS_MODULE_BIT
         ));
-        assert!(!has_effective_capability(
-            STATUS_DEFAULT_CAPABILITIES,
-            CAP_SYS_MODULE_BIT
-        ));
+        assert!(has_effective_capability(STATUS_DEFAULT_CAPABILITIES, CAP_SYS_MODULE_BIT).not());
         // Only the effective set counts, not the permitted one.
         let permitted_only = "CapPrm:\t000001ffffffffff\nCapEff:\t0000000000000000\n";
-        assert!(!has_effective_capability(
-            permitted_only,
-            CAP_SYS_MODULE_BIT
-        ));
+        assert!(has_effective_capability(permitted_only, CAP_SYS_MODULE_BIT).not());
         assert!(has_effective_capability(
             "CapEff:\t0000000000010000\n",
             CAP_SYS_MODULE_BIT
         ));
     }
 
+    /// Goal: a status without a readable `CapEff` grants nothing.
+    /// Method: empty text, a missing line, a non-hex mask and an empty one.
     #[test]
     fn test_effective_capability_malformed() {
-        assert!(!has_effective_capability("", CAP_SYS_MODULE_BIT));
-        assert!(!has_effective_capability(
-            "Name:\tcoolercontrold\n",
-            CAP_SYS_MODULE_BIT
-        ));
-        assert!(!has_effective_capability(
-            "CapEff:\tgarbage\n",
-            CAP_SYS_MODULE_BIT
-        ));
-        assert!(!has_effective_capability("CapEff:\n", CAP_SYS_MODULE_BIT));
+        assert!(has_effective_capability("", CAP_SYS_MODULE_BIT).not());
+        assert!(has_effective_capability("Name:\tcoolercontrold\n", CAP_SYS_MODULE_BIT).not());
+        assert!(has_effective_capability("CapEff:\tgarbage\n", CAP_SYS_MODULE_BIT).not());
+        assert!(has_effective_capability("CapEff:\n", CAP_SYS_MODULE_BIT).not());
     }
 
+    /// Goal: only the full identity map, alone, is the initial user namespace.
+    /// Method: the initial map, then rootless, remapped, extended, short and
+    /// empty ones.
     #[test]
     fn test_initial_user_namespace() {
         assert!(is_initial_user_namespace(UID_MAP_INITIAL));
-        assert!(!is_initial_user_namespace(UID_MAP_ROOTLESS));
+        assert!(is_initial_user_namespace(UID_MAP_ROOTLESS).not());
         // A rootful container with a remapped range.
-        assert!(!is_initial_user_namespace("0 100000 65536\n"));
+        assert!(is_initial_user_namespace("0 100000 65536\n").not());
         // The identity line followed by another is not the initial namespace's.
-        assert!(!is_initial_user_namespace("0 0 4294967295\n1 1 1\n"));
-        assert!(!is_initial_user_namespace("0 0\n"));
-        assert!(!is_initial_user_namespace(""));
+        assert!(is_initial_user_namespace("0 0 4294967295\n1 1 1\n").not());
+        assert!(is_initial_user_namespace("0 0\n").not());
+        assert!(is_initial_user_namespace("").not());
     }
 
     #[test]
