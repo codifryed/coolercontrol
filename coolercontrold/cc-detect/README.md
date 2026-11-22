@@ -89,6 +89,9 @@ A container loads modules into the host kernel only when it was given all of:
 - The host's `/lib/modules` mounted, for the running kernel's module tree.
 - `modprobe` in the image.
 
+A module blacklisted in the host's `/etc/modprobe.d` is skipped only when that directory is mounted
+read-only into the container. A `modprobe.blacklist=` on the kernel command line always is.
+
 ## Feature flags
 
 None. Dependencies are minimal.
