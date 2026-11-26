@@ -601,6 +601,10 @@ pub struct HwmonRepo {
 
     /// Where the `ThinkPad` `fan_control` option is read from. A field so tests can fake it.
     thinkpad_fan_control_param: PathBuf,
+
+    /// Device paths to initialize instead of the ones found in sysfs. A field so tests can
+    /// fake them.
+    device_paths_override: Option<Vec<PathBuf>>,
 }
 
 impl HwmonRepo {
@@ -644,6 +648,7 @@ impl HwmonRepo {
             drivetemp_ioctl_timeout,
             device_io_reply_timeout,
             thinkpad_fan_control_param: PathBuf::from(thinkpad::FAN_CONTROL_PARAM_PATH),
+            device_paths_override: None,
         }
     }
 
@@ -2340,7 +2345,10 @@ impl Repository for HwmonRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
 
-        let base_paths = devices::find_all_hwmon_device_paths();
+        let base_paths = self
+            .device_paths_override
+            .clone()
+            .unwrap_or_else(devices::find_all_hwmon_device_paths);
         if base_paths.is_empty() {
             info!(
                 "No HWMon devices were found, try installing lm-sensors and running sensors-detect"
@@ -6817,6 +6825,39 @@ mod restore_after_sleep_tests {
             vec![],
             Rc::new(crate::overrides::OverridesController::empty()),
         )
+    }
+
+    /// Goal: init switches a `spd5118` sensor back on, as one left off by a failed resume
+    /// stays off across a reboot.
+    /// Method: init over a fake DIMM whose sensor is disabled, then read its enable attribute.
+    #[test]
+    #[serial]
+    fn init_reenables_a_spd5118_sensor() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dimm = tmp.path().join("hwmon6");
+            cc_fs::create_dir_all(&dimm).await.unwrap();
+            for (file, value) in [
+                ("name", spd5118::DEVICE_NAME),
+                ("temp1_input", "35000"),
+                (TEMP_ENABLE_FILE, "0"),
+            ] {
+                cc_fs::write(dimm.join(file), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+            let mut repo = empty_repo();
+            repo.device_paths_override = Some(vec![dimm.clone()]);
+
+            repo.initialize_devices().await.unwrap();
+
+            assert_eq!(repo.devices.len(), 1);
+            let enabled = cc_fs::read_sysfs(dimm.join(TEMP_ENABLE_FILE))
+                .await
+                .unwrap();
+            assert_eq!(enabled.trim(), "1");
+            repo.shutdown().await.unwrap();
+        });
     }
 
     /// Goal: one DIMM that does not answer ends the pass, as the others share its bus and

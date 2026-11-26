@@ -210,7 +210,7 @@ impl Repositories {
 /// when there is one. Its duty writes fail while `failing_writes` is set, wait at
 /// `write_meeting` when there is one, and are counted in `written`. Its sleep preparations run
 /// `on_prepare` when there is one, and are counted in `prepared`. Its history zeroings are
-/// counted in `zeroed`.
+/// counted in `zeroed`, its restores after sleep in `restored`.
 #[cfg(test)]
 pub struct StubRepo {
     pub device_type: DeviceType,
@@ -222,6 +222,7 @@ pub struct StubRepo {
     pub on_prepare: Option<Rc<dyn Fn()>>,
     pub prepared: Rc<std::cell::Cell<u8>>,
     pub zeroed: Rc<std::cell::Cell<u8>>,
+    pub restored: Rc<std::cell::Cell<u8>>,
 }
 
 #[cfg(test)]
@@ -237,6 +238,7 @@ impl StubRepo {
             on_prepare: None,
             prepared: Rc::default(),
             zeroed: Rc::default(),
+            restored: Rc::default(),
         }
     }
 }
@@ -276,6 +278,10 @@ impl Repository for StubRepo {
             on_prepare();
         }
         self.prepared.set(self.prepared.get() + 1);
+    }
+
+    async fn restore_after_sleep(&self) {
+        self.restored.set(self.restored.get() + 1);
     }
 
     async fn zero_status_histories(&self, _poll_rate: f64) {
