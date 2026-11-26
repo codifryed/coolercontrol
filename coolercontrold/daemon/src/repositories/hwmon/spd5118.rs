@@ -10,7 +10,7 @@
 use crate::repositories::hwmon::device_io::{self, DeviceIo};
 use crate::rt;
 use anyhow::Result;
-use log::{debug, warn};
+use log::{debug, info};
 use std::path::Path;
 use std::time::Duration;
 
@@ -69,7 +69,8 @@ pub async fn reenable_sensor(device_name: &str, hwmon_path: &Path, io: &DeviceIo
             SensorBus::Answered
         }
         Err(err) => {
-            warn!(
+            // Recurs on every wake and names nothing the user can do, so not a warning.
+            info!(
                 "Could not re-enable the DDR5 temperature sensor of {}, it may read 0: {err}",
                 hwmon_path.display()
             );
