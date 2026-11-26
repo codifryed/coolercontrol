@@ -7,11 +7,10 @@
 //! When the `SMBus` is busy that write fails, the sensor stays off and reads 0, and the driver
 //! still reports it as enabled. The DIMM hub keeps standby power, so this survives a reboot.
 
-use crate::repositories::hwmon::device_io::DeviceIo;
+use crate::repositories::hwmon::device_io::{self, DeviceIo};
 use crate::rt;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use log::{debug, warn};
-use std::ops::Not;
 use std::path::Path;
 use std::time::Duration;
 
@@ -26,34 +25,61 @@ const RETRY_DELAY: Duration = Duration::from_millis(500);
 
 const _: () = assert!(ATTEMPTS_MAX > 0);
 
-/// Switches the temperature sensor of a `spd5118` device back on. Any other device is left
-/// alone. A failure is logged and not returned: the sensor then reads 0, as it did before.
-pub async fn reenable_sensor(device_name: &str, hwmon_path: &Path, io: &DeviceIo) {
-    if device_name != DEVICE_NAME {
-        return;
-    }
-    let enable_path = hwmon_path.join(TEMP_ENABLE_FILE);
-    // Also keeps a kernel without the attribute from logging a failure.
-    if io.read_value(&enable_path).await.is_err() {
-        debug!(
-            "No readable {TEMP_ENABLE_FILE} under {}, leaving its sensor as it is",
-            hwmon_path.display()
-        );
-        return;
-    }
-    match toggle_with_retries(&enable_path, io, RETRY_DELAY).await {
-        Ok(()) => debug!(
-            "Re-enabled the temperature sensor of {}",
-            hwmon_path.display()
-        ),
-        Err(err) => warn!(
-            "Could not re-enable the DDR5 temperature sensor of {}, it may read 0: {err}",
-            hwmon_path.display()
-        ),
+/// Whether a device's bus answered the last request sent to it.
+///
+/// The DIMMs share one bus, so a caller with more of them stops at the first that stalled
+/// instead of waiting out a reply timeout for each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorBus {
+    Answered,
+    Stalled,
+}
+
+impl SensorBus {
+    fn after(err: &anyhow::Error) -> Self {
+        if device_io::is_unanswered(err) {
+            Self::Stalled
+        } else {
+            Self::Answered
+        }
     }
 }
 
-/// Repeats the whole toggle until it succeeds, at most `ATTEMPTS_MAX` times.
+/// Switches the temperature sensor of a `spd5118` device back on. Any other device is left
+/// alone. A failure is logged and not returned: the sensor then reads 0, as it did before.
+pub async fn reenable_sensor(device_name: &str, hwmon_path: &Path, io: &DeviceIo) -> SensorBus {
+    if device_name != DEVICE_NAME {
+        return SensorBus::Answered;
+    }
+    let enable_path = hwmon_path.join(TEMP_ENABLE_FILE);
+    // Also keeps a kernel without the attribute from logging a failure.
+    if let Err(err) = io.read_value(&enable_path).await {
+        debug!(
+            "No readable {TEMP_ENABLE_FILE} under {}, leaving its sensor as it is: {err}",
+            hwmon_path.display()
+        );
+        return SensorBus::after(&err);
+    }
+    match toggle_with_retries(&enable_path, io, RETRY_DELAY).await {
+        Ok(()) => {
+            debug!(
+                "Re-enabled the temperature sensor of {}",
+                hwmon_path.display()
+            );
+            SensorBus::Answered
+        }
+        Err(err) => {
+            warn!(
+                "Could not re-enable the DDR5 temperature sensor of {}, it may read 0: {err}",
+                hwmon_path.display()
+            );
+            SensorBus::after(&err)
+        }
+    }
+}
+
+/// Repeats the whole toggle until it succeeds, at most `ATTEMPTS_MAX` times, and only while
+/// the device answers.
 ///
 /// Never the enabling write alone: after a failed write the driver's cached state can already
 /// say enabled, and it drops a write that matches its cache.
@@ -63,18 +89,21 @@ async fn toggle_with_retries(
     retry_delay: Duration,
 ) -> Result<()> {
     debug_assert!(enable_path.ends_with(TEMP_ENABLE_FILE));
-    let mut last_error = anyhow!("no attempt was made");
     for attempt in 1..=ATTEMPTS_MAX {
-        match toggle(enable_path, io).await {
-            Ok(()) => return Ok(()),
-            Err(err) => last_error = err,
+        let Err(err) = toggle(enable_path, io).await else {
+            return Ok(());
+        };
+        // An unanswered write stays queued and lands once the bus recovers. Another attempt
+        // would wait out the reply timeout again and queue one more disabling write.
+        if device_io::is_unanswered(&err) {
+            return Err(err);
         }
-        if attempt < ATTEMPTS_MAX {
-            rt::sleep(retry_delay).await;
+        if attempt == ATTEMPTS_MAX {
+            return Err(err);
         }
+        rt::sleep(retry_delay).await;
     }
-    debug_assert!(last_error.to_string().is_empty().not());
-    Err(last_error)
+    unreachable!("ATTEMPTS_MAX > 0, and the last attempt returns")
 }
 
 /// Off, then on. The driver believes the sensor is on and would drop a lone enabling write, so
@@ -90,9 +119,18 @@ mod tests {
     use super::*;
     use crate::cc_fs;
     use crate::repositories::hwmon::device_io::Request;
+    use anyhow::anyhow;
+    use std::ops::Not;
     use std::path::PathBuf;
 
     const TEST_RETRY_DELAY: Duration = Duration::from_millis(1);
+    /// Short, as the tests of a stalled device wait it out in real time.
+    const TEST_REPLY_TIMEOUT: Duration = Duration::from_millis(20);
+
+    /// Every request still queued for a device nobody served.
+    fn queued(rx: &mut tokio::sync::mpsc::Receiver<Request>) -> Vec<Request> {
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
 
     /// Answers a device's writes on the test thread, failing the first `failures` of them, and
     /// returns every write it saw once `future` completes.
@@ -188,6 +226,53 @@ mod tests {
             // Each attempt stops at its failed disabling write.
             assert_eq!(writes.len(), usize::from(ATTEMPTS_MAX));
             assert!(values(&writes).iter().all(|value| *value == "0"));
+        });
+    }
+
+    /// Goal: a write that timed out is not retried: each attempt would wait out the full
+    /// timeout and leave one more disabling write queued for when the bus recovers.
+    /// Method: a device that never answers, then count what was queued for it.
+    #[test]
+    fn a_timed_out_write_is_not_retried() {
+        cc_fs::test_runtime(async {
+            let (io, mut rx) = DeviceIo::wedged_for_test(TEST_REPLY_TIMEOUT);
+            let enable_path = Path::new("/sys/fake/hwmon6").join(TEMP_ENABLE_FILE);
+
+            let result = toggle_with_retries(&enable_path, &io, TEST_RETRY_DELAY).await;
+
+            assert!(device_io::is_unanswered(&result.unwrap_err()));
+            let requests = queued(&mut rx);
+            assert_eq!(requests.len(), 1);
+            let Request::Write { data, .. } = &requests[0] else {
+                panic!("the one request is the disabling write");
+            };
+            assert_eq!(data.as_slice(), SENSOR_DISABLED);
+        });
+    }
+
+    /// Goal: the caller learns of a stalled bus, and an answered error is not taken for one.
+    /// Method: a device that never answers, then one whose every write fails.
+    #[test]
+    fn reports_a_stalled_bus_only_when_unanswered() {
+        cc_fs::test_runtime(async {
+            let (wedged_io, mut wedged_rx) = DeviceIo::wedged_for_test(TEST_REPLY_TIMEOUT);
+            let hwmon_path = Path::new("/sys/fake/hwmon6");
+
+            let stalled = reenable_sensor(DEVICE_NAME, hwmon_path, &wedged_io).await;
+
+            assert_eq!(stalled, SensorBus::Stalled);
+            // The probing read timed out, so no write followed it.
+            assert_eq!(queued(&mut wedged_rx).len(), 1);
+
+            let (io, rx) = DeviceIo::wedged_for_test(Duration::from_secs(5));
+            let enable_path = hwmon_path.join(TEMP_ENABLE_FILE);
+            let (result, _writes) = serve_writes(
+                rx,
+                usize::MAX,
+                toggle_with_retries(&enable_path, &io, TEST_RETRY_DELAY),
+            )
+            .await;
+            assert_eq!(SensorBus::after(&result.unwrap_err()), SensorBus::Answered);
         });
     }
 

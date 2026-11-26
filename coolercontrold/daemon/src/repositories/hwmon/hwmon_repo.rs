@@ -2953,8 +2953,14 @@ impl Repository for HwmonRepo {
     async fn restore_after_sleep(&self) {
         // One at a time: the DIMMs share one bus, and a busy bus is what this recovers from.
         for (_device_lock, hwmon_driver) in self.devices.values() {
-            spd5118::reenable_sensor(&hwmon_driver.name, &hwmon_driver.path, &hwmon_driver.io)
-                .await;
+            let bus =
+                spd5118::reenable_sensor(&hwmon_driver.name, &hwmon_driver.path, &hwmon_driver.io)
+                    .await;
+            // The others would each wait out a reply timeout on the same bus, with the
+            // watchdog unfed meanwhile.
+            if bus == spd5118::SensorBus::Stalled {
+                break;
+            }
         }
     }
 
@@ -6772,10 +6778,23 @@ mod restore_after_sleep_tests {
         cc_fs::create_dir_all(&driver_path).await.unwrap();
         let enable_path = driver_path.join(TEMP_ENABLE_FILE);
         cc_fs::write(&enable_path, b"0".to_vec()).await.unwrap();
+        let io = DeviceIo::default();
+        insert_device(repo, type_index, device_name, driver_path, io);
+        enable_path
+    }
+
+    fn insert_device(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        device_name: &str,
+        driver_path: PathBuf,
+        io: DeviceIo,
+    ) {
         let driver = HwmonDriverInfo {
             name: device_name.to_string(),
             path: driver_path,
             u_id: format!("test-uid-{device_name}-{type_index}"),
+            io,
             ..Default::default()
         };
         let device = Device::new(
@@ -6790,7 +6809,37 @@ mod restore_after_sleep_tests {
         let uid = device.uid.clone();
         repo.devices
             .insert(uid, (Rc::new(RefCell::new(device)), Rc::new(driver)));
-        enable_path
+    }
+
+    fn empty_repo() -> HwmonRepo {
+        HwmonRepo::new(
+            Rc::new(Config::init_default_config().unwrap()),
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        )
+    }
+
+    /// Goal: one DIMM that does not answer ends the pass, as the others share its bus and
+    /// each would wait out a reply timeout while the watchdog goes unfed.
+    /// Method: two DIMMs that never answer, then count the requests queued for both.
+    #[test]
+    #[serial]
+    fn waking_stops_at_the_first_stalled_dimm() {
+        cc_fs::test_runtime(async {
+            let mut repo = empty_repo();
+            let mut queues = Vec::with_capacity(2);
+            for type_index in [1, 2] {
+                let (io, rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+                let path = PathBuf::from(format!("/sys/fake/hwmon{type_index}"));
+                insert_device(&mut repo, type_index, spd5118::DEVICE_NAME, path, io);
+                queues.push(rx);
+            }
+
+            repo.restore_after_sleep().await;
+
+            let queued: usize = queues.iter().map(tokio::sync::mpsc::Receiver::len).sum();
+            assert_eq!(queued, 1);
+        });
     }
 
     /// Goal: waking re-enables the sensor of every `spd5118` device and of no other device.
@@ -6800,12 +6849,7 @@ mod restore_after_sleep_tests {
     fn waking_reenables_only_spd5118_sensors() {
         cc_fs::test_runtime(async {
             let tmp = tempfile::tempdir().unwrap();
-            let config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = HwmonRepo::new(
-                config,
-                vec![],
-                Rc::new(crate::overrides::OverridesController::empty()),
-            );
+            let mut repo = empty_repo();
             let dimm_a = tmp.path().join("hwmon6");
             let dimm_b = tmp.path().join("hwmon8");
             let other = tmp.path().join("hwmon9");
