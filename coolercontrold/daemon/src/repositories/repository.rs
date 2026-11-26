@@ -109,6 +109,10 @@ pub trait Repository {
     /// Prepare devices for system sleep by resetting to safe defaults.
     async fn prepare_for_sleep(&self) {}
 
+    /// Restores device state the system's sleep may have lost. Runs on every wake, whether or
+    /// not settings are re-applied.
+    async fn restore_after_sleep(&self) {}
+
     /// This is helpful/necessary after waking from sleep.
     async fn reinitialize_devices(&self);
 

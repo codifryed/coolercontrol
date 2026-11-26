@@ -16,5 +16,6 @@ mod pci_ids;
 pub mod power;
 pub mod power_cap;
 mod probe;
+mod spd5118;
 pub mod temps;
 mod thinkpad;

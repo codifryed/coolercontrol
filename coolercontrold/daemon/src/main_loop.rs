@@ -358,6 +358,8 @@ async fn wake_from_sleep(
         info!("The system is going to sleep again; re-initializing after the next wake instead.");
         return Ok(false);
     }
+    engine.restore_devices_after_sleep().await;
+    watchdog.ping();
     if config.get_settings()?.apply_on_boot {
         info!("Re-initializing and re-applying settings after waking from sleep");
         engine.reinitialize_devices().await;

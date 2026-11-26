@@ -75,7 +75,7 @@ use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
 use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{
-    attributes, auto_curve, chip_name, devices, drivetemp, fans, power, temps, thinkpad,
+    attributes, auto_curve, chip_name, devices, drivetemp, fans, power, spd5118, temps, thinkpad,
 };
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::taken_channels::TakenChannels;
@@ -2417,6 +2417,9 @@ impl Repository for HwmonRepo {
             // Before any value read: detection is exactly where a driver that sleeps inside its
             // sysfs read first bites (issue 609), so it belongs on the device's own thread.
             let io = DeviceIo::isolated_or_inline(&device_name, self.device_io_reply_timeout);
+            // Before its temp is detected: a sensor left off by a failed resume stays off
+            // across a reboot.
+            spd5118::reenable_sensor(&device_name, &path, &io).await;
             let mut channels = vec![];
             let apple_driver = apple::detect(&device_name, &path);
             let detected_fans = match apple_driver {
@@ -2944,6 +2947,14 @@ impl Repository for HwmonRepo {
                     }
                 }
             }
+        }
+    }
+
+    async fn restore_after_sleep(&self) {
+        // One at a time: the DIMMs share one bus, and a busy bus is what this recovers from.
+        for (_device_lock, hwmon_driver) in self.devices.values() {
+            spd5118::reenable_sensor(&hwmon_driver.name, &hwmon_driver.path, &hwmon_driver.io)
+                .await;
         }
     }
 
@@ -6738,6 +6749,83 @@ mod prepare_for_sleep_tests {
                 elapsed < PREPARE_FOR_SLEEP_WRITE_TIMEOUT + Duration::from_millis(500),
                 "prepare_for_sleep ran past the write timeout: {elapsed:?}"
             );
+        });
+    }
+}
+
+#[cfg(all(test, feature = "gated-tests"))]
+mod restore_after_sleep_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::device::DeviceInfo;
+    use serial_test::serial;
+
+    const TEMP_ENABLE_FILE: &str = "temp1_enable";
+
+    /// Adds a device with a disabled temperature sensor and returns its enable attribute.
+    async fn insert_device_with_disabled_sensor(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        device_name: &str,
+        driver_path: PathBuf,
+    ) -> PathBuf {
+        cc_fs::create_dir_all(&driver_path).await.unwrap();
+        let enable_path = driver_path.join(TEMP_ENABLE_FILE);
+        cc_fs::write(&enable_path, b"0".to_vec()).await.unwrap();
+        let driver = HwmonDriverInfo {
+            name: device_name.to_string(),
+            path: driver_path,
+            u_id: format!("test-uid-{device_name}-{type_index}"),
+            ..Default::default()
+        };
+        let device = Device::new(
+            driver.name.clone(),
+            DeviceType::Hwmon,
+            type_index,
+            None,
+            DeviceInfo::default(),
+            Some(driver.u_id.clone()),
+            1.0,
+        );
+        let uid = device.uid.clone();
+        repo.devices
+            .insert(uid, (Rc::new(RefCell::new(device)), Rc::new(driver)));
+        enable_path
+    }
+
+    /// Goal: waking re-enables the sensor of every `spd5118` device and of no other device.
+    /// Method: two DIMMs and one other device, all with their sensor disabled.
+    #[test]
+    #[serial]
+    fn waking_reenables_only_spd5118_sensors() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = HwmonRepo::new(
+                config,
+                vec![],
+                Rc::new(crate::overrides::OverridesController::empty()),
+            );
+            let dimm_a = tmp.path().join("hwmon6");
+            let dimm_b = tmp.path().join("hwmon8");
+            let other = tmp.path().join("hwmon9");
+            let dimm_a_enable =
+                insert_device_with_disabled_sensor(&mut repo, 1, spd5118::DEVICE_NAME, dimm_a)
+                    .await;
+            let dimm_b_enable =
+                insert_device_with_disabled_sensor(&mut repo, 2, spd5118::DEVICE_NAME, dimm_b)
+                    .await;
+            let other_enable =
+                insert_device_with_disabled_sensor(&mut repo, 3, "jc42", other).await;
+
+            repo.restore_after_sleep().await;
+
+            for enable_path in [&dimm_a_enable, &dimm_b_enable] {
+                let enabled = cc_fs::read_sysfs(enable_path).await.unwrap();
+                assert_eq!(enabled.trim(), "1");
+            }
+            let other_enabled = cc_fs::read_sysfs(&other_enable).await.unwrap();
+            assert_eq!(other_enabled.trim(), "0");
         });
     }
 }
