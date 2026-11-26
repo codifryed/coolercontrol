@@ -6,16 +6,22 @@
 //! The driver disables the sensor on suspend and re-enables it on resume with a single write.
 //! When the `SMBus` is busy that write fails, the sensor stays off and reads 0, and the driver
 //! still reports it as enabled. The DIMM hub keeps standby power, so this survives a reboot.
+//!
+//! Only a sensor that reads exactly 0 is toggled, as a switched-off one does. A toggle that
+//! fails halfway would otherwise switch off a sensor that was working.
 
+use crate::cc_fs::SysfsValue;
 use crate::repositories::hwmon::device_io::{self, DeviceIo};
 use crate::rt;
 use anyhow::Result;
 use log::{debug, info};
+use std::ops::Not;
 use std::path::Path;
 use std::time::Duration;
 
 pub const DEVICE_NAME: &str = "spd5118";
 
+const TEMP_INPUT_FILE: &str = "temp1_input";
 const TEMP_ENABLE_FILE: &str = "temp1_enable";
 const SENSOR_DISABLED: &[u8] = b"0";
 const SENSOR_ENABLED: &[u8] = b"1";
@@ -45,21 +51,27 @@ impl SensorBus {
     }
 }
 
-/// Switches the temperature sensor of a `spd5118` device back on. Any other device is left
-/// alone. A failure is logged and not returned: the sensor then reads 0, as it did before.
+/// Switches the temperature sensor of a `spd5118` device back on when it reads exactly 0, as
+/// a switched-off one does. Any other device, and a sensor with any other or no reading, is
+/// left alone. A failure is logged and not returned: the sensor then reads 0, as it did before.
 pub async fn reenable_sensor(device_name: &str, hwmon_path: &Path, io: &DeviceIo) -> SensorBus {
     if device_name != DEVICE_NAME {
         return SensorBus::Answered;
     }
-    let enable_path = hwmon_path.join(TEMP_ENABLE_FILE);
-    // Also keeps a kernel without the attribute from logging a failure.
-    if let Err(err) = io.read_value(&enable_path).await {
-        debug!(
-            "No readable {TEMP_ENABLE_FILE} under {}, leaving its sensor as it is: {err}",
-            hwmon_path.display()
-        );
-        return SensorBus::after(&err);
+    let reading = match io.read_value(&hwmon_path.join(TEMP_INPUT_FILE)).await {
+        Ok(reading) => reading,
+        Err(err) => {
+            debug!(
+                "No readable {TEMP_INPUT_FILE} under {}, leaving its sensor as it is: {err}",
+                hwmon_path.display()
+            );
+            return SensorBus::after(&err);
+        }
+    };
+    if reads_zero(&reading).not() {
+        return SensorBus::Answered;
     }
+    let enable_path = hwmon_path.join(TEMP_ENABLE_FILE);
     match toggle_with_retries(&enable_path, io, RETRY_DELAY).await {
         Ok(()) => {
             debug!(
@@ -77,6 +89,12 @@ pub async fn reenable_sensor(device_name: &str, hwmon_path: &Path, io: &DeviceIo
             SensorBus::after(&err)
         }
     }
+}
+
+/// Whether a `temp1_input` reading, in millidegrees, is exactly 0. One that does not parse is
+/// not: the toggle is only for the known symptom.
+fn reads_zero(reading: &SysfsValue) -> bool {
+    matches!(reading.parse::<i64>(), Ok(0))
 }
 
 /// Repeats the whole toggle until it succeeds, at most `ATTEMPTS_MAX` times, and only while
@@ -121,7 +139,6 @@ mod tests {
     use crate::cc_fs;
     use crate::repositories::hwmon::device_io::Request;
     use anyhow::anyhow;
-    use std::ops::Not;
     use std::path::PathBuf;
 
     const TEST_RETRY_DELAY: Duration = Duration::from_millis(1);
@@ -262,8 +279,10 @@ mod tests {
             let stalled = reenable_sensor(DEVICE_NAME, hwmon_path, &wedged_io).await;
 
             assert_eq!(stalled, SensorBus::Stalled);
-            // The probing read timed out, so no write followed it.
-            assert_eq!(queued(&mut wedged_rx).len(), 1);
+            // The read of the sensor timed out, so no write followed it.
+            let requests = queued(&mut wedged_rx);
+            assert_eq!(requests.len(), 1);
+            assert!(matches!(requests[0], Request::Read { .. }));
 
             let (io, rx) = DeviceIo::wedged_for_test(Duration::from_secs(5));
             let enable_path = hwmon_path.join(TEMP_ENABLE_FILE);
@@ -277,48 +296,84 @@ mod tests {
         });
     }
 
-    /// Goal: a `spd5118` device is re-enabled, and the file ends up enabled.
-    /// Method: a real file that starts disabled.
+    /// A device directory with a disabled sensor, and `temp1_input` holding `reading` if any.
+    /// Disabled, so that a toggle shows: it leaves the enable attribute at 1.
+    async fn device_dir(reading: Option<&str>) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let enable_path = dir.path().join(TEMP_ENABLE_FILE);
+        cc_fs::write(&enable_path, b"0".to_vec()).await.unwrap();
+        if let Some(reading) = reading {
+            cc_fs::write(
+                dir.path().join(TEMP_INPUT_FILE),
+                reading.as_bytes().to_vec(),
+            )
+            .await
+            .unwrap();
+        }
+        (dir, enable_path)
+    }
+
+    async fn enable_value(enable_path: &Path) -> String {
+        let enabled = cc_fs::read_sysfs(enable_path).await.unwrap();
+        enabled.trim().to_owned()
+    }
+
+    /// Goal: a `spd5118` sensor that reads 0 is toggled, and ends up enabled.
+    /// Method: real files, with the reading as the kernel gives it.
     #[test]
-    fn reenables_a_spd5118_device() {
+    fn toggles_a_sensor_that_reads_zero() {
         cc_fs::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let enable_path = dir.path().join(TEMP_ENABLE_FILE);
-            cc_fs::write(&enable_path, b"0".to_vec()).await.unwrap();
+            let (dir, enable_path) = device_dir(Some("0\n")).await;
 
-            reenable_sensor(DEVICE_NAME, dir.path(), &DeviceIo::default()).await;
+            let bus = reenable_sensor(DEVICE_NAME, dir.path(), &DeviceIo::default()).await;
 
-            let enabled = cc_fs::read_sysfs(&enable_path).await.unwrap();
-            assert_eq!(enabled.trim(), "1");
+            assert_eq!(bus, SensorBus::Answered);
+            assert_eq!(enable_value(&enable_path).await, "1");
+        });
+    }
+
+    /// Goal: a working sensor gets no write: a toggle that failed halfway would switch it off.
+    /// Method: non-zero readings, then check the enable attribute was not written.
+    #[test]
+    fn leaves_a_sensor_with_a_reading_alone() {
+        cc_fs::test_runtime(async {
+            for reading in ["35000\n", "-250\n", "1\n"] {
+                let (dir, enable_path) = device_dir(Some(reading)).await;
+
+                let bus = reenable_sensor(DEVICE_NAME, dir.path(), &DeviceIo::default()).await;
+
+                assert_eq!(bus, SensorBus::Answered);
+                assert_eq!(enable_value(&enable_path).await, "0", "reading {reading:?}");
+            }
+        });
+    }
+
+    /// Goal: without a reading that is known to be 0 nothing is written.
+    /// Method: a device with no `temp1_input`, then ones whose reading does not parse.
+    #[test]
+    fn leaves_a_sensor_without_a_usable_reading_alone() {
+        cc_fs::test_runtime(async {
+            for reading in [None, Some("\n"), Some("N/A\n"), Some("0.0\n")] {
+                let (dir, enable_path) = device_dir(reading).await;
+
+                let bus = reenable_sensor(DEVICE_NAME, dir.path(), &DeviceIo::default()).await;
+
+                assert_eq!(bus, SensorBus::Answered);
+                assert_eq!(enable_value(&enable_path).await, "0", "reading {reading:?}");
+            }
         });
     }
 
     /// Goal: no other driver's enable attribute is written: a user may have disabled it.
-    /// Method: a disabled sensor under another device name stays disabled.
+    /// Method: a disabled sensor that reads 0 under another device name stays disabled.
     #[test]
     fn leaves_other_devices_alone() {
         cc_fs::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let enable_path = dir.path().join(TEMP_ENABLE_FILE);
-            cc_fs::write(&enable_path, b"0".to_vec()).await.unwrap();
+            let (dir, enable_path) = device_dir(Some("0\n")).await;
 
             reenable_sensor("jc42", dir.path(), &DeviceIo::default()).await;
 
-            let enabled = cc_fs::read_sysfs(&enable_path).await.unwrap();
-            assert_eq!(enabled.trim(), "0");
-        });
-    }
-
-    /// Goal: a device without the attribute gets no write, so none is created.
-    /// Method: an empty device directory.
-    #[test]
-    fn skips_a_device_without_the_attribute() {
-        cc_fs::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-
-            reenable_sensor(DEVICE_NAME, dir.path(), &DeviceIo::default()).await;
-
-            assert!(dir.path().join(TEMP_ENABLE_FILE).exists().not());
+            assert_eq!(enable_value(&enable_path).await, "0");
         });
     }
 }

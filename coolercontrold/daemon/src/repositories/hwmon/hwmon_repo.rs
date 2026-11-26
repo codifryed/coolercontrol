@@ -6776,7 +6776,8 @@ mod restore_after_sleep_tests {
 
     const TEMP_ENABLE_FILE: &str = "temp1_enable";
 
-    /// Adds a device with a disabled temperature sensor and returns its enable attribute.
+    /// Adds a device with a disabled temperature sensor that reads 0, and returns its enable
+    /// attribute.
     async fn insert_device_with_disabled_sensor(
         repo: &mut HwmonRepo,
         type_index: TypeIndex,
@@ -6786,6 +6787,9 @@ mod restore_after_sleep_tests {
         cc_fs::create_dir_all(&driver_path).await.unwrap();
         let enable_path = driver_path.join(TEMP_ENABLE_FILE);
         cc_fs::write(&enable_path, b"0".to_vec()).await.unwrap();
+        cc_fs::write(driver_path.join("temp1_input"), b"0\n".to_vec())
+            .await
+            .unwrap();
         let io = DeviceIo::default();
         insert_device(repo, type_index, device_name, driver_path, io);
         enable_path
@@ -6829,7 +6833,8 @@ mod restore_after_sleep_tests {
 
     /// Goal: init switches a `spd5118` sensor back on, as one left off by a failed resume
     /// stays off across a reboot.
-    /// Method: init over a fake DIMM whose sensor is disabled, then read its enable attribute.
+    /// Method: init over a fake DIMM whose sensor is disabled and reads 0, then read its enable
+    /// attribute.
     #[test]
     #[serial]
     fn init_reenables_a_spd5118_sensor() {
@@ -6839,7 +6844,7 @@ mod restore_after_sleep_tests {
             cc_fs::create_dir_all(&dimm).await.unwrap();
             for (file, value) in [
                 ("name", spd5118::DEVICE_NAME),
-                ("temp1_input", "35000"),
+                ("temp1_input", "0"),
                 (TEMP_ENABLE_FILE, "0"),
             ] {
                 cc_fs::write(dimm.join(file), value.as_bytes().to_vec())
@@ -6884,7 +6889,7 @@ mod restore_after_sleep_tests {
     }
 
     /// Goal: waking re-enables the sensor of every `spd5118` device and of no other device.
-    /// Method: two DIMMs and one other device, all with their sensor disabled.
+    /// Method: two DIMMs and one other device, all with their sensor disabled and reading 0.
     #[test]
     #[serial]
     fn waking_reenables_only_spd5118_sensors() {
