@@ -66,20 +66,31 @@ pub struct DetectionResults {
 
 `module_status` on each `DetectedChipInfo` is one of:
 
-| Value                 | Meaning                                        |
-| --------------------- | ---------------------------------------------- |
-| `detection_only`      | Module loading was not requested               |
-| `loaded`              | Module loaded successfully                     |
-| `already_loaded`      | Module was already present in the kernel       |
-| `blacklisted`         | Module is blacklisted (`/etc/modprobe.d/`)     |
-| `failed: <reason>`    | `modprobe` failed                              |
-| `skipped_no_modprobe` | `modprobe` not found or running in a container |
+| Value                 | Meaning                                       |
+| --------------------- | --------------------------------------------- |
+| `detection_only`      | Module loading was not requested              |
+| `loaded`              | Module loaded successfully                    |
+| `already_loaded`      | Module was already present in the kernel      |
+| `blacklisted`         | Module is blacklisted (`/etc/modprobe.d/`)    |
+| `failed: <reason>`    | `modprobe` failed                             |
+| `skipped_no_modprobe` | `modprobe` not found, or see Containers below |
 
 ## Requirements
 
 - Linux x86_64
 - Read access to `/dev/port` (requires `CAP_SYS_RAWIO` or root)
 - `modprobe` in `PATH` for module loading (optional)
+
+### Containers
+
+A container loads modules into the host kernel only when it was given all of:
+
+- `CAP_SYS_MODULE`, in a rootful container. A rootless one cannot load modules.
+- The host's `/lib/modules` mounted, for the running kernel's module tree.
+- `modprobe` in the image.
+
+A module blacklisted in the host's `/etc/modprobe.d` is skipped only when that directory is mounted
+into the container. A `modprobe.blacklist=` on the kernel command line always is.
 
 ## Feature flags
 

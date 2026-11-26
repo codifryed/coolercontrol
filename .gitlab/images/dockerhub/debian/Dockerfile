@@ -53,14 +53,14 @@ ENV CC_PORT=11987
 ENV CC_HOST_IP4=0.0.0.0
 ENV CC_HOST_IP6=::
 ENV CC_DEVICE_EVENTS=OFF
-ENV CC_SENSORS_DETECT=OFF
 ENV CC_TLS=OFF
 ENV CC_DATA_DIR=/etc/coolercontrol
 
 RUN apt update && apt install -y --no-install-recommends \
     libusb-1.0-0 \
     libdrm-amdgpu1 \
-    openrc && \
+    openrc \
+    kmod && \
     sed -i 's/#rc_sys=""/rc_sys="docker"/' /etc/rc.conf && \
     sed -i 's/#rc_depend_strict="YES"/rc_depend_strict="NO"/' /etc/rc.conf && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*

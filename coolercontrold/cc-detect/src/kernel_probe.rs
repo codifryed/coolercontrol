@@ -14,7 +14,7 @@ use std::fs::File;
 use std::hash::BuildHasher;
 use std::io::Read;
 use std::ops::Not;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use log::{debug, info};
 
@@ -24,7 +24,6 @@ use crate::{DetectionResults, KernelProbedDriver};
 /// A distro `modules.dep` is around 1 MiB. Anything far larger is not one.
 const MODULES_DEP_MAX_BYTES: u64 = 16 * 1024 * 1024;
 const _: () = assert!(MODULES_DEP_MAX_BYTES < usize::MAX as u64);
-const OSRELEASE_PATH: &str = "/proc/sys/kernel/osrelease";
 const PLATFORM_DRIVERS_PATH: &str = "/sys/bus/platform/drivers";
 
 /// Loads every installed out-of-tree Super-I/O driver, recording each attempt
@@ -50,16 +49,11 @@ pub fn load_installed_out_of_tree(lockdown_active: bool, results: &mut Detection
         candidates.join(", ")
     );
     let attempts = candidates.len();
-    let mut any_loaded = false;
     for driver in candidates {
         let result = module_loader::load_module(&driver, lockdown_active);
-        any_loaded |= matches!(result, LoadResult::Loaded);
         record_attempt(results, driver, &result);
     }
     assert_eq!(results.kernel_probed.len(), attempts);
-    if any_loaded {
-        module_loader::udevadm_settle();
-    }
 }
 
 /// The out-of-tree Super-I/O drivers worth handing to the kernel, sorted.
@@ -164,15 +158,7 @@ fn record_attempt(results: &mut DetectionResults, driver: String, result: &LoadR
 /// `None` when the running kernel's `modules.dep` cannot be read, as on a
 /// system that keeps its modules elsewhere.
 fn read_modules_dep() -> Option<String> {
-    let release = std::fs::read_to_string(OSRELEASE_PATH).ok()?;
-    let release = release.trim();
-    if release.is_empty() {
-        return None;
-    }
-    if release.contains('/') {
-        return None;
-    }
-    let path = PathBuf::from(format!("/lib/modules/{release}/modules.dep"));
+    let path = crate::environment::module_tree(Path::new("/"))?.join("modules.dep");
     let mut content = String::new();
     let read = File::open(&path).and_then(|file| {
         file.take(MODULES_DEP_MAX_BYTES + 1)

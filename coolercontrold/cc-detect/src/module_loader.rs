@@ -12,8 +12,9 @@ use log::{debug, info, warn};
 use crate::shell_command::{ShellCommand, ShellCommandResult};
 
 const MODPROBE_TIMEOUT: Duration = Duration::from_secs(10);
-const UDEVADM_TIMEOUT: Duration = Duration::from_secs(30);
 const MODULES_DISABLED_PATH: &str = "/proc/sys/kernel/modules_disabled";
+/// Longest module name the kernel takes: `MODULE_NAME_LEN` less its NUL.
+const MODULE_NAME_LENGTH_MAX: usize = 55;
 
 /// Result of a module load attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,10 +47,17 @@ impl LoadResult {
 /// Load a kernel module via modprobe.
 /// Checks blacklist before loading.
 ///
+/// A name that is not a plain module name is refused: it can come from the
+/// user's chip overrides, and modprobe runs through a shell.
+///
 /// `lockdown_active` lets a plain permission error be read as the signature
 /// refusal it is under lockdown without `module.sig_enforce`.
 #[must_use]
 pub fn load_module(driver: &str, lockdown_active: bool) -> LoadResult {
+    if is_valid_module_name(driver).not() {
+        warn!("Refusing to load a module with an invalid name: {driver:?}");
+        return LoadResult::Failed("invalid module name".to_string());
+    }
     debug!("Attempting to load module: {driver}");
 
     // Check if already loaded
@@ -83,6 +91,20 @@ pub fn load_module(driver: &str, lockdown_active: bool) -> LoadResult {
             result
         }
     }
+}
+
+/// Whether `driver` is a plain module name: ASCII letters, digits, `_` and `-`
+/// only, so nothing in it means anything to a shell.
+fn is_valid_module_name(driver: &str) -> bool {
+    if driver.is_empty() {
+        return false;
+    }
+    if driver.len() > MODULE_NAME_LENGTH_MAX {
+        return false;
+    }
+    driver
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
 }
 
 /// Reads a modprobe failure from its stderr, which is in the C locale.
@@ -211,22 +233,6 @@ fn is_blacklisted_in_cmdline_content(driver: &str, cmdline: &str) -> bool {
     false
 }
 
-/// Run `udevadm settle` to wait for udev events to be processed.
-/// This gives hwmon devices time to appear in sysfs after module loading.
-pub fn udevadm_settle() {
-    info!("Running udevadm settle");
-    // silently fail. We try quickly, but don't want to wait forever
-    let cmd = ShellCommand::new("udevadm settle --timeout 2", UDEVADM_TIMEOUT);
-    match cmd.run() {
-        ShellCommandResult::Success { .. } => {
-            info!("udevadm settle completed successfully");
-        }
-        ShellCommandResult::Error(err) => {
-            info!("udevadm settle: {err}");
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,6 +272,53 @@ mod tests {
             classify_failure(eperm.to_string(), true, true),
             LoadResult::Failed(eperm.to_string())
         );
+    }
+
+    /// Goal: only plain module names pass, so no shell syntax reaches modprobe.
+    /// Method: real names, then empty, overlong, and names holding shell
+    /// metacharacters, whitespace, a path or an option.
+    #[test]
+    fn module_names_are_validated() {
+        for valid in ["it87", "nct6775", "asus-ec-sensors", "nct6687_d", "A1"] {
+            assert!(is_valid_module_name(valid), "{valid}");
+        }
+        assert!(is_valid_module_name(&"a".repeat(MODULE_NAME_LENGTH_MAX)));
+        assert!(is_valid_module_name(&"a".repeat(MODULE_NAME_LENGTH_MAX + 1)).not());
+        for invalid in [
+            "",
+            "it87; reboot",
+            "it87 force_id=0x8689",
+            "it87\nreboot",
+            "$(reboot)",
+            "`reboot`",
+            "it87&&reboot",
+            "it87|reboot",
+            "../it87",
+            "it87.ko",
+            "it87\u{e9}",
+        ] {
+            assert!(is_valid_module_name(invalid).not(), "{invalid:?}");
+        }
+    }
+
+    /// Goal: an invalid name fails before the shell or any file is touched.
+    /// Method: a name that would run a command, checked for the fixed reason.
+    #[test]
+    fn invalid_module_name_is_not_loaded() {
+        let result = load_module("it87; true", false);
+        assert_eq!(
+            result,
+            LoadResult::Failed("invalid module name".to_string())
+        );
+    }
+
+    /// Goal: the check refuses no driver the compiled database names.
+    /// Method: every compiled driver name through the check.
+    #[test]
+    fn compiled_drivers_have_valid_module_names() {
+        for driver in crate::chip_db::compiled_drivers() {
+            assert!(is_valid_module_name(driver), "{driver}");
+        }
     }
 
     #[test]

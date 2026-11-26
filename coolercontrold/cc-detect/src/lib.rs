@@ -126,11 +126,7 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
         } else {
             info!("/dev/port unavailable, skipping hardware detection");
         }
-        let mut results = DetectionResults::empty(env_info);
-        if should_load_without_probe(&env, load_modules) {
-            kernel_probe::load_installed_out_of_tree(env.is_secure_boot, &mut results);
-        }
-        return results;
+        return detect_without_probe(&env, env_info, load_modules);
     }
 
     // Load chip database
@@ -145,8 +141,28 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
     let mut port = match port_io::DevPort::open() {
         Ok(port) => port,
         Err(err) => {
-            warn!("Failed to open /dev/port: {err}");
-            return DetectionResults::empty(env_info);
+            // A container cannot see the lockdown state, so lockdown first shows
+            // here. That is expected there; any other refusal is not.
+            let has_raw_io_access = environment::raw_io_access_detected(Path::new("/"));
+            let is_secure_boot = lockdown_inferred(&err, has_raw_io_access);
+            if is_secure_boot {
+                info!(
+                    "Kernel lockdown looks active (usually from Secure Boot): /dev/port \
+                     refused to open, so Super-I/O chips cannot be probed. Drivers loaded \
+                     by other means are not affected."
+                );
+            } else {
+                warn!("Failed to open /dev/port: {err}");
+            }
+            let env = Environment {
+                is_secure_boot,
+                ..env
+            };
+            let env_info = EnvironmentInfo {
+                is_secure_boot,
+                ..env_info
+            };
+            return detect_without_probe(&env, env_info, load_modules);
         }
     };
 
@@ -157,13 +173,47 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
     process_results(&detected, load_modules, &env, env_info)
 }
 
-/// Whether installed out-of-tree drivers stand in for the probe: only when the
-/// probe cannot run, module loading was asked for, and modprobe can run here.
+/// Whether a refused `/dev/port` open shows kernel lockdown: `EPERM` although
+/// the process holds what the open needs. Without that the kernel answers the
+/// same error on its own, which says nothing about lockdown. `EACCES` comes
+/// from file permissions or an LSM, never from lockdown.
+/// Known limit: a device cgroup denial is also `EPERM` and reads as lockdown.
 #[cfg(target_arch = "x86_64")]
-fn should_load_without_probe(env: &Environment, load_modules: bool) -> bool {
-    if env.can_probe() {
+fn lockdown_inferred(open_error: &port_io::PortIoError, has_raw_io_access: bool) -> bool {
+    // cc-detect has no libc dependency.
+    const EPERM: i32 = 1;
+    if has_raw_io_access.not() {
         return false;
     }
+    match open_error {
+        port_io::PortIoError::OpenFailed(err) => err.raw_os_error() == Some(EPERM),
+        port_io::PortIoError::IoFailed(_) => false,
+    }
+}
+
+/// The results of a detection whose probe could not run: no chips, and the
+/// installed out-of-tree drivers handed to the kernel when that is allowed.
+#[cfg(target_arch = "x86_64")]
+fn detect_without_probe(
+    env: &Environment,
+    env_info: EnvironmentInfo,
+    load_modules: bool,
+) -> DetectionResults {
+    let mut results = DetectionResults::empty(env_info);
+    assert!(results.detected_chips.is_empty());
+    if should_load_without_probe(env, load_modules) {
+        kernel_probe::load_installed_out_of_tree(env.is_secure_boot, &mut results);
+    }
+    results
+}
+
+/// Whether installed out-of-tree drivers stand in for a probe that could not
+/// run: only when module loading was asked for, and modprobe can run here.
+///
+/// The environment's own verdict on the probe is not consulted: `/dev/port` can
+/// be present and still refuse to open.
+#[cfg(target_arch = "x86_64")]
+fn should_load_without_probe(env: &Environment, load_modules: bool) -> bool {
     if load_modules.not() {
         return false;
     }
@@ -230,14 +280,6 @@ fn process_results(
             features: chip.features.clone(),
             module_status,
         });
-    }
-
-    // Run udevadm settle if we loaded any modules
-    if load_modules
-        && env.can_load_modules()
-        && chip_infos.iter().any(|c| c.module_status == "loaded")
-    {
-        module_loader::udevadm_settle();
     }
 
     debug!(
@@ -324,6 +366,7 @@ mod tests {
             is_secure_boot: false,
             has_dev_port: true,
             has_modprobe: true,
+            has_module_access: false,
         };
         let env_info = EnvironmentInfo {
             is_container: false,
@@ -344,6 +387,7 @@ mod tests {
             is_secure_boot: false,
             has_dev_port: true,
             has_modprobe: true,
+            has_module_access: false,
         };
         let env_info = EnvironmentInfo {
             is_container: false,
@@ -356,41 +400,76 @@ mod tests {
         assert!(results.blacklisted.is_empty());
     }
 
-    /// Goal: the no-probe fallback runs under lockdown or without `/dev/port`,
-    /// and never when the probe can run, loading is off, or modprobe cannot
-    /// run. Method: each gate flipped from a locked-down base.
+    /// Goal: the no-probe fallback runs under lockdown, without `/dev/port`,
+    /// and when a present `/dev/port` refused to open, and never when loading
+    /// is off or modprobe cannot run. A container counts only with module
+    /// access. Method: each gate flipped from a locked-down base.
     #[cfg(target_arch = "x86_64")]
     #[test]
-    fn fallback_runs_only_when_the_probe_cannot() {
+    fn fallback_runs_whenever_modules_can_be_loaded() {
         let locked_down = Environment {
             is_container: false,
             is_secure_boot: true,
             has_dev_port: true,
             has_modprobe: true,
+            has_module_access: false,
         };
         let no_dev_port = Environment {
             is_secure_boot: false,
             has_dev_port: false,
             ..locked_down.clone()
         };
-        let can_probe = Environment {
+        // What a container sees under lockdown: the probe looks possible.
+        let open_refused = Environment {
             is_secure_boot: false,
             ..locked_down.clone()
         };
+        assert!(open_refused.can_probe());
         let container = Environment {
             is_container: true,
             ..locked_down.clone()
+        };
+        let container_with_access = Environment {
+            has_module_access: true,
+            ..container.clone()
         };
         let no_modprobe = Environment {
             has_modprobe: false,
             ..locked_down.clone()
         };
         assert!(should_load_without_probe(&locked_down, true));
+        assert!(should_load_without_probe(&container_with_access, true));
         assert!(should_load_without_probe(&no_dev_port, true));
         assert!(should_load_without_probe(&locked_down, false).not());
-        assert!(should_load_without_probe(&can_probe, true).not());
+        assert!(should_load_without_probe(&open_refused, true));
+        assert!(should_load_without_probe(&open_refused, false).not());
         assert!(should_load_without_probe(&container, true).not());
         assert!(should_load_without_probe(&no_modprobe, true).not());
+    }
+
+    /// Goal: a refused `/dev/port` open counts as lockdown only for `EPERM`
+    /// met while holding raw I/O access. Method: each errno with and without
+    /// the access.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn lockdown_is_inferred_from_a_refused_open() {
+        use std::io::Error;
+
+        use port_io::PortIoError;
+        const EPERM: i32 = 1;
+        const ENOENT: i32 = 2;
+        const EACCES: i32 = 13;
+        let open_failed = |errno: i32| PortIoError::OpenFailed(Error::from_raw_os_error(errno));
+        assert!(lockdown_inferred(&open_failed(EPERM), true));
+        // Without the capability the kernel refuses regardless of lockdown.
+        assert!(lockdown_inferred(&open_failed(EPERM), false).not());
+        // File permissions or an LSM refused, not lockdown.
+        assert!(lockdown_inferred(&open_failed(EACCES), true).not());
+        assert!(lockdown_inferred(&open_failed(EACCES), false).not());
+        assert!(lockdown_inferred(&open_failed(ENOENT), true).not());
+        assert!(lockdown_inferred(&open_failed(ENOENT), false).not());
+        let io_failed = PortIoError::IoFailed(Error::from_raw_os_error(EPERM));
+        assert!(lockdown_inferred(&io_failed, true).not());
     }
 
     #[test]
