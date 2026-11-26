@@ -164,6 +164,14 @@ const INIT_EXTRACT_TIMEOUT: Duration = Duration::from_secs(5);
 /// fit inside the systemd/logind 2-5 s sleep notification window.
 const PREPARE_FOR_SLEEP_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Budget for the whole restore pass after waking. The watchdog goes unfed for its duration,
+/// and one reply timeout alone can reach 40 s, so this stays well under the unit's 30 s
+/// `WatchdogSec`.
+const WAKE_RESTORE_BUDGET: Duration = Duration::from_secs(10);
+
+const _: () = assert!(WAKE_RESTORE_BUDGET.as_secs() > 0);
+const _: () = assert!(WAKE_RESTORE_BUDGET.as_secs() <= 15);
+
 /// Stub statuses for every discovered channel so the failsafe seed
 /// includes channels whose first read failed at init. Field presence
 /// matches the streaming extractors so `create_failsafe_data` gates
@@ -1815,6 +1823,35 @@ impl HwmonRepo {
         debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
         Ok(attributes)
     }
+
+    /// `restore_after_sleep` within `budget`, which bounds the whole pass. A request still
+    /// waiting when it runs out stays queued for its device.
+    async fn restore_after_sleep_inner(&self, budget: Duration) {
+        debug_assert!(budget > Duration::ZERO);
+        let restore = async {
+            // One at a time: the DIMMs share one bus, and a busy bus is what this recovers
+            // from.
+            for (_device_lock, hwmon_driver) in self.devices.values() {
+                let bus = spd5118::reenable_sensor(
+                    &hwmon_driver.name,
+                    &hwmon_driver.path,
+                    &hwmon_driver.io,
+                )
+                .await;
+                // The others would each wait out a reply timeout on the same bus.
+                if bus == spd5118::SensorBus::Stalled {
+                    break;
+                }
+            }
+        };
+        if rt::timeout(budget, restore).await.is_err() {
+            // Names nothing the user can do, so not a warning.
+            info!(
+                "Restoring the hwmon devices after waking took longer than {budget:?}, \
+                 leaving the rest as they are. A DDR5 temperature sensor may read 0."
+            );
+        }
+    }
 }
 
 /// What decides a hwmon device's UID: its identifier, and the tiebreakers tried on a collision.
@@ -2959,17 +2996,7 @@ impl Repository for HwmonRepo {
     }
 
     async fn restore_after_sleep(&self) {
-        // One at a time: the DIMMs share one bus, and a busy bus is what this recovers from.
-        for (_device_lock, hwmon_driver) in self.devices.values() {
-            let bus =
-                spd5118::reenable_sensor(&hwmon_driver.name, &hwmon_driver.path, &hwmon_driver.io)
-                    .await;
-            // The others would each wait out a reply timeout on the same bus, with the
-            // watchdog unfed meanwhile.
-            if bus == spd5118::SensorBus::Stalled {
-                break;
-            }
-        }
+        self.restore_after_sleep_inner(WAKE_RESTORE_BUDGET).await;
     }
 
     async fn reinitialize_devices(&self) {
@@ -6885,6 +6912,32 @@ mod restore_after_sleep_tests {
 
             let queued: usize = queues.iter().map(tokio::sync::mpsc::Receiver::len).sum();
             assert_eq!(queued, 1);
+        });
+    }
+
+    /// Goal: the whole pass ends at its budget, as a reply timeout can outlast the watchdog
+    /// interval and nothing feeds the watchdog meanwhile.
+    /// Method: a DIMM that never answers and whose reply timeout is far past the budget, then
+    /// check the pass returned before that timeout.
+    #[test]
+    #[serial]
+    fn waking_ends_at_its_budget() {
+        cc_fs::test_runtime(async {
+            let reply_timeout = Duration::from_secs(5);
+            let budget = Duration::from_millis(20);
+            let mut repo = empty_repo();
+            let (io, rx) = DeviceIo::wedged_for_test(reply_timeout);
+            let path = PathBuf::from("/sys/fake/hwmon1");
+            insert_device(&mut repo, 1, spd5118::DEVICE_NAME, path, io);
+            let started = Instant::now();
+
+            repo.restore_after_sleep_inner(budget).await;
+
+            let elapsed = started.elapsed();
+            assert!(elapsed >= budget);
+            assert!(elapsed < reply_timeout, "took {elapsed:?}");
+            // The pass got as far as asking the device.
+            assert_eq!(rx.len(), 1);
         });
     }
 
