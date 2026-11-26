@@ -168,7 +168,7 @@ impl NvApi {
         initialize_api(query_interface)?;
         let gpu_entries = enumerate_gpu_entries(query_interface, register_hotspot_buses)?;
         info!(
-            "nvapi (unofficial GPU hotspot interface) initialized with {} GPU(s)",
+            "nvapi (undocumented GPU hotspot interface) initialized with {} GPU(s)",
             gpu_entries.len()
         );
         Some(Self {
@@ -299,7 +299,7 @@ fn load_library() -> Option<libloading::Library> {
     unsafe { libloading::Library::new(LIBRARY_NAME) }
         .inspect_err(|err| {
             info!(
-                "GPU hotspot temperatures are not shown: nvapi, the unofficial interface for \
+                "GPU hotspot temperatures are not shown: nvapi, the undocumented interface for \
                  them, is not available: {err}"
             );
         })
@@ -313,7 +313,7 @@ fn load_query_interface(lib: &libloading::Library) -> Option<QueryInterfaceFn> {
     unsafe {
         let sym = lib
             .get::<QueryInterfaceFn>(QUERY_INTERFACE_FN)
-            .inspect_err(|err| warn!("nvapi (unofficial GPU hotspot interface) QueryInterface symbol not found: {err}"))
+            .inspect_err(|err| warn!("nvapi (undocumented GPU hotspot interface) QueryInterface symbol not found: {err}"))
             .ok()?;
         Some(*sym)
     }
@@ -330,7 +330,7 @@ fn initialize_api(query_interface: QueryInterfaceFn) -> Option<()> {
     let status = unsafe { init_fn() };
     if status != 0 {
         warn!(
-            "nvapi (unofficial GPU hotspot interface) Initialize failed: {}",
+            "nvapi (undocumented GPU hotspot interface) Initialize failed: {}",
             error_message(query_interface, status)
         );
         return None;
@@ -359,7 +359,7 @@ fn enumerate_gpu_entries(
     let status = unsafe { enum_fn(&raw mut handles, &raw mut count) };
     if status != 0 {
         warn!(
-            "nvapi (unofficial GPU hotspot interface) EnumPhysicalGPUs failed: {}",
+            "nvapi (undocumented GPU hotspot interface) EnumPhysicalGPUs failed: {}",
             error_message(query_interface, status)
         );
         return None;
@@ -376,7 +376,7 @@ fn enumerate_gpu_entries(
         register_hotspot_buses,
     );
     if gpu_entries.is_empty() {
-        info!("nvapi (unofficial GPU hotspot interface): no GPU reports a hotspot temperature");
+        info!("nvapi (undocumented GPU hotspot interface): no GPU reports a hotspot temperature");
         return None;
     }
     Some(gpu_entries)
@@ -513,7 +513,9 @@ fn query_fn<F>(query_interface: QueryInterfaceFn, id: u32, name: &str) -> Option
     // which must match the nvapi ABI for the given query ID.
     let ptr = unsafe { query_interface(id) };
     if ptr.is_null() {
-        warn!("nvapi (unofficial GPU hotspot interface) {name} function not found (query {id:#x})");
+        warn!(
+            "nvapi (undocumented GPU hotspot interface) {name} function not found (query {id:#x})"
+        );
         return None;
     }
     Some(unsafe { mem::transmute_copy(&ptr) })
