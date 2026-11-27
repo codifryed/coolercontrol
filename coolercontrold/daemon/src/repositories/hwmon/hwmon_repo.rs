@@ -468,10 +468,10 @@ pub struct HwmonDriverInfo {
     /// own record in `apple_fans`.
     #[serde(skip)]
     pub taken_channels: TakenChannels,
-    /// Whether its temp sensors are switched back on at start and after waking. Decided from
-    /// the kernel driver name at detection, as `name` becomes a display name afterwards.
+    /// The name its hwmon `name` attribute gives, kept as detected. `name` can become a
+    /// display name afterwards, so whatever depends on the kind of device asks this one.
     #[serde(skip)]
-    pub reenables_temp_sensors: bool,
+    pub hwmon_name: String,
 }
 
 /// Sized to fit a typical hwmon fan-channel set (1-8) without growth.
@@ -1836,7 +1836,7 @@ impl HwmonRepo {
             // One at a time: the DIMMs share one bus, and a busy bus is what this recovers
             // from.
             for (_device_lock, hwmon_driver) in self.devices.values() {
-                if hwmon_driver.reenables_temp_sensors.not() {
+                if spd5118::affects(&hwmon_driver.hwmon_name).not() {
                     continue;
                 }
                 let bus = spd5118::reenable_sensors(
@@ -2521,8 +2521,7 @@ impl Repository for HwmonRepo {
             }
             // Once the channel set is final, so a disabled or ignored temp is left alone. A
             // sensor left off by a failed resume stays off across a reboot.
-            let reenables_temp_sensors = spd5118::affects(&device_name);
-            if reenables_temp_sensors {
+            if spd5118::affects(&device_name) {
                 spd5118::reenable_sensors(&path, &channels, &io).await;
             }
             if channels.is_empty() {
@@ -2568,6 +2567,7 @@ impl Repository for HwmonRepo {
             debug!("Detected Device Model: {model:?}");
             let taken_channels = TakenChannels::with_capacity(channels.len());
             let hwmon_driver_info = HwmonDriverInfo {
+                hwmon_name: device_name.clone(),
                 name: device_name,
                 path,
                 model,
@@ -2577,7 +2577,6 @@ impl Repository for HwmonRepo {
                 apple_fans,
                 io,
                 taken_channels,
-                reenables_temp_sensors,
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
@@ -6880,7 +6879,7 @@ mod restore_after_sleep_tests {
             u_id: format!("test-uid-{device_name}-{type_index}"),
             channels,
             io,
-            reenables_temp_sensors: spd5118::affects(device_name),
+            hwmon_name: device_name.to_string(),
             ..Default::default()
         };
         let device = Device::new(
@@ -6931,6 +6930,9 @@ mod restore_after_sleep_tests {
             repo.initialize_devices().await.unwrap();
 
             assert_eq!(repo.devices.len(), 1);
+            for (device, driver) in repo.devices.values() {
+                assert_eq!(driver.hwmon_name, spd5118::DEVICE_NAME);
+            }
             let enabled = cc_fs::read_sysfs(dimm.join(TEMP_ENABLE_FILE))
                 .await
                 .unwrap();

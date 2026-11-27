@@ -51,12 +51,10 @@ impl SensorBus {
     }
 }
 
-/// Whether a device's temp sensors need switching back on, by its kernel driver name.
-///
-/// Asked once at detection and kept with the device: its name is replaced by a display name
-/// afterwards, so it cannot be asked again on wake.
-pub fn affects(driver_name: &str) -> bool {
-    driver_name == DEVICE_NAME
+/// Whether this module applies to a device, by the name its hwmon `name` attribute gives.
+/// Never by its display name, which replaces that one after detection.
+pub fn affects(hwmon_name: &str) -> bool {
+    hwmon_name == DEVICE_NAME
 }
 
 /// Switches the temperature sensors of an affected device back on. A sensor that is not among
