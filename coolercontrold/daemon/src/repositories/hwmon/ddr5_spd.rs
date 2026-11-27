@@ -138,8 +138,10 @@ fn capacity_gb(eeprom: &[u8]) -> Option<u32> {
         return None;
     }
     let packages = bus_width_bits / io_width_bits;
+    debug_assert!(packages >= 1);
     // At most 2 * 16 * 16 * 64 * 8, far inside a u32.
     let gigabits = sub_channels * packages * dies * density_gbit * ranks;
+    debug_assert!(gigabits > 0);
     if gigabits.is_multiple_of(8).not() {
         return None;
     }
