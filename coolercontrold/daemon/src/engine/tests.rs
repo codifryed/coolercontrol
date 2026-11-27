@@ -625,6 +625,40 @@ mod engine_tests {
 
     #[test]
     #[serial]
+    fn restoring_after_sleep_reaches_each_repository() {
+        // Goal: a wake lets every repository restore its devices, which is what switches a
+        // DDR5 temperature sensor back on.
+        // Method: two stub repositories counting their restores, then one engine restore.
+        cc_fs::test_runtime(async {
+            let hwmon = Rc::new(StubRepo::new(DeviceType::Hwmon));
+            let custom_sensors = Rc::new(StubRepo::new(DeviceType::CustomSensors));
+            let hwmon_restored = Rc::clone(&hwmon.restored);
+            let custom_sensors_restored = Rc::clone(&custom_sensors.restored);
+            let repos = Repositories {
+                hwmon: Some(hwmon),
+                custom_sensors: Some(custom_sensors),
+                ..Default::default()
+            };
+            let engine = Engine::new(
+                Rc::new(HashMap::new()),
+                &Rc::new(repos),
+                Rc::new(Config::init_default_config().unwrap()),
+                Rc::new(crate::calibration::CalibrationStore::empty()),
+                Rc::new(crate::calibration::FanStateMap::new()),
+                Rc::new(crate::overrides::OverridesController::empty()),
+            );
+            assert_eq!(hwmon_restored.get(), 0);
+            assert_eq!(custom_sensors_restored.get(), 0);
+
+            engine.restore_devices_after_sleep().await;
+
+            assert_eq!(hwmon_restored.get(), 1);
+            assert_eq!(custom_sensors_restored.get(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
     fn custom_sensor_attributes_forward_the_source_limits() {
         // Goal: a Scale & Offset Custom Sensor answers the attributes request with its
         // source's driver limits in its own unit, and a Mix sensor with none. Method: a

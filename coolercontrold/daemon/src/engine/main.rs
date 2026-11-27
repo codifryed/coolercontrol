@@ -1227,6 +1227,13 @@ impl Engine {
         }
     }
 
+    /// Lets every repository restore device state the system's sleep may have lost.
+    pub async fn restore_devices_after_sleep(&self) {
+        for repo in self.repos.values() {
+            repo.restore_after_sleep().await;
+        }
+    }
+
     /// This reinitialized the status history for all devices. This is helpful for example when
     /// waking from sleep, as the status history is no longer sequential.
     pub async fn reinitialize_all_status_histories(&self) -> Result<()> {

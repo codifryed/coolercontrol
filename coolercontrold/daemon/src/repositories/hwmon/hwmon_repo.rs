@@ -75,7 +75,7 @@ use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
 use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::identity::{self, IdentityReader, Stalled};
 use crate::repositories::hwmon::{
-    attributes, auto_curve, chip_name, devices, drivetemp, fans, power, temps, thinkpad,
+    attributes, auto_curve, chip_name, devices, drivetemp, fans, power, spd5118, temps, thinkpad,
 };
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::taken_channels::TakenChannels;
@@ -163,6 +163,14 @@ const INIT_EXTRACT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Cap on the `pwm_enable` write during suspend preparation. Must
 /// fit inside the systemd/logind 2-5 s sleep notification window.
 const PREPARE_FOR_SLEEP_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Budget for the whole restore pass after waking. The watchdog goes unfed for its duration,
+/// and one reply timeout alone can reach 40 s, so this stays well under the unit's 30 s
+/// `WatchdogSec`.
+const WAKE_RESTORE_BUDGET: Duration = Duration::from_secs(10);
+
+const _: () = assert!(WAKE_RESTORE_BUDGET.as_secs() > 0);
+const _: () = assert!(WAKE_RESTORE_BUDGET.as_secs() <= 15);
 
 /// Stub statuses for every discovered channel so the failsafe seed
 /// includes channels whose first read failed at init. Field presence
@@ -460,6 +468,10 @@ pub struct HwmonDriverInfo {
     /// own record in `apple_fans`.
     #[serde(skip)]
     pub taken_channels: TakenChannels,
+    /// The name its hwmon `name` attribute gives, kept as detected. `name` can become a
+    /// display name afterwards, so whatever depends on the kind of device asks this one.
+    #[serde(skip)]
+    pub hwmon_name: String,
 }
 
 /// Sized to fit a typical hwmon fan-channel set (1-8) without growth.
@@ -601,6 +613,10 @@ pub struct HwmonRepo {
 
     /// Where the `ThinkPad` `fan_control` option is read from. A field so tests can fake it.
     thinkpad_fan_control_param: PathBuf,
+
+    /// Device paths to initialize instead of the ones found in sysfs. A field so tests can
+    /// fake them.
+    device_paths_override: Option<Vec<PathBuf>>,
 }
 
 impl HwmonRepo {
@@ -644,6 +660,7 @@ impl HwmonRepo {
             drivetemp_ioctl_timeout,
             device_io_reply_timeout,
             thinkpad_fan_control_param: PathBuf::from(thinkpad::FAN_CONTROL_PARAM_PATH),
+            device_paths_override: None,
         }
     }
 
@@ -1810,6 +1827,38 @@ impl HwmonRepo {
         debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
         Ok(attributes)
     }
+
+    /// `restore_after_sleep` within `budget`, which bounds the whole pass. A request still
+    /// waiting when it runs out stays queued for its device.
+    async fn restore_after_sleep_inner(&self, budget: Duration) {
+        debug_assert!(budget > Duration::ZERO);
+        let restore = async {
+            // One at a time: the DIMMs share one bus, and a busy bus is what this recovers
+            // from.
+            for (_device_lock, hwmon_driver) in self.devices.values() {
+                if spd5118::affects(&hwmon_driver.hwmon_name).not() {
+                    continue;
+                }
+                let bus = spd5118::reenable_sensors(
+                    &hwmon_driver.path,
+                    &hwmon_driver.channels,
+                    &hwmon_driver.io,
+                )
+                .await;
+                // The others would each wait out a reply timeout on the same bus.
+                if bus == spd5118::SensorBus::Stalled {
+                    break;
+                }
+            }
+        };
+        if rt::timeout(budget, restore).await.is_err() {
+            // Names nothing the user can do, so not a warning.
+            info!(
+                "Restoring the hwmon devices after waking took longer than {budget:?}, \
+                 leaving the rest as they are. A DDR5 temperature sensor may read 0."
+            );
+        }
+    }
 }
 
 /// What decides a hwmon device's UID: its identifier, and the tiebreakers tried on a collision.
@@ -2340,7 +2389,10 @@ impl Repository for HwmonRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
 
-        let base_paths = devices::find_all_hwmon_device_paths();
+        let base_paths = self
+            .device_paths_override
+            .clone()
+            .unwrap_or_else(devices::find_all_hwmon_device_paths);
         if base_paths.is_empty() {
             info!(
                 "No HWMon devices were found, try installing lm-sensors and running sensors-detect"
@@ -2467,6 +2519,11 @@ impl Repository for HwmonRepo {
                     ChannelExclusion::IgnoredBySensorsConf,
                 );
             }
+            // Once the channel set is final, so a disabled or ignored temp is left alone. A
+            // sensor left off by a failed resume stays off across a reboot.
+            if spd5118::affects(&device_name) {
+                spd5118::reenable_sensors(&path, &channels, &io).await;
+            }
             if channels.is_empty() {
                 if ignored_count > 0 {
                     info!(
@@ -2506,10 +2563,16 @@ impl Repository for HwmonRepo {
                 error!("Could not install the read table for {device_name}: {err}");
             }
             // Display only, not in the UID: a stall leaves the device without a model.
-            let model = Self::read_model(&path, &identity).await.unwrap_or_default();
+            let mut model = Self::read_model(&path, &identity).await.unwrap_or_default();
+            if model.is_none() {
+                if spd5118::affects(&device_name) {
+                    model = spd5118::read_model(&path, &io).await;
+                }
+            }
             debug!("Detected Device Model: {model:?}");
             let taken_channels = TakenChannels::with_capacity(channels.len());
             let hwmon_driver_info = HwmonDriverInfo {
+                hwmon_name: device_name.clone(),
                 name: device_name,
                 path,
                 model,
@@ -2945,6 +3008,10 @@ impl Repository for HwmonRepo {
                 }
             }
         }
+    }
+
+    async fn restore_after_sleep(&self) {
+        self.restore_after_sleep_inner(WAKE_RESTORE_BUDGET).await;
     }
 
     async fn reinitialize_devices(&self) {
@@ -6738,6 +6805,278 @@ mod prepare_for_sleep_tests {
                 elapsed < PREPARE_FOR_SLEEP_WRITE_TIMEOUT + Duration::from_millis(500),
                 "prepare_for_sleep ran past the write timeout: {elapsed:?}"
             );
+        });
+    }
+}
+
+#[cfg(all(test, feature = "gated-tests"))]
+mod restore_after_sleep_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::device::DeviceInfo;
+    use serial_test::serial;
+
+    const TEMP_ENABLE_FILE: &str = "temp1_enable";
+
+    /// Adds a device with a disabled temperature sensor that reads 0, and returns its enable
+    /// attribute.
+    async fn insert_device_with_disabled_sensor(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        device_name: &str,
+        driver_path: PathBuf,
+    ) -> PathBuf {
+        cc_fs::create_dir_all(&driver_path).await.unwrap();
+        let enable_path = driver_path.join(TEMP_ENABLE_FILE);
+        cc_fs::write(&enable_path, b"0".to_vec()).await.unwrap();
+        cc_fs::write(driver_path.join("temp1_input"), b"0\n".to_vec())
+            .await
+            .unwrap();
+        let io = DeviceIo::default();
+        insert_device(repo, type_index, device_name, driver_path, io);
+        enable_path
+    }
+
+    fn temp1() -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Temp,
+            number: 1,
+            name: "temp1".to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// Adds a device with its `temp1` channel.
+    fn insert_device(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        device_name: &str,
+        driver_path: PathBuf,
+        io: DeviceIo,
+    ) {
+        insert_device_with_channels(
+            repo,
+            type_index,
+            device_name,
+            driver_path,
+            io,
+            vec![temp1()],
+        );
+    }
+
+    fn insert_device_with_channels(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        device_name: &str,
+        driver_path: PathBuf,
+        io: DeviceIo,
+        channels: Vec<HwmonChannelInfo>,
+    ) {
+        // Named as after detection, where a DIMM's driver name gives way to a display name.
+        let display_name = if spd5118::affects(device_name) {
+            format!("DIMM 0x5{type_index}")
+        } else {
+            device_name.to_string()
+        };
+        let driver = HwmonDriverInfo {
+            name: display_name,
+            path: driver_path,
+            u_id: format!("test-uid-{device_name}-{type_index}"),
+            channels,
+            io,
+            hwmon_name: device_name.to_string(),
+            ..Default::default()
+        };
+        let device = Device::new(
+            driver.name.clone(),
+            DeviceType::Hwmon,
+            type_index,
+            None,
+            DeviceInfo::default(),
+            Some(driver.u_id.clone()),
+            1.0,
+        );
+        let uid = device.uid.clone();
+        repo.devices
+            .insert(uid, (Rc::new(RefCell::new(device)), Rc::new(driver)));
+    }
+
+    fn empty_repo() -> HwmonRepo {
+        HwmonRepo::new(
+            Rc::new(Config::init_default_config().unwrap()),
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        )
+    }
+
+    /// Goal: init switches a `spd5118` sensor back on, as one left off by a failed resume
+    /// stays off across a reboot, keeps the hwmon name and takes the model from the SPD. The
+    /// wake pass then switches the sensor on again.
+    /// Method: init over a fake DIMM whose sensor is disabled and reads 0, then read its enable
+    /// attribute, hwmon name and model. Disable the sensor, wake, and read the attribute again.
+    #[test]
+    #[serial]
+    fn init_reenables_a_spd5118_sensor() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dimm = tmp.path().join("hwmon6");
+            cc_fs::create_dir_all(&dimm).await.unwrap();
+            for (file, value) in [
+                ("name", spd5118::DEVICE_NAME),
+                ("temp1_input", "0"),
+                (TEMP_ENABLE_FILE, "0"),
+            ] {
+                cc_fs::write(dimm.join(file), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+            // The SPD contents of a real module, as the driver exposes them.
+            let eeprom = crate::repositories::hwmon::ddr5_spd::TestSpd::g_skill_24_gb().bytes();
+            cc_fs::create_dir_all(dimm.join("device")).await.unwrap();
+            cc_fs::write(dimm.join("device").join("eeprom"), eeprom)
+                .await
+                .unwrap();
+            let mut repo = empty_repo();
+            repo.device_paths_override = Some(vec![dimm.clone()]);
+
+            repo.initialize_devices().await.unwrap();
+
+            assert_eq!(repo.devices.len(), 1);
+            for (device, driver) in repo.devices.values() {
+                assert_eq!(driver.hwmon_name, spd5118::DEVICE_NAME);
+                assert_eq!(
+                    device.borrow().info.model.as_deref(),
+                    Some("G.Skill 24 GB DDR5 (F5-8400J4052G24G)")
+                );
+            }
+            let enabled = cc_fs::read_sysfs(dimm.join(TEMP_ENABLE_FILE))
+                .await
+                .unwrap();
+            assert_eq!(enabled.trim(), "1");
+
+            // The device as init left it is also restored on wake: a failed resume switches
+            // the sensor off again.
+            cc_fs::write(dimm.join(TEMP_ENABLE_FILE), b"0".to_vec())
+                .await
+                .unwrap();
+            repo.restore_after_sleep().await;
+            let enabled = cc_fs::read_sysfs(dimm.join(TEMP_ENABLE_FILE))
+                .await
+                .unwrap();
+            assert_eq!(enabled.trim(), "1");
+            repo.shutdown().await.unwrap();
+        });
+    }
+
+    /// Goal: one DIMM that does not answer ends the pass, as the others share its bus and
+    /// each would wait out a reply timeout while the watchdog goes unfed.
+    /// Method: two DIMMs that never answer, then count the requests queued for both.
+    #[test]
+    #[serial]
+    fn waking_stops_at_the_first_stalled_dimm() {
+        cc_fs::test_runtime(async {
+            let mut repo = empty_repo();
+            let mut queues = Vec::with_capacity(2);
+            for type_index in [1, 2] {
+                let (io, rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+                let path = PathBuf::from(format!("/sys/fake/hwmon{type_index}"));
+                insert_device(&mut repo, type_index, spd5118::DEVICE_NAME, path, io);
+                queues.push(rx);
+            }
+
+            repo.restore_after_sleep().await;
+
+            let queued: usize = queues.iter().map(tokio::sync::mpsc::Receiver::len).sum();
+            assert_eq!(queued, 1);
+        });
+    }
+
+    /// Goal: the whole pass ends at its budget, as a reply timeout can outlast the watchdog
+    /// interval and nothing feeds the watchdog meanwhile.
+    /// Method: a DIMM that never answers and whose reply timeout is far past the budget, then
+    /// check the pass returned before that timeout.
+    #[test]
+    #[serial]
+    fn waking_ends_at_its_budget() {
+        cc_fs::test_runtime(async {
+            let reply_timeout = Duration::from_secs(5);
+            let budget = Duration::from_millis(20);
+            let mut repo = empty_repo();
+            let (io, rx) = DeviceIo::wedged_for_test(reply_timeout);
+            let path = PathBuf::from("/sys/fake/hwmon1");
+            insert_device(&mut repo, 1, spd5118::DEVICE_NAME, path, io);
+            let started = Instant::now();
+
+            repo.restore_after_sleep_inner(budget).await;
+
+            let elapsed = started.elapsed();
+            assert!(elapsed >= budget);
+            assert!(elapsed < reply_timeout, "took {elapsed:?}");
+            // The pass got as far as asking the device.
+            assert_eq!(rx.len(), 1);
+        });
+    }
+
+    /// Goal: waking leaves a DIMM's sensor alone when its temp channel is not among the
+    /// device's channels, as when the user disabled it.
+    /// Method: a DIMM without channels whose sensor is disabled and reads 0.
+    #[test]
+    #[serial]
+    fn waking_leaves_a_disabled_temp_channel_alone() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dimm = tmp.path().join("hwmon6");
+            cc_fs::create_dir_all(&dimm).await.unwrap();
+            let enable_path = dimm.join(TEMP_ENABLE_FILE);
+            cc_fs::write(&enable_path, b"0".to_vec()).await.unwrap();
+            cc_fs::write(dimm.join("temp1_input"), b"0\n".to_vec())
+                .await
+                .unwrap();
+            let mut repo = empty_repo();
+            insert_device_with_channels(
+                &mut repo,
+                1,
+                spd5118::DEVICE_NAME,
+                dimm,
+                DeviceIo::default(),
+                vec![],
+            );
+
+            repo.restore_after_sleep().await;
+
+            let enabled = cc_fs::read_sysfs(&enable_path).await.unwrap();
+            assert_eq!(enabled.trim(), "0");
+        });
+    }
+
+    /// Goal: waking re-enables the sensor of every `spd5118` device and of no other device.
+    /// Method: two DIMMs and one other device, all with their sensor disabled and reading 0.
+    #[test]
+    #[serial]
+    fn waking_reenables_only_spd5118_sensors() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let mut repo = empty_repo();
+            let dimm_a = tmp.path().join("hwmon6");
+            let dimm_b = tmp.path().join("hwmon8");
+            let other = tmp.path().join("hwmon9");
+            let dimm_a_enable =
+                insert_device_with_disabled_sensor(&mut repo, 1, spd5118::DEVICE_NAME, dimm_a)
+                    .await;
+            let dimm_b_enable =
+                insert_device_with_disabled_sensor(&mut repo, 2, spd5118::DEVICE_NAME, dimm_b)
+                    .await;
+            let other_enable =
+                insert_device_with_disabled_sensor(&mut repo, 3, "jc42", other).await;
+
+            repo.restore_after_sleep().await;
+
+            for enable_path in [&dimm_a_enable, &dimm_b_enable] {
+                let enabled = cc_fs::read_sysfs(enable_path).await.unwrap();
+                assert_eq!(enabled.trim(), "1");
+            }
+            let other_enabled = cc_fs::read_sysfs(&other_enable).await.unwrap();
+            assert_eq!(other_enabled.trim(), "0");
         });
     }
 }
