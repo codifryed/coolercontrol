@@ -49,6 +49,10 @@ pub const DEVICE_NAME_THINK_PAD: &str = "thinkpad";
 pub const DEVICE_NAME_APPLE_SMC: &str = "applesmc";
 /// The hwmon name. `macsmc-hwmon`, with a hyphen, is only the platform driver's name.
 pub const DEVICE_NAME_MAC_SMC: &str = "macsmc_hwmon";
+/// The temperature sensors on memory modules: the DDR5 SPD hub and the DDR4 JC-42.4 sensor.
+const DIMM_DEVICE_NAMES: [&str; 2] = ["spd5118", "jc42"];
+/// The highest 7-bit i2c address.
+const I2C_ADDRESS_MAX: u16 = 0x7f;
 
 struct GlobPaths {
     pwm: String,
@@ -342,6 +346,32 @@ fn i2c_bus_number(adapter: &Path) -> Option<&str> {
         return None;
     }
     bus.bytes().all(|byte| byte.is_ascii_digit()).then_some(bus)
+}
+
+/// Gives every memory module's temperature sensor a display name. Runs after the UIDs are
+/// resolved, so the saved settings of a renamed device stay attached to it.
+pub fn name_dimm_devices(hwmon_drivers: &mut [HwmonDriverInfo]) {
+    for driver in hwmon_drivers {
+        if let Some(name) = dimm_display_name(&driver.name, &driver.path) {
+            driver.name = name;
+        }
+    }
+}
+
+/// The display name of a memory module's temperature sensor, `DIMM 0x51`. These drivers report
+/// no label, so every module would otherwise show under the bare driver name. The i2c address
+/// is what tells them apart: it is fixed by the slot, where the bus number is not.
+fn dimm_display_name(device_name: &str, base_path: &Path) -> Option<String> {
+    if DIMM_DEVICE_NAMES.contains(&device_name).not() {
+        return None;
+    }
+    let location = i2c_client_location(base_path)?;
+    // A firmware-named client carries no address and fails to parse here.
+    let address = u16::from_str_radix(&location.client, 16).ok()?;
+    if address > I2C_ADDRESS_MAX {
+        return None;
+    }
+    Some(format!("DIMM 0x{address:02x}"))
 }
 
 /// Returns the SCSI `wwid`, which only a `scsi_device` exposes, so this doubles as the test
@@ -1543,6 +1573,82 @@ mod tests {
         let link = ctx.hwmon_path.join("device");
         cc_fs::remove_file(&link).await.ok();
         std::os::unix::fs::symlink(&client, &link).unwrap();
+    }
+
+    // Goal: a memory module's sensor is named for its i2c address, whichever bus number the
+    // kernel handed out. Method: a DDR5 hub and a DDR4 sensor, each on a differently numbered bus.
+    #[test]
+    #[serial]
+    fn a_dimm_sensor_is_named_for_its_address() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            setup_i2c_client(&ctx, "7", "0051", "SMBus PIIX4 adapter port 0 at 0b00").await;
+            assert_eq!(
+                dimm_display_name("spd5118", &ctx.hwmon_path).as_deref(),
+                Some("DIMM 0x51")
+            );
+
+            let ctx = setup().await;
+            setup_i2c_client(&ctx, "15", "0018", "SMBus I801 adapter at efa0").await;
+            assert_eq!(
+                dimm_display_name("jc42", &ctx.hwmon_path).as_deref(),
+                Some("DIMM 0x18")
+            );
+        });
+    }
+
+    // Goal: negative space for the above. Nothing but a memory module with a readable address is
+    // renamed. Method: another driver at a DIMM's address, a firmware-named client, an address
+    // past the 7-bit range, and a device that is no i2c client at all.
+    #[test]
+    #[serial]
+    fn only_an_addressed_dimm_sensor_is_renamed() {
+        cc_fs::test_runtime(async {
+            let adapter = "SMBus PIIX4 adapter port 0 at 0b00";
+            let ctx = setup().await;
+            setup_i2c_client(&ctx, "7", "0051", adapter).await;
+            assert_eq!(dimm_display_name("lm75", &ctx.hwmon_path), None);
+
+            let ctx = setup().await;
+            link_i2c_device(&ctx, "i2c-7", "i2c-SPD5118:00", adapter).await;
+            assert_eq!(dimm_display_name("spd5118", &ctx.hwmon_path), None);
+
+            let ctx = setup().await;
+            setup_i2c_client(&ctx, "7", "0080", adapter).await;
+            assert_eq!(dimm_display_name("spd5118", &ctx.hwmon_path), None);
+
+            let ctx = setup().await;
+            assert_eq!(dimm_display_name("spd5118", &ctx.hwmon_path), None);
+        });
+    }
+
+    // Goal: the rename is applied per device and leaves every other device's name alone.
+    // Method: one DIMM and one unrelated driver through `name_dimm_devices`.
+    #[test]
+    #[serial]
+    fn naming_dimm_devices_leaves_other_devices_alone() {
+        cc_fs::test_runtime(async {
+            let dimm = setup().await;
+            setup_i2c_client(&dimm, "7", "0053", "SMBus PIIX4 adapter port 0 at 0b00").await;
+            let other = setup().await;
+            let mut drivers = [
+                HwmonDriverInfo {
+                    name: "spd5118".to_string(),
+                    path: dimm.hwmon_path.clone(),
+                    ..Default::default()
+                },
+                HwmonDriverInfo {
+                    name: "nct6798".to_string(),
+                    path: other.hwmon_path.clone(),
+                    ..Default::default()
+                },
+            ];
+
+            name_dimm_devices(&mut drivers);
+
+            assert_eq!(drivers[0].name, "DIMM 0x53");
+            assert_eq!(drivers[1].name, "nct6798");
+        });
     }
 
     // Goal: a DDR5 SPD sensor keeps one identity when the kernel hands its bus a different

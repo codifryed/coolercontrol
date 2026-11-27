@@ -687,6 +687,8 @@ export default {
             stopAll: '全部停止',
             active: '活跃',
             inactive: '不活跃',
+            peak: '峰值 {temp}',
+            dimm: 'DIMM',
             psuWarningHeader: '高功耗警告',
             psuWarningMessage:
                 '同时运行 CPU 和 GPU 压力测试将对电源产生较大负载。如果正在超频或使用低功率电源，可能会导致系统不稳定。确定要继续吗？',

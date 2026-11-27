@@ -19,7 +19,11 @@ use tokio_util::sync::CancellationToken;
 use crate::api::actor::{run_api_actor, ApiActor};
 
 const MAX_DURATION_SECS: u16 = 600;
+/// Memory modules heat slowly, so a RAM test is allowed to run for longer than the others.
+const RAM_DURATION_SECS_MAX: u16 = 3600;
 const DEFAULT_DURATION_SECS: u16 = 60;
+const _: () = assert!(DEFAULT_DURATION_SECS <= MAX_DURATION_SECS);
+const _: () = assert!(MAX_DURATION_SECS <= RAM_DURATION_SECS_MAX);
 const EARLY_EXIT_CHECK: Duration = Duration::from_millis(500);
 /// Grace period after a child's declared `--timeout` before the daemon
 /// force-kills it. Belt-and-suspenders against a stuck child whose own
@@ -67,6 +71,16 @@ impl StressKind {
             Self::Ram => "RAM",
             Self::Drive => "Drive",
         }
+    }
+
+    /// The length this test runs for: the default when none is requested, and never past the
+    /// cap of its kind.
+    fn duration_secs(self, requested_secs: Option<u16>) -> u16 {
+        let duration_secs_max = match self {
+            Self::Cpu | Self::Gpu | Self::Drive => MAX_DURATION_SECS,
+            Self::Ram => RAM_DURATION_SECS_MAX,
+        };
+        clamp_duration_secs(requested_secs, duration_secs_max)
     }
 }
 
@@ -477,9 +491,7 @@ impl StressTestActor {
         if self.cpu_child.is_some() {
             return Err(anyhow!("CPU stress test is already running"));
         }
-        let duration_secs = duration_secs
-            .unwrap_or(DEFAULT_DURATION_SECS)
-            .min(MAX_DURATION_SECS);
+        let duration_secs = StressKind::Cpu.duration_secs(duration_secs);
         let available_cpus = cc_stress::online_cpu_count();
         let thread_count = thread_count
             .unwrap_or(available_cpus)
@@ -651,9 +663,7 @@ impl StressTestActor {
         if self.gpu_child.is_some() {
             return Err(anyhow!("GPU stress test is already running"));
         }
-        let duration_secs = duration_secs
-            .unwrap_or(DEFAULT_DURATION_SECS)
-            .min(MAX_DURATION_SECS);
+        let duration_secs = StressKind::Gpu.duration_secs(duration_secs);
         let target = match gpu_id {
             Some(id) => Some(self.resolve_gpu_target(&id).await?),
             None => None,
@@ -730,9 +740,7 @@ impl StressTestActor {
         if self.ram_child.is_some() {
             return Err(anyhow!("RAM stress test is already running"));
         }
-        let duration_secs = duration_secs
-            .unwrap_or(DEFAULT_DURATION_SECS)
-            .min(MAX_DURATION_SECS);
+        let duration_secs = StressKind::Ram.duration_secs(duration_secs);
 
         let available_bytes = cc_stress::available_memory_bytes()
             .map_err(|e| anyhow!("Failed to read available memory: {e}"))?;
@@ -840,9 +848,7 @@ impl StressTestActor {
         }
         validate_device_path(&device_path)?;
 
-        let duration_secs = duration_secs
-            .unwrap_or(DEFAULT_DURATION_SECS)
-            .min(MAX_DURATION_SECS);
+        let duration_secs = StressKind::Drive.duration_secs(duration_secs);
         let thread_count = threads
             .unwrap_or(cc_stress::DRIVE_STRESS_DEFAULT_THREADS)
             .max(1);
@@ -1517,9 +1523,53 @@ impl StressTestHandle {
     }
 }
 
+/// The length a test runs for: the default when none is requested, and never past `max_secs`.
+fn clamp_duration_secs(requested_secs: Option<u16>, max_secs: u16) -> u16 {
+    debug_assert!(DEFAULT_DURATION_SECS <= max_secs);
+    requested_secs
+        .unwrap_or(DEFAULT_DURATION_SECS)
+        .min(max_secs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Goal: a requested length is honoured up to its test's cap and no further, and the RAM
+    /// test's cap is the longer one.
+    /// Methodology: clamp an absent, a short, a boundary and an oversized request per cap.
+    #[test]
+    fn a_duration_is_clamped_to_its_tests_cap() {
+        assert_eq!(clamp_duration_secs(None, MAX_DURATION_SECS), 60);
+        assert_eq!(clamp_duration_secs(Some(15), MAX_DURATION_SECS), 15);
+        assert_eq!(clamp_duration_secs(Some(600), MAX_DURATION_SECS), 600);
+        assert_eq!(clamp_duration_secs(Some(601), MAX_DURATION_SECS), 600);
+        assert_eq!(clamp_duration_secs(Some(u16::MAX), MAX_DURATION_SECS), 600);
+
+        assert_eq!(clamp_duration_secs(None, RAM_DURATION_SECS_MAX), 60);
+        assert_eq!(clamp_duration_secs(Some(1800), RAM_DURATION_SECS_MAX), 1800);
+        assert_eq!(clamp_duration_secs(Some(3600), RAM_DURATION_SECS_MAX), 3600);
+        assert_eq!(clamp_duration_secs(Some(3601), RAM_DURATION_SECS_MAX), 3600);
+    }
+
+    /// Goal: each test runs under its own cap, the RAM test alone getting the longer one.
+    /// Methodology: an oversized and an absent request through the per-kind seam every start
+    /// path uses.
+    #[test]
+    fn each_stress_kind_has_its_own_duration_cap() {
+        assert_eq!(StressKind::Cpu.duration_secs(Some(u16::MAX)), 600);
+        assert_eq!(StressKind::Gpu.duration_secs(Some(u16::MAX)), 600);
+        assert_eq!(StressKind::Ram.duration_secs(Some(u16::MAX)), 3600);
+        assert_eq!(StressKind::Drive.duration_secs(Some(u16::MAX)), 600);
+        for kind in [
+            StressKind::Cpu,
+            StressKind::Gpu,
+            StressKind::Ram,
+            StressKind::Drive,
+        ] {
+            assert_eq!(kind.duration_secs(None), 60);
+        }
+    }
 
     /// Goal: a GPU-less machine must not be warned on every listing, since there is nothing
     /// for the user to fix, while a stress test that cannot start still warrants a warning.

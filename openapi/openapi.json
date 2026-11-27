@@ -12843,7 +12843,7 @@
             ]
           },
           "duration_secs": {
-            "description": "Duration in seconds. Defaults to 60, max 600.",
+            "description": "Duration in seconds. Defaults to 60, max 3600.",
             "type": [
               "integer",
               "null"

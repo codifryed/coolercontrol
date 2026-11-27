@@ -739,6 +739,8 @@ export default {
             stopAll: 'Alle stoppen',
             active: 'Aktiv',
             inactive: 'Inaktiv',
+            peak: 'Spitze {temp}',
+            dimm: 'DIMMs',
             psuWarningHeader: 'Warnung: Hohe Leistungsaufnahme',
             psuWarningMessage:
                 'Das gleichzeitige Ausführen von CPU- und GPU-Stresstests belastet das Netzteil erheblich. Bei Übertaktung oder einem Netzteil mit niedriger Wattzahl kann es zu Systeminstabilität kommen. Möchten Sie trotzdem fortfahren?',
