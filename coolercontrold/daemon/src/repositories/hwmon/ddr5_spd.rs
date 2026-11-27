@@ -23,12 +23,12 @@ const MODULE_MAKER_ID: Range<usize> = 512..514;
 /// ASCII, padded with spaces.
 const PART_NUMBER: Range<usize> = 521..551;
 /// Fits a maker, a capacity and a full 30 character part number without growing.
-const MODEL_CAPACITY: usize = 64;
+const MODEL_STRING_CAPACITY: usize = 64;
 
 const _: () = assert!(MEMORY_TYPE_OFFSET < DENSITY_PACKAGE_OFFSET);
 const _: () = assert!(BUS_WIDTH_OFFSET < MODULE_MAKER_ID.start);
 const _: () = assert!(MODULE_MAKER_ID.end <= PART_NUMBER.start);
-const _: () = assert!(PART_NUMBER.end - PART_NUMBER.start < MODEL_CAPACITY);
+const _: () = assert!(PART_NUMBER.end - PART_NUMBER.start < MODEL_STRING_CAPACITY);
 
 /// A model name for the module, such as `G.Skill 24 GB DDR5 (F5-8400J4052G24G)`.
 ///
@@ -49,7 +49,7 @@ pub fn model(eeprom: &[u8]) -> Option<String> {
     if known.contains(&true).not() {
         return None;
     }
-    let mut model = String::with_capacity(MODEL_CAPACITY);
+    let mut model = String::with_capacity(MODEL_STRING_CAPACITY);
     if let Some(maker) = maker {
         model.push_str(maker);
         model.push(' ');
