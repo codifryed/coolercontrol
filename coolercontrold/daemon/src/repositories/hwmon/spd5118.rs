@@ -51,20 +51,24 @@ impl SensorBus {
     }
 }
 
-/// Switches the temperature sensors of a `spd5118` device back on. Any other device is left
-/// alone, and so is a sensor that is not among `channels`: the user disabled or ignores it.
+/// Whether a device's temp sensors need switching back on, by its kernel driver name.
+///
+/// Asked once at detection and kept with the device: its name is replaced by a display name
+/// afterwards, so it cannot be asked again on wake.
+pub fn affects(driver_name: &str) -> bool {
+    driver_name == DEVICE_NAME
+}
+
+/// Switches the temperature sensors of an affected device back on. A sensor that is not among
+/// `channels` is left alone: the user disabled or ignores it.
 ///
 /// Each temp channel is handled by its own hwmon number, and the pass ends at the first that
 /// stalls.
 pub async fn reenable_sensors(
-    device_name: &str,
     hwmon_path: &Path,
     channels: &[HwmonChannelInfo],
     io: &DeviceIo,
 ) -> SensorBus {
-    if device_name != DEVICE_NAME {
-        return SensorBus::Answered;
-    }
     for channel in channels {
         if channel.hwmon_type != HwmonChannelType::Temp {
             continue;
@@ -318,8 +322,7 @@ mod tests {
             let (wedged_io, mut wedged_rx) = DeviceIo::wedged_for_test(TEST_REPLY_TIMEOUT);
             let hwmon_path = Path::new("/sys/fake/hwmon6");
 
-            let stalled =
-                reenable_sensors(DEVICE_NAME, hwmon_path, &[temp_channel(1)], &wedged_io).await;
+            let stalled = reenable_sensors(hwmon_path, &[temp_channel(1)], &wedged_io).await;
 
             assert_eq!(stalled, SensorBus::Stalled);
             // The read of the sensor timed out, so no write followed it.
@@ -368,13 +371,7 @@ mod tests {
         cc_fs::test_runtime(async {
             let (dir, enable_path) = device_dir(Some("0\n")).await;
 
-            let bus = reenable_sensors(
-                DEVICE_NAME,
-                dir.path(),
-                &[temp_channel(1)],
-                &DeviceIo::default(),
-            )
-            .await;
+            let bus = reenable_sensors(dir.path(), &[temp_channel(1)], &DeviceIo::default()).await;
 
             assert_eq!(bus, SensorBus::Answered);
             assert_eq!(enable_value(&enable_path).await, "1");
@@ -389,13 +386,8 @@ mod tests {
             for reading in ["35000\n", "-250\n", "1\n"] {
                 let (dir, enable_path) = device_dir(Some(reading)).await;
 
-                let bus = reenable_sensors(
-                    DEVICE_NAME,
-                    dir.path(),
-                    &[temp_channel(1)],
-                    &DeviceIo::default(),
-                )
-                .await;
+                let bus =
+                    reenable_sensors(dir.path(), &[temp_channel(1)], &DeviceIo::default()).await;
 
                 assert_eq!(bus, SensorBus::Answered);
                 assert_eq!(enable_value(&enable_path).await, "0", "reading {reading:?}");
@@ -411,13 +403,8 @@ mod tests {
             for reading in [None, Some("\n"), Some("N/A\n"), Some("0.0\n")] {
                 let (dir, enable_path) = device_dir(reading).await;
 
-                let bus = reenable_sensors(
-                    DEVICE_NAME,
-                    dir.path(),
-                    &[temp_channel(1)],
-                    &DeviceIo::default(),
-                )
-                .await;
+                let bus =
+                    reenable_sensors(dir.path(), &[temp_channel(1)], &DeviceIo::default()).await;
 
                 assert_eq!(bus, SensorBus::Answered);
                 assert_eq!(enable_value(&enable_path).await, "0", "reading {reading:?}");
@@ -445,27 +432,25 @@ mod tests {
                 ..Default::default()
             };
 
-            reenable_sensors(DEVICE_NAME, dir.path(), &[], &io).await;
-            reenable_sensors(DEVICE_NAME, dir.path(), &[fan], &io).await;
+            reenable_sensors(dir.path(), &[], &io).await;
+            reenable_sensors(dir.path(), &[fan], &io).await;
             assert_eq!(enable_value(&enable_1).await, "0");
             assert_eq!(enable_value(&enable_2).await, "0");
 
-            reenable_sensors(DEVICE_NAME, dir.path(), &[temp_channel(2)], &io).await;
+            reenable_sensors(dir.path(), &[temp_channel(2)], &io).await;
             assert_eq!(enable_value(&enable_1).await, "0");
             assert_eq!(enable_value(&enable_2).await, "1");
         });
     }
 
-    /// Goal: no other driver's enable attribute is written: a user may have disabled it.
-    /// Method: a disabled sensor that reads 0 under another device name stays disabled.
+    /// Goal: only the `spd5118` driver is affected: a user may have disabled another driver's
+    /// sensor on purpose.
+    /// Method: the driver name, another DIMM driver, and the display name a DIMM gets later.
     #[test]
-    fn leaves_other_devices_alone() {
-        cc_fs::test_runtime(async {
-            let (dir, enable_path) = device_dir(Some("0\n")).await;
-
-            reenable_sensors("jc42", dir.path(), &[temp_channel(1)], &DeviceIo::default()).await;
-
-            assert_eq!(enable_value(&enable_path).await, "0");
-        });
+    fn affects_only_the_spd5118_driver() {
+        assert!(affects(DEVICE_NAME));
+        assert!(affects("jc42").not());
+        assert!(affects("DIMM 0x51").not());
+        assert!(affects("").not());
     }
 }
