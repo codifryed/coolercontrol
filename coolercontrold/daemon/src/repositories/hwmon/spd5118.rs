@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Works around the `spd5118` driver leaving a DDR5 temperature sensor switched off.
+//! What is specific to the `spd5118` driver, which serves a DDR5 module's temperature sensor
+//! and its SPD EEPROM: the module's part number, and a workaround for the driver leaving the
+//! sensor switched off.
 //!
 //! The driver disables the sensor on suspend and re-enables it on resume with a single write.
 //! When the `SMBus` is busy that write fails, the sensor stays off and reads 0, and the driver
@@ -12,17 +14,27 @@
 
 use crate::cc_fs::SysfsValue;
 use crate::repositories::hwmon::device_io::{self, DeviceIo};
+use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
 use crate::rt;
 use anyhow::Result;
 use log::{debug, info};
-use std::ops::Not;
+use std::ops::{Not, Range};
 use std::path::Path;
 use std::time::Duration;
 
 pub const DEVICE_NAME: &str = "spd5118";
 
 const TEMP_ENABLE_SUFFIX: &str = "_enable";
+const EEPROM_FILE: &str = "eeprom";
+/// Where the SPD contents say what memory they describe, and the value for DDR5 (JESD400-5).
+const SPD_MEMORY_TYPE_OFFSET: usize = 2;
+const SPD_MEMORY_TYPE_DDR5: u8 = 0x12;
+/// The module part number in a DDR5 SPD: ASCII, padded with spaces.
+const SPD_PART_NUMBER: Range<usize> = 521..551;
+
+const _: () = assert!(SPD_MEMORY_TYPE_OFFSET < SPD_PART_NUMBER.start);
+const _: () = assert!(SPD_PART_NUMBER.start < SPD_PART_NUMBER.end);
 const SENSOR_DISABLED: &[u8] = b"0";
 const SENSOR_ENABLED: &[u8] = b"1";
 /// The bus can still be busy shortly after resume, which is how the sensor got stuck.
@@ -55,6 +67,47 @@ impl SensorBus {
 /// Never by its display name, which replaces that one after detection.
 pub fn affects(hwmon_name: &str) -> bool {
     hwmon_name == DEVICE_NAME
+}
+
+/// The module's part number, from the SPD EEPROM the driver exposes beside the sensor.
+///
+/// None when it cannot be read, as on a board that write-protects the hub: the part number
+/// lies past the first page, and such a board refuses the page switch.
+pub async fn read_part_number(hwmon_path: &Path, io: &DeviceIo) -> Option<String> {
+    let eeprom_path = devices::device_path(hwmon_path).join(EEPROM_FILE);
+    match io.read_bytes(&eeprom_path).await {
+        Ok(eeprom) => part_number(&eeprom),
+        Err(err) => {
+            debug!(
+                "{} is not readable, so its module has no model: {err}",
+                eeprom_path.display()
+            );
+            None
+        }
+    }
+}
+
+/// The part number in DDR5 SPD contents. None for any other memory type, whose layout
+/// differs, and for a field that is blank or not printable ASCII.
+fn part_number(eeprom: &[u8]) -> Option<String> {
+    if eeprom.get(SPD_MEMORY_TYPE_OFFSET) != Some(&SPD_MEMORY_TYPE_DDR5) {
+        return None;
+    }
+    let field = eeprom.get(SPD_PART_NUMBER)?;
+    debug_assert_eq!(field.len(), SPD_PART_NUMBER.len());
+    // Some modules pad with NULs where the standard asks for spaces.
+    let is_padding = |byte: &u8| *byte == b' ' || *byte == 0;
+    let start = field.iter().position(|byte| is_padding(byte).not())?;
+    let end = field.iter().rposition(|byte| is_padding(byte).not())? + 1;
+    let text = &field[start..end];
+    if text
+        .iter()
+        .all(|byte| byte.is_ascii_graphic() || *byte == b' ')
+        .not()
+    {
+        return None;
+    }
+    String::from_utf8(text.to_vec()).ok()
 }
 
 /// Switches the temperature sensors of an affected device back on. A sensor that is not among
@@ -438,6 +491,83 @@ mod tests {
             reenable_sensors(dir.path(), &[temp_channel(2)], &io).await;
             assert_eq!(enable_value(&enable_1).await, "0");
             assert_eq!(enable_value(&enable_2).await, "1");
+        });
+    }
+
+    /// SPD contents of `len` bytes for `memory_type`, with `part_number` in its field.
+    fn spd(len: usize, memory_type: u8, part_number: &[u8]) -> Vec<u8> {
+        let mut eeprom = vec![0u8; len];
+        if let Some(byte) = eeprom.get_mut(SPD_MEMORY_TYPE_OFFSET) {
+            *byte = memory_type;
+        }
+        for (offset, byte) in part_number.iter().enumerate() {
+            if let Some(slot) = eeprom.get_mut(SPD_PART_NUMBER.start + offset) {
+                *slot = *byte;
+            }
+        }
+        eeprom
+    }
+
+    /// Goal: the part number is taken from its field with the padding removed, whether the
+    /// module pads with spaces or with NULs.
+    /// Method: DDR5 SPD contents holding a real part number padded each way.
+    #[test]
+    fn part_number_is_read_without_its_padding() {
+        let spaces = spd(
+            1024,
+            SPD_MEMORY_TYPE_DDR5,
+            b"F5-8400J4052G24G              ",
+        );
+        assert_eq!(part_number(&spaces).as_deref(), Some("F5-8400J4052G24G"));
+        let nuls = spd(1024, SPD_MEMORY_TYPE_DDR5, b"F5-8400J4052G24G");
+        assert_eq!(part_number(&nuls).as_deref(), Some("F5-8400J4052G24G"));
+        let inner_space = spd(1024, SPD_MEMORY_TYPE_DDR5, b"  CMK32 GX5  ");
+        assert_eq!(part_number(&inner_space).as_deref(), Some("CMK32 GX5"));
+    }
+
+    /// Goal: contents that are not a readable DDR5 part number give none, never garbage.
+    /// Method: another memory type, a short read, a blank field, and unprintable bytes.
+    #[test]
+    fn part_number_is_none_for_unusable_contents() {
+        let ddr4 = spd(1024, 0x0c, b"F4-3600C16-16GTZ");
+        assert_eq!(part_number(&ddr4), None);
+        // Only the first page, as a write-protected hub gives.
+        let first_page = spd(128, SPD_MEMORY_TYPE_DDR5, b"");
+        assert_eq!(part_number(&first_page), None);
+        assert_eq!(part_number(&[]), None);
+        let blank = spd(
+            1024,
+            SPD_MEMORY_TYPE_DDR5,
+            b"                              ",
+        );
+        assert_eq!(part_number(&blank), None);
+        let all_nul = spd(1024, SPD_MEMORY_TYPE_DDR5, b"");
+        assert_eq!(part_number(&all_nul), None);
+        let unprintable = spd(1024, SPD_MEMORY_TYPE_DDR5, b"F5-\xff\x01");
+        assert_eq!(part_number(&unprintable), None);
+    }
+
+    /// Goal: the part number is read from the `eeprom` file of the device behind the hwmon
+    /// directory, and a missing file gives none.
+    /// Method: a hwmon directory with and without `device/eeprom`.
+    #[test]
+    fn reads_the_part_number_from_the_device_eeprom() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let io = DeviceIo::default();
+            assert_eq!(read_part_number(dir.path(), &io).await, None);
+
+            let device = dir.path().join("device");
+            cc_fs::create_dir_all(&device).await.unwrap();
+            let eeprom = spd(1024, SPD_MEMORY_TYPE_DDR5, b"F5-8400J4052G24G");
+            cc_fs::write(device.join(EEPROM_FILE), eeprom)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                read_part_number(dir.path(), &io).await.as_deref(),
+                Some("F5-8400J4052G24G")
+            );
         });
     }
 
