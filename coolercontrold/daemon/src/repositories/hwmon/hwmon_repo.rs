@@ -1832,9 +1832,10 @@ impl HwmonRepo {
             // One at a time: the DIMMs share one bus, and a busy bus is what this recovers
             // from.
             for (_device_lock, hwmon_driver) in self.devices.values() {
-                let bus = spd5118::reenable_sensor(
+                let bus = spd5118::reenable_sensors(
                     &hwmon_driver.name,
                     &hwmon_driver.path,
+                    &hwmon_driver.channels,
                     &hwmon_driver.io,
                 )
                 .await;
@@ -2462,9 +2463,6 @@ impl Repository for HwmonRepo {
             // Before any value read: detection is exactly where a driver that sleeps inside its
             // sysfs read first bites (issue 609), so it belongs on the device's own thread.
             let io = DeviceIo::isolated_or_inline(&device_name, self.device_io_reply_timeout);
-            // Before its temp is detected: a sensor left off by a failed resume stays off
-            // across a reboot.
-            spd5118::reenable_sensor(&device_name, &path, &io).await;
             let mut channels = vec![];
             let apple_driver = apple::detect(&device_name, &path);
             let detected_fans = match apple_driver {
@@ -2515,6 +2513,9 @@ impl Repository for HwmonRepo {
                     ChannelExclusion::IgnoredBySensorsConf,
                 );
             }
+            // Once the channel set is final, so a disabled or ignored temp is left alone. A
+            // sensor left off by a failed resume stays off across a reboot.
+            spd5118::reenable_sensors(&device_name, &path, &channels, &io).await;
             if channels.is_empty() {
                 if ignored_count > 0 {
                     info!(
@@ -6822,6 +6823,16 @@ mod restore_after_sleep_tests {
         enable_path
     }
 
+    fn temp1() -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Temp,
+            number: 1,
+            name: "temp1".to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// Adds a device with its `temp1` channel.
     fn insert_device(
         repo: &mut HwmonRepo,
         type_index: TypeIndex,
@@ -6829,10 +6840,29 @@ mod restore_after_sleep_tests {
         driver_path: PathBuf,
         io: DeviceIo,
     ) {
+        insert_device_with_channels(
+            repo,
+            type_index,
+            device_name,
+            driver_path,
+            io,
+            vec![temp1()],
+        );
+    }
+
+    fn insert_device_with_channels(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        device_name: &str,
+        driver_path: PathBuf,
+        io: DeviceIo,
+        channels: Vec<HwmonChannelInfo>,
+    ) {
         let driver = HwmonDriverInfo {
             name: device_name.to_string(),
             path: driver_path,
             u_id: format!("test-uid-{device_name}-{type_index}"),
+            channels,
             io,
             ..Default::default()
         };
@@ -6938,6 +6968,38 @@ mod restore_after_sleep_tests {
             assert!(elapsed < reply_timeout, "took {elapsed:?}");
             // The pass got as far as asking the device.
             assert_eq!(rx.len(), 1);
+        });
+    }
+
+    /// Goal: waking leaves a DIMM's sensor alone when its temp channel is not among the
+    /// device's channels, as when the user disabled it.
+    /// Method: a DIMM without channels whose sensor is disabled and reads 0.
+    #[test]
+    #[serial]
+    fn waking_leaves_a_disabled_temp_channel_alone() {
+        cc_fs::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dimm = tmp.path().join("hwmon6");
+            cc_fs::create_dir_all(&dimm).await.unwrap();
+            let enable_path = dimm.join(TEMP_ENABLE_FILE);
+            cc_fs::write(&enable_path, b"0".to_vec()).await.unwrap();
+            cc_fs::write(dimm.join("temp1_input"), b"0\n".to_vec())
+                .await
+                .unwrap();
+            let mut repo = empty_repo();
+            insert_device_with_channels(
+                &mut repo,
+                1,
+                spd5118::DEVICE_NAME,
+                dimm,
+                DeviceIo::default(),
+                vec![],
+            );
+
+            repo.restore_after_sleep().await;
+
+            let enabled = cc_fs::read_sysfs(&enable_path).await.unwrap();
+            assert_eq!(enabled.trim(), "0");
         });
     }
 
