@@ -2566,7 +2566,7 @@ impl Repository for HwmonRepo {
             let mut model = Self::read_model(&path, &identity).await.unwrap_or_default();
             if model.is_none() {
                 if spd5118::affects(&device_name) {
-                    model = spd5118::read_part_number(&path, &io).await;
+                    model = spd5118::read_model(&path, &io).await;
                 }
             }
             debug!("Detected Device Model: {model:?}");
@@ -6929,10 +6929,8 @@ mod restore_after_sleep_tests {
                     .await
                     .unwrap();
             }
-            // DDR5 SPD contents with a part number, as the driver exposes them.
-            let mut eeprom = vec![0u8; 1024];
-            eeprom[2] = 0x12;
-            eeprom[521..537].copy_from_slice(b"F5-8400J4052G24G");
+            // The SPD contents of a real module, as the driver exposes them.
+            let eeprom = crate::repositories::hwmon::ddr5_spd::TestSpd::g_skill_24_gb().bytes();
             cc_fs::create_dir_all(dimm.join("device")).await.unwrap();
             cc_fs::write(dimm.join("device").join("eeprom"), eeprom)
                 .await
@@ -6945,10 +6943,9 @@ mod restore_after_sleep_tests {
             assert_eq!(repo.devices.len(), 1);
             for (device, driver) in repo.devices.values() {
                 assert_eq!(driver.hwmon_name, spd5118::DEVICE_NAME);
-                // The module's part number is its model.
                 assert_eq!(
                     device.borrow().info.model.as_deref(),
-                    Some("F5-8400J4052G24G")
+                    Some("G.Skill 24 GB DDR5 (F5-8400J4052G24G)")
                 );
             }
             let enabled = cc_fs::read_sysfs(dimm.join(TEMP_ENABLE_FILE))
