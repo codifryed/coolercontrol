@@ -10,19 +10,30 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiAlertOutline, mdiCircle } from '@mdi/js'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, type Ref, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiNumberInput from '@/shell/ui/UiNumberInput.vue'
 import UiSelect from '@/shell/ui/UiSelect.vue'
 import { useConfirm } from '@/shell/confirm'
 import { useToast } from '@/shell/toast'
-import { DeviceType } from '@/models/Device'
+import type { Device } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import HelpIcon from '@/components/info/HelpIcon.vue'
 import StressTestLabel from '@/components/info/StressTestLabel.vue'
 import StressBackendSelect from '@/components/info/StressBackendSelect.vue'
+import {
+    formatLoad,
+    formatRamLoad,
+    formatTemp,
+    isCpu,
+    isDimm,
+    isGpu,
+    liveLoad,
+    type LiveLoad,
+    trackedPeak,
+} from '@/components/stressLoad.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -93,37 +104,55 @@ const pollStatus = async () => {
 const backendLabel = (backend: string) =>
     backend === 'stress_ng' ? 'stress-ng' : t('views.appInfo.builtInBackend')
 
-// Hottest temperature and total power draw across the devices a given test
-// targets. Utilization is useless for judging a stress test: it reads ~100%
-// whether the hardware is near its power limit or nowhere close, so the
-// numbers that tell you whether cooling is actually being exercised are
-// temperature and watts.
-const liveLoad = (types: DeviceType[]): string => {
-    let tempMax: number | undefined
-    let watts: number | undefined
-    for (const device of deviceStore.allDevices()) {
-        if (!types.includes(device.type)) continue
-        const channels = deviceStore.currentDeviceStatus.get(device.uid)
-        if (channels == null) continue
-        for (const values of channels.values()) {
-            const temp = values.temp != null ? Number.parseFloat(values.temp) : Number.NaN
-            if (!Number.isNaN(temp) && (tempMax === undefined || temp > tempMax)) {
-                tempMax = temp
-            }
-            const power = values.watts != null ? Number.parseFloat(values.watts) : Number.NaN
-            if (!Number.isNaN(power)) {
-                watts = (watts ?? 0) + power
-            }
-        }
-    }
-    const parts: string[] = []
-    if (tempMax !== undefined) parts.push(`${tempMax.toFixed(0)}°C`)
-    if (watts !== undefined) parts.push(`${watts.toFixed(0)}W`)
-    return parts.join(' · ')
-}
+const loadOf = (targets: (device: Device) => boolean): LiveLoad =>
+    liveLoad(deviceStore.allDevices(), deviceStore.currentDeviceStatus, targets)
 
-const cpuLoad = computed(() => liveLoad([DeviceType.CPU]))
-const gpuLoad = computed(() => liveLoad([DeviceType.GPU]))
+const cpuLive = computed(() => loadOf(isCpu))
+const gpuLive = computed(() => loadOf(isGpu))
+const dimmLive = computed(() => loadOf(isDimm))
+
+// The hottest reading of each test's leading temperature, tracked while the test runs and
+// left on its row afterwards. Kept here only: a reload or leaving the page forgets it.
+const cpuPeak = ref<number>()
+const gpuPeak = ref<number>()
+const ramPeak = ref<number>()
+const trackPeak = (
+    peak: Ref<number | undefined>,
+    active: Ref<boolean>,
+    temp: () => number | undefined,
+): void => {
+    watch(
+        [active, temp],
+        ([isActive, current], previous) => {
+            // The first run has no previous values.
+            const wasActive = previous?.[0] ?? false
+            peak.value = trackedPeak(peak.value, current, isActive, wasActive)
+        },
+        { immediate: true },
+    )
+}
+trackPeak(cpuPeak, cpuActive, () => cpuLive.value.tempMax)
+trackPeak(gpuPeak, gpuActive, () => gpuLive.value.tempMax)
+trackPeak(ramPeak, ramActive, () => dimmLive.value.tempMax ?? cpuLive.value.tempMax)
+
+const peakText = (peak: number | undefined): string =>
+    peak === undefined ? '' : t('views.appInfo.peak', { temp: formatTemp(peak) })
+
+// The live readout while a test runs, and its peak once it has ended. Under a steady load
+// the two rarely differ, so the peak is not shown beside the live reading.
+const cpuLoad = computed(() => {
+    if (!cpuActive.value) return peakText(cpuPeak.value)
+    return formatLoad(cpuLive.value)
+})
+const gpuLoad = computed(() => {
+    if (!gpuActive.value) return peakText(gpuPeak.value)
+    return formatLoad(gpuLive.value)
+})
+const ramLoad = computed(() => {
+    if (!ramActive.value) return peakText(ramPeak.value)
+    const labels = { dimm: t('views.appInfo.dimm'), cpu: t('models.deviceType.cpu') }
+    return formatRamLoad(dimmLive.value, cpuLive.value, labels)
+})
 
 const startPolling = () => {
     invalidatePendingStatus()
@@ -360,7 +389,7 @@ onMounted(async () => {
                 >
             </div>
             <div class="overflow-x-auto">
-                <table class="border-separate border-spacing-y-2">
+                <table class="border-separate border-spacing-y-2 whitespace-nowrap">
                     <tbody>
                         <!-- CPU Stress -->
                         <tr>
@@ -392,24 +421,24 @@ onMounted(async () => {
                             </td>
                             <td>
                                 <div class="flex items-center gap-2">
-                                    <svg-icon
-                                        type="mdi"
-                                        :class="
-                                            cpuActive ? 'text-success' : 'text-text-color-secondary'
-                                        "
-                                        :path="mdiCircle"
-                                        :size="deviceStore.getREMSize(0.75)"
-                                    />
-                                    <span class="text-sm">{{
-                                        cpuActive
-                                            ? t('views.appInfo.active')
-                                            : t('views.appInfo.inactive')
-                                    }}</span>
                                     <span
-                                        v-if="cpuActive && cpuLoad"
-                                        class="text-sm font-medium font-numeric tabular-nums"
-                                        >{{ cpuLoad }}</span
+                                        v-tooltip.top="
+                                            cpuActive
+                                                ? t('views.appInfo.active')
+                                                : t('views.appInfo.inactive')
+                                        "
                                     >
+                                        <svg-icon
+                                            type="mdi"
+                                            :class="
+                                                cpuActive
+                                                    ? 'text-success'
+                                                    : 'text-text-color-secondary'
+                                            "
+                                            :path="mdiCircle"
+                                            :size="deviceStore.getREMSize(0.75)"
+                                        />
+                                    </span>
                                     <stress-backend-select
                                         v-if="stressNgAvailable && !cpuActive"
                                         v-model="settingsStore.cpuStressBackend"
@@ -419,6 +448,15 @@ onMounted(async () => {
                                         v-else
                                         class="text-xs text-text-color-secondary ml-1 opacity-70"
                                         >[{{ backendLabel(cpuBackend) }}]</span
+                                    >
+                                    <span
+                                        v-if="cpuLoad"
+                                        v-tooltip.top="{
+                                            value: peakText(cpuPeak),
+                                            disabled: !cpuActive || cpuPeak === undefined,
+                                        }"
+                                        class="text-sm font-medium font-numeric tabular-nums"
+                                        >{{ cpuLoad }}</span
                                     >
                                 </div>
                             </td>
@@ -460,24 +498,24 @@ onMounted(async () => {
                             </td>
                             <td>
                                 <div class="flex items-center gap-2">
-                                    <svg-icon
-                                        type="mdi"
-                                        :class="
-                                            gpuActive ? 'text-success' : 'text-text-color-secondary'
-                                        "
-                                        :path="mdiCircle"
-                                        :size="deviceStore.getREMSize(0.75)"
-                                    />
-                                    <span class="text-sm">{{
-                                        gpuActive
-                                            ? t('views.appInfo.active')
-                                            : t('views.appInfo.inactive')
-                                    }}</span>
                                     <span
-                                        v-if="gpuActive && gpuLoad"
-                                        class="text-sm font-medium font-numeric tabular-nums"
-                                        >{{ gpuLoad }}</span
+                                        v-tooltip.top="
+                                            gpuActive
+                                                ? t('views.appInfo.active')
+                                                : t('views.appInfo.inactive')
+                                        "
                                     >
+                                        <svg-icon
+                                            type="mdi"
+                                            :class="
+                                                gpuActive
+                                                    ? 'text-success'
+                                                    : 'text-text-color-secondary'
+                                            "
+                                            :path="mdiCircle"
+                                            :size="deviceStore.getREMSize(0.75)"
+                                        />
+                                    </span>
                                     <stress-backend-select
                                         v-if="stressNgAvailable && !gpuActive"
                                         v-model="settingsStore.gpuStressBackend"
@@ -487,6 +525,15 @@ onMounted(async () => {
                                         v-else
                                         class="text-xs text-text-color-secondary ml-1 opacity-70"
                                         >[{{ backendLabel(gpuBackend) }}]</span
+                                    >
+                                    <span
+                                        v-if="gpuLoad"
+                                        v-tooltip.top="{
+                                            value: peakText(gpuPeak),
+                                            disabled: !gpuActive || gpuPeak === undefined,
+                                        }"
+                                        class="text-sm font-medium font-numeric tabular-nums"
+                                        >{{ gpuLoad }}</span
                                     >
                                 </div>
                             </td>
@@ -502,7 +549,7 @@ onMounted(async () => {
                                 <UiNumberInput
                                     v-model="ramDuration"
                                     :min="15"
-                                    :max="600"
+                                    :max="3600"
                                     :step="15"
                                     :disabled="ramActive"
                                     suffix="s"
@@ -521,26 +568,24 @@ onMounted(async () => {
                             </td>
                             <td>
                                 <div class="flex items-center gap-2">
-                                    <svg-icon
-                                        type="mdi"
-                                        :class="
-                                            ramActive ? 'text-success' : 'text-text-color-secondary'
-                                        "
-                                        :path="mdiCircle"
-                                        :size="deviceStore.getREMSize(0.75)"
-                                    />
-                                    <span class="text-sm">{{
-                                        ramActive
-                                            ? t('views.appInfo.active')
-                                            : t('views.appInfo.inactive')
-                                    }}</span>
-                                    <!-- The memory controller sits on the CPU package, so the
-                                      CPU sensors are what reflect RAM stress. -->
                                     <span
-                                        v-if="ramActive && cpuLoad"
-                                        class="text-sm font-medium font-numeric tabular-nums"
-                                        >{{ cpuLoad }}</span
+                                        v-tooltip.top="
+                                            ramActive
+                                                ? t('views.appInfo.active')
+                                                : t('views.appInfo.inactive')
+                                        "
                                     >
+                                        <svg-icon
+                                            type="mdi"
+                                            :class="
+                                                ramActive
+                                                    ? 'text-success'
+                                                    : 'text-text-color-secondary'
+                                            "
+                                            :path="mdiCircle"
+                                            :size="deviceStore.getREMSize(0.75)"
+                                        />
+                                    </span>
                                     <stress-backend-select
                                         v-if="stressNgAvailable && !ramActive"
                                         v-model="settingsStore.ramStressBackend"
@@ -550,6 +595,15 @@ onMounted(async () => {
                                         v-else
                                         class="text-xs text-text-color-secondary ml-1 opacity-70"
                                         >[{{ backendLabel(ramBackend) }}]</span
+                                    >
+                                    <span
+                                        v-if="ramLoad"
+                                        v-tooltip.top="{
+                                            value: peakText(ramPeak),
+                                            disabled: !ramActive || ramPeak === undefined,
+                                        }"
+                                        class="text-sm font-medium font-numeric tabular-nums"
+                                        >{{ ramLoad }}</span
                                     >
                                 </div>
                             </td>
@@ -594,21 +648,24 @@ onMounted(async () => {
                             </td>
                             <td>
                                 <div class="flex items-center gap-2">
-                                    <svg-icon
-                                        type="mdi"
-                                        :class="
+                                    <span
+                                        v-tooltip.top="
                                             driveActive
-                                                ? 'text-success'
-                                                : 'text-text-color-secondary'
+                                                ? t('views.appInfo.active')
+                                                : t('views.appInfo.inactive')
                                         "
-                                        :path="mdiCircle"
-                                        :size="deviceStore.getREMSize(0.75)"
-                                    />
-                                    <span class="text-sm">{{
-                                        driveActive
-                                            ? t('views.appInfo.active')
-                                            : t('views.appInfo.inactive')
-                                    }}</span>
+                                    >
+                                        <svg-icon
+                                            type="mdi"
+                                            :class="
+                                                driveActive
+                                                    ? 'text-success'
+                                                    : 'text-text-color-secondary'
+                                            "
+                                            :path="mdiCircle"
+                                            :size="deviceStore.getREMSize(0.75)"
+                                        />
+                                    </span>
                                     <stress-backend-select
                                         v-if="stressNgAvailable && !driveActive"
                                         v-model="settingsStore.driveStressBackend"

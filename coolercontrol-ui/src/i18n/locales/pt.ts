@@ -729,6 +729,8 @@ export default {
             stopAll: 'Parar tudo',
             active: 'Ativo',
             inactive: 'Inativo',
+            peak: 'pico {temp}',
+            dimm: 'DIMMs',
             psuWarningHeader: 'Aviso de alto consumo',
             psuWarningMessage:
                 'Executar os testes de estresse de CPU e GPU simultaneamente colocará carga significativa na fonte de alimentação. Se estiver com overclock ou usando uma fonte de baixa potência, pode ocorrer instabilidade do sistema. Deseja continuar?',

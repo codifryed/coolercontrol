@@ -37,7 +37,7 @@ pub struct StartGpuStressRequest {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct StartRamStressRequest {
-    /// Duration in seconds. Defaults to 60, max 600.
+    /// Duration in seconds. Defaults to 60, max 3600.
     pub duration_secs: Option<u16>,
     /// Which backend to use. Omit for the daemon's default
     /// (stress-ng if installed, else built-in).

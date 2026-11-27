@@ -2522,6 +2522,7 @@ impl Repository for HwmonRepo {
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
+        devices::name_dimm_devices(&mut hwmon_drivers);
         devices::handle_duplicate_device_names(&mut hwmon_drivers, &identity).await;
         // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));

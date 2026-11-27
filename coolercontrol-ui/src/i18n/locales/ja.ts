@@ -726,6 +726,8 @@ export default {
             stopAll: 'すべて停止',
             active: 'アクティブ',
             inactive: '非アクティブ',
+            peak: '最高 {temp}',
+            dimm: 'DIMM',
             psuWarningHeader: '高電力警告',
             psuWarningMessage:
                 'CPUとGPUのストレステストを同時に実行すると、電源ユニットに大きな負荷がかかります。オーバークロック中や低ワット数の電源では、システムが不安定になる可能性があります。続行しますか？',

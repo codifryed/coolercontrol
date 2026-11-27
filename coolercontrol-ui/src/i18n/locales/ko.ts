@@ -713,6 +713,8 @@ export default {
             stopAll: '모두 중지',
             active: '활성',
             inactive: '비활성',
+            peak: '최고 {temp}',
+            dimm: 'DIMM',
             psuWarningHeader: '높은 전력 경고',
             psuWarningMessage:
                 'CPU와 GPU 스트레스 테스트를 동시에 실행하면 PSU에 상당한 부하가 걸립니다. 오버클럭 중이거나 저전력 PSU를 사용하는 경우 시스템 불안정이 발생할 수 있습니다. 계속하시겠습니까?',

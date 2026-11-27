@@ -719,6 +719,8 @@ export default {
             stopAll: 'Stop All',
             active: 'Active',
             inactive: 'Inactive',
+            peak: 'peak {temp}',
+            dimm: 'DIMMs',
             psuWarningHeader: 'High Power Warning',
             psuWarningMessage:
                 'Running both CPU and GPU stress tests simultaneously will put significant load on your PSU. If overclocking or using a low wattage PSU, system instability can occur. Are you sure you want to proceed?',
