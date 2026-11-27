@@ -6910,9 +6910,10 @@ mod restore_after_sleep_tests {
     }
 
     /// Goal: init switches a `spd5118` sensor back on, as one left off by a failed resume
-    /// stays off across a reboot.
+    /// stays off across a reboot, keeps the hwmon name and takes the model from the SPD. The
+    /// wake pass then switches the sensor on again.
     /// Method: init over a fake DIMM whose sensor is disabled and reads 0, then read its enable
-    /// attribute.
+    /// attribute, hwmon name and model. Disable the sensor, wake, and read the attribute again.
     #[test]
     #[serial]
     fn init_reenables_a_spd5118_sensor() {
